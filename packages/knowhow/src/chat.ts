@@ -39,6 +39,8 @@ const Flags = new FlagsService(
   true
 );
 
+const taskRegistry = new Map<string, BaseAgent>();
+
 export async function askEmbedding<E>(promptText: string) {
   const options = ["next", "exit", "embeddings", "use"];
   console.log(`Commands: ${options.join(", ")}`);
@@ -262,6 +264,21 @@ export async function chatLoop<E extends GptQuestionEmbedding>(
             activeAgent.setModel(model);
           }
           break;
+        case "attach":
+          if (taskRegistry.size > 0) {
+            const options = Array.from(taskRegistry.keys());
+            const selectedInitialMessage = await ask(
+              "Select an agent to attach to:",
+              options
+            );
+            activeAgent = taskRegistry.get(selectedInitialMessage)!;
+            console.log(
+              `Attached to agent with task: "${selectedInitialMessage}"`
+            );
+            await startAgent(activeAgent, null, true);
+          } else {
+            console.log("No detached agents available.");
+          }
         case "":
           break;
         default:
@@ -277,15 +294,19 @@ export async function chatLoop<E extends GptQuestionEmbedding>(
             output: "",
           } as ChatInteraction;
           if (Flags.enabled("agent")) {
-            activeAgent.newTask();
-            results = await activeAgent.call(formattedPrompt);
-            updateInteractionForAgent(interaction, activeAgent);
+            taskRegistry.set(input, activeAgent);
+            await startAgent(activeAgent, {
+              initialInput: input,
+              plugins,
+              chatHistory,
+              interaction,
+            });
           } else {
             results = await askAI(formattedPrompt, provider, model);
+            interaction.output = results;
+            console.log(Marked.parse(results || "No response from the AI"));
           }
-          interaction.output = results;
           console.log("\n\n");
-          console.log(Marked.parse(results || "No response from the AI"));
           chatHistory.push(interaction);
           break;
       }
@@ -297,15 +318,93 @@ export async function chatLoop<E extends GptQuestionEmbedding>(
   }
 }
 
-function updateInteractionForAgent(
-  interaction: ChatInteraction,
-  agent: BaseAgent
+export async function startAgent(
+  activeAgent: BaseAgent,
+  newTask?: {
+    initialInput: string;
+    plugins: string[];
+    chatHistory: ChatInteraction[];
+    interaction: ChatInteraction;
+  },
+  attach = false
 ) {
-  /*
-   *interaction.summaries = agent.getSummaries().map((s) => s.content);
-   *const threads = agent.getThreads();
-   *interaction.lastThread = threads.length
-   *  ? threads[threads.length - 1].map((t) => JSON.stringify(t.content))
-   *  : [];
-   */
+  let done = false;
+  let output = "Done";
+
+  if (newTask) {
+    const { initialInput, plugins, chatHistory, interaction } = newTask;
+    await activeAgent.newTask();
+    const formattedPrompt = await formatChatInput(
+      initialInput,
+      plugins,
+      chatHistory
+    );
+    activeAgent.call(formattedPrompt);
+
+    activeAgent.agentEvents.once(activeAgent.eventTypes.done, (doneMsg) => {
+      console.log("Agent has finished.");
+      done = true;
+      taskRegistry.delete(initialInput);
+      output = doneMsg || "No response from the AI";
+      interaction.output = output;
+      console.log(Marked.parse(output));
+    });
+  }
+
+  // Define available commands
+  const commands = ["pause", "unpause", "kill", "detach"];
+  const history = [];
+
+  let input = await getInput(
+    `Enter command or message for ${activeAgent.name}: `,
+    commands,
+    history
+  );
+
+  history.push(input);
+
+  const donePromise = new Promise<string>((resolve) => {
+    activeAgent.agentEvents.on(activeAgent.eventTypes.done, () => {
+      done = true;
+      resolve("done");
+    });
+  });
+
+  while (!done) {
+    switch (input) {
+      case "":
+        break;
+      case "done":
+        output = "Exited agent interaction.";
+        break;
+      case "pause":
+        await activeAgent.pause();
+        console.log("Agent paused.");
+        break;
+      case "unpause":
+        await activeAgent.unpause();
+        console.log("Agent unpaused.");
+        break;
+      case "kill":
+        await activeAgent.kill();
+        console.log("Agent terminated.");
+        break;
+      case "detach":
+        output = "Detached from agent";
+        break;
+      default:
+        activeAgent.addPendingUserMessage({ role: "user", content: input });
+    }
+
+    input = await Promise.race([
+      getInput(
+        `Enter command or message for ${activeAgent.name}: `,
+        commands,
+        history
+      ),
+      donePromise,
+    ]);
+  }
+
+  return output;
 }

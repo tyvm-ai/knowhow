@@ -28,6 +28,7 @@ export abstract class BaseAgent implements IAgent {
   abstract name: string;
   abstract description: string;
 
+  private status = "in_progress";
   private lastHealthCheckTime: number = 0;
   protected provider = "openai";
   protected modelName: string = Models.openai.GPT_4o;
@@ -39,6 +40,7 @@ export abstract class BaseAgent implements IAgent {
   protected totalCostUsd = 0;
   protected currentThread = 0;
   protected threads = [] as Message[][];
+  protected pendingUserMessages = [] as Message[];
   protected taskBreakdown = "";
   protected summaries = [] as string[];
 
@@ -49,6 +51,9 @@ export abstract class BaseAgent implements IAgent {
     costUpdate: "cost_update",
     toolUsed: "tool_used",
     done: "done",
+    pause: "pause",
+    kill: "kill",
+    unpause: "unpause",
   };
 
   disabledTools = [];
@@ -64,6 +69,7 @@ export abstract class BaseAgent implements IAgent {
     this.taskBreakdown = "";
     this.summaries = [];
     this.totalCostUsd = 0;
+    this.status = "in_progress";
   }
 
   register() {
@@ -331,13 +337,58 @@ export abstract class BaseAgent implements IAgent {
     this.lastHealthCheckTime = 0;
   }
 
+  pause() {
+    console.log("Pausing agent");
+    this.agentEvents.emit(this.eventTypes.pause, this);
+    this.status = this.eventTypes.pause;
+  }
+
+  unpause() {
+    console.log("Unpausing agent");
+    this.agentEvents.emit(this.eventTypes.unpause, this);
+    this.status = "in_progress";
+  }
+
+  async unpaused() {
+    return new Promise((resolve) => {
+      console.log("Waiting for agent to unpause");
+      this.agentEvents.once(this.eventTypes.unpause, () => {
+        console.log("Agent resumed");
+        resolve(true);
+      });
+      this.agentEvents.once(this.eventTypes.done, () => {
+        resolve(true);
+      });
+    });
+  }
+
+  async kill() {
+    console.log("Killing agent");
+    this.agentEvents.emit(this.eventTypes.kill, this);
+    this.status = this.eventTypes.kill;
+
+    this.addPendingUserMessage({
+      role: "user",
+      content: `<Workflow>The user has requested the task to end, please call ${this.requiredToolNames} with a report of your ending state</Workflow>`,
+    } as Message);
+  }
+
   async call(userInput: string, _messages?: Message[]) {
+    if (this.status === this.eventTypes.pause) {
+      await this.unpaused();
+    }
+
     await this.selectHealthyModel();
 
     try {
       const model = this.getModel();
       let messages = _messages || (await this.getInitialMessages(userInput));
       const taskBreakdown = await this.getTaskBreakdown(messages);
+
+      if (this.pendingUserMessages.length) {
+        messages.push(...this.pendingUserMessages);
+        this.pendingUserMessages = [];
+      }
 
       messages = this.formatInputMessages(messages);
       this.updateCurrentThread(messages);
@@ -394,11 +445,20 @@ export abstract class BaseAgent implements IAgent {
         }
       }
 
+      // Early exit: not required to call tool
       if (
         response.choices.length === 1 &&
         firstMessage.content &&
         this.easyFinalAnswer
       ) {
+        this.agentEvents.emit(this.eventTypes.done, firstMessage.content);
+        return firstMessage.content;
+      }
+
+      // Early exit: killed, agent was requested to wrap up
+      if (this.pendingUserMessages.length === 0 && this.status === "killed") {
+        console.log("Agent killed, stopping execution");
+        this.status = "killed";
         this.agentEvents.emit(this.eventTypes.done, firstMessage.content);
         return firstMessage.content;
       }
@@ -437,6 +497,10 @@ export abstract class BaseAgent implements IAgent {
       this.agentEvents.emit(this.eventTypes.done, e.message);
       return e.message;
     }
+  }
+
+  addPendingUserMessage(message: Message) {
+    this.pendingUserMessages.push(message);
   }
 
   getMessagesLength(messages: Message[]) {
