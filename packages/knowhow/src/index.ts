@@ -258,8 +258,8 @@ export async function handleMultiOutputGeneration(
       fs.mkdirSync(outputFolder, { recursive: true });
     }
 
-    outputName = outputName || name;
-    const outputFile = path.join(outputFolder, outputName + "." + outputExt);
+    const outputFileName = outputName || name;
+    const outputFile = path.join(outputFolder, outputFileName + "." + outputExt);
     console.log({ dir, inputPath, nestedFolder, outputFile });
 
     const toCheck = [file, outputFile];

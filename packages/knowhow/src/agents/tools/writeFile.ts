@@ -17,7 +17,7 @@ export async function writeFileChunk(
   isDone: boolean
 ) {
   if (!filePath || content === undefined) {
-    return "File path and content are both required.";
+    throw new Error("File path and content are both required.");
   }
 
   if (!isContinuing) {

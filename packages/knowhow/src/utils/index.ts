@@ -29,7 +29,7 @@ export const ask = async (
     output: process.stdout,
     history: fullHistory,
     completer: (line) => {
-      const hits = options.filter((c) => c.startsWith(line));
+      const hits = options.filter((c) => c?.startsWith(line));
       return [hits.length ? hits : options, line];
     },
     terminal: true,
@@ -97,4 +97,12 @@ export function mcpToolName(toolName: string): string {
   }
 
   return split.slice(2).join("_");
+}
+
+export function takeFirstNWords(str: string, n: number): string {
+  const words = str.split(" ");
+  if (words.length <= n) {
+    return str;
+  }
+  return words.slice(n).join(" ");
 }

@@ -229,7 +229,7 @@ export abstract class BaseAgent implements IAgent {
 
     const functionResponse = await Promise.resolve(
       isPositional ? functionToCall(...fnArgs) : functionToCall(fnArgs)
-    ).catch((e) => e.message);
+    ).catch((e) => "ERROR: " + e.message);
 
     this.agentEvents.emit(this.eventTypes.toolUsed, {
       toolCall,

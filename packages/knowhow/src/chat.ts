@@ -99,6 +99,8 @@ export async function askEmbedding<E>(promptText: string) {
 const ChatModelDefaults = {
   openai: Models.openai.GPT_4o,
   anthropic: Models.anthropic.Sonnet4,
+  google: Models.google.Gemini_25_Flash_Preview,
+  xai: Models.xai.Grok3Beta,
 };
 export async function askAI<E extends EmbeddingBase>(
   query: string,
@@ -237,7 +239,7 @@ export async function chatLoop<E extends GptQuestionEmbedding>(
         case ChatFlags.provider:
           console.log(providers);
           provider = await ask(
-            "Which provider would you like to use: ",
+            `\n\nCurrent Provider: ${provider}\nCurrent Model: ${model}\n\nWhich provider would you like to use: `,
             providers
           );
           model =
@@ -254,7 +256,7 @@ export async function chatLoop<E extends GptQuestionEmbedding>(
           const models = Clients.getRegisteredModels(provider);
           console.log(models);
           const selectedModel = await ask(
-            "Which model would you like to use: ",
+            `\n\nCurrent Provider: ${provider}\nCurrent Model: ${model}\n\nWhich model would you like to use: `,
             models
           );
           model = selectedModel;
@@ -390,7 +392,7 @@ export async function startAgent(
         console.log("Agent terminated.");
         break;
       case "detach":
-        output = "Detached from agent";
+        return "Detached from agent";
         break;
       default:
         activeAgent.addPendingUserMessage({ role: "user", content: input });

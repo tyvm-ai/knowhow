@@ -151,8 +151,7 @@ export class GenericGeminiClient extends GoogleGenAI implements GenericClient {
         // The tool_call_id links it back to the assistant's tool_use part.
 
         if (!msg.tool_call_id) {
-          console.warn("Tool message missing tool_call_id, skipping:", msg);
-          continue;
+          throw new Error("Tool message must have a tool_call_id.");
         }
 
         // Ensure content is treated as string for functionResponse
@@ -167,6 +166,7 @@ export class GenericGeminiClient extends GoogleGenAI implements GenericClient {
         const functionName = matchingToolCall
           ? matchingToolCall.function.name
           : "unknown_function";
+
         if (!matchingToolCall) {
           console.warn(
             `Matching assistant tool call not found for tool_call_id: ${msg.tool_call_id}. Using name '${functionName}'.`,
@@ -248,13 +248,6 @@ export class GenericGeminiClient extends GoogleGenAI implements GenericClient {
       options.messages
     );
 
-    console.log("Calling Google GenAI generateContent with:", {
-      model: options.model,
-      contents: JSON.stringify(contents, null, 2),
-      systemInstruction,
-      tools: options?.tools?.length,
-    });
-
     try {
       await wait(2000);
       const response = await this.models.generateContent({
@@ -328,7 +321,6 @@ export class GenericGeminiClient extends GoogleGenAI implements GenericClient {
                 },
               });
             }
-            toolCalls = [];
           });
 
           message.content = textContent || null;

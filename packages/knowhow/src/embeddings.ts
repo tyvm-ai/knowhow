@@ -8,6 +8,7 @@ import {
   fileExists,
   fileStat,
   cosineSimilarity,
+  takeFirstNWords,
 } from "./utils";
 import { summarizeTexts, openai, chunkText } from "./ai";
 import { Plugins } from "./plugins/plugins";
@@ -394,7 +395,7 @@ export async function queryEmbedding<E>(
   model = Models.openai.EmbeddingAda2
 ) {
   const providerEmbeddings = await Clients.createEmbedding("", {
-    input: query,
+    input: takeFirstNWords(query, 5000),
     model,
   });
   const queryVector = providerEmbeddings.data[0].embedding;

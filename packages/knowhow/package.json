@@ -1,9 +1,11 @@
 {
-  "name": "@knowhow/knowhow",
-  "version": "1.0.0",
-  "description": "",
+  "name": "@tyvm/knowhow",
+  "version": "0.0.1",
+  "description": "ai cli with plugins and agents",
   "main": "ts_build/src/index.js",
-  "bin": "ts_build/src/cli.js",
+  "bin": {
+    "knowhow": "ts_build/src/cli.js"
+  },
   "scripts": {
     "test": "jest --detectOpenHandles --forceExit --testTimeout 300000",
     "test:debug": "node --inspect-brk ../../node_modules/jest/bin/jest.js --detectOpenHandles --forceExit --testTimeout 300000",
@@ -71,5 +73,17 @@
     "ws": "^8.18.1",
     "youtube-dl-exec": "^2.5.5",
     "zod": "^3.24.2"
-  }
+  },
+  "directories": {
+    "test": "tests"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/tyvm-ai/knowhow.git"
+  },
+  "types": "./ts_build/src/index.d.ts",
+  "bugs": {
+    "url": "https://github.com/tyvm-ai/knowhow/issues"
+  },
+  "homepage": "https://github.com/tyvm-ai/knowhow#readme"
 }
