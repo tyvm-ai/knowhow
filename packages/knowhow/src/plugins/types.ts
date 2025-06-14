@@ -12,7 +12,7 @@ export interface Plugin {
   embed(userInput?: string): Promise<MinimalEmbedding[]>;
   enable(): void;
   disable(): void;
-  isEnabled(): Promise<boolean>;
+  isEnabled(): boolean;
 
   meta: PluginMeta;
 }

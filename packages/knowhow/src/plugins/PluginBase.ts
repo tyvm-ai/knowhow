@@ -18,23 +18,26 @@ export abstract class PluginBase implements Plugin {
     this.active = false;
   }
 
-  async isEnabled(): Promise<boolean> {
+  isEnabled(): boolean {
     if (!this.active) return false;
 
     const envOk = this.hasRequiredEnv();
 
-    const extraOk = await this.customEnableCheck();
-    return envOk && extraOk;
+    const extraOk = this.customEnableCheck();
+
+    const enabled = envOk && extraOk;
+    return enabled;
   }
 
   protected hasRequiredEnv(): boolean {
-    return (
+    const isGood =
       !this.meta.requires ||
-      this.meta.requires.every((k) => process.env[k] && process.env[k] !== "")
-    );
+      this.meta.requires.every((k) => process.env[k] && process.env[k] !== "");
+
+    return isGood;
   }
 
-  protected customEnableCheck(): boolean | Promise<boolean> {
+  protected customEnableCheck(): boolean {
     return true; // subclasses override if needed
   }
 
