@@ -1,12 +1,21 @@
 import { Client } from "@notionhq/client";
-import { Plugin } from "./types";
+import { PluginBase, PluginMeta } from "./PluginBase";
 import { PageObjectResponse } from "@notionhq/client/build/src/api-endpoints";
 import { Embeddable, MinimalEmbedding } from "../types";
 
-export class NotionPlugin implements Plugin {
+export class NotionPlugin extends PluginBase {
+  static readonly meta: PluginMeta = {
+    key: "notion",
+    name: "Notion Plugin",
+    requires: ["NOTION_TOKEN"]
+  };
+
   notionClient: Client;
 
   constructor() {
+    super(NotionPlugin.meta);
+    
+    if (!this.isEnabled()) return;
     this.notionClient = new Client({
       auth: process.env.NOTION_TOKEN,
     });

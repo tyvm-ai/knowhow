@@ -1,8 +1,18 @@
 import glob from "glob";
 import { readFile, fileExists, fileStat } from "../utils";
-import { Plugin } from "./types";
+import { PluginBase, PluginMeta } from "./PluginBase";
 
-export class VimPlugin implements Plugin {
+export class VimPlugin extends PluginBase {
+  static readonly meta: PluginMeta = {
+    key: "vim",
+    name: "Vim Plugin",
+    requires: []
+  };
+
+  constructor() {
+    super(VimPlugin.meta);
+  }
+
   async embed(userPrompt: string) {
     return [];
   }

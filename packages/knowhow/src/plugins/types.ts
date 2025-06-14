@@ -1,5 +1,18 @@
 import { Embeddable, MinimalEmbedding } from "../types";
+
+export interface PluginMeta {
+  key: string;
+  name: string;
+  description?: string;
+  requires?: string[]; // Environment variables required
+}
+
 export interface Plugin {
-  call(user_input?: string): Promise<string>;
-  embed(user_input?: string): Promise<MinimalEmbedding[]>;
+  call(userInput?: string): Promise<string>;
+  embed(userInput?: string): Promise<MinimalEmbedding[]>;
+  enable(): void;
+  disable(): void;
+  isEnabled(): Promise<boolean>;
+
+  meta: PluginMeta;
 }

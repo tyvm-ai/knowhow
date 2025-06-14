@@ -1,10 +1,20 @@
-import { Plugin } from "./types";
+import { PluginBase, PluginMeta } from "./PluginBase";
 import { Embeddable, MinimalEmbedding } from "../types";
 
-export class AsanaPlugin implements Plugin {
+export class AsanaPlugin extends PluginBase {
+  static readonly meta: PluginMeta = {
+    key: "asana",
+    name: "Asana Plugin",
+    requires: ["ASANA_TOKEN"]
+  };
+
   private asanaClient = require("asana").ApiClient.instance;
 
   constructor() {
+    super(AsanaPlugin.meta);
+    
+    if (!this.isEnabled()) return;
+    
     this.asanaClient.authentications.token = process.env.ASANA_TOKEN;
     this.asanaClient.defaultHeaders = {
       "Asana-Enable": "new_user_task_lists,new_goal_memberships",

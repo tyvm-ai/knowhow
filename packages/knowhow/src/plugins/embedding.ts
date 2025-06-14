@@ -6,9 +6,19 @@ import {
   pruneMetadata,
 } from "../embeddings";
 
-import { Plugin } from "./types";
+import { PluginBase, PluginMeta } from "./PluginBase";
 
-export class EmbeddingPlugin implements Plugin {
+export class EmbeddingPlugin extends PluginBase {
+  static readonly meta: PluginMeta = {
+    key: "embeddings",
+    name: "Embedding Plugin",
+    requires: []
+  };
+
+  constructor() {
+    super(EmbeddingPlugin.meta);
+  }
+
   async embed() {
     return [];
   }

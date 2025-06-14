@@ -1,10 +1,20 @@
 import fs from "fs";
-import { Plugin } from "../types";
+import { PluginBase, PluginMeta } from "../PluginBase";
 import { MinimalEmbedding } from "../../types";
 import { convertToText, processVideo } from "../../conversion";
 import { Downloader } from "./downloader";
 
-export class DownloaderPlugin implements Plugin {
+export class DownloaderPlugin extends PluginBase {
+  static readonly meta: PluginMeta = {
+    key: "downloader",
+    name: "Downloader Plugin",
+    requires: []
+  };
+
+  constructor() {
+    super(DownloaderPlugin.meta);
+  }
+
   skipExt = ["jpg", "jpeg", "png", "gif"];
 
   extractUrls(userInput: string): string[] {

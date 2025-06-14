@@ -1,5 +1,6 @@
 import { Client } from "figma-js";
 import qs from "qs"; // Assumed to be installed
+import { PluginBase, PluginMeta } from "./PluginBase";
 import { Plugin } from "./types";
 import { MinimalEmbedding } from "../types";
 import { askGptVision } from "../ai";
@@ -30,13 +31,28 @@ interface FigmaApiResponse {
   nodes: Record<string, FigmaNodeData>;
 }
 
-export class FigmaPlugin implements Plugin {
+export class FigmaPlugin extends PluginBase implements Plugin {
   private figmaToken: string;
   private client: ReturnType<typeof Client>;
 
+  static readonly meta: PluginMeta = {
+    key: "figma",
+    name: "Figma Plugin",
+    requires: ["FIGMA_API_KEY"],
+  };
+
   constructor() {
+    super(FigmaPlugin.meta);
+    if (!this.isEnabled()) return;
+
     this.figmaToken = process.env.FIGMA_API_KEY;
-    this.client = Client({ personalAccessToken: this.figmaToken });
+    this.client = this.figmaToken
+      ? Client({ personalAccessToken: this.figmaToken })
+      : null;
+  }
+
+  customEnableCheck(): boolean {
+    return !!this.figmaToken && !!this.client;
   }
 
   async loadFigmaData(url: string) {

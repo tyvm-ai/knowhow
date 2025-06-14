@@ -1,15 +1,44 @@
 import { Octokit } from "@octokit/rest";
-import { Plugin } from "./types";
+import { PluginBase, PluginMeta } from "./PluginBase";
 import { parseHunks, hunksToPatch } from "../agents/tools/patch";
 import { MinimalEmbedding } from "../types";
 
-export class GitHubPlugin implements Plugin {
+export class GitHubPlugin extends PluginBase {
+  static readonly meta: PluginMeta = {
+    key: "github",
+    name: "GitHub Plugin",
+    requires: ["GITHUB_TOKEN"],
+  };
+
   octokit: Octokit;
 
   constructor() {
-    this.octokit = new Octokit({
-      auth: process.env.GITHUB_TOKEN,
-    });
+    super(GitHubPlugin.meta);
+
+    const key = process.env.GITHUB_TOKEN;
+    if (key && this.isEnabled()) {
+      this.octokit = new Octokit({
+        auth: key,
+      });
+    }
+  }
+
+  protected customEnableCheck(): boolean {
+    // Additional check: ensure we can create the Octokit client
+    try {
+      const key = process.env.GITHUB_TOKEN;
+      if (key) {
+        this.octokit = new Octokit({ auth: key });
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error(
+        "GITHUB PLUGIN: Failed to initialize Octokit client",
+        error
+      );
+      return false;
+    }
   }
 
   async embed(userPrompt: string): Promise<MinimalEmbedding[]> {

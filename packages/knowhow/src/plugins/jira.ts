@@ -1,11 +1,20 @@
 import JiraClient from "jira-client";
-import { Plugin } from "./types";
+import { PluginBase, PluginMeta } from "./PluginBase";
 import { MinimalEmbedding } from "../types";
 
-export class JiraPlugin implements Plugin {
+export class JiraPlugin extends PluginBase {
+  static readonly meta: PluginMeta = {
+    key: "jira",
+    name: "Jira Plugin",
+    requires: ["JIRA_HOST", "JIRA_USER", "JIRA_PASSWORD"]
+  };
+
   jiraClient: JiraClient;
 
   constructor() {
+    super(JiraPlugin.meta);
+    
+    if (!this.isEnabled()) return;
     this.jiraClient = new JiraClient({
       protocol: "https",
       host: process.env.JIRA_HOST,

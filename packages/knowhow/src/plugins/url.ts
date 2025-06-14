@@ -1,10 +1,21 @@
+import { PluginBase, PluginMeta } from "./PluginBase";
 import { Plugin } from "./types";
 import { MinimalEmbedding } from "../types";
 import axios from "axios";
 import * as cheerio from "cheerio";
 import loadWebpage from "../agents/tools/loadWebpage";
 
-export class UrlPlugin implements Plugin {
+export class UrlPlugin extends PluginBase implements Plugin {
+  static readonly meta: PluginMeta = {
+    key: "url",
+    name: "URL Plugin",
+    requires: []
+  };
+
+  constructor() {
+    super(UrlPlugin.meta);
+  }
+
   async embed(userPrompt: string): Promise<MinimalEmbedding[]> {
     const urls = this.extractUrls(userPrompt);
     const embeddings = await Promise.all(urls.map(this.fetchAndParseUrl));

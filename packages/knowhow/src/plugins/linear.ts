@@ -1,11 +1,20 @@
 import { LinearClient } from "@linear/sdk";
-import { Plugin } from "./types";
+import { PluginBase, PluginMeta } from "./PluginBase";
 import { MinimalEmbedding } from "../types";
 
-export class LinearPlugin implements Plugin {
+export class LinearPlugin extends PluginBase {
+  static readonly meta: PluginMeta = {
+    key: "linear",
+    name: "Linear Plugin",
+    requires: ["LINEAR_API_KEY"],
+  };
+
   linearClient: LinearClient;
 
   constructor() {
+    super(LinearPlugin.meta);
+
+    if (!this.isEnabled()) return;
     this.linearClient = new LinearClient({
       apiKey: process.env.LINEAR_API_KEY,
     });

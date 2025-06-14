@@ -13,43 +13,109 @@ import { FigmaPlugin } from "./figma";
 import { UrlPlugin } from "./url";
 
 export class PluginService {
-  plugins = {
-    embeddings: new EmbeddingPlugin(),
-    vim: new VimPlugin(),
-    github: new GitHubPlugin(),
-    asana: new AsanaPlugin(),
-    linear: new LinearPlugin(),
-    jira: new JiraPlugin(),
-    notion: new NotionPlugin(),
-    download: new DownloaderPlugin(),
-    figma: new FigmaPlugin(),
-    language: new LanguagePlugin(this),
-    url: new UrlPlugin(),
-  } as Record<string, Plugin>;
+  private pluginMap = new Map<string, Plugin>();
+
+  constructor() {
+    // Register migrated PluginBase plugins
+    this.pluginMap.set("embeddings", new EmbeddingPlugin());
+    this.pluginMap.set("vim", new VimPlugin());
+    this.pluginMap.set("github", new GitHubPlugin());
+    this.pluginMap.set("asana", new AsanaPlugin());
+    this.pluginMap.set("linear", new LinearPlugin());
+    this.pluginMap.set("jira", new JiraPlugin());
+    this.pluginMap.set("notion", new NotionPlugin());
+    this.pluginMap.set("download", new DownloaderPlugin());
+    this.pluginMap.set("figma", new FigmaPlugin());
+    this.pluginMap.set("language", new LanguagePlugin(this));
+    this.pluginMap.set("url", new UrlPlugin());
+
+    // Keep legacy plugins for backward compatibility
+    // These will be removed once all consumers are updated
+  }
+
+  /* -------- lifecycle helpers ------------------------------------ */
+
+  /**
+   * Dynamically import a package / file and register it.
+   * @param spec ESM import specifier, e.g. "my-linear-plugin" or "./plugins/foo"
+   * @returns the key under which it was stored
+   */
+  async loadPlugin(spec: string): Promise<string> {
+    const { default: PluginCtor } = await import(spec);
+    const instance: Plugin = new PluginCtor(this); // assumes default export
+    this.pluginMap.set(instance.meta.key, instance);
+    return instance.meta.key;
+  }
+
+  /** Disable a plugin by its key; returns `true` if found. */
+  disablePlugin(key: string): boolean {
+    const p = this.pluginMap.get(key);
+    if (!p) return false;
+    p.disable();
+    return true;
+  }
+
+  /** Enable a plugin by its key; returns `true` if found. */
+  enablePlugin(key: string): boolean {
+    const p = this.pluginMap.get(key);
+    if (!p) return false;
+    p.enable();
+    return true;
+  }
+
+  /* -------- existing public API (updated for compatibility) ---------------------- */
 
   listPlugins() {
-    return Object.keys(this.plugins);
+    const newPlugins = [...this.pluginMap.keys()];
+    return newPlugins;
   }
 
   isPlugin(name: string) {
-    return name in this.plugins;
+    return this.pluginMap.has(name);
   }
 
-  registerPlugin(name, plugin: Plugin) {
-    this.plugins[name] = plugin;
+  registerPlugin(name: string, plugin: Plugin) {
+    this.pluginMap.set(name, plugin);
   }
 
-  async callMany(plugins: string[], user_input?: string) {
-    const calls = plugins.map((p) => this.plugins[p].call(user_input));
-    return (await Promise.all(calls)).join("\n\n");
+  async callMany(plugins: string[], userInput?: string) {
+    const calls = plugins.map(async (p) => {
+      return this.call(p, userInput);
+    });
+
+    const results = await Promise.all(calls);
+    return results.filter((result) => result !== "").join("\n\n");
   }
 
-  async call(kind: string, user_input?: string) {
-    return this.plugins[kind].call(user_input);
+  async call(kind: string, userInput?: string) {
+    // Check new plugin system first
+    const newPlugin = this.pluginMap.get(kind);
+
+    if (!newPlugin) {
+      throw new Error(`Plugin ${kind} not found`);
+    }
+
+    const enabled = await newPlugin.isEnabled();
+    if (!enabled) {
+      console.log(`Plugin ${kind} is disabled, skipping`);
+      return "";
+    }
+    return newPlugin.call(userInput);
   }
 
-  async embed(kind: string, user_input: string) {
-    return this.plugins[kind].embed(user_input);
+  async embed(kind: string, userInput: string) {
+    // Check new plugin system first
+    const newPlugin = this.pluginMap.get(kind);
+    if (!newPlugin) {
+      throw new Error(`Plugin ${kind} not found`);
+    }
+
+    const enabled = await newPlugin.isEnabled();
+    if (!enabled) {
+      console.log(`Plugin ${kind} is disabled, skipping`);
+      return [];
+    }
+    return newPlugin.embed ? newPlugin.embed(userInput) : [];
   }
 }
 

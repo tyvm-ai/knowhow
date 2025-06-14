@@ -1,6 +1,7 @@
 import { readFile, fileExists, fileStat } from "../utils";
 import { Language } from "../types";
 import { getConfig, getLanguageConfig } from "../config";
+import { PluginBase, PluginMeta } from "./PluginBase";
 import { Plugin } from "./types";
 import { GitHubPlugin } from "./github";
 import { AsanaPlugin } from "./asana";
@@ -8,8 +9,16 @@ import { JiraPlugin } from "./jira";
 import { LinearPlugin } from "./linear";
 import { PluginService } from "./plugins";
 
-export class LanguagePlugin implements Plugin {
-  constructor(private pluginService: PluginService) {}
+export class LanguagePlugin extends PluginBase implements Plugin {
+  static readonly meta: PluginMeta = {
+    key: "language",
+    name: "Language Plugin",
+    requires: []
+  };
+
+  constructor(private pluginService: PluginService) {
+    super(LanguagePlugin.meta);
+  }
 
   async embed(userPrompt: string) {
     return [];
