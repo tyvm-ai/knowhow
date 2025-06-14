@@ -2297,7 +2297,7 @@
     "@types/node" "*"
 
 "@tyvm/knowhow@file:/Users/micah/dev/knowhow/packages/knowhow":
-  version "0.0.2"
+  version "0.0.3"
   resolved "file:packages/knowhow"
   dependencies:
     "@anthropic-ai/sdk" "^0.39.0"
@@ -2325,6 +2325,7 @@
     openai "4.89.1"
     ora "^5.4.1"
     parse-diff "^0.11.1"
+    pdf-parse "^1.1.1"
     playwright "^1.52.0"
     playwright-extra "^4.3.6"
     progress-estimator "^0.3.1"
