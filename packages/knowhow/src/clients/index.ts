@@ -43,10 +43,6 @@ export class AIClient {
   };
 
   getClient(provider: string, model?: string) {
-    if (this.clients[provider]) {
-      return { client: this.clients[provider], provider, model };
-    }
-
     const detected = this.detectProviderModel(provider, model);
 
     provider = detected.provider;
