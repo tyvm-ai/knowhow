@@ -148,6 +148,7 @@ export async function getInput(
     value = await voiceToText();
   } else if (multiLine) {
     value = await editor({ message: question });
+    Flags.disable(ChatFlags.multi);
   } else {
     const history = chatHistory.map((c) => c.input).reverse();
     value = await ask(question, options, history);

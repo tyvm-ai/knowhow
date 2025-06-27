@@ -15,7 +15,7 @@ import { Agents } from "./services";
 export { Models };
 
 export const openai = new OpenAI({
-  apiKey: process.env.OPENAI_KEY,
+  apiKey: OPENAI_KEY,
   ...(config.openaiBaseUrl && { baseURL: config.openaiBaseUrl }),
 });
 

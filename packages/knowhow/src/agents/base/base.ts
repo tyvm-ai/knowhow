@@ -16,7 +16,7 @@ import {
 import { Agents, AgentService } from "../../services/AgentService";
 import { Events, EventService } from "../../services/EventService";
 import { AIClient, Clients } from "../../clients";
-import { Models, openai } from "../../ai";
+import { Models } from "../../ai";
 
 export { Message, Tool, ToolCall };
 export interface ModelPreference {
