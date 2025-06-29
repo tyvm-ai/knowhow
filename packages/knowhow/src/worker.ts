@@ -42,7 +42,7 @@ export async function worker() {
     const dir = process.cwd();
     const homedir = os.homedir();
     const root = dir === homedir ? "~" : dir.replace(homedir, "~");
-    const ws = new WebSocket(`${API_URL}/worker`, {
+    const ws = new WebSocket(`${API_URL}/ws/worker`, {
       headers: {
         Authorization: `Bearer ${jwt}`,
         "User-Agent": `${clientName}/${clientVersion}/${os.hostname()}`,
