@@ -148,9 +148,9 @@ export class GenericOpenAiClient extends OpenAI implements GenericClient {
         output: 600.0,
       },
       [Models.openai.o3]: {
-        input: 10.0,
-        cached_input: 2.5,
-        output: 40.0,
+        input: 2.0,
+        cached_input: 0.5,
+        output: 8.0,
       },
       [Models.openai.o4_Mini]: {
         input: 1.1,
