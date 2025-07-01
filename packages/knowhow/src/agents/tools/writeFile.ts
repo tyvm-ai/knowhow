@@ -17,7 +17,9 @@ export async function writeFileChunk(
   isDone: boolean
 ) {
   if (!filePath || content === undefined) {
-    throw new Error("File path and content are both required.");
+    throw new Error(
+      "File path and content are both required. Make sure you write small chunks of content, otherwise you may hit output limits."
+    );
   }
 
   if (!isContinuing) {

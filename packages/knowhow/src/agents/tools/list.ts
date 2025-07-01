@@ -322,7 +322,7 @@ export const includedTools = [
     function: {
       name: "writeFileChunk",
       description:
-        "Update or create files by writing in smaller chunks. Suitable for larger files, this tool allows incremental writing by calling it multiple times.",
+        "Update or create files by writing in small chunks of text. Suitable for larger files, this tool allows incremental writing by calling it multiple times.",
       parameters: {
         type: "object",
         positional: true,
