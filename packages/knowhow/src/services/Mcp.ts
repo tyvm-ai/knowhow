@@ -9,6 +9,7 @@ import { ToolsService } from "./Tools";
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { StdioServerParameters } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { MCPWebSocketTransport } from "./McpWebsocketTransport";
 
 type CachedTool = Anthropic.Tool;
@@ -58,6 +59,9 @@ export class McpService {
       }
       if (mcp?.params?.socket) {
         return new MCPWebSocketTransport(mcp.params.socket);
+      }
+      if (mcp.url) {
+        return new SSEClientTransport(new URL(mcp.url));
       }
     });
 
