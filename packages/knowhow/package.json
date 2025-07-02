@@ -1,6 +1,6 @@
 {
   "name": "@tyvm/knowhow",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "ai cli with plugins and agents",
   "main": "ts_build/src/index.js",
   "bin": {
@@ -42,7 +42,7 @@
     "@google/genai": "^0.14.1",
     "@inquirer/editor": "^1.2.13",
     "@linear/sdk": "^12.0.0",
-    "@modelcontextprotocol/sdk": "^1.7.0",
+    "@modelcontextprotocol/sdk": "^1.13.3",
     "@notionhq/client": "^2.2.14",
     "@octokit/rest": "^20.0.2",
     "asana": "^3.0.16",

@@ -9,7 +9,7 @@ import { ToolsService } from "./Tools";
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { StdioServerParameters } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { MCPWebSocketTransport } from "./McpWebsocketTransport";
 
 type CachedTool = Anthropic.Tool;
@@ -47,11 +47,7 @@ export class McpService {
 
     this.config = mcpServers;
     this.transports = mcpServers.map((mcp) => {
-      const logFormat = `${mcp.name}: ${[
-        mcp.command,
-        ...mcp.args,
-        mcp.url,
-      ].join(" ")}`;
+      const logFormat = `${mcp.name}: Command: ${mcp.command}, Args: ${mcp.args}, URL: ${mcp.url}`;
 
       console.log("Creating transport for", logFormat);
       if (mcp.command) {
@@ -61,7 +57,7 @@ export class McpService {
         return new MCPWebSocketTransport(mcp.params.socket);
       }
       if (mcp.url) {
-        return new SSEClientTransport(new URL(mcp.url));
+        return new StreamableHTTPClientTransport(new URL(mcp.url));
       }
     });
 
