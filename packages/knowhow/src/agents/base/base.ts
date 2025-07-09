@@ -383,7 +383,6 @@ export abstract class BaseAgent implements IAgent {
     try {
       const model = this.getModel();
       let messages = _messages || (await this.getInitialMessages(userInput));
-      const taskBreakdown = await this.getTaskBreakdown(messages);
 
       if (this.pendingUserMessages.length) {
         messages.push(...this.pendingUserMessages);
@@ -463,7 +462,11 @@ export abstract class BaseAgent implements IAgent {
         return firstMessage.content;
       }
 
-      if (this.getMessagesLength(messages) > compressThreshold) {
+      if (
+        this.getMessagesLength(messages) > compressThreshold &&
+        messages.length > 10
+      ) {
+        const taskBreakdown = await this.getTaskBreakdown(messages);
         console.log(
           "Compressing messages",
           this.getMessagesLength(messages),
