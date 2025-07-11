@@ -333,7 +333,7 @@ export abstract class BaseAgent implements IAgent {
     await this.healthCheck();
   }
 
-  async isRequiredToolMissing() {
+  isRequiredToolMissing() {
     const requiredToolAvailable = this.getEnabledToolNames().some(
       (t) =>
         this.requiredToolNames.includes(t) ||
@@ -343,6 +343,12 @@ export abstract class BaseAgent implements IAgent {
     if (requiredToolAvailable) {
       return false;
     }
+
+    console.log(
+      "Required tool not available, checking for finalAnswer",
+      this.getEnabledToolNames(),
+      this.requiredToolNames
+    );
 
     // Otherwise we're missing the required tool, lets use finalAnswer if we have it
     const finalAnswer = "finalAnswer";
