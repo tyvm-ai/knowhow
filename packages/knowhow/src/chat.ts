@@ -218,6 +218,8 @@ export async function chatLoop<E extends GptQuestionEmbedding>(
             agents
           );
           activeAgent = Agents.getAgent(selected) as BaseAgent;
+          model = activeAgent.getModel();
+          provider = activeAgent.getProvider() as keyof typeof Clients.clients;
           break;
         case ChatFlags.agent:
           Flags.flip(ChatFlags.agent);
