@@ -10,8 +10,9 @@ export class ResearcherAgent extends BaseAgent {
     super();
     this.setModel(Models.google.Gemini_20_Flash);
     this.setProvider("google");
-
     this.disableTool("patchFile");
+    this.disableTool("writeFile");
+    this.disableTool("writeChunk");
   }
 
   async getInitialMessages(userInput: string) {

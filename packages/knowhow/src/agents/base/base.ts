@@ -333,6 +333,34 @@ export abstract class BaseAgent implements IAgent {
     await this.healthCheck();
   }
 
+  async isRequiredToolMissing() {
+    const requiredToolAvailable = this.getEnabledToolNames().some(
+      (t) =>
+        this.requiredToolNames.includes(t) ||
+        this.requiredToolNames.includes(mcpToolName(t))
+    );
+
+    if (requiredToolAvailable) {
+      return false;
+    }
+
+    // Otherwise we're missing the required tool, lets use finalAnswer if we have it
+    const finalAnswer = "finalAnswer";
+    const requiredFinalAnswer = this.requiredToolNames.includes(finalAnswer);
+    const hasFinalAnswer = this.getEnabledToolNames().includes(finalAnswer);
+
+    // We have the final answer tool, but it wasn't required
+    if (hasFinalAnswer && !requiredFinalAnswer) {
+      console.warn(
+        "Required tool not available, setting finalAnswer as required tool"
+      );
+      this.requiredToolNames.push("finalAnswer");
+      return false;
+    }
+
+    return true;
+  }
+
   setNotHealthy() {
     this.lastHealthCheckTime = 0;
   }
@@ -391,6 +419,7 @@ export abstract class BaseAgent implements IAgent {
 
       messages = this.formatInputMessages(messages);
       this.updateCurrentThread(messages);
+      const isMissingTool = this.isRequiredToolMissing();
 
       const startIndex = 0;
       const endIndex = messages.length;
@@ -452,6 +481,16 @@ export abstract class BaseAgent implements IAgent {
       ) {
         this.agentEvents.emit(this.eventTypes.done, firstMessage.content);
         return firstMessage.content;
+      }
+
+      // infinite loop if we cannot exit
+      if (isMissingTool) {
+        const error = `Required tool: ${JSON.stringify(
+          this.requiredToolNames
+        )} not available, options are ${this.getEnabledToolNames().join(", ")}`;
+        console.error(error);
+        this.agentEvents.emit(this.eventTypes.done, error);
+        return error;
       }
 
       // Early exit: killed, agent was requested to wrap up
