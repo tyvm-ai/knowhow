@@ -511,4 +511,38 @@ export const includedTools = [
   ...asana.definitions,
   ...github.definitions,
   ...language.definitions,
+  {
+    type: "function",
+    function: {
+      name: "stringReplace",
+      description:
+        "Replace exact string matches in multiple files. Performs global replacement of all occurrences of the find string with the replace string.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          findString: {
+            type: "string",
+            description: "The exact string to find and replace",
+          },
+          replaceString: {
+            type: "string",
+            description: "The string to replace the found string with",
+          },
+          filePaths: {
+            type: "array",
+            items: {
+              type: "string",
+            },
+            description: "Array of file paths where the replacement should be performed",
+          },
+        },
+        required: ["findString", "replaceString", "filePaths"],
+      },
+      returns: {
+        type: "string",
+        description: "A summary of the replacement results for each file",
+      },
+    },
+  },
 ] as Tool[];

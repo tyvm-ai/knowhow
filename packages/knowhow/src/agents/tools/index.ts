@@ -22,3 +22,4 @@ export * from "./askHuman";
 export * from "./aiClient";
 export * from "./googleSearch";
 export * from "./loadWebpage";
+export * from "./stringReplace";
