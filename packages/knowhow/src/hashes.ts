@@ -1,3 +1,4 @@
+import fs from "fs";
 import * as crypto from "crypto";
 import { Hashes } from "./types";
 import { readFile, writeFile } from "./utils";
@@ -22,6 +23,10 @@ export async function checkNoFilesChanged(
   hashes: any
 ) {
   for (const file of files) {
+    if (!fs.existsSync(file)) {
+      return false;
+    }
+
     // get the hash of the file
     const fileContent = await convertToText(file);
     const fileHash = crypto.createHash("md5").update(fileContent).digest("hex");

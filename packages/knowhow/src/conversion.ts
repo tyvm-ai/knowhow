@@ -16,7 +16,9 @@ export async function processAudio(
   if (exists && reusePreviousTranscript) {
     console.log(`Transcription ${outputPath} already exists, skipping`);
     const fileContent = await readFile(outputPath, "utf8");
-    return outputPath.endsWith("txt") ? fileContent : JSON.parse(fileContent);
+    return outputPath.endsWith("txt")
+      ? fileContent.split("\n")
+      : JSON.parse(fileContent);
   }
 
   const chunks = await Downloader.chunk(
