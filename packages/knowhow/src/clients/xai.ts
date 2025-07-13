@@ -70,6 +70,10 @@ export class GenericXAIClient extends OpenAI implements GenericClient {
 
   pricesPerMillion() {
     return {
+      [Models.xai.Grok4]: {
+        input: 3.0,
+        output: 15.0,
+      },
       [Models.xai.Grok3Beta]: {
         input: 3.0,
         output: 15.0,
