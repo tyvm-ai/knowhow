@@ -9,7 +9,7 @@ import { GenericOpenAiClient } from "./openai";
 import { GenericAnthropicClient } from "./anthropic";
 import { GenericGeminiClient } from "./gemini";
 import { HttpClient } from "./http";
-import { Models } from "../types";
+import { EmbeddingModels, Models } from "../types";
 import { getConfig } from "../config";
 import { GenericXAIClient } from "./xai";
 
@@ -34,11 +34,19 @@ export class AIClient {
   };
 
   clientModels = {
-    ...(envCheck("OPENAI_KEY") && { openai: Object.values(Models.openai) }),
+    ...(envCheck("OPENAI_KEY") && {
+      openai: Object.values(Models.openai).concat(
+        Object.values(EmbeddingModels.openai)
+      ),
+    }),
     ...(envCheck("ANTHROPIC_API_KEY") && {
       anthropic: Object.values(Models.anthropic),
     }),
-    ...(envCheck("GEMINI_API_KEY") && { google: Object.values(Models.google) }),
+    ...(envCheck("GEMINI_API_KEY") && {
+      google: Object.values(Models.google).concat(
+        Object.values(EmbeddingModels.google)
+      ),
+    }),
     ...(envCheck("XAI_API_KEY") && { xai: Object.values(Models.xai) }),
   };
 
