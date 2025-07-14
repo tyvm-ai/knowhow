@@ -1,0 +1,43 @@
+{
+  "name": "@tyvm/swagger-mcp",
+  "version": "0.0.1",
+  "description": "Generate MCP servers from Swagger/OpenAPI specifications",
+  "main": "dist/index.js",
+  "bin": {
+    "swagger-mcp-generator": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "test": "jest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "swagger",
+    "openapi",
+    "mcp",
+    "model-context-protocol",
+    "api",
+    "generator"
+  ],
+  "author": "Micah Riggan",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.5.0",
+    "@modelcontextprotocol/sdk": "^1.13.3",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.6.3",
+    "typescript": "^4.6.3",
+    "ts-node": "^10.7.0",
+    "jest": "^29.1.1",
+    "@types/jest": "^29.5.13"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "package.json"
+  ]
+}
