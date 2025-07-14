@@ -1,7 +1,7 @@
 import glob from "glob";
 import * as path from "path";
 import { getConfig, loadPrompt } from "./config";
-import { Config, Hashes, Embeddable, EmbeddingBase, Models } from "./types";
+import { Config, Hashes, Embeddable, EmbeddingBase, Models, EmbeddingModels } from "./types";
 import {
   readFile,
   writeFile,
@@ -168,7 +168,7 @@ export async function embed(
       console.log("Embedding", chunkId);
       const providerEmbeddings = await Clients.createEmbedding("", {
         input: textOfChunk,
-        model: model || Models.openai.EmbeddingAda2,
+        model: model || EmbeddingModels.openai.EmbeddingAda2,
       });
 
       vector = providerEmbeddings.data[0].embedding;
@@ -392,7 +392,7 @@ export function pruneMetadata(embeddings: Embeddable[], characterLimit = 5000) {
 export async function queryEmbedding<E>(
   query: string,
   embeddings: Embeddable<E>[],
-  model = Models.openai.EmbeddingAda2
+  model = EmbeddingModels.openai.EmbeddingAda2
 ) {
   const providerEmbeddings = await Clients.createEmbedding("", {
     input: takeFirstNWords(query, 5000),

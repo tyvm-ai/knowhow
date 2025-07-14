@@ -13,7 +13,7 @@ import {
   ChatCompletionMessageToolCall,
 } from "openai/resources/chat";
 
-import { Models, OpenAiReasoningModels } from "../types";
+import { EmbeddingModels, Models, OpenAiReasoningModels } from "../types";
 
 const config = getConfigSync();
 
@@ -177,17 +177,17 @@ export class GenericOpenAiClient extends OpenAI implements GenericClient {
         cached_input: 0.375,
         output: 6.0,
       },
-      [Models.openai.EmbeddingAda2]: {
+      [EmbeddingModels.openai.EmbeddingAda2]: {
         input: 0.1,
         cached_input: 0,
         output: 0,
       },
-      [Models.openai.EmbeddingLarge3]: {
+      [EmbeddingModels.openai.EmbeddingLarge3]: {
         input: 0.13,
         cached_input: 0,
         output: 0,
       },
-      [Models.openai.EmbeddingLarge3]: {
+      [EmbeddingModels.openai.EmbeddingLarge3]: {
         input: 0.02,
         cached_input: 0,
         output: 0,

@@ -13,7 +13,13 @@ import { promisify } from "util";
 import glob from "glob";
 
 import { Prompts } from "./prompts";
-import { Config, Hashes, Embeddable, GenerationSource } from "./types";
+import {
+  Config,
+  Hashes,
+  Embeddable,
+  GenerationSource,
+  EmbeddingModels,
+} from "./types";
 import { readFile, writeFile, fileExists } from "./utils";
 import {
   getConfig,
@@ -54,7 +60,8 @@ export async function embed() {
   const config = await getConfig();
   const ignorePattern = await getIgnorePattern();
 
-  const defaultModel = config.embeddingModel || Models.openai.EmbeddingAda2;
+  const defaultModel =
+    config.embeddingModel || EmbeddingModels.openai.EmbeddingAda2;
   for (const source of config.embedSources) {
     await embedSource(defaultModel, source, ignorePattern);
   }
@@ -257,7 +264,10 @@ export async function handleMultiOutputGeneration(
     }
 
     const outputFileName = outputName || name;
-    const outputFile = path.join(outputFolder, outputFileName + "." + outputExt);
+    const outputFile = path.join(
+      outputFolder,
+      outputFileName + "." + outputExt
+    );
     console.log({ dir, inputPath, nestedFolder, outputFile });
 
     const toCheck = [file, outputFile];

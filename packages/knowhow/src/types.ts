@@ -165,9 +165,6 @@ export const Models = {
     GPT_4o_Search: "gpt-4o-search-preview-2025-03-11",
     Computer_Use: "computer-use-preview-2025-03-11",
     Codex_Mini: "codex-mini-latest",
-    EmbeddingAda2: "text-embedding-ada-002",
-    EmbeddingLarge3: "text-embedding-3-large",
-    EmbeddingSmall3: "text-embedding-3-small",
   },
   google: {
     Gemini_25_Flash_Preview: "gemini-2.5-flash-preview-05-20",
@@ -179,10 +176,20 @@ export const Models = {
     Gemini_15_Flash: "gemini-1.5-flash",
     Gemini_15_Flash_8B: "gemini-1.5-flash-8b",
     Gemini_15_Pro: "gemini-1.5-pro",
-    Gemini_Embedding: "gemini-embedding-exp",
     Imagen_3: "imagen-3.0-generate-002",
     Veo_2: "veo-2.0-generate-001",
     Gemini_20_Flash_Live: "gemini-2.0-flash-live-001",
+  },
+};
+
+export const EmbeddingModels = {
+  openai: {
+    EmbeddingAda2: "text-embedding-ada-002",
+    EmbeddingLarge3: "text-embedding-3-large",
+    EmbeddingSmall3: "text-embedding-3-small",
+  },
+  google: {
+    Gemini_Embedding: "gemini-embedding-exp",
   },
 };
 
@@ -200,9 +207,9 @@ export const OpenAiReasoningModels = [
 ];
 
 export const OpenAiEmbeddingModels = [
-  Models.openai.EmbeddingAda2,
-  Models.openai.EmbeddingLarge3,
-  Models.openai.EmbeddingSmall3,
+  EmbeddingModels.openai.EmbeddingAda2,
+  EmbeddingModels.openai.EmbeddingLarge3,
+  EmbeddingModels.openai.EmbeddingSmall3,
 ];
 export const OpenAiResponseOnlyModels = [Models.openai.Codex_Mini];
 
@@ -223,4 +230,4 @@ export const GoogleImageModels = [
 
 export const GoogleVideoModels = [Models.google.Veo_2];
 
-export const GoogleEmbeddingModels = [Models.google.Gemini_Embedding];
+export const GoogleEmbeddingModels = [EmbeddingModels.google.Gemini_Embedding];

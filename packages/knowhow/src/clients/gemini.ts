@@ -10,7 +10,7 @@ import {
   UsageMetadata,
 } from "@google/genai";
 import { wait } from "../utils";
-import { Models } from "../types";
+import { EmbeddingModels, Models } from "../types";
 
 import {
   GenericClient,
@@ -393,7 +393,7 @@ export class GenericGeminiClient extends GoogleGenAI implements GenericClient {
       [Models.google.Veo_2]: {
         video_generation: 0.35,
       },
-      [Models.google.Gemini_Embedding]: {
+      [EmbeddingModels.google.Gemini_Embedding]: {
         input: 0, // Free of charge
         output: 0, // Free of charge
       },

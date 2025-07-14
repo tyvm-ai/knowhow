@@ -4,7 +4,7 @@ import * as os from "os";
 import gitignoreToGlob from "gitignore-to-glob";
 import { Prompts } from "./prompts";
 import { promisify } from "util";
-import { Config, Language, AssistantConfig, Models } from "./types";
+import { Config, Language, AssistantConfig, Models, EmbeddingModels } from "./types";
 import { mkdir, writeFile, readFile, fileExists } from "./utils";
 
 const defaultConfig = {
@@ -46,7 +46,7 @@ const defaultConfig = {
       chunkSize: 2000,
     },
   ],
-  embeddingModel: Models.openai.EmbeddingAda2,
+  embeddingModel: EmbeddingModels.openai.EmbeddingAda2,
 
   agents: [
     {

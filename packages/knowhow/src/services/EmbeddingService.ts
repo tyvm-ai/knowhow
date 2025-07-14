@@ -1,4 +1,10 @@
-import { Config, Embeddable, EmbeddingBase, Models } from "../types";
+import {
+  Config,
+  Embeddable,
+  EmbeddingBase,
+  EmbeddingModels,
+  Models,
+} from "../types";
 import {
   readFile,
   writeFile,
@@ -262,7 +268,7 @@ export class EmbeddingService {
         console.log("Embedding", chunkId);
         const providerEmbeddings = await this.createEmbedding({
           input: textOfChunk,
-          model: model || Models.openai.EmbeddingAda2,
+          model: model || EmbeddingModels.openai.EmbeddingAda2,
         });
 
         vector = providerEmbeddings.data[0].embedding;
@@ -305,7 +311,7 @@ export class EmbeddingService {
   async queryEmbedding<E>(
     query: string,
     embeddings: Embeddable<E>[],
-    model = Models.openai.EmbeddingAda2
+    model = EmbeddingModels.openai.EmbeddingAda2
   ): Promise<EmbeddingBase<E>[]> {
     // Implementation of queryEmbedding method
     const providerEmbeddings = await this.createEmbedding({
