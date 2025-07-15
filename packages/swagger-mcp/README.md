@@ -13,20 +13,12 @@ By default, the output directory is generated based on the domain name of the sw
 ### Examples
 
 ```bash
-# Generate MCP server from Swagger spec (creates ./generated/api_example_com/)
-npx @tyvm/swagger-mcp https://api.example.com/swagger.json
-
-# Generate with custom output directory
-npx @tyvm/swagger-mcp https://api.example.com/swagger.json ./my-mcp-server
-
 # Generate and immediately start the server (creates ./generated/api_example_com/)
 npx @tyvm/swagger-mcp https://api.example.com/swagger.json --start-stdio
 
-# Generate with custom output directory and start the server
-npx @tyvm/swagger-mcp https://api.example.com/swagger.json ./my-mcp-server --start-stdio
+# Generate MCP server from Swagger spec (creates ./generated/api_example_com/)
+npx @tyvm/swagger-mcp https://api.example.com/swagger.json
 
-# Generate with authentication headers
-HEADER_AUTHORIZATION="Bearer abc123" npx @tyvm/swagger-mcp https://api.example.com/swagger.json
 ```
 
 ## Options
@@ -52,25 +44,23 @@ The tool creates:
 5. **mcp-server.ts** - Root-level MCP server for direct use
 
 ## Using the Generated MCP Server
-
-After generation (assuming URL `https://api.example.com/swagger.json`):
-
-1. Navigate to the generated directory: `cd ./generated/api_example_com/`
-2. Install dependencies: `npm install`
-3. Build the project: `npm run build`
-4. Add to your MCP client configuration:
+1. Add to your MCP client configuration:
+2. Set any env variables for headers as needed
 
 ```json
-{
-  "name": "knowhow-web",
-  "command": "npx",
-  "args": [
-    "-y",
-    "@tyvm/swagger-mcp",
-    "https://api.dev.knowhow.tyvm.ai/docs/swagger.json",
-    "--start-stdio"
-  ]
-}
+    {
+      "name": "knowhow-web",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@tyvm/swagger-mcp",
+        "https://api.dev.knowhow.tyvm.ai/docs/swagger.json",
+        "--start-stdio"
+      ],
+      "env": {
+        "HEADER_AUTHORIZATION": "Bearer xxxxxx"
+      }
+    }
 ```
 
 ## Features
