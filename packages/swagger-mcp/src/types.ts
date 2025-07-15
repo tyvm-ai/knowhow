@@ -25,6 +25,11 @@ export interface SwaggerSpec {
     version: string;
     description?: string;
   };
+  servers?: Array<{
+    url: string;
+    description?: string;
+    variables?: { [key: string]: any };
+  }>;
   paths: {
     [path: string]: {
       [method: string]: {

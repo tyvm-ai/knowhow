@@ -49,6 +49,29 @@ export class SwaggerMcpGenerator {
     }
   }
 
+  private getApiBaseUrl(): string {
+    // Extract the base URL from the swagger URL (remove the swagger.json path)
+    const swaggerUrl = new URL(this.baseUrl);
+    const baseUrl = `${swaggerUrl.protocol}//${swaggerUrl.host}`;
+    
+    // Get the server path from the OpenAPI spec
+    let serverPath = '/';
+    if (this.swaggerSpec.servers && this.swaggerSpec.servers.length > 0) {
+      const firstServer = this.swaggerSpec.servers[0];
+      if (firstServer.url) {
+        // If it's a relative URL, use it as is
+        if (firstServer.url.startsWith('/')) {
+          serverPath = firstServer.url;
+        } else {
+          // If it's an absolute URL, extract the path
+          serverPath = new URL(firstServer.url).pathname;
+        }
+      }
+    }
+    
+    return baseUrl + serverPath;
+  }
+
   private convertSwaggerTypeToToolProp(swaggerType: any): ToolProp {
     if (!swaggerType) {
       return { type: "string" };
@@ -298,6 +321,7 @@ export class SwaggerClient {
   generateMcpServer(): string {
     const tools = this.generateTools();
     const swaggerUrl = this.baseUrl;
+    const apiBaseUrl = this.getApiBaseUrl();
 
     return `#!/usr/bin/env node
 
@@ -327,8 +351,8 @@ for (const [key, value] of Object.entries(process.env)) {
 }
 
 const swaggerUrl = '${swaggerUrl}';
-const baseUrl = swaggerUrl.replace(/\\/swagger\\.json$/, '').replace(/\\/docs$/, '');
-const client = new SwaggerClient(baseUrl, headers);
+const apiBaseUrl = '${apiBaseUrl}';
+const client = new SwaggerClient(apiBaseUrl, headers);
 
 
 

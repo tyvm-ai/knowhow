@@ -39,6 +39,7 @@ export class McpService {
   config: McpConfig[] = [];
   tools: Tool[] = [];
   mcpPrefix = "mcp";
+  toolAliases: Record<string, string> = {};
 
   async createStdioClients(mcpServers: McpConfig[] = []) {
     if (this.clients.length) {
@@ -152,13 +153,7 @@ export class McpService {
   }
 
   parseToolName(toolName: string) {
-    const split = toolName.split("_");
-
-    if (split.length < 2) {
-      return null;
-    }
-
-    return split.slice(2).join("_");
+    return this.toolAliases[toolName] || toolName;
   }
 
   getToolClientIndex(toolName: string) {
@@ -251,10 +246,14 @@ export class McpService {
       const config = this.config[i];
       const client = this.clients[i];
       const clientTools = await client.listTools();
-      const transformedTools = clientTools.tools.map((tool) => {
-        return this.toOpenAiTool(i, tool as any as McpTool);
-      });
-      tools.push(...transformedTools);
+
+      for (const tool of clientTools.tools) {
+        const transformed = this.toOpenAiTool(i, tool as any as McpTool);
+        if (transformed.function.name !== tool.name) {
+          this.toolAliases[transformed.function.name] = tool.name;
+        }
+        tools.push(transformed);
+      }
     }
 
     this.tools = tools;
@@ -262,10 +261,15 @@ export class McpService {
   }
 
   toOpenAiTool(index: number, tool: McpTool) {
+    const mcpName = this.config[index].name;
+    const prefix = mcpName
+      ? `${this.mcpPrefix}_${index}_${mcpName}`
+      : `${this.mcpPrefix}_${index}`;
+
     const transformed: Tool = {
       type: "function",
       function: {
-        name: `${this.mcpPrefix}_${index}_${tool.name}`,
+        name: `${prefix}_${tool.name}`,
         description: tool.description,
         parameters: {
           type: "object",
