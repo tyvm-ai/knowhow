@@ -47,11 +47,24 @@ export class McpService {
 
     this.config = mcpServers;
     this.transports = mcpServers.map((mcp) => {
-      const logFormat = `${mcp.name}: Command: ${mcp.command}, Args: ${mcp.args}, URL: ${mcp.url}`;
+      const commandString = mcp.command
+        ? `${mcp.command} ${mcp.args?.join(" ")}`
+        : "";
+      const logFormat = `${mcp.name}: Command: ${commandString}, URL: ${mcp.url}`;
 
       console.log("Creating transport for", logFormat);
       if (mcp.command) {
-        return new StdioClientTransport(mcp as StdioServerParameters);
+        const stdioParams: StdioServerParameters = {
+          command: mcp.command,
+          args: mcp.args,
+          env: mcp.env
+            ? {
+                ...process.env,
+                ...mcp.env,
+              }
+            : undefined,
+        };
+        return new StdioClientTransport(stdioParams);
       }
       if (mcp?.params?.socket) {
         return new MCPWebSocketTransport(mcp.params.socket);

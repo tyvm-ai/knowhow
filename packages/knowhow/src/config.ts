@@ -4,7 +4,13 @@ import * as os from "os";
 import gitignoreToGlob from "gitignore-to-glob";
 import { Prompts } from "./prompts";
 import { promisify } from "util";
-import { Config, Language, AssistantConfig, Models, EmbeddingModels } from "./types";
+import {
+  Config,
+  Language,
+  AssistantConfig,
+  Models,
+  EmbeddingModels,
+} from "./types";
 import { mkdir, writeFile, readFile, fileExists } from "./utils";
 
 const defaultConfig = {
@@ -106,7 +112,7 @@ async function ensureGlobalConfigDir() {
   for (const folder of globalTemplateFolders) {
     const folderPath = path.join(globalConfigDir, folder);
     await mkdir(folderPath, { recursive: true });
-    fs.chmodSync(folderPath, 0o600);
+    fs.chmodSync(folderPath, 0o744);
   }
 
   for (const file of Object.keys(globalTemplateFiles)) {
@@ -180,6 +186,9 @@ export function getConfigSync() {
 }
 
 export async function getConfig() {
+  if (!fs.existsSync(".knowhow/knowhow.json")) {
+    return {} as Config;
+  }
   const config = JSON.parse(await readFile(".knowhow/knowhow.json", "utf8"));
   return config as Config;
 }

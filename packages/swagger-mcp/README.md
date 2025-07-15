@@ -5,26 +5,28 @@ Generate MCP (Model Context Protocol) servers from Swagger/OpenAPI specification
 ## Usage
 
 ```bash
-npx swagger-mcp-generator <swagger-url> [output-dir] [--start-stdio]
+npx @tyvm/swagger-mcp <swagger-url> [output-dir] [--start-stdio]
 ```
+
+By default, the output directory is generated based on the domain name of the swagger URL. For example, `https://api.dev.knowhow.tyvm.ai/docs/` would create `./generated/api_dev_knowhow_tyvm_ai/`.
 
 ### Examples
 
 ```bash
-# Generate MCP server from Swagger spec
-npx swagger-mcp-generator https://api.example.com/swagger.json
+# Generate MCP server from Swagger spec (creates ./generated/api_example_com/)
+npx @tyvm/swagger-mcp https://api.example.com/swagger.json
 
 # Generate with custom output directory
-npx swagger-mcp-generator https://api.example.com/swagger.json ./my-mcp-server
+npx @tyvm/swagger-mcp https://api.example.com/swagger.json ./my-mcp-server
 
-# Generate and immediately start the server
-npx swagger-mcp-generator https://api.example.com/swagger.json --start-stdio
+# Generate and immediately start the server (creates ./generated/api_example_com/)
+npx @tyvm/swagger-mcp https://api.example.com/swagger.json --start-stdio
 
 # Generate with custom output directory and start the server
-npx swagger-mcp-generator https://api.example.com/swagger.json ./my-mcp-server --start-stdio
+npx @tyvm/swagger-mcp https://api.example.com/swagger.json ./my-mcp-server --start-stdio
 
 # Generate with authentication headers
-HEADER_AUTHORIZATION="Bearer abc123" npx swagger-mcp-generator https://api.example.com/swagger.json
+HEADER_AUTHORIZATION="Bearer abc123" npx @tyvm/swagger-mcp https://api.example.com/swagger.json
 ```
 
 ## Options
@@ -51,23 +53,23 @@ The tool creates:
 
 ## Using the Generated MCP Server
 
-After generation:
+After generation (assuming URL `https://api.example.com/swagger.json`):
 
-1. Install dependencies: `npm install`
-2. Build the project: `npm run build`
-3. Add to your MCP client configuration:
+1. Navigate to the generated directory: `cd ./generated/api_example_com/`
+2. Install dependencies: `npm install`
+3. Build the project: `npm run build`
+4. Add to your MCP client configuration:
 
 ```json
 {
-  "servers": {
-    "my-api": {
-      "command": "node",
-      "args": ["./path/to/generated/dist/mcp-server.js", "https://api.example.com/swagger.json"],
-      "env": {
-        "HEADER_AUTHORIZATION": "Bearer your-token-here"
-      }
-    }
-  }
+  "name": "knowhow-web",
+  "command": "npx",
+  "args": [
+    "-y",
+    "@tyvm/swagger-mcp",
+    "https://api.dev.knowhow.tyvm.ai/docs/swagger.json",
+    "--start-stdio"
+  ]
 }
 ```
 

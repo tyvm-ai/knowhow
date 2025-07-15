@@ -10,15 +10,12 @@ export interface ToolProp {
 }
 
 export interface Tool {
-  type: 'function';
-  function: {
-    name: string;
-    description: string;
-    parameters: {
-      type: 'object';
-      properties: { [key: string]: ToolProp };
-      required: string[];
-    };
+  name: string;
+  description: string;
+  inputSchema: {
+    type: 'object';
+    properties: { [key: string]: ToolProp };
+    required: string[];
   };
 }
 

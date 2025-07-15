@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from 'child_process';
-import { join, resolve } from 'path';
+import { join, resolve, dirname } from 'path';
 import { existsSync } from 'fs';
 import { SwaggerMcpGenerator } from './generator';
 
@@ -11,10 +11,28 @@ interface ParsedArgs {
   startStdio: boolean;
 }
 
+function generateDomainBasedDir(swaggerUrl: string, packageDir: string): string {
+  try {
+    const url = new URL(swaggerUrl);
+    // Extract hostname and convert to valid directory name
+    const hostname = url.hostname;
+    // Replace dots and other special characters with underscores
+    const sanitizedDomain = hostname.replace(/[^a-zA-Z0-9]/g, '_');
+    return join(packageDir, 'generated', sanitizedDomain);
+  } catch (error) {
+    // If URL parsing fails, fall back to generic generated directory
+    console.warn('Failed to parse URL for domain-based directory, using generic "generated" directory');
+    return join(packageDir, 'generated');
+  }
+}
+
 function parseArgs(args: string[]): ParsedArgs {
+  // Get the directory where this package is installed
+  const packageDir = dirname(dirname(__filename));
+
   const parsed: ParsedArgs = {
     swaggerUrl: '',
-    outputDir: './generated',
+    outputDir: '', // Will be set after we have the swagger URL
     startStdio: false
   };
 
@@ -31,6 +49,10 @@ function parseArgs(args: string[]): ParsedArgs {
   for (let i = 0; i < filteredArgs.length; i++) {
     if (!parsed.swaggerUrl) {
       parsed.swaggerUrl = filteredArgs[i];
+      // Set default output directory based on the swagger URL
+      if (!parsed.outputDir) {
+        parsed.outputDir = generateDomainBasedDir(parsed.swaggerUrl, packageDir);
+      }
     } else {
       // Second non-flag argument is the output directory
       parsed.outputDir = filteredArgs[i];
@@ -38,10 +60,12 @@ function parseArgs(args: string[]): ParsedArgs {
     }
   }
 
+  console.log(`Default output directory: ${parsed.outputDir}`);
+
   return parsed;
 }
 
-async function buildAndRunServer(outputDir: string, swaggerUrl: string) {
+async function buildAndRunServer(outputDir: string) {
   console.log('\n🏗️  Building generated server...');
   
   // Resolve the output directory to an absolute path to avoid duplication
@@ -108,7 +132,7 @@ async function buildAndRunServer(outputDir: string, swaggerUrl: string) {
     throw new Error(`Built server not found at ${serverPath}`);
   }
 
-  const serverProcess = spawn('node', [serverPath, swaggerUrl], { 
+  const serverProcess = spawn('node', [serverPath], { 
     cwd: resolvedOutputDir, 
     stdio: 'inherit' 
   });
@@ -138,17 +162,17 @@ async function main() {
   const args = process.argv.slice(2);
   
   if (args.length === 0) {
-    console.error('Usage: npx swagger-mcp-generator <swagger-url> [output-dir] [--start-stdio]');
+    console.error('Usage: npx @tyvm/swagger-mcp <swagger-url> [output-dir] [--start-stdio]');
     console.error('');
     console.error('Environment variables:');
     console.error('  HEADER_AUTHORIZATION=Bearer <token>  - Set Authorization header');
     console.error('  HEADER_<NAME>=<value>               - Set custom header');
     console.error('');
     console.error('Examples:');
-    console.error('  npx swagger-mcp-generator https://api.example.com/swagger.json');
-    console.error('  npx swagger-mcp-generator https://api.example.com/swagger.json --start-stdio');
-    console.error('  npx swagger-mcp-generator https://api.example.com/swagger.json ./my-output --start-stdio');
-    console.error('  HEADER_AUTHORIZATION="Bearer abc123" npx swagger-mcp-generator https://api.example.com/swagger.json');
+    console.error('  npx @tyvm/swagger-mcp https://api.example.com/swagger.json');
+    console.error('  npx @tyvm/swagger-mcp https://api.example.com/swagger.json --start-stdio');
+    console.error('  npx @tyvm/swagger-mcp https://api.example.com/swagger.json ./my-output --start-stdio');
+    console.error('  HEADER_AUTHORIZATION="Bearer abc123" npx @tyvm/swagger-mcp https://api.example.com/swagger.json');
     process.exit(1);
   }
 
@@ -168,7 +192,7 @@ async function main() {
       console.log('Generation complete! Starting server...');
       
       // Build and run the server
-      await buildAndRunServer(outputDir, swaggerUrl);
+      await buildAndRunServer(outputDir);
     } else {
       console.log('Generation complete!');
     
@@ -183,7 +207,7 @@ async function main() {
       console.log('  "servers": {');
       console.log('    "my-api": {');
       console.log('      "command": "node",');
-      console.log(`      "args": ["${outputDir}/dist/mcp-server.js", "${swaggerUrl}"],`);
+      console.log(`      "args": ["${outputDir}/dist/mcp-server.js"],`);
       console.log('      "env": {');
       console.log('        "HEADER_AUTHORIZATION": "Bearer your-token-here"');
       console.log('      }');

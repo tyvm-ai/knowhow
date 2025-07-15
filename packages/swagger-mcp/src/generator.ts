@@ -1,7 +1,7 @@
-import axios from 'axios';
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
-import { join } from 'path';
-import { Tool, ToolProp, SwaggerSpec } from './types';
+import axios from "axios";
+import { writeFileSync, mkdirSync, existsSync } from "fs";
+import { join } from "path";
+import { Tool, ToolProp, SwaggerSpec } from "./types";
 
 export class SwaggerMcpGenerator {
   private swaggerSpec!: SwaggerSpec;
@@ -16,15 +16,15 @@ export class SwaggerMcpGenerator {
   private setupHeaders() {
     // Parse environment variables for headers starting with HEADER_
     for (const [key, value] of Object.entries(process.env)) {
-      if (key.startsWith('HEADER_')) {
+      if (key.startsWith("HEADER_")) {
         const headerName = key.substring(7); // Remove 'HEADER_' prefix
-        this.headers[headerName] = value || '';
+        this.headers[headerName] = value || "";
       }
     }
 
     // Special handling for HEADER_AUTHORIZATION
     if (process.env.HEADER_AUTHORIZATION) {
-      this.headers['Authorization'] = process.env.HEADER_AUTHORIZATION;
+      this.headers["Authorization"] = process.env.HEADER_AUTHORIZATION;
     }
   }
 
@@ -33,48 +33,53 @@ export class SwaggerMcpGenerator {
       console.log(`Loading Swagger spec from: ${this.baseUrl}`);
       const response = await axios.get(this.baseUrl, {
         headers: {
-          'Accept': 'application/json',
-          ...this.headers
-        }
+          Accept: "application/json",
+          ...this.headers,
+        },
       });
 
       this.swaggerSpec = response.data;
-      console.log(`Loaded Swagger spec: ${this.swaggerSpec.info.title} v${this.swaggerSpec.info.version}`);
+      console.log(
+        `Loaded Swagger spec: ${this.swaggerSpec.info.title} v${this.swaggerSpec.info.version}`
+      );
       return this.swaggerSpec;
     } catch (error) {
-      console.error('Failed to load Swagger spec:', (error as Error).message);
+      console.error("Failed to load Swagger spec:", (error as Error).message);
       throw error;
     }
   }
 
   private convertSwaggerTypeToToolProp(swaggerType: any): ToolProp {
     if (!swaggerType) {
-      return { type: 'string' };
+      return { type: "string" };
     }
 
     const toolProp: ToolProp = {
-      type: swaggerType.type || 'string',
-      description: swaggerType.description
+      type: swaggerType.type || "string",
+      description: swaggerType.description,
     };
 
     if (swaggerType.enum) {
       toolProp.enum = swaggerType.enum;
     }
 
-    if (swaggerType.type === 'array' && swaggerType.items) {
+    if (swaggerType.type === "array" && swaggerType.items) {
       toolProp.items = {
-        type: swaggerType.items.type || 'string'
+        type: swaggerType.items.type || "string",
       };
 
       if (swaggerType.items.properties) {
         toolProp.items.properties = {};
-        for (const [key, value] of Object.entries(swaggerType.items.properties)) {
-          toolProp.items.properties[key] = this.convertSwaggerTypeToToolProp(value);
+        for (const [key, value] of Object.entries(
+          swaggerType.items.properties
+        )) {
+          toolProp.items.properties[key] =
+            this.convertSwaggerTypeToToolProp(value);
         }
       }
     }
 
-    if (swaggerType.type === 'object' && swaggerType.properties) {
+    if (swaggerType.type === "object" && swaggerType.properties) {
       toolProp.properties = {};
       for (const [key, value] of Object.entries(swaggerType.properties)) {
         toolProp.properties[key] = this.convertSwaggerTypeToToolProp(value);
@@ -86,18 +91,24 @@ export class SwaggerMcpGenerator {
 
   private resolveSchemaRef(ref: string): any {
     // Handle OpenAPI 3.0 format
-    if (ref.startsWith('#/components/schemas/')) {
-      const schemaName = ref.replace('#/components/schemas/', '');
-      return this.swaggerSpec.components?.schemas?.[schemaName] || { type: 'string' };
+    if (ref.startsWith("#/components/schemas/")) {
+      const schemaName = ref.replace("#/components/schemas/", "");
+      return (
+        this.swaggerSpec.components?.schemas?.[schemaName] || { type: "string" }
+      );
     }
 
     // Handle Swagger 2.0 format
-    if (ref.startsWith('#/definitions/')) {
-      const schemaName = ref.replace('#/definitions/', '');
-      return (this.swaggerSpec as any).definitions?.[schemaName] || { type: 'string' };
+    if (ref.startsWith("#/definitions/")) {
+      const schemaName = ref.replace("#/definitions/", "");
+      return (
+        (this.swaggerSpec as any).definitions?.[schemaName] || {
+          type: "string",
+        }
+      );
     }
 
-    return { type: 'string' };
+    return { type: "string" };
   }
 
   generateTools(): Tool[] {
@@ -105,9 +116,11 @@ export class SwaggerMcpGenerator {
 
     for (const [path, pathItem] of Object.entries(this.swaggerSpec.paths)) {
       for (const [method, operation] of Object.entries(pathItem)) {
-        if (typeof operation !== 'object' || !operation) continue;
+        if (typeof operation !== "object" || !operation) continue;
 
-        const operationId = operation.operationId || `${method}_${path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+        const operationId =
+          operation.operationId ||
+          `${method}_${path.replace(/[^a-zA-Z0-9]/g, "_")}`;
         const summary = operation.summary || `${method.toUpperCase()} ${path}`;
         const description = operation.description || summary;
 
@@ -120,8 +133,8 @@ export class SwaggerMcpGenerator {
           for (const param of pathParams) {
             const paramName = param.slice(1, -1); // Remove { and }
             properties[paramName] = {
-              type: 'string',
-              description: `Path parameter: ${paramName}`
+              type: "string",
+              description: `Path parameter: ${paramName}`,
             };
             required.push(paramName);
           }
@@ -130,7 +143,7 @@ export class SwaggerMcpGenerator {
         // Add query parameters
         if (operation.parameters) {
           for (const param of operation.parameters) {
-            if (param.in === 'query') {
+            if (param.in === "query") {
               // Handle OpenAPI 3.0 format (has schema property)
               let schema = param.schema || param;
               if (schema && schema.$ref) {
@@ -138,14 +151,16 @@ export class SwaggerMcpGenerator {
               } else if (!schema || !schema.type) {
                 // Swagger 2.0 format (properties directly on param)
                 schema = {
-                  type: param.type || 'string',
-                  description: param.description
+                  type: param.type || "string",
+                  description: param.description,
                 };
               }
 
-              properties[param.name] = this.convertSwaggerTypeToToolProp(schema);
+              properties[param.name] =
+                this.convertSwaggerTypeToToolProp(schema);
               if (!properties[param.name].description) {
-                properties[param.name].description = param.description || `Query parameter: ${param.name}`;
+                properties[param.name].description =
+                  param.description || `Query parameter: ${param.name}`;
               }
 
               if (param.required) {
@@ -158,7 +173,7 @@ export class SwaggerMcpGenerator {
         // Add request body properties
         if (operation.requestBody) {
           const content = operation.requestBody.content;
-          const jsonContent = content['application/json'];
+          const jsonContent = content["application/json"];
 
           if (jsonContent && jsonContent.schema) {
             let schema = jsonContent.schema;
@@ -179,16 +194,13 @@ export class SwaggerMcpGenerator {
         }
 
         const tool: Tool = {
-          type: 'function',
-          function: {
-            name: operationId,
-            description: description,
-            parameters: {
-              type: 'object',
-              properties,
-              required
-            }
-          }
+          name: operationId,
+          description: description,
+          inputSchema: {
+            type: "object",
+            properties,
+            required,
+          },
         };
 
         tools.push(tool);
@@ -238,9 +250,11 @@ export class SwaggerClient {
 
     for (const [path, pathItem] of Object.entries(this.swaggerSpec.paths)) {
       for (const [method, operation] of Object.entries(pathItem)) {
-        if (typeof operation !== 'object' || !operation) continue;
+        if (typeof operation !== "object" || !operation) continue;
 
-        const operationId = operation.operationId || `${method}_${path.replace(/[^a-zA-Z0-9]/g, '_')}`;
+        const operationId =
+          operation.operationId ||
+          `${method}_${path.replace(/[^a-zA-Z0-9]/g, "_")}`;
         const hasRequestBody = operation.requestBody !== undefined;
 
         clientCode += `
@@ -257,12 +271,16 @@ export class SwaggerClient {
       }
     }
 
-    ${hasRequestBody ? `
+    ${
+      hasRequestBody
+        ? `
     const requestBody = { ...queryParams };
     const response = await this.api.${method}(path, requestBody);
-    ` : `
+    `
+        : `
     const response = await this.api.${method}(path, { params: queryParams });
-    `}
+    `
+    }
 
     return response.data;
   }
@@ -279,6 +297,7 @@ export class SwaggerClient {
 
   generateMcpServer(): string {
     const tools = this.generateTools();
+    const swaggerUrl = this.baseUrl;
 
     return `#!/usr/bin/env node
 
@@ -288,7 +307,9 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 
 const server = new Server({
-  name: '${this.swaggerSpec.info.title.toLowerCase().replace(/[^a-z0-9]/g, '-')}-mcp',
+  name: '${this.swaggerSpec.info.title
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "-")}-mcp',
   version: '${this.swaggerSpec.info.version}'
 }, {
   capabilities: {
@@ -305,14 +326,11 @@ for (const [key, value] of Object.entries(process.env)) {
   }
 }
 
-const swaggerUrl = process.argv[2];
-if (!swaggerUrl) {
-  console.error('Usage: node mcp-server.js <swagger-url>');
-  process.exit(1);
-}
-
+const swaggerUrl = '${swaggerUrl}';
 const baseUrl = swaggerUrl.replace(/\\/swagger\\.json$/, '').replace(/\\/docs$/, '');
 const client = new SwaggerClient(baseUrl, headers);
+
+
 
 // Helper function to format responses consistently
 const formatResponse = async (methodName: string, args: any) => {
@@ -339,8 +357,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params as any;
 
   switch (name) {
-${tools.map(tool => `    case '${tool.function.name}':
-      return formatResponse('${tool.function.name}', args);`).join('\n')}
+${tools
+  .map(
+    (tool) => `    case '${tool.name}':
+      return formatResponse('${tool.name}', args);`
+  )
+  .join("\n")}
     default:
       throw new Error(\`Unknown tool: \${name}\`);
   }
@@ -348,28 +370,41 @@ ${tools.map(tool => `    case '${tool.function.name}':
 
 server.setRequestHandler(ListToolsRequestSchema, async (request) => {
   return {
-    tools: ${JSON.stringify(tools, null, 2)}
+    tools: [
+${tools
+  .map(
+    (tool) => `      {
+        name: '${tool.name}',
+        description: '${tool.description}',
+        inputSchema: ${JSON.stringify(tool.inputSchema, null, 8)}
+      }`
+  )
+  .join(",\n")}
+    ]
   };
 });
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('${this.swaggerSpec.info.title.replace(/'/g, "\\'")} MCP Server running on stdio');
+  console.error('${this.swaggerSpec.info.title.replace(
+    /'/g,
+    "\\'"
+  )} MCP Server running on stdio');
 }
 
 main().catch(console.error);
 `;
   }
 
-  async saveGeneratedFiles(outputDir: string = './generated') {
+  async saveGeneratedFiles(outputDir: string = "./generated") {
     // Create output directory if it doesn't exist
     if (!existsSync(outputDir)) {
       mkdirSync(outputDir, { recursive: true });
     }
 
     // Create src directory
-    const srcDir = join(outputDir, 'src');
+    const srcDir = join(outputDir, "src");
     if (!existsSync(srcDir)) {
       mkdirSync(srcDir, { recursive: true });
     }
@@ -380,45 +415,56 @@ main().catch(console.error);
 
     // Generate package.json for the output
     const packageJson = {
-      name: `${this.swaggerSpec.info.title.toLowerCase().replace(/[^a-z0-9]/g, '-')}-mcp`,
-      version: '1.0.0',
-      main: 'dist/mcp-server.js',
+      name: `${this.swaggerSpec.info.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "-")}-mcp`,
+      version: "1.0.0",
+      main: "dist/mcp-server.js",
       scripts: {
-        start: 'node dist/mcp-server.js',
-        build: 'tsc'
+        start: "node dist/mcp-server.js",
+        build: "tsc",
       },
       dependencies: {
-        '@modelcontextprotocol/sdk': '^1.13.3',
-        'axios': '^1.5.0'
+        "@modelcontextprotocol/sdk": "^1.13.3",
+        axios: "^1.5.0",
       },
       devDependencies: {
-        '@types/node': '^20.6.3',
-        'typescript': '^4.6.3'
-      }
+        "@types/node": "^20.6.3",
+        typescript: "^4.6.3",
+      },
     };
 
     // Generate TypeScript config
     const tsConfig = {
       compilerOptions: {
-        target: 'es2020',
-        module: 'commonjs',
-        lib: ['es2020'],
-        outDir: './dist',
-        rootDir: './src',
+        target: "es2020",
+        module: "commonjs",
+        lib: ["es2020"],
+        outDir: "./dist",
+        rootDir: "./src",
         strict: true,
         esModuleInterop: true,
         skipLibCheck: true,
-        forceConsistentCasingInFileNames: true
+        forceConsistentCasingInFileNames: true,
       },
-      include: ['src/**/*'],
-      exclude: ['node_modules', 'dist']
+      include: ["src/**/*"],
+      exclude: ["node_modules", "dist"],
     };
 
     // Save all files
-    writeFileSync(join(outputDir, 'package.json'), JSON.stringify(packageJson, null, 2));
-    writeFileSync(join(outputDir, 'tsconfig.json'), JSON.stringify(tsConfig, null, 2));
-    writeFileSync(join(srcDir, 'client.ts'), clientCode);
-    writeFileSync(join(srcDir, 'mcp-server.ts'), mcpServer);
+    writeFileSync(
+      join(outputDir, "package.json"),
+      JSON.stringify(packageJson, null, 2)
+    );
+    writeFileSync(
+      join(outputDir, "tsconfig.json"),
+      JSON.stringify(tsConfig, null, 2)
+    );
+    writeFileSync(join(srcDir, "client.ts"), clientCode);
+    writeFileSync(join(srcDir, "mcp-server.ts"), mcpServer);
+
+    // Also write the root-level mcp-server.ts for convenience
+    writeFileSync(join(outputDir, "mcp-server.ts"), mcpServer);
 
     console.log(`Generated files saved to ${outputDir}/`);
     console.log(`- package.json: Project configuration`);
