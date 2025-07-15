@@ -37,5 +37,13 @@ export async function readBlocks(
     return blocks;
   }
 
-  return blocks.filter((block) => blockNumbers.includes(block.blockNumber));
+  const filtered = blocks.filter((block) =>
+    blockNumbers.includes(block.blockNumber)
+  );
+
+  if (filtered.length === 0) {
+    return blocks;
+  }
+
+  return filtered;
 }

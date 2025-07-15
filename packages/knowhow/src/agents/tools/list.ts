@@ -6,7 +6,7 @@ const pluginNames = Plugins.listPlugins().join(", ");
 import * as github from "./github/definitions";
 import * as asana from "./asana/definitions";
 import * as language from "./language/definitions";
-import { googleSearchDefinition } from './googleSearch';
+import { googleSearchDefinition } from "./googleSearch";
 import { Agents } from "../../services/AgentService";
 
 export const includedTools = [
@@ -174,7 +174,7 @@ export const includedTools = [
     function: {
       name: "readBlocks",
       description:
-        "Read specific blocks from a file based on block numbers. Blocks are numbered blocks of text, containing a few lines of content",
+        "Read specific blocks from a file based on block numbers. Blocks are numbered blocks of text, containing a few lines of content ~500 characters",
       parameters: {
         type: "object",
         positional: true,
@@ -457,7 +457,10 @@ export const includedTools = [
             description: "The embedding options",
             properties: {
               input: { type: "string", description: "The text to embed" },
-              model: { type: "string", description: "The model to use (optional)" },
+              model: {
+                type: "string",
+                description: "The model to use (optional)",
+              },
             },
             required: ["input"],
           },
@@ -488,23 +491,27 @@ export const includedTools = [
           },
           mode: {
             type: "string",
-            description: "The mode for content extraction: 'text' for text content with console logs, 'screenshot' for a base64 encoded screenshot",
+            description:
+              "The mode for content extraction: 'text' for text content with console logs, 'screenshot' for a base64 encoded screenshot",
             enum: ["text", "screenshot"],
           },
           waitForSelector: {
             type: "string",
-            description: "Optional CSS selector to wait for before extracting content",
+            description:
+              "Optional CSS selector to wait for before extracting content",
           },
           timeout: {
             type: "number",
-            description: "Timeout in milliseconds for page loading (default: 30000)",
+            description:
+              "Timeout in milliseconds for page loading (default: 30000)",
           },
         },
         required: ["url"],
       },
       returns: {
         type: "string",
-        description: "The webpage content as text with console logs, or a base64 encoded screenshot",
+        description:
+          "The webpage content as text with console logs, or a base64 encoded screenshot",
       },
     },
   },
@@ -534,7 +541,8 @@ export const includedTools = [
             items: {
               type: "string",
             },
-            description: "Array of file paths where the replacement should be performed",
+            description:
+              "Array of file paths where the replacement should be performed",
           },
         },
         required: ["findString", "replaceString", "filePaths"],
