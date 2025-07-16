@@ -53,14 +53,14 @@ export class SwaggerMcpGenerator {
     // Extract the base URL from the swagger URL (remove the swagger.json path)
     const swaggerUrl = new URL(this.baseUrl);
     const baseUrl = `${swaggerUrl.protocol}//${swaggerUrl.host}`;
-    
+
     // Get the server path from the OpenAPI spec
-    let serverPath = '/';
+    let serverPath = "/";
     if (this.swaggerSpec.servers && this.swaggerSpec.servers.length > 0) {
       const firstServer = this.swaggerSpec.servers[0];
       if (firstServer.url) {
         // If it's a relative URL, use it as is
-        if (firstServer.url.startsWith('/')) {
+        if (firstServer.url.startsWith("/")) {
           serverPath = firstServer.url;
         } else {
           // If it's an absolute URL, extract the path
@@ -68,13 +68,29 @@ export class SwaggerMcpGenerator {
         }
       }
     }
-    
+
     return baseUrl + serverPath;
   }
 
   private convertSwaggerTypeToToolProp(swaggerType: any): ToolProp {
     if (!swaggerType) {
       return { type: "string" };
+    }
+
+    // Handle $ref references
+    if (swaggerType.$ref) {
+      const resolvedSchema = this.resolveSchemaRef(swaggerType.$ref);
+      return this.convertSwaggerTypeToToolProp(resolvedSchema);
+    }
+
+    // Handle anyOf/oneOf/allOf schemas
+    if (swaggerType.anyOf || swaggerType.oneOf || swaggerType.allOf) {
+      const schemas =
+        swaggerType.anyOf || swaggerType.oneOf || swaggerType.allOf;
+      // For now, use the first schema in the array
+      if (schemas.length > 0) {
+        return this.convertSwaggerTypeToToolProp(schemas[0]);
+      }
     }
 
     const toolProp: ToolProp = {
@@ -99,6 +115,8 @@ export class SwaggerMcpGenerator {
           toolProp.items.properties[key] =
             this.convertSwaggerTypeToToolProp(value);
         }
+      } else if (swaggerType.items.$ref) {
+        toolProp.items = this.convertSwaggerTypeToToolProp(swaggerType.items);
       }
     }
 
@@ -113,6 +131,15 @@ export class SwaggerMcpGenerator {
   }
 
   private resolveSchemaRef(ref: string): any {
+    const resolved = this.resolveSchemaRefOnce(ref);
+    // If the resolved schema has a $ref, recursively resolve it
+    if (resolved && resolved.$ref) {
+      return this.resolveSchemaRef(resolved.$ref);
+    }
+    return resolved;
+  }
+
+  private resolveSchemaRefOnce(ref: string): any {
     // Handle OpenAPI 3.0 format
     if (ref.startsWith("#/components/schemas/")) {
       const schemaName = ref.replace("#/components/schemas/", "");
@@ -200,18 +227,25 @@ export class SwaggerMcpGenerator {
 
           if (jsonContent && jsonContent.schema) {
             let schema = jsonContent.schema;
-            if (schema.$ref) {
+            
+            // Recursively resolve all $ref chains
+            while (schema.$ref) {
               schema = this.resolveSchemaRef(schema.$ref);
             }
 
             if (schema.properties) {
               for (const [key, value] of Object.entries(schema.properties)) {
-                properties[key] = this.convertSwaggerTypeToToolProp(value);
+                const propSchema = this.convertSwaggerTypeToToolProp(value);
+                properties[key] = propSchema;
               }
 
               if (schema.required) {
                 required.push(...schema.required);
               }
+            } else if (schema.type === "object" && !schema.properties) {
+              // Handle case where schema is an object but properties are not defined
+              // This can happen with generic object types
+              // For now, we'll skip adding specific properties
             }
           }
         }
