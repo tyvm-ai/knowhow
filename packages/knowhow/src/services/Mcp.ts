@@ -261,7 +261,10 @@ export class McpService {
   }
 
   toOpenAiTool(index: number, tool: McpTool) {
-    const mcpName = this.config[index].name;
+    const mcpName = this.config[index]?.name
+      ?.toLowerCase()
+      ?.replaceAll(" ", "_");
+
     const prefix = mcpName
       ? `${this.mcpPrefix}_${index}_${mcpName}`
       : `${this.mcpPrefix}_${index}`;
