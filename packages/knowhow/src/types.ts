@@ -163,8 +163,8 @@ export const Models = {
     o1_Mini: "o1-mini-2024-09-12",
     GPT_4o_Mini_Search: "gpt-4o-mini-search-preview-2025-03-11",
     GPT_4o_Search: "gpt-4o-search-preview-2025-03-11",
-    Computer_Use: "computer-use-preview-2025-03-11",
-    Codex_Mini: "codex-mini-latest",
+    // Computer_Use: "computer-use-preview-2025-03-11",
+    // Codex_Mini: "codex-mini-latest",
   },
   google: {
     Gemini_25_Flash_Preview: "gemini-2.5-flash-preview-05-20",
@@ -211,7 +211,7 @@ export const OpenAiEmbeddingModels = [
   EmbeddingModels.openai.EmbeddingLarge3,
   EmbeddingModels.openai.EmbeddingSmall3,
 ];
-export const OpenAiResponseOnlyModels = [Models.openai.Codex_Mini];
+// export const OpenAiResponseOnlyModels = [Models.openai.Codex_Mini];
 
 export const GoogleReasoningModels = [
   Models.google.Gemini_25_Flash_Preview,

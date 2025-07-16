@@ -33,21 +33,39 @@ export class AIClient {
     ...(envCheck("XAI_API_KEY") && { xai: new GenericXAIClient() }),
   };
 
-  clientModels = {
+  completionModels = {
     ...(envCheck("OPENAI_KEY") && {
-      openai: Object.values(Models.openai).concat(
-        Object.values(EmbeddingModels.openai)
-      ),
+      openai: Object.values(Models.openai),
     }),
     ...(envCheck("ANTHROPIC_API_KEY") && {
       anthropic: Object.values(Models.anthropic),
     }),
     ...(envCheck("GEMINI_API_KEY") && {
-      google: Object.values(Models.google).concat(
-        Object.values(EmbeddingModels.google)
-      ),
+      google: Object.values(Models.google),
     }),
     ...(envCheck("XAI_API_KEY") && { xai: Object.values(Models.xai) }),
+  };
+
+  embeddingModels = {
+    ...(envCheck("OPENAI_KEY") && {
+      openai: Object.values(EmbeddingModels.openai),
+    }),
+    ...(envCheck("GEMINI_API_KEY") && {
+      google: Object.values(EmbeddingModels.google),
+    }),
+  };
+
+  clientModels = {
+    ...(envCheck("OPENAI_KEY") && {
+      openai: [...this.completionModels.openai, ...this.embeddingModels.openai],
+    }),
+    ...(envCheck("ANTHROPIC_API_KEY") && {
+      anthropic: [...this.completionModels.anthropic],
+    }),
+    ...(envCheck("GEMINI_API_KEY") && {
+      google: [...this.completionModels.google, ...this.embeddingModels.google],
+    }),
+    ...(envCheck("XAI_API_KEY") && { xai: this.completionModels.xai }),
   };
 
   getClient(provider: string, model?: string) {
@@ -111,7 +129,26 @@ export class AIClient {
 
   registerModels(provider: string, models: string[]) {
     const currentModels = this.clientModels[provider] || [];
+    const currentCompletionModels = this.completionModels[provider] || [];
     this.clientModels[provider] = Array.from<string>(
+      new Set(currentModels.concat(models))
+    );
+
+    // We will assume if you register models, it's for completions
+    this.completionModels[provider] = Array.from<string>(
+      new Set(currentCompletionModels.concat(models))
+    );
+  }
+
+  registerEmbeddingModels(provider: string, models: string[]) {
+    const currentModels = this.clientModels[provider] || [];
+    const currentEmbeddingModels = this.embeddingModels[provider] || [];
+
+    this.clientModels[provider] = Array.from<string>(
+      new Set(currentModels.concat(models))
+    );
+
+    this.embeddingModels[provider] = Array.from<string>(
       new Set(currentModels.concat(models))
     );
   }
@@ -172,6 +209,14 @@ export class AIClient {
 
   listAllModels() {
     return this.clientModels;
+  }
+
+  listAllEmbeddingModels() {
+    return this.embeddingModels;
+  }
+
+  listAllCompletionModels() {
+    return this.completionModels;
   }
 
   listAllProviders() {
