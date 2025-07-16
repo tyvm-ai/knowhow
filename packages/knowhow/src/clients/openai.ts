@@ -187,7 +187,7 @@ export class GenericOpenAiClient extends OpenAI implements GenericClient {
         cached_input: 0,
         output: 0,
       },
-      [EmbeddingModels.openai.EmbeddingLarge3]: {
+      [EmbeddingModels.openai.EmbeddingSmall3]: {
         input: 0.02,
         cached_input: 0,
         output: 0,
