@@ -1,6 +1,6 @@
 {
   "name": "@tyvm/knowhow",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "description": "ai cli with plugins and agents",
   "main": "ts_build/src/index.js",
   "bin": {
@@ -13,6 +13,7 @@
     "start": "npm run compile && node ts_build/src/server/index.js",
     "dataset:diffs:generate": "ts-node src/dataset/diffs/generate.ts",
     "dataset:diffs:jsonl": "ts-node src/dataset/diffs/jsonl.ts",
+    "prepublishOnly": "npm run compile",
     "lint": "tslint ./src/**/*.ts"
   },
   "keywords": [],
