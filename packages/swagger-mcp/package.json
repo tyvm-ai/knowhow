@@ -1,6 +1,6 @@
 {
   "name": "@tyvm/swagger-mcp",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Generate MCP servers from Swagger/OpenAPI specifications",
   "main": "dist/index.js",
   "bin": {
