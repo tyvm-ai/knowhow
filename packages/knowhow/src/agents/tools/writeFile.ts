@@ -27,7 +27,7 @@ export async function writeFileChunk(
   }
 
   if (isContinuing) {
-    fs.appendFileSync(filePath, content);
+    fs.appendFileSync(filePath, "\n" + content);
   }
 
   let message = "";
