@@ -131,12 +131,66 @@ export class SwaggerMcpGenerator {
   }
 
   private resolveSchemaRef(ref: string): any {
-    const resolved = this.resolveSchemaRefOnce(ref);
-    // If the resolved schema has a $ref, recursively resolve it
-    if (resolved && resolved.$ref) {
-      return this.resolveSchemaRef(resolved.$ref);
+    if (!ref.startsWith('#/')) {
+      return {}; // Only handle local refs for now
     }
-    return resolved;
+
+    const path = ref.substring(2).split('/');
+    let current: any = this.swaggerSpec;
+
+    for (const segment of path) {
+      if (!current || typeof current !== 'object') {
+        return {};
+      }
+      current = current[segment];
+    }
+
+    if (!current) {
+      return {};
+    }
+
+    // Handle allOf by merging all schemas
+    if (current.allOf) {
+      const merged = {
+        type: 'object',
+        properties: {},
+        required: [] as string[]
+      };
+
+      for (const item of current.allOf) {
+        let resolvedItem;
+        if (item.$ref) {
+          // Recursively resolve $ref items within allOf
+          resolvedItem = this.resolveSchemaRef(item.$ref);
+        } else {
+          resolvedItem = item;
+        }
+
+        // Merge properties
+        if (resolvedItem.properties) {
+          Object.assign(merged.properties, resolvedItem.properties);
+        }
+
+        // Merge required fields
+        if (resolvedItem.required) {
+          merged.required = [...merged.required, ...resolvedItem.required];
+        }
+
+        // Merge other properties (type, etc.)
+        if (resolvedItem.type && resolvedItem.type !== 'object') {
+          merged.type = resolvedItem.type;
+        }
+      }
+
+      return merged;
+    }
+
+    // Handle direct $ref
+    if (current.$ref) {
+      return this.resolveSchemaRef(current.$ref);
+    }
+
+    return current;
   }
 
   private resolveSchemaRefOnce(ref: string): any {
@@ -228,8 +282,8 @@ export class SwaggerMcpGenerator {
           if (jsonContent && jsonContent.schema) {
             let schema = jsonContent.schema;
             
-            // Recursively resolve all $ref chains
-            while (schema.$ref) {
+            // Resolve $ref if present
+            if (schema.$ref) {
               schema = this.resolveSchemaRef(schema.$ref);
             }
 
