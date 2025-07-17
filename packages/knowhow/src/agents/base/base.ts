@@ -565,7 +565,9 @@ export abstract class BaseAgent implements IAgent {
     1. Task List
     2. Completion Criteria - when the agent should stop
 
-      : \n\n${JSON.stringify(messages)}`;
+    This output will be used to guide the work of the agent, and determine when we've accomplished the goal
+
+    \n\n<ToAnalyze>${JSON.stringify(messages)}</ToAnalyze>`;
 
     const model = this.getModel();
 
@@ -577,6 +579,7 @@ export abstract class BaseAgent implements IAgent {
           content: taskPrompt,
         },
       ],
+      max_tokens: 2000,
     });
 
     this.adjustTotalCostUsd(response.usd_cost);
@@ -602,10 +605,12 @@ export abstract class BaseAgent implements IAgent {
     3. Next Steps - what we're about to do next to continue the user's original request.
     4. Tasks remaining - what tasks are left from the initial task breakdown.
 
-      This summary will become the agent's only memory of the past, all other messages will be dropped:
-    ${JSON.stringify(toCompress)}
+    Our initial task breakdown: ${this.taskBreakdown}
 
-      Our initial task breakdown: ${this.taskBreakdown}`;
+    This summary will become the agent's only memory of the past, all other messages will be dropped:
+    <ToSummarize>${JSON.stringify(toCompress)}</ToSummarize>
+
+      `;
 
     const model = this.getModel();
 
