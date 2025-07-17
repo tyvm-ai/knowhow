@@ -310,7 +310,7 @@ export class SwaggerMcpGenerator {
           inputSchema: {
             type: "object",
             properties,
-            required,
+            required: [...new Set(required)],
           },
         };
 
