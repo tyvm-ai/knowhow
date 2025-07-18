@@ -17,6 +17,7 @@ import { Agents, AgentService } from "../../services/AgentService";
 import { Events, EventService } from "../../services/EventService";
 import { AIClient, Clients } from "../../clients";
 import { Models } from "../../ai";
+import { MessageProcessor } from "../../services/MessageProcessor";
 
 export { Message, Tool, ToolCall };
 export interface ModelPreference {
@@ -60,7 +61,8 @@ export abstract class BaseAgent implements IAgent {
 
   constructor(
     public tools: ToolsService = Tools,
-    public events: EventService = Events
+    public events: EventService = Events,
+    public messageProcessor: MessageProcessor = new MessageProcessor()
   ) {}
 
   newTask() {
@@ -418,6 +420,11 @@ export abstract class BaseAgent implements IAgent {
       const model = this.getModel();
       let messages = _messages || (await this.getInitialMessages(userInput));
 
+      // Process initial messages if this is the first call
+      if (!_messages) {
+        messages = await this.messageProcessor.processMessages(messages, "initial_call");
+      }
+
       if (this.pendingUserMessages.length) {
         messages.push(...this.pendingUserMessages);
         this.pendingUserMessages = [];
@@ -429,6 +436,9 @@ export abstract class BaseAgent implements IAgent {
 
       const startIndex = 0;
       const endIndex = messages.length;
+
+      // Process messages before each AI call
+      messages = await this.messageProcessor.processMessages(messages, "per_call");
       const compressThreshold = 10000;
 
       const response = await this.getClient().createChatCompletion({
@@ -477,6 +487,11 @@ export abstract class BaseAgent implements IAgent {
             }
           }
         }
+      }
+
+      // Process messages after tool execution
+      if (newToolCalls && newToolCalls.length > 0) {
+        messages = await this.messageProcessor.processMessages(messages, "post_call");
       }
 
       // Early exit: not required to call tool
