@@ -22,6 +22,7 @@ import { Models } from "./ai";
 import { BaseAgent } from "./agents";
 import { getConfig } from "./config";
 import { TokenCompressor } from "./processors/TokenCompressor";
+import { ToolResponseManipulator } from "./processors/ToolResponseManipulator";
 
 enum ChatFlags {
   agent = "agent",
@@ -353,6 +354,12 @@ export async function startAgent(
       new TokenCompressor(activeAgent.tools).createProcessor((msg) =>
         Boolean(msg.role === "tool" && msg.tool_call_id)
       )
+    );
+    
+    // Store and manipulate tool responses with JQ queries
+    activeAgent.messageProcessor.registerProcessor(
+      "per_call",
+      new ToolResponseManipulator(activeAgent.tools).createProcessor()
     );
 
     activeAgent.agentEvents.once(activeAgent.eventTypes.done, (doneMsg) => {

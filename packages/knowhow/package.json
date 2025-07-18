@@ -60,6 +60,7 @@
     "marked-terminal": "^6.2.0",
     "morgan": "^1.10.0",
     "node-fetch": "^3.2.3",
+    "node-jq": "^6.0.1",
     "node-pty": "^1.0.0",
     "node-record-lpcm16": "^1.0.1",
     "openai": "4.89.1",
