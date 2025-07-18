@@ -1,5 +1,5 @@
-export * from "./base/base";
-export * from "./configurable/ConfigAgent";
+export { BaseAgent } from "./base/base";
+export { ConfigAgent } from "./configurable/ConfigAgent";
 export * from "./developer/developer";
 export * from "./patcher/patcher";
 export * from "./researcher/researcher";

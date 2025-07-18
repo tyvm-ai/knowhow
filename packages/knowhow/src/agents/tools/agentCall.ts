@@ -1,4 +1,3 @@
-import { Agents } from "../../services/AgentService";
 import { Events } from "../../services/EventService";
 import { Plugins } from "../../plugins/plugins";
 import { getConfig } from "../../config";

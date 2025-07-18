@@ -7,7 +7,6 @@ import * as github from "./github/definitions";
 import * as asana from "./asana/definitions";
 import * as language from "./language/definitions";
 import { googleSearchDefinition } from "./googleSearch";
-import { Agents } from "../../services/AgentService";
 
 export const includedTools = [
   {
