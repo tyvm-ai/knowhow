@@ -13,20 +13,28 @@ export interface ExecCommandOptions {
 const execWithTimeout = async (
   command: string,
   options: ExecCommandOptions = {}
-): Promise<{ stdout: string; stderr: string; timedOut: boolean; killed: boolean }> => {
-  const { timeout, killOnTimeout = false, waitForCompletion = true } = options;
-  
+): Promise<{
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+  killed: boolean;
+}> => {
+  const { timeout, killOnTimeout = false } = options;
+
+  // If no timeout is specified, default to waiting for completion
+  const { waitForCompletion = !timeout } = options;
+
   if (!timeout || waitForCompletion) {
     // Default behavior - wait for completion
     try {
       const result = await execAsync(command);
       return { ...result, timedOut: false, killed: false };
     } catch (error) {
-      return { 
-        stdout: error.stdout || "", 
-        stderr: error.stderr || error.message, 
-        timedOut: false, 
-        killed: false 
+      return {
+        stdout: error.stdout || "",
+        stderr: error.stderr || error.message,
+        timedOut: false,
+        killed: false,
       };
     }
   }
@@ -35,39 +43,49 @@ const execWithTimeout = async (
   return new Promise((resolve) => {
     const childProcess = exec(command, (error, stdout, stderr) => {
       if (error && !error.killed) {
-        resolve({ stdout, stderr: stderr || error.message, timedOut: false, killed: false });
+        resolve({
+          stdout,
+          stderr: stderr || error.message,
+          timedOut: false,
+          killed: false,
+        });
       } else {
-        resolve({ stdout, stderr, timedOut: false, killed: error?.killed || false });
+        resolve({
+          stdout,
+          stderr,
+          timedOut: false,
+          killed: error?.killed || false,
+        });
       }
     });
 
     const timeoutId = setTimeout(() => {
       if (killOnTimeout) {
-        childProcess.kill('SIGTERM');
+        childProcess.kill("SIGTERM");
         // Force kill after additional 5 seconds if still running
         setTimeout(() => {
           if (!childProcess.killed) {
-            childProcess.kill('SIGKILL');
+            childProcess.kill("SIGKILL");
           }
         }, 5000);
-        resolve({ 
-          stdout: "", 
-          stderr: `Command timed out after ${timeout}ms and was killed`, 
-          timedOut: true, 
-          killed: true 
+        resolve({
+          stdout: "",
+          stderr: `Command timed out after ${timeout}ms and was killed`,
+          timedOut: true,
+          killed: true,
         });
       } else {
-        resolve({ 
-          stdout: "", 
-          stderr: `Command timed out after ${timeout}ms but is still running in background`, 
-          timedOut: true, 
-          killed: false 
+        resolve({
+          stdout: "",
+          stderr: `Command timed out after ${timeout}ms but is still running in background`,
+          timedOut: true,
+          killed: false,
         });
       }
     }, timeout);
 
     // Clear timeout if command completes before timeout
-    childProcess.on('exit', () => {
+    childProcess.on("exit", () => {
       clearTimeout(timeoutId);
     });
   });
@@ -82,21 +100,22 @@ export const execCommand = async (
 ): Promise<string> => {
   let output = "";
   console.log("execCommand:", command);
-  
+
   const { stdout, stderr, timedOut, killed } = await execWithTimeout(command, {
     timeout,
     killOnTimeout,
     waitForCompletion,
-
   });
 
   if (stderr) {
     output += stderr + "\n";
   }
   output += stdout;
-  
+
   if (timedOut) {
-    const statusMsg = killed ? " (killed due to timeout)" : " (timed out, still running)";
+    const statusMsg = killed
+      ? " (killed due to timeout)"
+      : " (timed out, still running)";
     console.log(`$ ${command}${statusMsg}:\n${output}`);
   } else {
     console.log(`$ ${command}:\n${output}`);
