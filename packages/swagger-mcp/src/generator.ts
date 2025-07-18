@@ -281,7 +281,7 @@ export class SwaggerMcpGenerator {
 
           if (jsonContent && jsonContent.schema) {
             let schema = jsonContent.schema;
-            
+
             // Resolve $ref if present
             if (schema.$ref) {
               schema = this.resolveSchemaRef(schema.$ref);
@@ -456,17 +456,13 @@ const formatResponse = async (methodName: string, args: any) => {
     };
   } catch (error: any) {
     let errorMessage = \`Error calling \${methodName}: \${error.message}\`;
-    
+
     // If it's an axios error, provide more detailed information
     if (error.response) {
       // The request was made and the server responded with a status code
       // that falls out of the range of 2xx
       errorMessage += \`\\n\\nHTTP Status: \${error.response.status} \${error.response.statusText || ''}\`;
-      
-      if (error.response.headers) {
-        errorMessage += \`\\nResponse Headers: \${JSON.stringify(error.response.headers, null, 2)}\`;
-      }
-      
+
       if (error.response.data) {
         errorMessage += \`\\nResponse Body: \${typeof error.response.data === 'string' ? error.response.data : JSON.stringify(error.response.data, null, 2)}\`;
       }
@@ -477,15 +473,6 @@ const formatResponse = async (methodName: string, args: any) => {
     } else {
       // Something happened in setting up the request that triggered an Error
       errorMessage += \`\\n\\nRequest setup error: \${error.message}\`;
-    }
-    
-    if (error.config) {
-      errorMessage += \`\\n\\nRequest config: \${JSON.stringify({
-        method: error.config.method,
-        url: error.config.url,
-        headers: error.config.headers,
-        timeout: error.config.timeout
-      }, null, 2)}\`;
     }
 
     return {
