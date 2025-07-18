@@ -49,15 +49,18 @@ export const includedTools = [
           },
           timeout: {
             type: "number",
-            description: "Timeout in milliseconds (optional). If not provided, waits indefinitely.",
+            description:
+              "Timeout in milliseconds (optional). If not provided, waits indefinitely.",
           },
           killOnTimeout: {
             type: "boolean",
-            description: "Whether to kill the command when timeout is reached (default: false). If false, command continues running in background.",
+            description:
+              "Whether to kill the command when timeout is reached (default: false). If false, command continues running in background.",
           },
           waitForCompletion: {
             type: "boolean",
-            description: "Whether to wait for full completion regardless of timeout (default: true). Overrides timeout behavior.",
+            description:
+              "Whether to wait for full completion regardless of timeout (default: true). Overrides timeout behavior.",
           },
         },
         required: ["command"],
@@ -474,8 +477,6 @@ export const includedTools = [
       },
     },
   },
-
-  googleSearchDefinition,
   {
     type: "function",
     function: {
@@ -516,9 +517,6 @@ export const includedTools = [
       },
     },
   },
-  ...asana.definitions,
-  ...github.definitions,
-  ...language.definitions,
   {
     type: "function",
     function: {
@@ -554,4 +552,9 @@ export const includedTools = [
       },
     },
   },
+
+  googleSearchDefinition,
+  ...asana.definitions,
+  ...github.definitions,
+  ...language.definitions,
 ] as Tool[];

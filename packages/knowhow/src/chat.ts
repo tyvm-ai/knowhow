@@ -21,6 +21,7 @@ import { recordAudio, voiceToText } from "./microphone";
 import { Models } from "./ai";
 import { BaseAgent } from "./agents";
 import { getConfig } from "./config";
+import { TokenCompressor } from "./processors/TokenCompressor";
 
 enum ChatFlags {
   agent = "agent",
@@ -345,6 +346,14 @@ export async function startAgent(
       chatHistory
     );
     activeAgent.call(formattedPrompt);
+
+    // Compress tokens of tool responses
+    activeAgent.messageProcessor.registerProcessor(
+      "per_call",
+      new TokenCompressor(activeAgent.tools).createProcessor((msg) =>
+        Boolean(msg.role === "tool" && msg.tool_call_id)
+      )
+    );
 
     activeAgent.agentEvents.once(activeAgent.eventTypes.done, (doneMsg) => {
       console.log("Agent has finished.");
