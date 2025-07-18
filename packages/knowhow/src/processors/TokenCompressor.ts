@@ -8,12 +8,12 @@ interface TokenCompressorStorage {
 
 export class TokenCompressor {
   private storage: TokenCompressorStorage = {};
-  private maxTokens: number = 20000;
+  private maxTokens: number = 4000;
   private compressionRatio: number = 0.1;
   private keyPrefix: string = "compressed_";
-  private jsonPropertyThreshold: number = 20000;
   private toolName: string = expandTokensDefinition.function.name;
-  private characterLimit: number = 16000; // ~4000 tokens
+  private characterLimit: number = this.maxTokens * 4;
+  private jsonPropertyThreshold: number = this.maxTokens;
 
   constructor(toolsService?: ToolsService) {
     this.registerTool(toolsService);
@@ -22,6 +22,12 @@ export class TokenCompressor {
   // Rough token estimation (4 chars per token average)
   private estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);
+  }
+
+  public setMaxTokens(maxTokens: number): void {
+    this.maxTokens = maxTokens;
+    this.characterLimit = maxTokens * 4;
+    this.jsonPropertyThreshold = maxTokens;
   }
 
   /**
