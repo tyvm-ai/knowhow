@@ -1,38 +1,19 @@
-import { ask } from "../utils";
-import { Message } from "../clients/types";
+import { Message, Tool } from "../clients/types";
 import { MessageProcessorFunction } from "../services/MessageProcessor";
 import { ToolsService } from "../services";
-import { Tool } from "../clients";
-
-interface JsonCompressionMetadata {
-  originalKey: string;
-  compressedProperties: string[];
-  type: "json" | "string";
-}
 
 interface TokenCompressorStorage {
   [key: string]: string;
 }
 
-interface CompressionMetadataStorage {
-  [key: string]: JsonCompressionMetadata;
-}
-
-interface ChunkMetadata {
-  nextChunkKey?: string;
-  chunkIndex: number;
-  totalChunks: number;
-}
-
 export class TokenCompressor {
   private storage: TokenCompressorStorage = {};
-  private metadataStorage: CompressionMetadataStorage = {};
-  private maxTokens: number = 40000;
+  private maxTokens: number = 20000;
   private compressionRatio: number = 0.1;
   private keyPrefix: string = "compressed_";
-  private jsonPropertyThreshold: number = 40000;
+  private jsonPropertyThreshold: number = 20000;
   private toolName: string = expandTokensDefinition.function.name;
-  private characterLimit: number = 40;
+  private characterLimit: number = 16000; // ~4000 tokens
 
   constructor(toolsService?: ToolsService) {
     this.registerTool(toolsService);
@@ -41,31 +22,6 @@ export class TokenCompressor {
   // Rough token estimation (4 chars per token average)
   private estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);
-  }
-
-  /**
-   * Detects if a message is a tool response from expandTokens or similar decompression tools
-   */
-  private isDecompressionToolResponse(message: Message): boolean {
-    // Check if it's a tool response message
-    if (message.role !== "tool" || !message.tool_call_id) {
-      return false;
-    }
-
-    // Check if the content contains a previously compressed key
-    if (typeof message.content === "string") {
-      const content = message.content;
-      // Look for patterns that indicate this is decompressed content
-      const hasCompressedKey = Object.keys(this.storage).some(
-        (key) => content.includes(key) || content === this.storage[key]
-      );
-
-      const hasResponseFormat = content.includes(`${this.toolName}Resp:`);
-
-      return hasCompressedKey || hasResponseFormat;
-    }
-
-    return false;
   }
 
   /**
@@ -125,11 +81,10 @@ export class TokenCompressor {
     const totalTokens = this.estimateTokens(content);
     const chunkCount = chunks.length;
 
-    return `[COMPRESSED_STRING - ${totalTokens} tokens in ${chunkCount} chunks]
-Key: ${firstKey}
-Path: ${path}
-Preview: ${content.substring(0, 200)}...
-[Use ${
+    return `[COMPRESSED_STRING - ${totalTokens} tokens in ${chunkCount} chunks]\nKey: ${firstKey}\nPath: ${path}\nPreview: ${content.substring(
+      0,
+      200
+    )}...\n[Use ${
       this.toolName
     } tool with key "${firstKey}" to retrieve content. Follow NEXT_CHUNK_KEY references for complete content]`;
   }
@@ -163,30 +118,57 @@ Preview: ${content.substring(0, 200)}...
   }
 
   /**
-   * Compresses large string properties within a JSON object using depth-first traversal
+   * Compresses large properties within a JSON object using depth-first traversal.
+   * Implements an efficient backward-iterating chunking strategy for large arrays.
    */
   public compressJsonProperties(obj: any, path: string = ""): any {
-    // Handle arrays - process all elements first (depth-first)
     if (Array.isArray(obj)) {
-      const processedArray = obj.map((item, index) =>
+      // Step 1: Recursively compress all items first (depth-first).
+      const processedItems = obj.map((item, index) =>
         this.compressJsonProperties(item, `${path}[${index}]`)
       );
 
-      // After processing children, check if the entire array should be compressed
-      const arrayAsString = JSON.stringify(processedArray);
-      const tokens = this.estimateTokens(arrayAsString);
-      if (tokens > this.jsonPropertyThreshold) {
-        const key = this.generateKey();
-        this.storage[key] = arrayAsString;
-
-        return `[COMPRESSED_JSON_ARRAY - ${tokens} tokens]
-Key: ${key}
-Path: ${path}
-Length: ${processedArray.length} items
-Preview: ${arrayAsString.substring(0, 200)}...
-[Use ${this.toolName} tool with key "${key}" to retrieve full content]`;
+      // Step 2: Early exit if the whole array is already small enough.
+      // Leeway of 30% over, to avoid re-compression of retrievals
+      const initialTokens = this.estimateTokens(JSON.stringify(processedItems));
+      if (initialTokens <= this.jsonPropertyThreshold * 1.3) {
+        return processedItems;
       }
-      return processedArray;
+
+      // Step 3: Iterate backwards, building chunks from the end.
+      const finalArray: any[] = [];
+      let currentChunk: any[] = [];
+
+      for (let i = processedItems.length - 1; i >= 0; i--) {
+        const item = processedItems[i];
+        currentChunk.unshift(item); // Add item to the front of the current chunk
+
+        const chunkString = JSON.stringify(currentChunk);
+        const chunkTokens = this.estimateTokens(chunkString);
+
+        if (chunkTokens > this.jsonPropertyThreshold) {
+          const key = this.generateKey();
+          this.storage[key] = chunkString;
+
+          const stub = `[COMPRESSED_JSON_ARRAY_CHUNK - ${chunkTokens} tokens, ${
+            currentChunk.length
+          } items]\nKey: ${key}\nPath: ${path}[${i}...${
+            i + currentChunk.length - 1
+          }]\nPreview: ${chunkString.substring(0, 100)}...\n[Use ${
+            this.toolName
+          } tool with key "${key}" to retrieve this chunk]`;
+          finalArray.unshift(stub); // Add stub to the start of our final result.
+
+          currentChunk = [];
+        }
+      }
+
+      // Step 4: After the loop, add any remaining items from the start of the
+      // array that did not form a full chunk.
+      if (currentChunk.length > 0) {
+        finalArray.unshift(...currentChunk);
+      }
+      return finalArray;
     }
 
     // Handle objects - process all properties first (depth-first)
@@ -204,12 +186,11 @@ Preview: ${arrayAsString.substring(0, 200)}...
         const key = this.generateKey();
         this.storage[key] = objectAsString;
 
-        return `[COMPRESSED_JSON_OBJECT - ${tokens} tokens]
-Key: ${key}
-Path: ${path}
-Keys: ${Object.keys(result).join(", ")}
-Preview: ${objectAsString.substring(0, 200)}...
-[Use ${this.toolName} tool with key "${key}" to retrieve full content]`;
+        return `[COMPRESSED_JSON_OBJECT - ${tokens} tokens]\nKey: ${key}\nPath: ${path}\nKeys: ${Object.keys(
+          result
+        ).join(", ")}\nPreview: ${objectAsString.substring(0, 200)}...\n[Use ${
+          this.toolName
+        } tool with key "${key}" to retrieve full content]`;
       }
       return result;
     }
@@ -219,11 +200,9 @@ Preview: ${objectAsString.substring(0, 200)}...
       // First, check if this string contains JSON that we can parse and compress more granularly
       const parsedJson = this.tryParseJson(obj);
       if (parsedJson) {
-        // Recursively compress the parsed JSON
         const compressedJson = this.compressJsonProperties(parsedJson, path);
         const compressedJsonString = JSON.stringify(compressedJson, null, 2);
 
-        // If the compressed JSON is significantly smaller, use it
         const originalTokens = this.estimateTokens(obj);
         const compressedTokens = this.estimateTokens(compressedJsonString);
 
@@ -241,8 +220,9 @@ Preview: ${objectAsString.substring(0, 200)}...
         return `[COMPRESSED_JSON_PROPERTY - ${tokens} tokens]\nKey: ${key}\nPath: ${path}\nPreview: ${obj.substring(
           0,
           200
-        )}...
-[Use ${this.toolName} tool with key "${key}" to retrieve full content]`;
+        )}...\n[Use ${
+          this.toolName
+        } tool with key "${key}" to retrieve full content]`;
       }
       return obj;
     }
@@ -267,10 +247,12 @@ Preview: ${objectAsString.substring(0, 200)}...
             const key = this.generateKey();
             this.storage[key] = args;
 
-            const compressed = `[COMPRESSED TOOL ARGS - ${tokens} tokens]
-Key: ${key}
-Preview: ${args.substring(0, 200)}...
-[Use ${this.toolName} tool with key "${key}" to retrieve full arguments]`;
+            const compressed = `[COMPRESSED TOOL ARGS - ${tokens} tokens]\nKey: ${key}\nPreview: ${args.substring(
+              0,
+              200
+            )}...\n[Use ${
+              this.toolName
+            } tool with key "${key}" to retrieve full arguments]`;
 
             toolCall.function.arguments = compressed;
           }
@@ -280,10 +262,9 @@ Preview: ${args.substring(0, 200)}...
   }
 
   public async compressMessage(message: Message) {
-    // Skip compression for decompression tool responses to prevent cycles
-    if (this.isDecompressionToolResponse(message)) {
-      return; // Don't compress decompression responses
-    }
+    // The previous check for 'isDecompressionToolResponse' is no longer necessary.
+    // The new chunking strategy returns manageable chunks that won't meet the
+    // compression threshold, naturally preventing cycles.
 
     // Compress content if it's a string
     if (typeof message.content === "string") {
@@ -315,51 +296,17 @@ Preview: ${args.substring(0, 200)}...
     };
   }
 
+  /**
+   * Retrieves a single chunk of stored data.
+   * If the data was chunked, the returned string will contain a `NEXT_CHUNK_KEY`
+   * that the agent can use to retrieve the subsequent part of the content.
+   */
   retrieveString(key: string): string | null {
-    const firstChunk = this.storage[key];
-    if (!firstChunk) {
-      return null;
-    }
-
-    // Check if this is a chunked content by looking for NEXT_CHUNK_KEY pattern
-    const nextChunkMatch = firstChunk.match(/\[NEXT_CHUNK_KEY:\s*([^\]]+)\]/);
-
-    if (!nextChunkMatch) {
-      // Not chunked content, return as-is
-      return firstChunk;
-    }
-
-    // This is chunked content, traverse the chain
-    let fullContent = "";
-    let currentKey = key;
-    const visitedKeys = new Set<string>();
-
-    while (currentKey && !visitedKeys.has(currentKey)) {
-      visitedKeys.add(currentKey);
-      const chunk = this.storage[currentKey];
-
-      if (!chunk) {
-        // Missing chunk, return what we have so far with error note
-        return (
-          fullContent + `\n\n[ERROR: Missing chunk with key "${currentKey}"]`
-        );
-      }
-
-      // Remove the NEXT_CHUNK_KEY reference from the chunk content
-      const cleanChunk = chunk.replace(/\n\n\[NEXT_CHUNK_KEY:\s*[^\]]+\]$/, "");
-      fullContent += cleanChunk;
-
-      // Find the next chunk key
-      const nextMatch = chunk.match(/\[NEXT_CHUNK_KEY:\s*([^\]]+)\]/);
-      currentKey = nextMatch ? nextMatch[1] : null;
-    }
-
-    return fullContent;
+    return this.storage[key] || null;
   }
 
   clearStorage(): void {
     this.storage = {};
-    this.metadataStorage = {};
   }
 
   getStorageKeys(): string[] {
@@ -394,7 +341,7 @@ export const expandTokensDefinition: Tool = {
   function: {
     name: "expandTokens",
     description:
-      "Retrieve compressed data that was stored during message processing. Use this when you see a compressed data key in messages.",
+      "Retrieve a chunk of compressed data that was stored during message processing. The returned content may contain a `NEXT_CHUNK_KEY` to retrieve subsequent chunks.",
     parameters: {
       type: "object",
       positional: true,
