@@ -23,6 +23,21 @@ export class MessageProcessor {
     this.processors.set("post_call", []);
   }
 
+  setProcessors(
+    lifecycle: ProcessorLifecycle,
+    processors: MessageProcessorFunction[]
+  ): void {
+    const registrations: ProcessorRegistration[] = processors.map((proc) => ({
+      processor: proc,
+      priority: 0, // Default priority
+    }));
+
+    // Sort by priority (higher priority first)
+    registrations.sort((a, b) => b.priority - a.priority);
+
+    this.processors.set(lifecycle, registrations);
+  }
+
   registerProcessor(
     lifecycle: ProcessorLifecycle,
     processor: MessageProcessorFunction,

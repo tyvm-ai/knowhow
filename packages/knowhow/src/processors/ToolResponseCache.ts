@@ -51,7 +51,7 @@ export class ToolResponseCache {
     }
 
     if (Array.isArray(obj)) {
-      return obj.map(item => this.parseNestedJsonStrings(item));
+      return obj.map((item) => this.parseNestedJsonStrings(item));
     }
 
     if (obj && typeof obj === "object") {
@@ -85,7 +85,11 @@ export class ToolResponseCache {
    */
   private async processMessage(message: Message): Promise<void> {
     // Only process tool response messages
-    if (message.role !== "tool" || !message.tool_call_id || typeof message.content !== "string") {
+    if (
+      message.role !== "tool" ||
+      !message.tool_call_id ||
+      typeof message.content !== "string"
+    ) {
       return;
     }
 
@@ -112,12 +116,17 @@ export class ToolResponseCache {
   /**
    * Retrieves and processes tool response data with JQ query
    */
-  async queryToolResponse(toolCallId: string, jqQuery: string): Promise<string> {
+  async queryToolResponse(
+    toolCallId: string,
+    jqQuery: string
+  ): Promise<string> {
     const data = this.storage[toolCallId];
 
     if (!data) {
       const availableIds = Object.keys(this.storage);
-      return `Error: No tool response found for toolCallId "${toolCallId}". Available IDs: ${availableIds.join(", ")}`;
+      return `Error: No tool response found for toolCallId "${toolCallId}". Available IDs: ${availableIds.join(
+        ", "
+      )}`;
     }
 
     try {
@@ -140,9 +149,16 @@ export class ToolResponseCache {
       // Try to parse as JSON to see if it's valid
       const jsonObj = this.tryParseJson(data);
       if (!jsonObj) {
-        errorMessage += `\nNote: The tool response data is not valid JSON. Raw data preview:\n${data.substring(0, 300)}...`;
+        errorMessage += `\nNote: The tool response data is not valid JSON. Raw data preview:\n${data.substring(
+          0,
+          300
+        )}...`;
       } else {
-        errorMessage += `\nData structure preview:\n${JSON.stringify(jsonObj, null, 2).substring(0, 500)}...`;
+        errorMessage += `\nData structure preview:\n${JSON.stringify(
+          jsonObj,
+          null,
+          2
+        ).substring(0, 500)}...`;
       }
 
       return errorMessage;
@@ -198,7 +214,7 @@ export const jqToolResponseDefinition: Tool = {
   function: {
     name: "jqToolResponse",
     description:
-      "Execute a JQ query on a stored tool response to extract specific data. Use this when you need to extract specific information from any tool response that has been stored.",
+      "Execute a JQ query on a stored tool response to extract specific data. Use this when you need to extract specific information from any tool response that has been stored. Many MCP tool responses store data in nested structures like .content[0].text where the actual data array is located.",
     parameters: {
       type: "object",
       positional: true,
@@ -209,7 +225,8 @@ export const jqToolResponseDefinition: Tool = {
         },
         jqQuery: {
           type: "string",
-          description: "The JQ query to execute on the tool response data (e.g., '.items[0].name', '.data | length', '.[] | select(.status == \"active\")')",
+          description:
+            "The JQ query to execute on the tool response data. Examples: '.content[0].text | map(.title)' (extract titles from MCP array), '.content[0].text | map(select(.createdAt > \"2025-01-01\"))' (filter MCP items by date) ",
         },
       },
       required: ["toolCallId", "jqQuery"],
