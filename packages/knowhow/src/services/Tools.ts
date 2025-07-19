@@ -106,149 +106,120 @@ export class ToolsService {
     }
   }
 
-  formatInputContent(userInput: string) {
-    return replaceEscapedNewLines(userInput);
-  }
-
-  formatAiResponse(response: string) {
-    return restoreEscapedNewLines(response);
-  }
-
   async callTool(toolCall: ToolCall, enabledTools = this.getToolNames()) {
     const functionName = toolCall.function.name;
-    const functionToCall = this.getFunction(functionName);
     const functionArgs = JSON.parse(
-      this.formatAiResponse(toolCall.function.arguments)
+      restoreEscapedNewLines(toolCall.function.arguments)
     );
-
-    let toolMessages = [];
 
     console.log(toolCall);
 
-    if (enabledTools.includes(functionName) === false) {
-      const options = enabledTools.join(", ");
-      const error = `Function ${functionName} not enabled, options are ${options}`;
-      console.log(error);
-      toolMessages = [
-        {
-          tool_call_id: toolCall.id,
-          role: "tool",
-          name: "error",
-          content: error,
-        },
-      ];
-
-      return {
-        toolMessages,
-        toolCallId: toolCall.id,
-        functionName,
-        functionArgs,
-        functionResp: undefined,
-      };
-    }
-
-    const toJsonIfObject = (arg: any) => {
-      if (typeof arg === "object") {
-        return JSON.stringify(arg, null, 2);
+    try {
+      // Check if tool is enabled
+      if (!enabledTools.includes(functionName)) {
+        const options = enabledTools.join(", ");
+        throw new Error(
+          `Function ${functionName} not enabled, options are ${options}`
+        );
       }
-      return arg;
-    };
 
-    const toolDefinition = this.getTool(functionName);
+      // Check if tool definition exists
+      const toolDefinition = this.getTool(functionName);
+      if (!toolDefinition) {
+        throw new Error(`Tool ${functionName} not found`);
+      }
 
-    if (!toolDefinition) {
-      const error = `Tool ${functionName} not found`;
-      console.log(error);
-      toolMessages = [
-        {
-          tool_call_id: toolCall.id,
-          role: "tool",
-          name: "error",
-          content: error,
-        },
-      ];
+      // Check if function implementation exists
+      const functionToCall = this.getFunction(functionName);
+      if (!functionToCall) {
+        const options = enabledTools.join(", ");
+        throw new Error(
+          `Function ${functionName} not found, options are ${options}`
+        );
+      }
 
-      return {
-        toolMessages,
-        toolCallId: toolCall.id,
-        functionName,
-        functionArgs,
-        functionResp: undefined,
-      };
-    }
+      // Prepare function arguments
+      const properties = toolDefinition?.function?.parameters?.properties || {};
+      const isPositional =
+        toolDefinition?.function?.parameters?.positional || false;
+      const fnArgs = isPositional
+        ? Object.keys(properties).map((p) => functionArgs[p])
+        : functionArgs;
 
-    const properties = toolDefinition?.function?.parameters?.properties || {};
-    const isPositional =
-      toolDefinition?.function?.parameters?.positional || false;
-    const fnArgs = isPositional
-      ? Object.keys(properties).map((p) => functionArgs[p])
-      : functionArgs;
+      console.log(
+        `Calling function ${functionName} with args:`,
+        JSON.stringify(fnArgs, null, 2)
+      );
 
-    console.log(
-      `Calling function ${functionName} with args:`,
-      JSON.stringify(fnArgs, null, 2)
-    );
-
-    if (!functionToCall) {
-      const options = enabledTools.join(", ");
-      const error = `Function ${functionName} not found, options are ${options}`;
-      console.log(error);
-      toolMessages = [
-        {
-          tool_call_id: toolCall.id,
-          role: "tool",
-          name: "error",
-          content: error,
-        },
-      ];
-
-      return {
-        toolMessages,
-        toolCallId: toolCall.id,
-        functionName,
-        functionArgs,
-        functionResp: undefined,
-      };
-    }
-
-    const functionResponse = await Promise.resolve(
-      isPositional ? functionToCall(...fnArgs) : functionToCall(fnArgs)
-    ).catch((e) => "ERROR: " + e.message);
-
-    if (functionName === "multi_tool_use.parallel") {
-      const args = fnArgs[0] as {
-        recipient_name: string;
-        parameters: any;
-      }[];
-
-      toolMessages = args.map((call, index) => {
-        return {
-          tool_call_id: toolCall.id + "_" + index,
-          role: "tool",
-          name: call.recipient_name.split(".").pop(),
-          content: toJsonIfObject(functionResponse[index]) || "Done",
-        };
+      // Execute the function
+      const functionResponse = await Promise.resolve(
+        isPositional ? functionToCall(...fnArgs) : functionToCall(fnArgs)
+      ).catch((e) => {
+        throw new Error("ERROR: " + e.message);
       });
+
+      // Helper function to convert objects to JSON
+      const toJsonIfObject = (arg: any) => {
+        if (typeof arg === "object") {
+          return JSON.stringify(arg, null, 2);
+        }
+        return arg;
+      };
+
+      let toolMessages = [];
+
+      // Handle special case for parallel tool use
+      if (functionName === "multi_tool_use.parallel") {
+        const args = fnArgs[0] as {
+          recipient_name: string;
+          parameters: any;
+        }[];
+
+        toolMessages = args.map((call, index) => {
+          return {
+            tool_call_id: toolCall.id + "_" + index,
+            role: "tool",
+            name: call.recipient_name.split(".").pop(),
+            content: toJsonIfObject(functionResponse[index]) || "Done",
+          };
+        });
+      } else {
+        toolMessages = [
+          {
+            tool_call_id: toolCall.id,
+            role: "tool",
+            name: functionName,
+            content: toJsonIfObject(functionResponse) || "Done",
+          },
+        ];
+      }
+
+      return {
+        toolMessages,
+        toolCallId: toolCall.id,
+        functionName,
+        functionArgs,
+        functionResp: functionResponse,
+      };
+    } catch (error) {
+      console.log(error.message);
+      const toolMessages = [
+        {
+          tool_call_id: toolCall.id,
+          role: "tool",
+          name: "error",
+          content: error.message,
+        },
+      ];
+
+      return {
+        toolMessages,
+        toolCallId: toolCall.id,
+        functionName,
+        functionArgs,
+        functionResp: undefined,
+      };
     }
-
-    toolMessages = [
-      {
-        tool_call_id: toolCall.id,
-        role: "tool",
-        name: functionName,
-        content: toJsonIfObject(functionResponse) || "Done",
-      },
-    ];
-
-    console.log(toolMessages);
-
-    return {
-      toolMessages,
-      toolCallId: toolCall.id,
-      functionName,
-      functionArgs,
-      functionResp: functionResponse,
-    };
   }
 
   // Tool Override Methods
