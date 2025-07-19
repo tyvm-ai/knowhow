@@ -1,5 +1,5 @@
 import { ChatCompletionTool } from "openai/resources/chat";
-import { replaceEscapedNewLines, restoreEscapedNewLines } from "src/utils";
+import { replaceEscapedNewLines, restoreEscapedNewLines } from "../utils";
 import { includedTools } from "../agents/tools/list";
 import { Tool, ToolCall } from "../clients/types";
 import {
