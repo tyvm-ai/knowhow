@@ -8,7 +8,7 @@ export class DownloaderPlugin extends PluginBase {
   static readonly meta: PluginMeta = {
     key: "downloader",
     name: "Downloader Plugin",
-    requires: []
+    requires: [],
   };
 
   constructor() {
@@ -20,13 +20,16 @@ export class DownloaderPlugin extends PluginBase {
   extractUrls(userInput: string): string[] {
     const urlRegex = /https:\/\/[^\s]+/gim;
     const matches = userInput.match(urlRegex) || [];
-    return matches;
+    return Array.from(new Set(matches));
   }
 
   async call(userInput: string): Promise<string> {
     const urls = this.extractUrls(userInput);
     if (urls.length === 0) {
       return "DOWNLOADER PLUGIN: No URLs found in the input";
+    }
+    if (urls.length > 10) {
+      return "DOWNLOADER PLUGIN: Too many URLs found in the input. Skipping likely unintentional bulk download.";
     }
     let transcript = "";
     for (const url of urls) {

@@ -9,7 +9,7 @@ export class UrlPlugin extends PluginBase implements Plugin {
   static readonly meta: PluginMeta = {
     key: "url",
     name: "URL Plugin",
-    requires: []
+    requires: [],
   };
 
   constructor() {
@@ -24,7 +24,9 @@ export class UrlPlugin extends PluginBase implements Plugin {
 
   extractUrls(userPrompt: string): string[] {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
-    return userPrompt.match(urlRegex) || [];
+    const urls = userPrompt.match(urlRegex) || [];
+
+    return Array.from(new Set(urls));
   }
 
   async fetchAndParseUrl(url: string): Promise<MinimalEmbedding | null> {
@@ -48,6 +50,10 @@ export class UrlPlugin extends PluginBase implements Plugin {
     const urls = this.extractUrls(userPrompt);
     if (urls.length === 0) {
       return "URL PLUGIN: No URLs detected.";
+    }
+
+    if (urls.length > 10) {
+      return "URL PLUGIN: Too many URLs detected. Skipping like unintentional bulk browse.";
     }
 
     const results = await Promise.all(urls.map(this.fetchAndParseUrl));
