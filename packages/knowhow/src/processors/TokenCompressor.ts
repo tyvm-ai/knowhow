@@ -8,12 +8,15 @@ interface TokenCompressorStorage {
 
 export class TokenCompressor {
   private storage: TokenCompressorStorage = {};
-  private maxTokens: number = 4000;
-  private compressionRatio: number = 0.1;
   private keyPrefix: string = "compressed_";
   private toolName: string = expandTokensDefinition.function.name;
-  private characterLimit: number = this.maxTokens * 4;
-  private jsonPropertyThreshold: number = this.maxTokens;
+
+  // Threshold for compression - if content exceeds this size, we compress it
+  private compressionThreshold: number = 4000;
+  private characterLimit: number = this.compressionThreshold * 4;
+
+  // Largest size retrievable without re-compressing
+  private maxTokens: number = this.compressionThreshold * 2;
 
   constructor(toolsService?: ToolsService) {
     this.registerTool(toolsService);
@@ -24,10 +27,16 @@ export class TokenCompressor {
     return Math.ceil(text.length / 4);
   }
 
-  public setMaxTokens(maxTokens: number): void {
-    this.maxTokens = maxTokens;
-    this.characterLimit = maxTokens * 4;
-    this.jsonPropertyThreshold = maxTokens;
+  public setCompressionThreshold(threshold: number): void {
+    this.compressionThreshold = threshold;
+    this.characterLimit = threshold * 4; // Update character limit based on new threshold
+  }
+
+  // Internally adjust to ensure we can always retrieve data
+  private setMaxTokens(maxTokens: number): void {
+    if (maxTokens > this.maxTokens) {
+      this.maxTokens = maxTokens;
+    }
   }
 
   /**
@@ -45,6 +54,10 @@ export class TokenCompressor {
    * Compresses a string into chunks from the end, creating a chain of references
    */
   public compressStringInChunks(content: string, path: string = ""): string {
+    if (path === "" && this.estimateTokens(content) <= this.maxTokens) {
+      return content;
+    }
+
     if (content.length <= this.characterLimit) {
       return content;
     }
@@ -79,7 +92,7 @@ export class TokenCompressor {
         chunkContent += `\n\n[NEXT_CHUNK_KEY: ${nextKey}]`;
       }
 
-      this.storage[key] = chunkContent;
+      this.storeString(key, chunkContent);
     }
 
     // Return reference to the first chunk
@@ -101,7 +114,11 @@ export class TokenCompressor {
   public compressContent(content: string, path: string = ""): string {
     const tokens = this.estimateTokens(content);
 
-    if (tokens <= this.maxTokens) {
+    if (path === "" && tokens <= this.maxTokens) {
+      return content;
+    }
+
+    if (tokens <= this.compressionThreshold) {
       return content;
     }
 
@@ -128,6 +145,13 @@ export class TokenCompressor {
    * Implements an efficient backward-iterating chunking strategy for large arrays.
    */
   public compressJsonProperties(obj: any, path: string = ""): any {
+    if (
+      path === "" &&
+      this.estimateTokens(JSON.stringify(obj)) <= this.maxTokens
+    ) {
+      return obj;
+    }
+
     if (Array.isArray(obj)) {
       // Step 1: Recursively compress all items first (depth-first).
       const processedItems = obj.map((item, index) =>
@@ -135,11 +159,7 @@ export class TokenCompressor {
       );
 
       // Step 2: Early exit if the whole array is already small enough.
-      // Leeway of 30% over, to avoid re-compression of retrievals
-      const initialTokens = this.estimateTokens(JSON.stringify(processedItems));
-      if (initialTokens <= this.jsonPropertyThreshold * 1.3) {
-        return processedItems;
-      }
+      // maxTokens allows us to fetch objects from the store without recompressing
 
       // Step 3: Iterate backwards, building chunks from the end.
       const finalArray: any[] = [];
@@ -152,9 +172,9 @@ export class TokenCompressor {
         const chunkString = JSON.stringify(currentChunk);
         const chunkTokens = this.estimateTokens(chunkString);
 
-        if (chunkTokens > this.jsonPropertyThreshold) {
+        if (chunkTokens > this.compressionThreshold) {
           const key = this.generateKey();
-          this.storage[key] = chunkString;
+          this.storeString(key, chunkString);
 
           const stub = `[COMPRESSED_JSON_ARRAY_CHUNK - ${chunkTokens} tokens, ${
             currentChunk.length
@@ -188,9 +208,9 @@ export class TokenCompressor {
       // After processing children, check if the entire object should be compressed
       const objectAsString = JSON.stringify(result);
       const tokens = this.estimateTokens(objectAsString);
-      if (tokens > this.jsonPropertyThreshold) {
+      if (tokens > this.compressionThreshold) {
         const key = this.generateKey();
-        this.storage[key] = objectAsString;
+        this.storeString(key, objectAsString);
 
         return `[COMPRESSED_JSON_OBJECT - ${tokens} tokens]\nKey: ${key}\nPath: ${path}\nKeys: ${Object.keys(
           result
@@ -221,7 +241,7 @@ export class TokenCompressor {
       const tokens = this.estimateTokens(obj);
       if (tokens > this.characterLimit * 4) {
         const key = this.generateKey();
-        this.storage[key] = obj;
+        this.storeString(key, obj);
 
         return `[COMPRESSED_JSON_PROPERTY - ${tokens} tokens]\nKey: ${key}\nPath: ${path}\nPreview: ${obj.substring(
           0,
@@ -242,36 +262,7 @@ export class TokenCompressor {
       .substr(2, 9)}`;
   }
 
-  public compressToolCall(message: Message): void {
-    if (message.tool_calls) {
-      for (const toolCall of message.tool_calls) {
-        if (toolCall.function.arguments) {
-          const args = toolCall.function.arguments;
-          const tokens = this.estimateTokens(args);
-
-          if (tokens > this.maxTokens) {
-            const key = this.generateKey();
-            this.storage[key] = args;
-
-            const compressed = `[COMPRESSED TOOL ARGS - ${tokens} tokens]\nKey: ${key}\nPreview: ${args.substring(
-              0,
-              200
-            )}...\n[Use ${
-              this.toolName
-            } tool with key "${key}" to retrieve full arguments]`;
-
-            toolCall.function.arguments = compressed;
-          }
-        }
-      }
-    }
-  }
-
   public async compressMessage(message: Message) {
-    // The previous check for 'isDecompressionToolResponse' is no longer necessary.
-    // The new chunking strategy returns manageable chunks that won't meet the
-    // compression threshold, naturally preventing cycles.
-
     // Compress content if it's a string
     if (typeof message.content === "string") {
       message.content = this.compressContent(message.content);
@@ -284,9 +275,6 @@ export class TokenCompressor {
         }
       }
     }
-
-    // Compress tool calls
-    this.compressToolCall(message);
   }
 
   createProcessor(
@@ -309,6 +297,14 @@ export class TokenCompressor {
    */
   retrieveString(key: string): string | null {
     return this.storage[key] || null;
+  }
+
+  storeString(key: string, value: string): void {
+    if (this.estimateTokens(value) > this.maxTokens) {
+      // adjust max tokens so we can always retrieve this without re-compressing
+      this.setMaxTokens(this.estimateTokens(value) + 1);
+    }
+    this.storage[key] = value;
   }
 
   clearStorage(): void {
