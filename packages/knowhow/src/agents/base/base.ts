@@ -186,85 +186,15 @@ export abstract class BaseAgent implements IAgent {
   abstract getInitialMessages(userInput: string): Promise<Message[]>;
 
   async processToolMessages(toolCall: ToolCall) {
-    const functionName = toolCall.function.name;
-    const functionToCall = this.tools.getFunction(functionName);
-
-    console.log(toolCall);
-    const functionArgs = JSON.parse(
-      this.formatAiResponse(toolCall.function.arguments)
+    const { functionResp, toolMessages } = await this.tools.callTool(
+      toolCall,
+      this.getEnabledToolNames()
     );
-
-    const toJsonIfObject = (arg: any) => {
-      if (typeof arg === "object") {
-        return JSON.stringify(arg, null, 2);
-      }
-      return arg;
-    };
-
-    const toolDefinition = this.tools.getTool(functionName);
-    const properties = toolDefinition?.function?.parameters?.properties || {};
-    const isPositional =
-      toolDefinition?.function?.parameters?.positional || false;
-    const fnArgs = isPositional
-      ? Object.keys(properties).map((p) => functionArgs[p])
-      : functionArgs;
-
-    console.log(
-      `Calling function ${functionName} with args:`,
-      JSON.stringify(fnArgs, null, 2)
-    );
-
-    if (!functionToCall) {
-      const options = this.getEnabledToolNames().join(", ");
-      const error = `Function ${functionName} not found, options are ${options}`;
-      console.log(error);
-      return [
-        {
-          tool_call_id: toolCall.id,
-          role: "tool",
-          name: "error",
-          content: error,
-        },
-      ];
-    }
-
-    const functionResponse = await Promise.resolve(
-      isPositional ? functionToCall(...fnArgs) : functionToCall(fnArgs)
-    ).catch((e) => "ERROR: " + e.message);
 
     this.agentEvents.emit(this.eventTypes.toolUsed, {
       toolCall,
-      functionResponse,
+      functionResp,
     });
-
-    let toolMessages = [];
-
-    if (functionName === "multi_tool_use.parallel") {
-      const args = fnArgs[0] as {
-        recipient_name: string;
-        parameters: any;
-      }[];
-
-      toolMessages = args.map((call, index) => {
-        return {
-          tool_call_id: toolCall.id + "_" + index,
-          role: "tool",
-          name: call.recipient_name.split(".").pop(),
-          content: toJsonIfObject(functionResponse[index]) || "Done",
-        };
-      });
-    }
-
-    toolMessages = [
-      {
-        tool_call_id: toolCall.id,
-        role: "tool",
-        name: functionName,
-        content: toJsonIfObject(functionResponse) || "Done",
-      },
-    ];
-
-    console.log(toolMessages);
 
     return toolMessages;
   }
@@ -421,7 +351,10 @@ export abstract class BaseAgent implements IAgent {
 
       // Process initial messages if this is the first call
       if (!_messages) {
-        messages = await this.messageProcessor.processMessages(messages, "initial_call");
+        messages = await this.messageProcessor.processMessages(
+          messages,
+          "initial_call"
+        );
       }
 
       if (this.pendingUserMessages.length) {
@@ -437,7 +370,10 @@ export abstract class BaseAgent implements IAgent {
       const endIndex = messages.length;
 
       // Process messages before each AI call
-      messages = await this.messageProcessor.processMessages(messages, "per_call");
+      messages = await this.messageProcessor.processMessages(
+        messages,
+        "per_call"
+      );
       const compressThreshold = 10000;
 
       const response = await this.getClient().createChatCompletion({
@@ -490,7 +426,10 @@ export abstract class BaseAgent implements IAgent {
 
       // Process messages after tool execution
       if (newToolCalls && newToolCalls.length > 0) {
-        messages = await this.messageProcessor.processMessages(messages, "post_call");
+        messages = await this.messageProcessor.processMessages(
+          messages,
+          "post_call"
+        );
       }
 
       // Early exit: not required to call tool

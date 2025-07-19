@@ -1,7 +1,14 @@
 import { ChatCompletionTool } from "openai/resources/chat";
+import { replaceEscapedNewLines, restoreEscapedNewLines } from "src/utils";
 import { includedTools } from "../agents/tools/list";
-import { Tool } from "../clients/types";
-import { ToolOverrideRegistration, ToolWrapperRegistration, ToolOverrideFunction, ToolWrapper, createPatternMatcher } from "./types";
+import { Tool, ToolCall } from "../clients/types";
+import {
+  ToolOverrideRegistration,
+  ToolWrapperRegistration,
+  ToolOverrideFunction,
+  ToolWrapper,
+  createPatternMatcher,
+} from "./types";
 
 export class ToolsService {
   tools = [] as Tool[];
@@ -61,7 +68,7 @@ export class ToolsService {
     const wrappers = this.findMatchingWrappers(name);
     if (wrappers.length > 0) {
       let wrappedFunction = func;
-      
+
       // Apply wrappers in priority order
       for (const wrapperReg of wrappers) {
         const currentFunction = wrappedFunction;
@@ -70,7 +77,7 @@ export class ToolsService {
           return await wrapperReg.wrapper(currentFunction, args, tool);
         };
       }
-      
+
       this.functions[name] = wrappedFunction;
       return;
     }
@@ -99,6 +106,151 @@ export class ToolsService {
     }
   }
 
+  formatInputContent(userInput: string) {
+    return replaceEscapedNewLines(userInput);
+  }
+
+  formatAiResponse(response: string) {
+    return restoreEscapedNewLines(response);
+  }
+
+  async callTool(toolCall: ToolCall, enabledTools = this.getToolNames()) {
+    const functionName = toolCall.function.name;
+    const functionToCall = this.getFunction(functionName);
+    const functionArgs = JSON.parse(
+      this.formatAiResponse(toolCall.function.arguments)
+    );
+
+    let toolMessages = [];
+
+    console.log(toolCall);
+
+    if (enabledTools.includes(functionName) === false) {
+      const options = enabledTools.join(", ");
+      const error = `Function ${functionName} not enabled, options are ${options}`;
+      console.log(error);
+      toolMessages = [
+        {
+          tool_call_id: toolCall.id,
+          role: "tool",
+          name: "error",
+          content: error,
+        },
+      ];
+
+      return {
+        toolMessages,
+        toolCallId: toolCall.id,
+        functionName,
+        functionArgs,
+        functionResp: undefined,
+      };
+    }
+
+    const toJsonIfObject = (arg: any) => {
+      if (typeof arg === "object") {
+        return JSON.stringify(arg, null, 2);
+      }
+      return arg;
+    };
+
+    const toolDefinition = this.getTool(functionName);
+
+    if (!toolDefinition) {
+      const error = `Tool ${functionName} not found`;
+      console.log(error);
+      toolMessages = [
+        {
+          tool_call_id: toolCall.id,
+          role: "tool",
+          name: "error",
+          content: error,
+        },
+      ];
+
+      return {
+        toolMessages,
+        toolCallId: toolCall.id,
+        functionName,
+        functionArgs,
+        functionResp: undefined,
+      };
+    }
+
+    const properties = toolDefinition?.function?.parameters?.properties || {};
+    const isPositional =
+      toolDefinition?.function?.parameters?.positional || false;
+    const fnArgs = isPositional
+      ? Object.keys(properties).map((p) => functionArgs[p])
+      : functionArgs;
+
+    console.log(
+      `Calling function ${functionName} with args:`,
+      JSON.stringify(fnArgs, null, 2)
+    );
+
+    if (!functionToCall) {
+      const options = enabledTools.join(", ");
+      const error = `Function ${functionName} not found, options are ${options}`;
+      console.log(error);
+      toolMessages = [
+        {
+          tool_call_id: toolCall.id,
+          role: "tool",
+          name: "error",
+          content: error,
+        },
+      ];
+
+      return {
+        toolMessages,
+        toolCallId: toolCall.id,
+        functionName,
+        functionArgs,
+        functionResp: undefined,
+      };
+    }
+
+    const functionResponse = await Promise.resolve(
+      isPositional ? functionToCall(...fnArgs) : functionToCall(fnArgs)
+    ).catch((e) => "ERROR: " + e.message);
+
+    if (functionName === "multi_tool_use.parallel") {
+      const args = fnArgs[0] as {
+        recipient_name: string;
+        parameters: any;
+      }[];
+
+      toolMessages = args.map((call, index) => {
+        return {
+          tool_call_id: toolCall.id + "_" + index,
+          role: "tool",
+          name: call.recipient_name.split(".").pop(),
+          content: toJsonIfObject(functionResponse[index]) || "Done",
+        };
+      });
+    }
+
+    toolMessages = [
+      {
+        tool_call_id: toolCall.id,
+        role: "tool",
+        name: functionName,
+        content: toJsonIfObject(functionResponse) || "Done",
+      },
+    ];
+
+    console.log(toolMessages);
+
+    return {
+      toolMessages,
+      toolCallId: toolCall.id,
+      functionName,
+      functionArgs,
+      functionResp: functionResponse,
+    };
+  }
+
   // Tool Override Methods
   registerOverride(
     pattern: string | RegExp,
@@ -119,14 +271,16 @@ export class ToolsService {
   }
 
   removeOverride(pattern: string | RegExp): void {
-    this.overrides = this.overrides.filter(reg => reg.pattern !== pattern);
+    this.overrides = this.overrides.filter((reg) => reg.pattern !== pattern);
   }
 
   removeWrapper(pattern: string | RegExp): void {
-    this.wrappers = this.wrappers.filter(reg => reg.pattern !== pattern);
+    this.wrappers = this.wrappers.filter((reg) => reg.pattern !== pattern);
   }
 
-  private findMatchingOverride(toolName: string): ToolOverrideRegistration | null {
+  private findMatchingOverride(
+    toolName: string
+  ): ToolOverrideRegistration | null {
     for (const registration of this.overrides) {
       const matcher = createPatternMatcher(registration.pattern);
       if (matcher.matches(toolName)) {
