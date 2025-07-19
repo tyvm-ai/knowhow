@@ -7,6 +7,7 @@ import * as github from "./github/definitions";
 import * as asana from "./asana/definitions";
 import * as language from "./language/definitions";
 import { googleSearchDefinition } from "./googleSearch";
+import { executeScriptDefinition } from "./executeScript/definition";
 
 export const includedTools = [
   {
@@ -552,7 +553,7 @@ export const includedTools = [
       },
     },
   },
-
+  executeScriptDefinition,
   googleSearchDefinition,
   ...asana.definitions,
   ...github.definitions,

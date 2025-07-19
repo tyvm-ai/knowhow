@@ -23,3 +23,4 @@ export * from "./aiClient";
 export * from "./googleSearch";
 export * from "./loadWebpage";
 export * from "./stringReplace";
+export * from "./executeScript";

@@ -112,8 +112,6 @@ export class ToolsService {
       restoreEscapedNewLines(toolCall.function.arguments)
     );
 
-    console.log(toolCall);
-
     try {
       // Check if tool is enabled
       if (!enabledTools.includes(functionName)) {

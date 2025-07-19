@@ -153,13 +153,13 @@ export class AIClient {
     );
   }
 
-  private providerHasModel(provider: string, model: string): boolean {
+  providerHasModel(provider: string, model: string): boolean {
     const models = this.clientModels[provider];
     if (!models) return false;
     return models.includes(model);
   }
 
-  private detectProviderModel(provider: string, model?: string) {
+  detectProviderModel(provider: string, model?: string) {
     if (this.providerHasModel(provider, model)) {
       return { provider, model };
     }
