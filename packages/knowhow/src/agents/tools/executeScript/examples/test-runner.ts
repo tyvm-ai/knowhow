@@ -54,7 +54,7 @@ async function main() {
         content: "What is 2+2? Just give the answer briefly."
       }
     ], {
-      model: "openai/gpt-4o-mini",
+      model: "gpt-4o-mini",
       max_tokens: 50
     });
 
