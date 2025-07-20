@@ -1,4 +1,6 @@
 import { ScriptExecutor } from "../../../services/script-execution/ScriptExecutor";
+import { Tools } from "../../../services";
+import { Clients } from "../../../clients";
 import {
   ExecutionRequest,
   ExecutionResult,
@@ -36,7 +38,7 @@ export async function executeScript(params: {
   };
 
   // Execute the script using ScriptExecutor
-  const executor = new ScriptExecutor();
+  const executor = new ScriptExecutor(Tools, Clients);
   const result = await executor.execute(request);
 
   return result;

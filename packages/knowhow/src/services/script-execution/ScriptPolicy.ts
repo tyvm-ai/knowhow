@@ -29,13 +29,13 @@ export class ScriptPolicyEnforcer {
    */
   checkToolCall(toolName: string): boolean {
     // Check if tool is in denylist
-    if (this.policy.denylistedTools.includes(toolName)) {
+    if (this.policy.denylistedTools && this.policy.denylistedTools.includes(toolName)) {
       this.recordViolation('tool_denied', `Tool '${toolName}' is in denylist`);
       return false;
     }
 
     // Check if tool is in allowlist (if allowlist is defined and not empty)
-    if (this.policy.allowlistedTools.length > 0 && 
+    if (this.policy.allowlistedTools && this.policy.allowlistedTools.length > 0 && 
         !this.policy.allowlistedTools.includes(toolName)) {
       this.recordViolation('tool_not_allowed', `Tool '${toolName}' is not in allowlist`);
       return false;
