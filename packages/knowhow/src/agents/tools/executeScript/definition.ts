@@ -3,7 +3,7 @@ export const executeScriptDefinition = {
   function: {
     name: "executeScript",
     description:
-      "Execute a TypeScript script in a secure sandbox with access to tools and AI clients. The script runs in an isolated environment with resource quotas and security controls.",
+      "Execute a TypeScript script in a secure sandbox with access to tools and AI clients. The script runs in an isolated environment with resource quotas and security controls. Top level async function must be awaited. ie await main()",
     parameters: {
       type: "object",
       positional: true,
