@@ -97,13 +97,31 @@ export class ToolsService {
   }
 
   addTools(tools: Tool[]) {
-    this.tools.push(...tools);
+    // Prevent duplicate tool names
+    const existingTools = this.getToolNames();
+    const filteredTools = tools.filter(
+      (tool) => !existingTools.includes(tool.function.name)
+    );
+
+    this.tools.push(...filteredTools);
   }
 
   addFunctions(fns: { [fnName: string]: (...args: any) => any }) {
     for (const fnName of Object.keys(fns)) {
+      if (typeof fns[fnName] !== "function") {
+        // Skip non-function entries
+        continue;
+      }
       this.setFunction(fnName, fns[fnName]);
     }
+  }
+
+  defineTools(
+    tools: Tool[],
+    functions: { [fnName: string]: ((...args: any) => any) | any }
+  ) {
+    this.addTools(tools);
+    this.addFunctions(functions);
   }
 
   async callTool(toolCall: ToolCall, enabledTools = this.getToolNames()) {
