@@ -179,11 +179,11 @@ export class SandboxContext {
   /**
    * Create an artifact
    */
-  createArtifact(
+  async createArtifact(
     name: string,
     content: string,
     type: "text" | "json" | "csv" | "html" | "markdown" = "text"
-  ): Artifact {
+  ): Promise<Artifact> {
     const artifact: Artifact = {
       id: `artifact-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       name,

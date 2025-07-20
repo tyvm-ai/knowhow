@@ -209,6 +209,8 @@ export class ScriptExecutor {
       // Execute the script and get the result
       const result = await compiledScript.run(vmContext, {
         timeout: policyEnforcer.getQuotas().maxExecutionTimeMs,
+        release: true,
+        result: { promise: true, copy: true }
       });
 
       tracer.emitEvent("script_execution_complete", {
@@ -216,7 +218,7 @@ export class ScriptExecutor {
       });
 
       // Copy the result back to the main thread if it's transferable
-      return (await result?.copy?.()) ?? result;
+      return result;
     } finally {
       // Clean up the isolate
       isolate.dispose();
@@ -234,67 +236,65 @@ export class ScriptExecutor {
   ): Promise<void> {
     tracer.emitEvent("context_setup_start", {});
 
-    // Set up safe global objects
-    const global = vmContext.global;
+    const globalRef = vmContext.global;
+    await globalRef.set("globalThis", globalRef.derefInto());
 
-    // Add safe built-ins
-    await global.set("JSON", JSON);
-    await global.set("Math", Math);
-    await global.set("Date", Date);
-    await global.set("Array", Array);
-    await global.set("Object", Object);
-    await global.set("String", String);
-    await global.set("Number", Number);
-    await global.set("Boolean", Boolean);
-    await global.set("Promise", Promise);
+    // Helper function to expose async host functions
+    const exposeAsync = async (name: string, fn: (...a: any[]) => Promise<any>) => {
+      await globalRef.set(`__host_${name}`, new ivm.Reference(async (...args: any[]) => {
+        const result = await fn(...args);
+        return new ivm.ExternalCopy(result).copyInto();
+      }));
+      await vmContext.eval(`
+        globalThis.${name} = (...a) =>
+          __host_${name}.apply(undefined, a,
+            { arguments: { copy: true }, result: { promise: true, copy: true } });
+      `);
+    };
 
-    // Add console
-    await global.set(
-      "console",
-      new ivm.Reference({
-        log: new ivm.Callback((...args: any[]) => {
-          sandboxContext.console.log(...args);
-        }),
-        error: new ivm.Callback((...args: any[]) => {
-          sandboxContext.console.error(...args);
-        }),
-        warn: new ivm.Callback((...args: any[]) => {
-          sandboxContext.console.warn(...args);
-        }),
-        info: new ivm.Callback((...args: any[]) => {
-          sandboxContext.console.info(...args);
-        }),
-      })
+    // Helper function to expose sync host functions
+    const exposeSync = async (name: string, fn: (...a: any[]) => any) => {
+      await globalRef.set(`__host_${name}`, new ivm.Reference((...args: any[]) => {
+        const result = fn(...args);
+        return new ivm.ExternalCopy(result).copyInto();
+      }));
+      await vmContext.eval(`
+        globalThis.${name} = (...a) =>
+          __host_${name}.apply(undefined, a,
+            { arguments: { copy: true }, result: { copy: true } });
+      `);
+    };
+
+    // Expose async sandbox functions
+    await exposeAsync("callTool", (tool, params) =>
+      sandboxContext.callTool(tool as string, params)
+    );
+    await exposeAsync("llm", (messages, options) =>
+      sandboxContext.llm(messages, options || {})
+    );
+    
+    // Expose sync sandbox functions
+    await exposeSync("createArtifact", (name, content, type) =>
+      sandboxContext.createArtifact(name as string, content, type)
+    );
+    await exposeSync("getQuotaUsage", () =>
+      sandboxContext.getQuotaUsage()
     );
 
-    // Add sandbox functions
-    await global.set(
-      "callTool",
-      new ivm.Callback(async (toolName: string, parameters: any) => {
-        return await sandboxContext.callTool(toolName, parameters);
-      })
-    );
-
-    await global.set(
-      "llm",
-      new ivm.Callback(async (messages: any[], options: any) => {
-        return await sandboxContext.llm(messages, options || {});
-      })
-    );
-
-    await global.set(
-      "createArtifact",
-      new ivm.Callback((name: string, content: string, type?: string) => {
-        return sandboxContext.createArtifact(name, content, type as any);
-      })
-    );
-
-    await global.set(
-      "getQuotaUsage",
-      new ivm.Callback(() => {
-        return sandboxContext.getQuotaUsage();
-      })
-    );
+    // Set up console bridging with individual function references
+    for (const level of ["log", "info", "warn", "error"] as const) {
+      await globalRef.set(`__console_${level}`, new ivm.Reference((...args: any[]) =>
+        sandboxContext.console[level](...args)
+      ));
+    }
+    await vmContext.eval(`
+      globalThis.console = {};
+      for (const lvl of ["log", "info", "warn", "error"]) {
+        globalThis.console[lvl] = (...a) =>
+          globalThis["__console_" + lvl].apply(undefined, a,
+            { arguments: { copy: true } });
+      }
+    `);
 
     tracer.emitEvent("context_setup_complete", {});
   }
