@@ -38,16 +38,19 @@ async function quickTest() {
   console.log("🧪 Quick executeScript test\n");
 
   try {
-    const result = await executeScript({
-      script: simpleScript,
-      maxToolCalls: 5,
-      maxTokens: 100,
-      maxExecutionTimeMs: 10000,
-      maxCostUsd: 0.1
-    }, {
-      tools: Tools,
-      clients: Clients,
-    });
+    const result = await executeScript(
+      {
+        script: simpleScript,
+        maxToolCalls: 5,
+        maxTokens: 100,
+        maxExecutionTimeMs: 10000,
+        maxCostUsd: 0.1,
+      },
+      {
+        tools: Tools,
+        clients: Clients,
+      }
+    );
 
     console.log("\n📊 QUICK TEST RESULT:");
     console.log("Success:", result.success);
@@ -57,7 +60,7 @@ async function quickTest() {
 
     if (result.consoleOutput.length > 0) {
       console.log("\n📝 Console Output:");
-      result.consoleOutput.forEach(entry => {
+      result.consoleOutput.forEach((entry) => {
         console.log(`  ${entry}`);
       });
     }
@@ -65,7 +68,6 @@ async function quickTest() {
     if (!result.success) {
       console.log("❌ Error:", result.error);
     }
-
   } catch (error) {
     console.error("💥 Test failed:", error);
   }
