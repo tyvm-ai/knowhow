@@ -159,6 +159,17 @@ export class AIClient {
     return models.includes(model);
   }
 
+  findModel(modelPrefix: string) {
+    for (const provider of Object.keys(this.clientModels)) {
+      const models = this.clientModels[provider];
+      const foundModel = models.find((m) => m.startsWith(modelPrefix));
+      if (foundModel) {
+        return { provider, model: foundModel };
+      }
+    }
+    return undefined;
+  }
+
   detectProviderModel(provider: string, model?: string) {
     if (this.providerHasModel(provider, model)) {
       return { provider, model };
@@ -170,18 +181,21 @@ export class AIClient {
       const inferredProvider = split[0];
       const inferredModel = split.slice(1).join("/");
 
+      // Exact match
       if (this.providerHasModel(inferredProvider, inferredModel)) {
         return { provider: inferredProvider, model: inferredModel };
       }
+
+      // Starts with match
+      const foundBySplit = this.findModel(inferredModel);
+      if (foundBySplit) {
+        return foundBySplit;
+      }
     }
 
-    const providers = Object.keys(this.clientModels);
-    const foundProvider = providers.find((p) =>
-      this.providerHasModel(p, model)
-    );
-
-    if (foundProvider) {
-      return { provider: foundProvider, model };
+    const foundByModel = this.findModel(model);
+    if (foundByModel) {
+      return foundByModel;
     }
 
     return { provider, model };

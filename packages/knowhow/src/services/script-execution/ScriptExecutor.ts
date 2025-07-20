@@ -210,7 +210,8 @@ export class ScriptExecutor {
       const result = await compiledScript.run(vmContext, {
         timeout: policyEnforcer.getQuotas().maxExecutionTimeMs,
         release: true,
-        result: { promise: true, copy: true }
+        promise: true,
+        result: { promise: true, copy: true, transfer: true },
       });
 
       tracer.emitEvent("script_execution_complete", {
@@ -240,11 +241,17 @@ export class ScriptExecutor {
     await globalRef.set("globalThis", globalRef.derefInto());
 
     // Helper function to expose async host functions
-    const exposeAsync = async (name: string, fn: (...a: any[]) => Promise<any>) => {
-      await globalRef.set(`__host_${name}`, new ivm.Reference(async (...args: any[]) => {
-        const result = await fn(...args);
-        return new ivm.ExternalCopy(result).copyInto();
-      }));
+    const exposeAsync = async (
+      name: string,
+      fn: (...a: any[]) => Promise<any>
+    ) => {
+      await globalRef.set(
+        `__host_${name}`,
+        new ivm.Reference(async (...args: any[]) => {
+          const result = await fn(...args);
+          return new ivm.ExternalCopy(result).copyInto();
+        })
+      );
       await vmContext.eval(`
         globalThis.${name} = (...a) =>
           __host_${name}.apply(undefined, a,
@@ -254,10 +261,13 @@ export class ScriptExecutor {
 
     // Helper function to expose sync host functions
     const exposeSync = async (name: string, fn: (...a: any[]) => any) => {
-      await globalRef.set(`__host_${name}`, new ivm.Reference((...args: any[]) => {
-        const result = fn(...args);
-        return new ivm.ExternalCopy(result).copyInto();
-      }));
+      await globalRef.set(
+        `__host_${name}`,
+        new ivm.Reference((...args: any[]) => {
+          const result = fn(...args);
+          return new ivm.ExternalCopy(result).copyInto();
+        })
+      );
       await vmContext.eval(`
         globalThis.${name} = (...a) =>
           __host_${name}.apply(undefined, a,
@@ -272,20 +282,21 @@ export class ScriptExecutor {
     await exposeAsync("llm", (messages, options) =>
       sandboxContext.llm(messages, options || {})
     );
-    
+
     // Expose sync sandbox functions
     await exposeSync("createArtifact", (name, content, type) =>
       sandboxContext.createArtifact(name as string, content, type)
     );
-    await exposeSync("getQuotaUsage", () =>
-      sandboxContext.getQuotaUsage()
-    );
+    await exposeSync("getQuotaUsage", () => sandboxContext.getQuotaUsage());
 
     // Set up console bridging with individual function references
     for (const level of ["log", "info", "warn", "error"] as const) {
-      await globalRef.set(`__console_${level}`, new ivm.Reference((...args: any[]) =>
-        sandboxContext.console[level](...args)
-      ));
+      await globalRef.set(
+        `__console_${level}`,
+        new ivm.Reference((...args: any[]) =>
+          sandboxContext.console[level](...args)
+        )
+      );
     }
     await vmContext.eval(`
       globalThis.console = {};

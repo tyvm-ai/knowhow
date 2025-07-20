@@ -150,7 +150,7 @@ export class SandboxContext {
 
       // Detect provider from model or use default
       const response = await this.clients.createCompletion(
-        options.model,
+        "",
         completionOptions
       );
 

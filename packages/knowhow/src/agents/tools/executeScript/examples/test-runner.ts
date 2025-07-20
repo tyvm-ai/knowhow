@@ -54,7 +54,7 @@ async function main() {
         content: "What is 2+2? Just give the answer briefly."
       }
     ], {
-      model: "gpt-4o-mini",
+      model: "openai/gpt-4o-mini",
       max_tokens: 50
     });
 
@@ -93,7 +93,7 @@ This is a test artifact created by the executeScript tool.
 }
 
 // Execute the main function
-main().then(result => {
+await main().then(result => {
   console.log("=== SCRIPT COMPLETED ===");
   console.log("Final result:", JSON.stringify(result, null, 2));
 }).catch(error => {
