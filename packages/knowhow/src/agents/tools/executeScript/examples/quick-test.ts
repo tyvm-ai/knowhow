@@ -15,11 +15,11 @@ console.log("Hello from executeScript!");
 async function main() {
   // Test basic functionality
   console.log("Running simple test...");
-  
+
   // Try a simple tool call
   const files = await callTool("fileSearch", { searchTerm: "*.ts" });
   console.log("Found", files?.length || 0, "TypeScript files");
-  
+
   return {
     message: "Simple test completed!",
     filesFound: files?.length || 0,
@@ -27,7 +27,7 @@ async function main() {
   };
 }
 
-main().then(result => {
+await main().then(result => {
   console.log("Result:", result);
 }).catch(error => {
   console.error("Error:", error);
@@ -36,7 +36,7 @@ main().then(result => {
 
 async function quickTest() {
   console.log("🧪 Quick executeScript test\n");
-  
+
   try {
     const result = await executeScript({
       script: simpleScript,
@@ -48,24 +48,24 @@ async function quickTest() {
       tools: Tools,
       clients: Clients,
     });
-    
+
     console.log("\n📊 QUICK TEST RESULT:");
     console.log("Success:", result.success);
     console.log("Result:", result.result);
     console.log("Tool calls:", result.quotaUsage.toolCalls);
     console.log("Cost: $" + result.quotaUsage.costUsd.toFixed(4));
-    
+
     if (result.consoleOutput.length > 0) {
       console.log("\n📝 Console Output:");
       result.consoleOutput.forEach(entry => {
         console.log(`  ${entry}`);
       });
     }
-    
+
     if (!result.success) {
       console.log("❌ Error:", result.error);
     }
-    
+
   } catch (error) {
     console.error("💥 Test failed:", error);
   }
