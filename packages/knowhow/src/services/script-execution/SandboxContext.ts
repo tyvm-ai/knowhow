@@ -204,6 +204,14 @@ export class SandboxContext {
     return artifact;
   }
 
+  async sleep(ms: number): Promise<void> {
+    if (typeof ms !== "number" || ms < 0 || ms > 2000) {
+      throw new Error("Invalid sleep duration");
+    }
+    await new Promise((res) => setTimeout(res, ms));
+    this.tracer.emitEvent("sleep", { durationMs: ms });
+  }
+
   /**
    * Get all created artifacts
    */

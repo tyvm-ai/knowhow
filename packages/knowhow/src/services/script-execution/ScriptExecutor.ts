@@ -209,16 +209,13 @@ export class ScriptExecutor {
       // Execute the script and get the result
       const result = await compiledScript.run(vmContext, {
         timeout: policyEnforcer.getQuotas().maxExecutionTimeMs,
-        release: true,
         promise: true,
-        result: { promise: true, copy: true, transfer: true },
       });
 
       tracer.emitEvent("script_execution_complete", {
         resultType: typeof result,
       });
 
-      // Copy the result back to the main thread if it's transferable
       return result;
     } finally {
       // Clean up the isolate
@@ -282,6 +279,7 @@ export class ScriptExecutor {
     await exposeAsync("llm", (messages, options) =>
       sandboxContext.llm(messages, options || {})
     );
+    await exposeAsync("sleep", (ms) => sandboxContext.sleep(ms));
 
     // Expose sync sandbox functions
     await exposeSync("createArtifact", (name, content, type) =>

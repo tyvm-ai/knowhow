@@ -15,6 +15,7 @@ export const executeScriptDefinition: Tool = {
   - createArtifact(name, content, type): Create downloadable artifacts
   - console: Standard console logging
   - getQuotaUsage(): Check resource usage
+  - sleep(ms): Pause execution for a specified time
 
   Example:
   \`\`\`typescript
@@ -35,6 +36,9 @@ export const executeScriptDefinition: Tool = {
   \`\`\`
 
   Must either return or await the a top level function
+
+  Test tools yourself to know the return type when scripting. Can pass JSON.stringified data into llm call if you don't need to know the type.
+  You cannot use isolation breaking methods like: setTimeout setInterval setImmediate clearTimeout clearInterval
 
   Security: Scripts run in isolation with quotas on tool calls, tokens, time, and cost.`,
 
