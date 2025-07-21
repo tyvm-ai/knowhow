@@ -15,7 +15,7 @@ export const executeScriptDefinition: Tool = {
   - createArtifact(name, content, type): Create downloadable artifacts
   - console: Standard console logging
   - getQuotaUsage(): Check resource usage
-  - sleep(ms): Pause execution for a specified time
+  - sleep(ms): Pause execution for a specified time, max 2000ms
 
   Example:
   \`\`\`typescript
