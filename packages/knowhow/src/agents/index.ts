@@ -1,4 +1,4 @@
-import { services } from "src/services";
+import { services } from "../services";
 import { AgentContext } from "./base/base";
 import { DeveloperAgent } from "./developer/developer";
 import { PatchingAgent } from "./patcher/patcher";
@@ -8,6 +8,7 @@ export { BaseAgent } from "./base/base";
 export { ConfigAgent } from "./configurable/ConfigAgent";
 export { DeveloperAgent };
 export { PatchingAgent };
+export { AgentContext };
 
 export * from "./researcher/researcher";
 

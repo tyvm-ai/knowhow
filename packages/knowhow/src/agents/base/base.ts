@@ -71,6 +71,18 @@ export abstract class BaseAgent implements IAgent {
     this.tools = context.Tools;
     this.events = context.Events;
     this.messageProcessor = context.messageProcessor;
+
+    if (!this.tools) {
+      throw new Error("ToolsService is required for BaseAgent");
+    }
+
+    if (!this.events) {
+      throw new Error("EventService is required for BaseAgent");
+    }
+
+    if (!this.messageProcessor) {
+      this.messageProcessor = new MessageProcessor();
+    }
   }
 
   newTask() {
