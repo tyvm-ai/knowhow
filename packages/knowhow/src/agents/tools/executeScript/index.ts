@@ -4,7 +4,7 @@ import {
   ExecutionRequest,
   ExecutionResult,
 } from "../../../services/script-execution/types";
-import { services } from "src/services";
+import { services } from "../../../services";
 
 export async function executeScript({
   script,
