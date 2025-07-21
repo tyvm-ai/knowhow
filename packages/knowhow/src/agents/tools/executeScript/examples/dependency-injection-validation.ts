@@ -215,7 +215,7 @@ async function runValidationTests() {
   // Test that executeScript uses the bound context instead of singletons
   const executeScriptTest = `
     async function main() {
-      return await callTool("testToolWithContext", {message: "Hello from executeScript!"});
+      return callTool("testToolWithContext", {message: "Hello from executeScript!"});
     }
     return main()
   `;
