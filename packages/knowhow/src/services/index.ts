@@ -53,10 +53,10 @@ export const services = (): typeof Singletons => {
     };
 
     Singletons.Tools.setContext({
-      agentService: Singletons.Agents,
-      eventService: Singletons.Events,
-      pluginService: Plugins,
-      clients: Clients,
+      Agents,
+      Events,
+      Plugins,
+      Clients,
     });
   }
 

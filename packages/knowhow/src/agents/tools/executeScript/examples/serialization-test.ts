@@ -193,25 +193,21 @@ async function runSerializationTests() {
   };
   const { Tools, Clients } = services();
 
+  const bound = executeScript.bind(Tools);
+
   for (const testCase of testCases) {
     console.log(`\\n📋 Testing: ${testCase.name}`);
     console.log(`📝 Description: ${testCase.description}`);
     console.log(`🎯 Expected to work: ${testCase.expectedToWork}`);
 
     try {
-      const result = await executeScript(
-        {
-          script: testCase.script,
-          maxToolCalls: 5,
-          maxTokens: 500,
-          maxExecutionTimeMs: 10000,
-          maxCostUsd: 0.1,
-        },
-        {
-          tools: Tools,
-          clients: Clients,
-        }
-      );
+      const result = await bound({
+        script: testCase.script,
+        maxToolCalls: 5,
+        maxTokens: 500,
+        maxExecutionTimeMs: 10000,
+        maxCostUsd: 0.1,
+      });
 
       const actualWorked = result.success;
       const matchesExpectation = actualWorked === testCase.expectedToWork;

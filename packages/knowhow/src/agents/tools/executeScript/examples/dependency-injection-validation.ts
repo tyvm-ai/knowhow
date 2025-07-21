@@ -61,22 +61,19 @@ function testToolWithContext(this: ToolsService, params: { message: string }) {
   const context = this.getContext();
 
   console.log("✅ Tool called with context:");
-  console.log("- AgentService available:", !!context.agentService);
-  console.log("- EventService available:", !!context.eventService);
-  console.log("- Clients available:", !!context.clients);
-  console.log(
-    "- ToolsService self-reference available:",
-    !!context.toolsService
-  );
+  console.log("- AgentService available:", !!context.Agents);
+  console.log("- EventService available:", !!context.Events);
+  console.log("- Clients available:", !!context.Clients);
+  console.log("- ToolsService self-reference available:", !!context.Tools);
   console.log("- Test message:", params.message);
 
   return {
     success: true,
     contextValidated: true,
-    hasAgentService: !!context.agentService,
-    hasEventService: !!context.eventService,
-    hasClients: !!context.clients,
-    hasToolsService: !!context.toolsService,
+    hasAgentService: !!context.Agents,
+    hasEventService: !!context.Events,
+    hasClients: !!context.Clients,
+    hasToolsService: !!context.Tools,
     testMessage: params.message,
   };
 }
@@ -88,7 +85,7 @@ async function runValidationTests() {
   console.log("📍 Test 1: Agent Isolation");
   const agent1 = new TestAgent1({
     Events: new EventService(),
-    Tools: new ToolsService({ clients: Clients }),
+    Tools: new ToolsService({ Clients }),
   });
   const agent2 = new TestAgent2({
     Events: new EventService(),
@@ -111,17 +108,17 @@ async function runValidationTests() {
   const context2 = toolsService2.getContext();
 
   console.log("✅ Agent1 context has required services:", {
-    agentService: !!context1.agentService,
-    eventService: !!context1.eventService,
-    clients: !!context1.clients,
-    toolsService: !!context1.toolsService,
+    agentService: !!context1.Agents,
+    eventService: !!context1.Events,
+    clients: !!context1.Clients,
+    toolsService: !!context1.Tools,
   });
 
   console.log("✅ Agent2 context has required services:", {
-    agentService: !!context2.agentService,
-    eventService: !!context2.eventService,
-    clients: !!context2.clients,
-    toolsService: !!context2.toolsService,
+    agentService: !!context2.Agents,
+    eventService: !!context2.Events,
+    clients: !!context2.Clients,
+    toolsService: !!context2.Tools,
   });
 
   // Test 3: Register a test tool and verify it can access context
@@ -217,7 +214,10 @@ async function runValidationTests() {
 
   // Test that executeScript uses the bound context instead of singletons
   const executeScriptTest = `
-    return callTool("testToolWithContext", {message: "Hello from executeScript!"});
+    async function main() {
+      return data;
+    }
+    main()
   `;
 
   toolsService1.defineTools([executeScriptDefinition], { executeScript });

@@ -20,10 +20,10 @@ export async function loadModulesWithCustomContext() {
 
   // Set up the tools service context
   toolsService.setContext({
-    agentService,
-    eventService,
-    pluginService,
-    clients,
+    Agents,
+    Events,
+    Plugins,
+    Clients,
   });
 
   // Create the module context
@@ -53,7 +53,7 @@ export async function loadModulesWithCustomContext() {
  */
 export async function loadModulesWithGlobalSingletons() {
   const modulesService = new ModulesService();
-  
+
   // When no context is provided, it falls back to global singletons
   await modulesService.loadModulesFromConfig();
 }

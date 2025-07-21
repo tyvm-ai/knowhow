@@ -4,28 +4,26 @@ import {
   ExecutionRequest,
   ExecutionResult,
 } from "../../../services/script-execution/types";
+import { services } from "src/services";
 
-export async function executeScript(
-  {
-    script,
-    maxToolCalls,
-    maxTokens,
-    maxExecutionTimeMs,
-    maxCostUsd,
-  }: {
-    script: string;
-    maxToolCalls?: number;
-    maxTokens?: number;
-    maxExecutionTimeMs?: number;
-    maxCostUsd?: number;
-  },
-  context
-) {
+export async function executeScript({
+  script,
+  maxToolCalls,
+  maxTokens,
+  maxExecutionTimeMs,
+  maxCostUsd,
+}: {
+  script: string;
+  maxToolCalls?: number;
+  maxTokens?: number;
+  maxExecutionTimeMs?: number;
+  maxCostUsd?: number;
+}) {
   try {
     // Get context from bound ToolsService
-    const toolService = this as ToolsService;
-    const toolContext = this.getContext();
-    const clients = toolContext.clients;
+    const toolContext =
+      this instanceof ToolsService ? this.getContext() : services();
+    const clients = toolContext.Clients;
 
     if (!clients) {
       throw new Error("Clients not available in tool context");

@@ -207,6 +207,7 @@ export class ScriptExecutor {
       const result = await compiledScript.run(vmContext, {
         timeout: policyEnforcer.getQuotas().maxExecutionTimeMs,
         promise: true,
+        copy: true,
       });
 
       tracer.emitEvent("script_execution_complete", {

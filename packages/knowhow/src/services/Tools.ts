@@ -15,11 +15,11 @@ import {
 import { PluginService } from "../plugins/plugins";
 
 export interface ToolContext {
-  agentService?: AgentService;
-  eventService?: EventService;
-  clients?: AIClient;
-  toolsService?: ToolsService;
-  pluginService?: PluginService;
+  Agents?: AgentService;
+  Events?: EventService;
+  Clients?: AIClient;
+  Tools?: ToolsService;
+  Plugins?: PluginService;
   metadata?: { [key: string]: any };
 }
 
@@ -35,9 +35,9 @@ export class ToolsService {
 
   constructor(context?: ToolContext) {
     if (context) {
-      this.context = { ...context, toolsService: this };
+      this.context = { ...context, Tools: this };
     } else {
-      this.context = { toolsService: this };
+      this.context = { Tools: this };
     }
   }
 
@@ -46,7 +46,7 @@ export class ToolsService {
   }
 
   setContext(context: ToolContext): void {
-    this.context = { ...context, toolsService: this };
+    this.context = { ...context, Tools: this };
   }
 
   addContext<K extends keyof ToolContext, V extends ToolContext[K]>(
