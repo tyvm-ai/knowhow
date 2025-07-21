@@ -110,11 +110,6 @@ async function runTest() {
   try {
     Tools.defineTools(includedTools, allTools);
 
-    const context = {
-      tools: Tools,
-      clients: Clients,
-    };
-
     console.log("📋 Test Parameters:");
     console.log("- Max Tool Calls: 10");
     console.log("- Max Tokens: 1000");
@@ -124,16 +119,13 @@ async function runTest() {
     const startTime = Date.now();
 
     // Execute the test script
-    const result = await executeScript(
-      {
-        script: testScript,
-        maxToolCalls: 10,
-        maxTokens: 1000,
-        maxExecutionTimeMs: 60000,
-        maxCostUsd: 0.5,
-      },
-      context
-    );
+    const result = await executeScript({
+      script: testScript,
+      maxToolCalls: 10,
+      maxTokens: 1000,
+      maxExecutionTimeMs: 60000,
+      maxCostUsd: 0.5,
+    });
 
     const executionTime = Date.now() - startTime;
 

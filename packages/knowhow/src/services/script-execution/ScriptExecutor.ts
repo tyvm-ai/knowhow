@@ -169,7 +169,7 @@ export class ScriptExecutor {
     context: SandboxContext,
     tracer: ScriptTracer,
     policyEnforcer: ScriptPolicyEnforcer
-  ): Promise<any> {
+  ) {
     tracer.emitEvent("secure_execution_start", {
       note: "Using isolated-vm for secure execution",
     });
@@ -271,9 +271,13 @@ export class ScriptExecutor {
     };
 
     // Expose async sandbox functions
-    await exposeAsync("callTool", (tool, params) =>
-      sandboxContext.callTool(tool as string, params)
-    );
+    await exposeAsync("callTool", async (tool, params) => {
+      const { functionResp } = await sandboxContext.callTool(
+        tool as string,
+        params
+      );
+      return functionResp;
+    });
     await exposeAsync("llm", (messages, options) =>
       sandboxContext.llm(messages, options || {})
     );

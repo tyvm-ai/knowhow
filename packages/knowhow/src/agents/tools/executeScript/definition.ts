@@ -35,7 +35,7 @@ export const executeScriptDefinition: Tool = {
   return { message: 'Script completed successfully' };
   \`\`\`
 
-  Must either return or await the a top level function
+  You must return the data you want to be the functionResp
 
   Test tools yourself to know the return type when scripting. Can pass JSON.stringified data into llm call if you don't need to know the type.
   You cannot use isolation breaking methods like: setTimeout setInterval setImmediate clearTimeout clearInterval

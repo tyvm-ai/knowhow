@@ -191,9 +191,6 @@ async function runSerializationTests() {
     unexpected: 0,
     details: [] as any[],
   };
-  const { Tools, Clients } = services();
-
-  const bound = executeScript.bind(Tools);
 
   for (const testCase of testCases) {
     console.log(`\\n📋 Testing: ${testCase.name}`);
@@ -201,7 +198,7 @@ async function runSerializationTests() {
     console.log(`🎯 Expected to work: ${testCase.expectedToWork}`);
 
     try {
-      const result = await bound({
+      const result = await executeScript({
         script: testCase.script,
         maxToolCalls: 5,
         maxTokens: 500,
