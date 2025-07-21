@@ -16,5 +16,3 @@ export class EventService extends EventEmitter {
     });
   }
 }
-
-export const Events = new EventService();

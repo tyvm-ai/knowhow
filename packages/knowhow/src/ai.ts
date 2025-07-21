@@ -11,7 +11,7 @@ const config = getConfigSync();
 const OPENAI_KEY = process.env.OPENAI_KEY;
 
 import { Models } from "./types";
-import { Agents } from "./services";
+import { services } from "./services";
 export { Models };
 
 export const openai = new OpenAI({
@@ -20,6 +20,7 @@ export const openai = new OpenAI({
 });
 
 export async function singlePrompt(userPrompt: string, model = "", agent = "") {
+  const { Agents } = services();
   if (agent) {
     const agentConfig = await Agents.getAgent(agent);
     if (!agentConfig) {

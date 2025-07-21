@@ -286,5 +286,3 @@ export class McpService {
     return transformed;
   }
 }
-
-export const Mcp = new McpService();

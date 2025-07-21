@@ -5,8 +5,7 @@
  */
 
 import { executeScript } from "../../executeScript";
-import { Tools } from "../../../../services";
-import { Clients } from "../../../../clients";
+import { services } from "../../../../services";
 
 // Simple test script
 const simpleScript = `
@@ -38,6 +37,7 @@ async function quickTest() {
   console.log("🧪 Quick executeScript test\n");
 
   try {
+    const { Tools, Clients } = services();
     const result = await executeScript(
       {
         script: simpleScript,

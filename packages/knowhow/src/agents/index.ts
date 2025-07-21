@@ -1,8 +1,32 @@
+import { services } from "src/services";
+import { AgentContext } from "./base/base";
+import { DeveloperAgent } from "./developer/developer";
+import { PatchingAgent } from "./patcher/patcher";
+import { ResearcherAgent } from "./researcher/researcher";
+
 export { BaseAgent } from "./base/base";
 export { ConfigAgent } from "./configurable/ConfigAgent";
-export * from "./developer/developer";
-export * from "./patcher/patcher";
+export { DeveloperAgent };
+export { PatchingAgent };
+
 export * from "./researcher/researcher";
 
 export * as tools from "./tools";
 export { includedTools } from "./tools/list";
+
+let singletons = {} as {
+  Developer: DeveloperAgent;
+  Patcher: PatchingAgent;
+  Researcher: ResearcherAgent;
+};
+
+export function agents(agentContext: AgentContext = services()) {
+  if (Object.keys(singletons).length === 0) {
+    singletons = {
+      Developer: new DeveloperAgent(agentContext),
+      Patcher: new PatchingAgent(agentContext),
+      Researcher: new ResearcherAgent(agentContext),
+    };
+  }
+  return singletons;
+}

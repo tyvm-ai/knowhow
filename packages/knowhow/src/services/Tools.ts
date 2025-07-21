@@ -1,6 +1,9 @@
 import { ChatCompletionTool } from "openai/resources/chat";
 import { replaceEscapedNewLines, restoreEscapedNewLines } from "../utils";
 import { includedTools } from "../agents/tools/list";
+import { AgentService } from "./AgentService";
+import { EventService } from "./EventService";
+import { AIClient } from "../clients";
 import { Tool, ToolCall } from "../clients/types";
 import {
   ToolOverrideRegistration,
@@ -9,14 +12,49 @@ import {
   ToolWrapper,
   createPatternMatcher,
 } from "./types";
+import { PluginService } from "../plugins/plugins";
+
+export interface ToolContext {
+  agentService?: AgentService;
+  eventService?: EventService;
+  clients?: AIClient;
+  toolsService?: ToolsService;
+  pluginService?: PluginService;
+  metadata?: { [key: string]: any };
+}
 
 export class ToolsService {
+  private context: ToolContext = {};
+
   tools = [] as Tool[];
   private overrides: ToolOverrideRegistration[] = [];
   private wrappers: ToolWrapperRegistration[] = [];
   private originalFunctions: { [key: string]: (...args: any[]) => any } = {};
 
   functions = {};
+
+  constructor(context?: ToolContext) {
+    if (context) {
+      this.context = { ...context, toolsService: this };
+    } else {
+      this.context = { toolsService: this };
+    }
+  }
+
+  getContext(): ToolContext {
+    return this.context;
+  }
+
+  setContext(context: ToolContext): void {
+    this.context = { ...context, toolsService: this };
+  }
+
+  addContext<K extends keyof ToolContext, V extends ToolContext[K]>(
+    key: K,
+    value: V
+  ): void {
+    this.context[key] = value;
+  }
 
   getTools() {
     return this.tools;
@@ -54,6 +92,9 @@ export class ToolsService {
       this.originalFunctions[name] = func;
     }
 
+    // Auto-bind function to this ToolsService instance
+    const boundFunc = func.bind(this);
+
     // Check for overrides first
     const override = this.findMatchingOverride(name);
     if (override) {
@@ -67,7 +108,7 @@ export class ToolsService {
     // Check for wrappers
     const wrappers = this.findMatchingWrappers(name);
     if (wrappers.length > 0) {
-      let wrappedFunction = func;
+      let wrappedFunction = boundFunc;
 
       // Apply wrappers in priority order
       for (const wrapperReg of wrappers) {
@@ -82,8 +123,8 @@ export class ToolsService {
       return;
     }
 
-    // No overrides or wrappers, use original function
-    this.functions[name] = func;
+    // No overrides or wrappers, use bound function
+    this.functions[name] = boundFunc;
   }
 
   setFunctions(names: string[], funcs: ((...args: any) => any)[]) {
@@ -301,5 +342,3 @@ export class ToolsService {
     }
   }
 }
-
-export const Tools = new ToolsService();

@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import { Message } from "../../clients/types";
-import { BaseAgent } from "../base/base";
+import { AgentContext, BaseAgent } from "../base/base";
 import { readFile, writeFile, execAsync, mkdir } from "../../utils";
 import { openai, singlePrompt, Models } from "../../ai";
 import { BASE_PROMPT } from "../base/prompt";
@@ -11,8 +11,8 @@ export class VimAgent extends BaseAgent {
 
   toolPath = ".knowhow/tools/vim";
 
-  constructor() {
-    super();
+  constructor(context: AgentContext) {
+    super(context);
     // this.disableTool("patchFile");
     this.setModelPreferences([
       { model: Models.anthropic.Sonnet4, provider: "anthropic" },
@@ -150,4 +150,3 @@ export class VimAgent extends BaseAgent {
   }
 }
 
-export const Vimmer = new VimAgent();

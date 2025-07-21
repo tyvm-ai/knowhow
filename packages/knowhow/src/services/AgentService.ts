@@ -1,18 +1,19 @@
 import { getConfigSync } from "../config";
 import { IAgent } from "../agents/interface";
+import { EventService } from "./EventService";
+import { ToolsService } from "./Tools";
 import { ConfigAgent } from "../agents/configurable/ConfigAgent";
-import { Events } from "./EventService";
-import { Tools } from "./Tools";
+import { AgentContext } from "src/agents/base/base";
 
 export class AgentService {
   private agents: Map<string, IAgent> = new Map();
 
-  constructor() {
+  constructor(private tools: ToolsService, private events: EventService) {
     this.wireUp();
   }
 
   public wireUp() {
-    Tools.addTool({
+    this.tools.addTool({
       type: "function",
       function: {
         name: "agentCall",
@@ -35,13 +36,13 @@ export class AgentService {
         },
       },
     });
-    Events.on("agents:register", (data) => {
+    this.events.on("agents:register", (data) => {
       console.log(`Agent registered: ${data.name}`);
       const { name, agent } = data;
       this.registerAgentByName(name, agent);
     });
 
-    Events.on("agents:call", (data) => {
+    this.events.on("agents:call", (data) => {
       console.log(`Agent called: ${data.name}`);
       const { name, query, resolve, reject } = data;
       this.callAgent(name, query).then(resolve).catch(reject);
@@ -77,12 +78,12 @@ export class AgentService {
     });
   }
 
-  public loadAgentsFromConfig() {
+  public loadAgentsFromConfig(context: AgentContext) {
     const config = getConfigSync();
     const agents = config.agents || [];
 
     for (const agent of agents) {
-      this.registerAgent(new ConfigAgent(agent));
+      this.registerAgent(new ConfigAgent(agent, context));
     }
   }
 
@@ -94,5 +95,3 @@ export class AgentService {
     return agent.call(query);
   }
 }
-
-export const Agents = new AgentService();

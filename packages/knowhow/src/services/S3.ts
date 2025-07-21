@@ -123,4 +123,3 @@ export class S3Service {
   }
 }
 
-export const AwsS3 = new S3Service();

@@ -1,8 +1,12 @@
-import { Plugin } from "../plugins/types";
-import { IAgent } from "../agents/interface";
-import { Tool } from "../clients/types";
-import { Config } from "../types";
-import { GenericClient } from "../clients/types";
+import { Plugin } from "../../plugins/types";
+import { IAgent } from "../../agents/interface";
+import { Tool } from "../../clients/types";
+import { Config } from "../../types";
+import { GenericClient } from "../../clients/types";
+import { AgentService } from "../AgentService";
+import { PluginService } from "../../plugins/plugins";
+import { AIClient } from "../../clients";
+import { ToolsService } from "../Tools";
 
 /*
  *
@@ -37,6 +41,13 @@ export type InitParams = {
   config: Config;
   cwd: string;
 };
+
+export interface ModuleContext {
+  agentService: AgentService;
+  pluginService: PluginService;
+  clients: AIClient;
+  toolsService: ToolsService;
+}
 
 export interface KnowhowModule {
   init: (params: InitParams) => Promise<void>;

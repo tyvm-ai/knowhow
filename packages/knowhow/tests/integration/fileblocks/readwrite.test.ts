@@ -1,9 +1,10 @@
 import * as fs from "fs";
 import { readFile, writeFile } from "../../../src/utils";
-import { Patcher } from "../../../src/agents/patcher/patcher";
+import { agents } from "../../../src/agents";
 import { FlagsService } from "../../../src/services/flags";
 
 describe("Developer", () => {
+  const { Patcher } = agents();
   beforeAll(() => {
     Patcher.disableTool("searchFiles");
     Patcher.disableTool("execCommand");

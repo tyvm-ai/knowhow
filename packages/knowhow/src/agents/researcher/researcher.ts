@@ -1,13 +1,13 @@
 import { Models } from "../../ai";
 import { Message } from "../../clients/types";
-import { BaseAgent } from "../base/base";
+import { AgentContext, BaseAgent } from "../base/base";
 
 export class ResearcherAgent extends BaseAgent {
   name = "Researcher";
   description = `This agent is prepared to research a request using the tools available to them. Great for finding answers to questions about the codebase`;
 
-  constructor() {
-    super();
+  constructor(context: AgentContext) {
+    super(context);
     this.setModel(Models.google.Gemini_20_Flash);
     this.setProvider("google");
     this.disableTool("patchFile");
@@ -107,4 +107,3 @@ export class ResearcherAgent extends BaseAgent {
   }
 }
 
-export const Researcher = new ResearcherAgent();

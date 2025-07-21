@@ -5,7 +5,7 @@
  */
 
 import { executeScript } from "../../executeScript";
-import { Tools } from "../../../../services";
+import { services } from "../../../../services";
 import { Clients } from "../../../../clients";
 import { includedTools } from "../../../tools/list";
 import * as allTools from "../../../tools";
@@ -105,6 +105,7 @@ await main().then(result => {
 
 async function runTest() {
   console.log("🚀 Starting executeScript test...\n");
+  const { Tools } = services();
 
   try {
     Tools.defineTools(includedTools, allTools);

@@ -7,13 +7,13 @@ import {
   ToolCall,
 } from "../../clients/types";
 import { IAgent } from "../interface";
-import { ToolsService, Tools } from "../../services/Tools";
+import { ToolsService } from "../../services/Tools";
 import {
   mcpToolName,
   replaceEscapedNewLines,
   restoreEscapedNewLines,
 } from "../../utils";
-import { Events, EventService } from "../../services/EventService";
+import { EventService } from "../../services/EventService";
 import { AIClient, Clients } from "../../clients";
 import { Models } from "../../ai";
 import { MessageProcessor } from "../../services/MessageProcessor";
@@ -22,6 +22,12 @@ export { Message, Tool, ToolCall };
 export interface ModelPreference {
   model: string;
   provider: keyof typeof Clients.clients;
+}
+
+export interface AgentContext {
+  Tools?: ToolsService;
+  Events?: EventService;
+  messageProcessor?: MessageProcessor;
 }
 
 export abstract class BaseAgent implements IAgent {
@@ -55,14 +61,17 @@ export abstract class BaseAgent implements IAgent {
     kill: "kill",
     unpause: "unpause",
   };
+  public tools: ToolsService;
+  public events: EventService;
+  public messageProcessor: MessageProcessor;
 
   disabledTools = [];
 
-  constructor(
-    public tools: ToolsService = Tools,
-    public events: EventService = Events,
-    public messageProcessor: MessageProcessor = new MessageProcessor()
-  ) {}
+  constructor(context: AgentContext) {
+    this.tools = context.Tools;
+    this.events = context.Events;
+    this.messageProcessor = context.messageProcessor;
+  }
 
   newTask() {
     this.currentThread = 0;

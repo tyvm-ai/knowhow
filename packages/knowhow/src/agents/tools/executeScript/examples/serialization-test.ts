@@ -2,14 +2,13 @@
 /**
  * Serialization Test for executeScript - demonstrates transfer issues
  * Usage: npx ts-node src/agents/tools/executeScript/examples/serialization-test.ts
- * 
+ *
  * This test demonstrates the "A non-transferable value was passed" errors
  * that occur when trying to return complex objects from executeScript.
  */
 
 import { executeScript } from "../../executeScript";
-import { Tools } from "../../../../services";
-import { Clients } from "../../../../clients";
+import { services } from "../../../../services";
 
 interface TestCase {
   name: string;
@@ -26,27 +25,27 @@ const testCases: TestCase[] = [
     script: `
       console.log("Testing primitive string return");
       return "Hello World";
-    `
+    `,
   },
-  
+
   {
-    name: "primitive-number", 
+    name: "primitive-number",
     expectedToWork: true,
     description: "Simple number return - should work",
     script: `
       console.log("Testing primitive number return");
       return 42;
-    `
+    `,
   },
 
   {
     name: "primitive-boolean",
     expectedToWork: true,
-    description: "Simple boolean return - should work", 
+    description: "Simple boolean return - should work",
     script: `
       console.log("Testing primitive boolean return");
       return true;
-    `
+    `,
   },
 
   {
@@ -56,21 +55,22 @@ const testCases: TestCase[] = [
     script: `
       console.log("Testing simple array return");
       return [1, 2, 3, "hello"];
-    `
+    `,
   },
 
   {
     name: "simple-object",
     expectedToWork: false, // This is where I got errors
-    description: "Simple object return - expected to fail with transferable error",
+    description:
+      "Simple object return - expected to fail with transferable error",
     script: `
       console.log("Testing simple object return");
-      return { 
-        message: "Hello", 
-        count: 42, 
-        success: true 
+      return {
+        message: "Hello",
+        count: 42,
+        success: true
       };
-    `
+    `,
   },
 
   {
@@ -86,7 +86,7 @@ const testCases: TestCase[] = [
         },
         status: "success"
       };
-    `
+    `,
   },
 
   {
@@ -100,7 +100,7 @@ const testCases: TestCase[] = [
         transform: function(x) { return x * 2; },
         helper: () => "test"
       };
-    `
+    `,
   },
 
   {
@@ -114,7 +114,7 @@ const testCases: TestCase[] = [
         { id: 2, name: "Bob" },
         { id: 3, name: "Charlie" }
       ];
-    `
+    `,
   },
 
   {
@@ -129,7 +129,7 @@ const testCases: TestCase[] = [
         nested: { key: "value" }
       };
       return JSON.stringify(data);
-    `
+    `,
   },
 
   {
@@ -138,10 +138,10 @@ const testCases: TestCase[] = [
     description: "Tool call result object - expected to fail",
     script: `
       console.log("Testing tool call result return");
-      
+
       try {
         const searchResult = await callTool("fileSearch", { searchTerm: "package.json" });
-        
+
         // Try to return a structured response with the tool result
         return {
           success: true,
@@ -154,7 +154,7 @@ const testCases: TestCase[] = [
           error: error.message
         };
       }
-    `
+    `,
   },
 
   {
@@ -164,7 +164,7 @@ const testCases: TestCase[] = [
     script: `
       console.log("Testing Date object return");
       return new Date();
-    `
+    `,
   },
 
   {
@@ -177,37 +177,41 @@ const testCases: TestCase[] = [
       map.set("key1", "value1");
       map.set("key2", "value2");
       return map;
-    `
-  }
+    `,
+  },
 ];
 
 async function runSerializationTests() {
   console.log("🧪 Running executeScript Serialization Tests\\n");
-  console.log("=" .repeat(80));
+  console.log("=".repeat(80));
 
   const results = {
     passed: 0,
     failed: 0,
     unexpected: 0,
-    details: [] as any[]
+    details: [] as any[],
   };
+  const { Tools, Clients } = services();
 
   for (const testCase of testCases) {
     console.log(`\\n📋 Testing: ${testCase.name}`);
     console.log(`📝 Description: ${testCase.description}`);
     console.log(`🎯 Expected to work: ${testCase.expectedToWork}`);
-    
+
     try {
-      const result = await executeScript({
-        script: testCase.script,
-        maxToolCalls: 5,
-        maxTokens: 500,
-        maxExecutionTimeMs: 10000,
-        maxCostUsd: 0.1
-      }, {
-        tools: Tools,
-        clients: Clients,
-      });
+      const result = await executeScript(
+        {
+          script: testCase.script,
+          maxToolCalls: 5,
+          maxTokens: 500,
+          maxExecutionTimeMs: 10000,
+          maxCostUsd: 0.1,
+        },
+        {
+          tools: Tools,
+          clients: Clients,
+        }
+      );
 
       const actualWorked = result.success;
       const matchesExpectation = actualWorked === testCase.expectedToWork;
@@ -217,7 +221,11 @@ async function runSerializationTests() {
         console.log(`✅ PASS - Behaved as expected`);
       } else {
         results.unexpected++;
-        console.log(`⚠️  UNEXPECTED - Expected ${testCase.expectedToWork ? 'success' : 'failure'}, got ${actualWorked ? 'success' : 'failure'}`);
+        console.log(
+          `⚠️  UNEXPECTED - Expected ${
+            testCase.expectedToWork ? "success" : "failure"
+          }, got ${actualWorked ? "success" : "failure"}`
+        );
       }
 
       results.details.push({
@@ -227,24 +235,27 @@ async function runSerializationTests() {
         matches: matchesExpectation,
         result: actualWorked ? result.result : null,
         error: actualWorked ? null : result.error,
-        consoleOutput: result.consoleOutput
+        consoleOutput: result.consoleOutput,
       });
 
       if (actualWorked) {
         console.log(`📊 Result type: ${typeof result.result}`);
-        console.log(`📊 Result: ${JSON.stringify(result.result).substring(0, 200)}${JSON.stringify(result.result).length > 200 ? '...' : ''}`);
+        console.log(
+          `📊 Result: ${JSON.stringify(result.result).substring(0, 200)}${
+            JSON.stringify(result.result).length > 200 ? "..." : ""
+          }`
+        );
       } else {
         console.log(`❌ Error: ${result.error}`);
       }
 
       if (result.consoleOutput.length > 0) {
-        console.log(`📝 Console: ${result.consoleOutput.join(', ')}`);
+        console.log(`📝 Console: ${result.consoleOutput.join(", ")}`);
       }
-
     } catch (error) {
       results.failed++;
       console.log(`💥 TEST FRAMEWORK ERROR: ${error.message}`);
-      
+
       results.details.push({
         name: testCase.name,
         expected: testCase.expectedToWork,
@@ -252,7 +263,7 @@ async function runSerializationTests() {
         matches: !testCase.expectedToWork,
         result: null,
         error: error.message,
-        consoleOutput: []
+        consoleOutput: [],
       });
     }
   }
@@ -269,9 +280,13 @@ async function runSerializationTests() {
   if (results.unexpected > 0) {
     console.log("\\n🔍 UNEXPECTED RESULTS:");
     results.details
-      .filter(d => !d.matches)
-      .forEach(detail => {
-        console.log(`  - ${detail.name}: Expected ${detail.expected ? 'success' : 'failure'}, got ${detail.actual ? 'success' : 'failure'}`);
+      .filter((d) => !d.matches)
+      .forEach((detail) => {
+        console.log(
+          `  - ${detail.name}: Expected ${
+            detail.expected ? "success" : "failure"
+          }, got ${detail.actual ? "success" : "failure"}`
+        );
         if (detail.error) {
           console.log(`    Error: ${detail.error}`);
         }
@@ -280,15 +295,19 @@ async function runSerializationTests() {
 
   // Analysis and recommendations
   console.log("\\n🔬 ANALYSIS:");
-  
-  const workingTypes = results.details.filter(d => d.actual).map(d => d.name);
-  const failingTypes = results.details.filter(d => !d.actual).map(d => d.name);
-  
+
+  const workingTypes = results.details
+    .filter((d) => d.actual)
+    .map((d) => d.name);
+  const failingTypes = results.details
+    .filter((d) => !d.actual)
+    .map((d) => d.name);
+
   console.log("\\n✅ Types that work:");
-  workingTypes.forEach(name => console.log(`  - ${name}`));
-  
+  workingTypes.forEach((name) => console.log(`  - ${name}`));
+
   console.log("\\n❌ Types that fail:");
-  failingTypes.forEach(name => console.log(`  - ${name}`));
+  failingTypes.forEach((name) => console.log(`  - ${name}`));
 
   console.log("\\n💡 RECOMMENDATIONS:");
   console.log("  1. Use JSON.stringify() for complex objects");
@@ -300,7 +319,7 @@ async function runSerializationTests() {
 }
 
 if (require.main === module) {
-  runSerializationTests().catch(error => {
+  runSerializationTests().catch((error) => {
     console.error("Test suite failed:", error);
     process.exit(1);
   });

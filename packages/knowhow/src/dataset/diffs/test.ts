@@ -15,6 +15,7 @@ import {
   hunksToPatch,
 } from "../../agents/tools/patch";
 import { md5Hash } from "../../hashes";
+import { services } from "../../services";
 const dataset = [];
 
 class PatchTestAgent extends PatchingAgent {
@@ -44,7 +45,7 @@ class PatchTestAgent extends PatchingAgent {
 }
 
 async function testDataset() {
-  const patchAgent = new PatchTestAgent();
+  const patchAgent = new PatchTestAgent(services());
 
   let successCount = 0;
   let attempts = 0;

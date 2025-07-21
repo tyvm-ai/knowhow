@@ -1,19 +1,38 @@
 import { ScriptExecutor } from "../../../services/script-execution/ScriptExecutor";
-import { Tools } from "../../../services";
-import { Clients } from "../../../clients";
+import { ToolsService } from "../../../services/Tools";
 import {
   ExecutionRequest,
   ExecutionResult,
 } from "../../../services/script-execution/types";
 
-
-export const executeScript = async (
-  { script, maxToolCalls, maxTokens, maxExecutionTimeMs, maxCostUsd },
+export async function executeScript(
+  {
+    script,
+    maxToolCalls,
+    maxTokens,
+    maxExecutionTimeMs,
+    maxCostUsd,
+  }: {
+    script: string;
+    maxToolCalls?: number;
+    maxTokens?: number;
+    maxExecutionTimeMs?: number;
+    maxCostUsd?: number;
+  },
   context
-) => {
+) {
   try {
+    // Get context from bound ToolsService
+    const toolService = this as ToolsService;
+    const toolContext = this.getContext();
+    const clients = toolContext.clients;
+
+    if (!clients) {
+      throw new Error("Clients not available in tool context");
+    }
+
     // Create script executor with access to tools and clients
-    const executor = new ScriptExecutor(Tools, Clients);
+    const executor = new ScriptExecutor(this, clients);
 
     // Execute the script
     const result = await executor.execute({
@@ -71,4 +90,4 @@ export const executeScript = async (
       },
     };
   }
-};
+}

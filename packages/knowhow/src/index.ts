@@ -42,10 +42,8 @@ import { abort } from "process";
 import { chatLoop } from "./chat";
 import { convertToText } from "./conversion";
 import { Plugins } from "./plugins/plugins";
-import { AwsS3 } from "./services/S3";
-import { GitHub } from "./services/GitHub";
 import { knowhowMcpClient } from "./services/Mcp";
-import { knowhowApiClient } from "./services/KnowhowClient";
+import { services } from "./services/";
 import { Models } from "./types";
 
 export * as clients from "./clients";
@@ -96,6 +94,7 @@ export async function purge(globPath: string) {
 
 export async function upload() {
   const config = await getConfig();
+  const { AwsS3, knowhowApiClient } = services();
 
   for (const source of config.embedSources) {
     const bucketName = source.remote;
@@ -324,6 +323,7 @@ export async function chat() {
 
 export async function download() {
   const config = await getConfig();
+  const { AwsS3, GitHub, knowhowApiClient } = services();
 
   for (const source of config.embedSources) {
     const { remote, remoteType } = source;

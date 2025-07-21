@@ -1,13 +1,13 @@
 import { Models } from "../../ai";
 import { Message } from "../../clients/types";
-import { BaseAgent } from "../base/base";
+import { AgentContext, BaseAgent } from "../base/base";
 import { BASE_PROMPT } from "../base/prompt";
 export class DeveloperAgent extends BaseAgent {
   name = "Developer";
   description = `This agent manages requests and uses tools and delegation via agentCall to accomplish things`;
 
-  constructor() {
-    super();
+  constructor(context: AgentContext) {
+    super(context);
     this.disableTool("patchFile");
     this.disableTool("openFileInVim");
     this.disableTool("sendVimInput");
@@ -66,4 +66,3 @@ export class DeveloperAgent extends BaseAgent {
   }
 }
 
-export const Developer = new DeveloperAgent();

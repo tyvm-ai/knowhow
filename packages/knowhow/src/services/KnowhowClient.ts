@@ -108,6 +108,3 @@ export class KnowhowSimpleClient {
   }
 }
 
-export const knowhowApiClient = new KnowhowSimpleClient(
-  process.env.KNOWHOW_API_URL
-);

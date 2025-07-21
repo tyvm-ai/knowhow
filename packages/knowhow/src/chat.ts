@@ -13,10 +13,10 @@ import { Marked } from "./utils";
 import { ask } from "./utils";
 import { Plugins } from "./plugins/plugins";
 import { queryEmbedding, getConfiguredEmbeddingMap } from "./embeddings";
-import { Agents } from "./services/AgentService";
+import { services } from "./services/";
 import { FlagsService } from "./services/flags";
 import { IAgent } from "./agents/interface";
-import { Clients, Message } from "./clients";
+import { Message } from "./clients";
 import { recordAudio, voiceToText } from "./microphone";
 import { Models } from "./ai";
 import { BaseAgent } from "./agents";
@@ -129,6 +129,7 @@ The user has asked:
     { role: "user", content: gptPrompt },
   ] as Message[];
 
+  const { Clients } = services();
   const response = await Clients.createCompletion(provider, {
     messages: thread,
     model,
@@ -182,6 +183,7 @@ export async function chatLoop<E extends GptQuestionEmbedding>(
   embeddings: Embeddable<E>[],
   plugins: string[] = []
 ) {
+  const { Agents, Clients } = services();
   let activeAgent = Agents.getAgent("Developer") as BaseAgent;
   let provider = "openai" as keyof typeof Clients.clients;
   let model = ChatModelDefaults[provider];

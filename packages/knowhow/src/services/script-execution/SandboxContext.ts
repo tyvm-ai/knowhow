@@ -1,9 +1,9 @@
-import { Tools } from "../../services";
-import { Clients } from "../../clients";
+import { AIClient } from "../../clients";
 import { ScriptTracer } from "./ScriptTracer";
 import { ScriptPolicyEnforcer } from "./ScriptPolicy";
 import { Artifact, QuotaUsage } from "./types";
 import { Message } from "../../clients/types";
+import { ToolsService } from "../Tools";
 
 /**
  * Provides the execution context for scripts with controlled access to tools and AI
@@ -13,8 +13,8 @@ export class SandboxContext {
   private consoleOutput: string[] = [];
 
   constructor(
-    private toolsService: typeof Tools = Tools,
-    private clients: typeof Clients = Clients,
+    private toolsService: ToolsService,
+    private clients: AIClient,
     private tracer: ScriptTracer,
     private policyEnforcer: ScriptPolicyEnforcer
   ) {}

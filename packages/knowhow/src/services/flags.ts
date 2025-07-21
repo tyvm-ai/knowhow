@@ -49,4 +49,3 @@ export class FlagsService {
   }
 }
 
-export const Flags = new FlagsService();

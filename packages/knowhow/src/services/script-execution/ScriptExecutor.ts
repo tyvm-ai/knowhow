@@ -1,6 +1,6 @@
 import ivm from "isolated-vm";
-import { Tools } from "../../services";
-import { Clients } from "../../clients";
+import { services, ToolsService } from "../../services";
+import { AIClient, Clients } from "../../clients";
 import { SandboxContext } from "./SandboxContext";
 import { ScriptTracer } from "./ScriptTracer";
 import { ScriptPolicyEnforcer } from "./ScriptPolicy";
@@ -36,10 +36,7 @@ export class ScriptExecutor {
     allowFileSystemAccess: false,
   };
 
-  constructor(
-    private toolsService: typeof Tools | null = null,
-    private clients: typeof Clients | null = null
-  ) {}
+  constructor(private toolsService: ToolsService, private clients: AIClient) {}
 
   /**
    * Execute a TypeScript script in sandbox

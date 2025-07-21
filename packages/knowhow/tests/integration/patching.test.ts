@@ -2,9 +2,8 @@ import { readFile, writeFile } from "../../src/utils";
 import { createPatch, applyPatch } from "diff";
 import { scanFile } from "../../src/agents/tools";
 import { patchFile } from "../../src/agents/tools/patch";
-import { Agents } from "../../src/services/AgentService";
-import { Patcher } from "../../src/agents";
-import { Tools } from "../../src/services";
+import { agents } from "../../src/agents";
+import { services } from "../../src/services";
 import { includedTools } from "../../src/agents/tools/list";
 import * as allTools from "../../src/agents/tools";
 
@@ -29,11 +28,12 @@ const brokenPatch = `Index: tests/integration/patching/input.txt
        }\n`;
 
 describe("Patcher", () => {
-  beforeAll(async () => {
+  const { Agents, Tools } = beforeAll(async () => {
+    const { Patcher } = agents();
     Agents.registerAgent(Patcher);
     Tools.addTools(includedTools);
     const toolFunctions = Object.entries(allTools)
-      .filter(([_, value]) => typeof value === 'function')
+      .filter(([_, value]) => typeof value === "function")
       .reduce((acc, [key, value]) => ({ ...acc, [key]: value }), {});
     Tools.addFunctions(toolFunctions);
   });

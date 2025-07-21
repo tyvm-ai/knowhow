@@ -1,5 +1,5 @@
 import { Message } from "../../clients/types";
-import { BaseAgent } from "../base/base";
+import { AgentContext, BaseAgent } from "../base/base";
 import { BASE_PROMPT } from "../base/prompt";
 import { Models } from "../../ai";
 
@@ -75,8 +75,8 @@ export class PatchingAgent extends BaseAgent {
   name = "Patcher";
   description = `This agent is prepared to work on the codebase by leveraging patches`;
 
-  constructor() {
-    super();
+  constructor(context: AgentContext) {
+    super(context);
     this.disableTool("sendVimInput");
     this.disableTool("openFileInVim");
 
@@ -106,5 +106,3 @@ export class PatchingAgent extends BaseAgent {
     ] as Message[];
   }
 }
-
-export const Patcher = new PatchingAgent();

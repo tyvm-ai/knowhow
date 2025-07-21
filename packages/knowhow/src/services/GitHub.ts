@@ -57,4 +57,3 @@ export class GitHubService {
   }
 }
 
-export const GitHub = new GitHubService();
