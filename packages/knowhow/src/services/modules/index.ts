@@ -12,15 +12,18 @@ export class ModulesService {
     if (!context) {
       const { Clients, Plugins, Agents, Tools } = services();
       context = {
-        agentService: Agents,
-        pluginService: Plugins,
-        clients: Clients,
-        toolsService: Tools,
+        Agents,
+        Plugins,
+        Clients,
+        Tools,
       };
     }
 
     // Use the toolsService from context
-    const toolsService = context.toolsService;
+    const toolsService = context.Tools;
+    const agentService = context.Agents;
+    const pluginService = context.Plugins;
+    const clients = context.Clients;
 
     const modules = config.modules || [];
 
@@ -29,7 +32,7 @@ export class ModulesService {
       await importedModule.init({ config, cwd: process.cwd() });
 
       for (const agent of importedModule.agents) {
-        context.agentService.registerAgent(agent);
+        agentService.registerAgent(agent);
       }
 
       for (const tool of importedModule.tools) {
@@ -38,12 +41,12 @@ export class ModulesService {
       }
 
       for (const plugin of importedModule.plugins) {
-        context.pluginService.registerPlugin(plugin.name, plugin.plugin);
+        pluginService.registerPlugin(plugin.name, plugin.plugin);
       }
 
       for (const client of importedModule.clients) {
-        context.clients.registerClient(client.provider, client.client);
-        context.clients.registerModels(client.provider, client.models);
+        clients.registerClient(client.provider, client.client);
+        clients.registerModels(client.provider, client.models);
       }
     }
   }

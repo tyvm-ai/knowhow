@@ -38,19 +38,13 @@ async function quickTest() {
 
   try {
     const { Tools, Clients } = services();
-    const result = await executeScript(
-      {
-        script: simpleScript,
-        maxToolCalls: 5,
-        maxTokens: 100,
-        maxExecutionTimeMs: 10000,
-        maxCostUsd: 0.1,
-      },
-      {
-        tools: Tools,
-        clients: Clients,
-      }
-    );
+    const result = await executeScript({
+      script: simpleScript,
+      maxToolCalls: 5,
+      maxTokens: 100,
+      maxExecutionTimeMs: 10000,
+      maxCostUsd: 0.1,
+    });
 
     console.log("\n📊 QUICK TEST RESULT:");
     console.log("Success:", result.success);

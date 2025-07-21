@@ -21,16 +21,18 @@ export async function executeScript({
 }) {
   try {
     // Get context from bound ToolsService
-    const toolContext =
-      this instanceof ToolsService ? this.getContext() : services();
-    const clients = toolContext.Clients;
+    const toolService = (
+      this instanceof ToolsService ? this : services().Tools
+    ) as ToolsService;
+    const toolContext = toolService.getContext();
+    const { Clients, Tools } = toolContext;
 
-    if (!clients) {
+    if (!Clients) {
       throw new Error("Clients not available in tool context");
     }
 
     // Create script executor with access to tools and clients
-    const executor = new ScriptExecutor(this, clients);
+    const executor = new ScriptExecutor(Tools, Clients);
 
     // Execute the script
     const result = await executor.execute({

@@ -43,10 +43,10 @@ export type InitParams = {
 };
 
 export interface ModuleContext {
-  agentService: AgentService;
-  pluginService: PluginService;
-  clients: AIClient;
-  toolsService: ToolsService;
+  Agents: AgentService;
+  Plugins: PluginService;
+  Clients: AIClient;
+  Tools: ToolsService;
 }
 
 export interface KnowhowModule {
