@@ -167,9 +167,10 @@ export class ToolsService {
 
   async callTool(toolCall: ToolCall, enabledTools = this.getToolNames()) {
     const functionName = toolCall.function.name;
-    const functionArgs = JSON.parse(
-      restoreEscapedNewLines(toolCall.function.arguments)
-    );
+    const functionArgs =
+      typeof toolCall.function.arguments === "string"
+        ? JSON.parse(restoreEscapedNewLines(toolCall.function.arguments))
+        : toolCall.function.arguments;
 
     try {
       // Check if tool is enabled
