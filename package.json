@@ -1,7 +1,6 @@
-
 {
   "name": "knowhow",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "",
   "main": "./packages/core/ts_build/src/index.js",
   "bin": "./packages/core/ts_build/src/cli.js",
