@@ -2327,7 +2327,7 @@
     "@types/node" "*"
 
 "@tyvm/knowhow@file:/Users/micah/dev/knowhow/packages/knowhow":
-  version "0.0.25"
+  version "0.0.26"
   resolved "file:packages/knowhow"
   dependencies:
     "@anthropic-ai/sdk" "^0.39.0"
