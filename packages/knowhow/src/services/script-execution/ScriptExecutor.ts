@@ -27,6 +27,7 @@ export class ScriptExecutor {
   private defaultPolicy: SecurityPolicy = {
     allowlistedTools: [], // Empty means all tools allowed
     denylistedTools: [
+      "executeScript", // Circular script execution
       "execCommand", // Dangerous system commands
       "writeFileChunk", // File system write access
       "patchFile", // File system modification

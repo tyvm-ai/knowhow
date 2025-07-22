@@ -73,6 +73,10 @@ export class SandboxContext {
       throw new Error(`Tool call '${toolName}' blocked by policy`);
     }
 
+    if (toolName === "executeScript") {
+      throw new Error("Nested script execution is not allowed in sandbox");
+    }
+
     this.tracer.emitEvent("tool_call_start", {
       toolName,
       parameters: this.sanitizeForLogging(parameters),
@@ -206,7 +210,7 @@ export class SandboxContext {
 
   async sleep(ms: number): Promise<void> {
     if (typeof ms !== "number" || ms < 0 || ms > 2000) {
-      throw new Error("Invalid sleep duration");
+      throw new Error("Invalid sleep duration, sleep must be >0 and <2000");
     }
     await new Promise((res) => setTimeout(res, ms));
     this.tracer.emitEvent("sleep", { durationMs: ms });
