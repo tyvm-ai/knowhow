@@ -178,9 +178,6 @@ export class ScriptPolicyEnforcer {
       /fetch\s*\(/gi,             // Direct fetch calls
       /XMLHttpRequest/gi,         // XHR
       /WebSocket/gi,              // WebSocket
-      /location\./gi,             // Location object
-      /document\./gi,             // Document object
-      /window\./gi,               // Window object
     ];
 
     for (const pattern of dangerousPatterns) {
