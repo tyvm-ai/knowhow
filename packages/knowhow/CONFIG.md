@@ -88,6 +88,44 @@ Here is an overview of examples from various `knowhow.json` configuration files 
   ],
 ```
 
+## Expose Tools to Knowhow Site via workers
+After you've connected via `knowhow login` you can connect tools from your local machine
+Run `knowhow worker` to generate a block like below. Edit it to include the tools you want to expose.
+Then run `knowhow worker` again to connect
+```json
+  "worker": {
+    "allowedTools": [
+      "embeddingSearch",
+      "finalAnswer",
+      "callPlugin",
+      "readFile",
+      "readBlocks",
+      "patchFile",
+      "lintFile",
+      "textSearch",
+      "fileSearch",
+      "writeFileChunk",
+      "createAiCompletion",
+      "listAllModels",
+      "listAllProviders",
+      "getPullRequest",
+      "getPullRequestBuildStatuses",
+      "getRunLogs",
+      "getPullRequestBuildFailureLogs",
+      "addLanguageTerm",
+      "getAllLanguageTerms",
+      "lookupLanguageTerm",
+      "mcp_0_puppeteer_navigate",
+      "mcp_0_puppeteer_screenshot",
+      "mcp_0_puppeteer_click",
+      "mcp_0_puppeteer_fill",
+      "mcp_0_puppeteer_select",
+      "mcp_0_puppeteer_hover",
+      "mcp_0_puppeteer_evaluate"
+    ]
+  },
+```
+
 ## Custom Models Via LMS Studio
 ```json
   "modelProviders": [

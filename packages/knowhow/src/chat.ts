@@ -293,11 +293,6 @@ export async function chatLoop<E extends GptQuestionEmbedding>(
         default:
           console.log("Thinking...");
           console.log(input);
-          const formattedPrompt = await formatChatInput(
-            input,
-            plugins,
-            chatHistory
-          );
           const interaction = {
             input,
             output: "",
@@ -311,6 +306,11 @@ export async function chatLoop<E extends GptQuestionEmbedding>(
               interaction,
             });
           } else {
+            const formattedPrompt = await formatChatInput(
+              input,
+              plugins,
+              chatHistory
+            );
             results = await askAI(formattedPrompt, provider, model);
             interaction.output = results;
             console.log(Marked.parse(results || "No response from the AI"));

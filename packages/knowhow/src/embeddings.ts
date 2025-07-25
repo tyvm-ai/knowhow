@@ -1,7 +1,14 @@
 import glob from "glob";
 import * as path from "path";
 import { getConfig, loadPrompt } from "./config";
-import { Config, Hashes, Embeddable, EmbeddingBase, Models, EmbeddingModels } from "./types";
+import {
+  Config,
+  Hashes,
+  Embeddable,
+  EmbeddingBase,
+  Models,
+  EmbeddingModels,
+} from "./types";
 import {
   readFile,
   writeFile,
@@ -75,25 +82,33 @@ export async function embedSource(
   }
 
   console.log("Embedding", source.input, "to", source.output);
-  let files = await glob.sync(source.input, { ignore: ignorePattern });
+  let inputs = [];
 
-  if (source.kind && files.length === 0) {
-    files = [source.input];
+  const kind = source.kind || "file";
+
+  // Don't glob a paragraph or some other kind of input
+  if (kind !== "file") {
+    inputs = await glob.sync(source.input, { ignore: ignorePattern });
   }
 
-  console.log(`Found ${files.length} files`);
-  if (files.length > 100) {
+  // It wasn't a file glob, so we need to loop through input
+  if (source.kind && inputs.length === 0) {
+    inputs = [source.input];
+  }
+
+  console.log(`Found ${inputs.length} files`);
+  if (inputs.length > 100) {
     console.error(
       "woah there, that's a lot of files. I'm not going to embed that many"
     );
   }
-  console.log(files);
+  console.log(inputs);
   const embeddings: Embeddable[] = await loadEmbedding(source.output);
   let batch = [];
   let index = 0;
-  for (const file of files) {
+  for (const file of inputs) {
     index++;
-    const shouldSave = batch.length > 20 || index === files.length;
+    const shouldSave = batch.length > 20 || index === inputs.length;
     if (shouldSave) {
       await Promise.all(batch);
       batch = [];
