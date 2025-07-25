@@ -81,13 +81,13 @@ export async function embedSource(
     return;
   }
 
-  console.log("Embedding", source.input, "to", source.output);
+  console.log("Embedding", source.input.slice(0, 100), "... to", source.output);
   let inputs = [];
 
   const kind = source.kind || "file";
 
   // Don't glob a paragraph or some other kind of input
-  if (kind !== "file") {
+  if (kind === "file") {
     inputs = await glob.sync(source.input, { ignore: ignorePattern });
   }
 

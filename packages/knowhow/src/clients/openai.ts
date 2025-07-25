@@ -55,7 +55,6 @@ export class GenericOpenAiClient extends OpenAI implements GenericClient {
       }),
     });
 
-    console.log(JSON.stringify({ response }, null, 2));
     const usdCost = this.calculateCost(options.model, response.usage);
 
     return {
@@ -205,7 +204,6 @@ export class GenericOpenAiClient extends OpenAI implements GenericClient {
   ): number | undefined {
     const pricing = this.pricesPerMillion()[model];
 
-    console.log({ pricing });
     if (!pricing) {
       return undefined;
     }
@@ -224,7 +222,6 @@ export class GenericOpenAiClient extends OpenAI implements GenericClient {
     const outputCost = (outputTokens * pricing.output) / 1e6;
 
     const total = cachedInputCost + inputCost + outputCost;
-    console.log({ total });
     return total;
   }
 

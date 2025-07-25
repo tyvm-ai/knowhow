@@ -49,7 +49,6 @@ export class GenericXAIClient extends OpenAI implements GenericClient {
       }),
     });
 
-    console.log(JSON.stringify({ response }, null, 2));
     const usdCost = this.calculateCost(options.model, response.usage);
     return {
       choices: response.choices.map((choice) => ({
@@ -119,7 +118,6 @@ export class GenericXAIClient extends OpenAI implements GenericClient {
     const outputCost = (outputTokens * pricing.output) / 1e6;
 
     const total = inputCost + outputCost;
-    console.log({ total });
     return total;
   }
 

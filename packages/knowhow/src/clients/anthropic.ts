@@ -127,7 +127,6 @@ export class GenericAnthropicClient extends Anthropic implements GenericClient {
 
     const firstUserMessage = groupedMessages.find((m) => m.role === "user");
     if (firstUserMessage) {
-      console.log("caching first user message");
       this.cacheLastContent(firstUserMessage);
     }
 
@@ -139,7 +138,6 @@ export class GenericAnthropicClient extends Anthropic implements GenericClient {
 
       for (const m of lastTwoUserMessages) {
         if (Array.isArray(m.content)) {
-          console.log("caching user message");
           this.cacheLastContent(m);
         }
       }
@@ -241,7 +239,6 @@ export class GenericAnthropicClient extends Anthropic implements GenericClient {
       .join("\n");
 
     const claudeMessages = this.transformMessages(options.messages);
-    console.log(JSON.stringify({ claudeMessages }, null, 2));
 
     const tools = this.transformTools(options.tools);
     try {
@@ -363,7 +360,6 @@ export class GenericAnthropicClient extends Anthropic implements GenericClient {
 
   calculateCost(model: string, usage: Usage): number | undefined {
     const pricing = this.pricesPerMillion()[model];
-    console.log({ pricing });
 
     if (!pricing) {
       return undefined;
@@ -382,7 +378,6 @@ export class GenericAnthropicClient extends Anthropic implements GenericClient {
     const outputCost = (outputTokens * pricing.output) / 1e6;
 
     const total = cachedInputCost + inputCost + outputCost;
-    console.log({ total });
     return total;
   }
 

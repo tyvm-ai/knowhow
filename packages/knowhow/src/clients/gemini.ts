@@ -451,10 +451,6 @@ export class GenericGeminiClient extends GoogleGenAI implements GenericClient {
         contents: options.input,
       });
 
-      console.log(
-        JSON.stringify({ googleEmbeddingResponse: googleEmbedding }, null, 2)
-      );
-
       // Map Google EmbeddingResponse to generic EmbeddingResponse
       const data = googleEmbedding.embeddings.map((e, index) => ({
         object: "embedding", // Hardcode as per OpenAI's object type for embeddings
