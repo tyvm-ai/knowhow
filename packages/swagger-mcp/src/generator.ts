@@ -49,6 +49,15 @@ export class SwaggerMcpGenerator {
     }
   }
 
+  // Public getter methods for express template generator
+  public getApiBaseUrlPublic(): string {
+    return this.getApiBaseUrl();
+  }
+
+  public getSwaggerSpec(): SwaggerSpec {
+    return this.swaggerSpec;
+  }
+
   private getApiBaseUrl(): string {
     // Extract the base URL from the swagger URL (remove the swagger.json path)
     const swaggerUrl = new URL(this.baseUrl);
@@ -310,7 +319,7 @@ export class SwaggerMcpGenerator {
           inputSchema: {
             type: "object",
             properties,
-            required: [...new Set(required)],
+            required: Array.from(new Set(required)),
           },
         };
 
@@ -404,6 +413,12 @@ export class SwaggerClient {
 `;
 
     return clientCode;
+  }
+
+  generateExpressComposition(): string {
+    // Import and use the Express composition template generator
+    const { generateExpressCompositionTemplate } = require('./express-template-generator');
+    return generateExpressCompositionTemplate(this);
   }
 
   generateMcpServer(): string {
@@ -544,6 +559,7 @@ main().catch(console.error);
     const tools = this.generateTools();
     const clientCode = this.generateClientFunctions();
     const mcpServer = this.generateMcpServer();
+    const expressComposition = this.generateExpressComposition();
 
     // Generate package.json for the output
     const packageJson = {
@@ -558,6 +574,8 @@ main().catch(console.error);
       },
       dependencies: {
         "@modelcontextprotocol/sdk": "^1.13.3",
+        "express": "^4.18.0",
+        "@types/express": "^4.17.0",
         axios: "^1.5.0",
       },
       devDependencies: {
@@ -594,6 +612,7 @@ main().catch(console.error);
     );
     writeFileSync(join(srcDir, "client.ts"), clientCode);
     writeFileSync(join(srcDir, "mcp-server.ts"), mcpServer);
+    writeFileSync(join(srcDir, "express-app.ts"), expressComposition);
 
     // Also write the root-level mcp-server.ts for convenience
     writeFileSync(join(outputDir, "mcp-server.ts"), mcpServer);
@@ -603,6 +622,7 @@ main().catch(console.error);
     console.log(`- tsconfig.json: TypeScript configuration`);
     console.log(`- src/client.ts: HTTP client functions`);
     console.log(`- src/mcp-server.ts: Complete MCP server implementation`);
+    console.log(`- src/express-app.ts: Express app composition functions`);
     console.log(`- mcp-server.ts: Complete MCP server implementation`);
   }
 }
