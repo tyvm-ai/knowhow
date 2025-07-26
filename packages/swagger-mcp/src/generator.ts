@@ -2,6 +2,8 @@ import axios from "axios";
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import { join, isAbsolute, resolve } from "path";
 import { Tool, ToolProp, SwaggerSpec } from "./types";
+import { ClientGenerator } from "./client-generator";
+import { ServerGenerator } from "./server-generator";
 
 export class SwaggerMcpGenerator {
   private swaggerSpec!: SwaggerSpec;
@@ -91,9 +93,9 @@ export class SwaggerMcpGenerator {
       // Extract base URL from OpenAPI spec servers array as fallback
       if (this.swaggerSpec.servers && this.swaggerSpec.servers.length > 0) {
         const firstServer = this.swaggerSpec.servers[0];
-        return firstServer.url || 'http://localhost';
+        return firstServer.url || "http://localhost";
       }
-      return 'http://localhost';
+      return "http://localhost";
     }
 
     // Extract the base URL from the API base URL (remove any swagger.json path if present)
@@ -366,163 +368,9 @@ export class SwaggerMcpGenerator {
     return tools;
   }
 
-  private generateMethodParameters(
-    path: string,
-    operation: any
-  ): {
-    signature: string;
-    pathParams: string[];
-    queryParams: string[];
-    bodyParam: boolean;
-  } {
-    const pathParams: string[] = [];
-    const queryParams: string[] = [];
-    let bodyParam = false;
-    const paramParts: string[] = [];
-
-    // Extract path parameters from the path itself
-    const pathParamMatches = path.match(/{([^}]+)}/g);
-    if (pathParamMatches) {
-      for (const match of pathParamMatches) {
-        const paramName = match.slice(1, -1); // Remove { and }
-        pathParams.push(paramName);
-        // For path parameters, we'll assume they're strings/numbers based on common patterns
-        const paramType = paramName.toLowerCase().includes("id")
-          ? "number"
-          : "string";
-        paramParts.push(`${paramName}: ${paramType}`);
-      }
-    }
-
-    // Add query parameters from operation parameters
-    if (operation.parameters) {
-      for (const param of operation.parameters) {
-        if (param.in === "query") {
-          queryParams.push(param.name);
-          let paramType = "string";
-
-          // Determine parameter type from schema
-          const schema = param.schema || param;
-          if (schema.type === "array") {
-            paramType = "string[]";
-          } else if (schema.type === "integer" || schema.type === "number") {
-            paramType = "number";
-          } else if (schema.type === "boolean") {
-            paramType = "boolean";
-          }
-
-          paramParts.push(`${param.name}: ${paramType}`);
-        }
-      }
-    }
-
-    // Add request body parameter
-    if (operation.requestBody) {
-      bodyParam = true;
-      paramParts.push("body: any");
-    }
-
-    // Add headers parameter
-    paramParts.push("headers?: Record<string, string>");
-
-    const signature = paramParts.join(", ");
-
-    return { signature, pathParams, queryParams, bodyParam };
-  }
-
   generateClientFunctions(): string {
-    let clientCode = `\
-import axios, { AxiosInstance, AxiosResponse } from 'axios';
-
-export class SwaggerClient {
-  private axiosInstance: AxiosInstance;
-  private baseUrl: string;
-  private headers: Record<string, string>;
-
-  constructor(baseUrl: string, headers?: Record<string, string>) {
-    this.baseUrl = baseUrl;
-    this.headers = headers || {};
-    this.axiosInstance = axios.create({
-      baseURL: this.baseUrl,
-      headers: this.headers
-    });
-  }
-`;
-
-    for (const [path, pathItem] of Object.entries(this.swaggerSpec.paths)) {
-      for (const [method, operation] of Object.entries(pathItem)) {
-        if (typeof operation !== "object" || !operation) continue;
-
-        const operationId =
-          operation.operationId ||
-          `${method}_${path.replace(/[^a-zA-Z0-9]/g, "_")}`;
-
-        const { signature, pathParams, queryParams, bodyParam } =
-          this.generateMethodParameters(path, operation);
-
-        // Create URL with template literals for path parameters
-        let urlTemplate = path;
-        for (const pathParam of pathParams) {
-          urlTemplate = urlTemplate.replace(
-            `{${pathParam}}`,
-            `\${${pathParam}}`
-          );
-        }
-
-        clientCode += `
-  async ${operationId}(${signature}): Promise<AxiosResponse<any>> {
-    const url = \`${urlTemplate}\`;`;
-
-        // Build query parameters object
-        if (queryParams.length > 0) {
-          clientCode += `
-    const queryParams = { ${queryParams.join(", ")} };`;
-        }
-
-        // Handle different HTTP method cases
-        if (bodyParam) {
-          // Methods with request body (POST, PUT, PATCH)
-          if (queryParams.length > 0) {
-            clientCode += `
-    const response = await this.axiosInstance.${method}(url, body, {
-      params: queryParams,
-      headers: { ...this.headers, ...headers }
-    });`;
-          } else {
-            clientCode += `
-    const response = await this.axiosInstance.${method}(url, body, {
-      headers: { ...this.headers, ...headers }
-    });`;
-          }
-        } else {
-          // Methods without request body (GET, DELETE)
-          if (queryParams.length > 0) {
-            clientCode += `
-    const response = await this.axiosInstance.${method}(url, {
-      params: queryParams,
-      headers: { ...this.headers, ...headers }
-    });`;
-          } else {
-            clientCode += `
-    const response = await this.axiosInstance.${method}(url, {
-      headers: { ...this.headers, ...headers }
-    });`;
-          }
-        }
-
-        clientCode += `
-
-    return response.data;
-  }
-`;
-      }
-    }
-
-    clientCode += `
-}
-`;
-
-    return clientCode;
+    const clientGenerator = new ClientGenerator(this.swaggerSpec);
+    return clientGenerator.generateClientFunctions();
   }
 
   generateExpressComposition(): string {
@@ -534,139 +382,12 @@ export class SwaggerClient {
   }
 
   generateServerFactory(): string {
-    const tools = this.generateTools();
-    const apiBaseUrl = this.getApiBaseUrl();
-    const serverName = this.swaggerSpec.info.title
-      .toLowerCase()
-      .replace(/[^a-z0-9]/g, "-");
-    const serverVersion = this.swaggerSpec.info.version;
-
-    return `import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { SwaggerClient } from './client';
-
-// Setup headers from environment variables
-function getHeaders(): Record<string, string> {
-  return Object.keys(process.env).filter(key => key.startsWith('HEADER_')).reduce((headers, key) => {
-    const headerName = key.substring(7).replace(/_/g, '-');
-    headers[headerName] = process.env[key]!;
-    return headers;
-  }, {} as Record<string, string>);
-}
-
-// Merge environment headers with request headers, giving priority to request headers
-// Handles Authorization header and other custom headers from environment variables
-function mergeHeaders(requestHeaders?: Record<string, string>): Record<string, string> {
-  const envHeaders = getHeaders();
-  return {
-    ...envHeaders,
-    ...(requestHeaders || {})
-  };
-}
-
-/**
- * Creates and configures an MCP server with the specified headers (including Authorization)
- * @param requestHeaders Optional headers to include in API requests
- * @returns Configured MCP Server instance
- */
-export function createMcpServer(headers?: Record<string, string>): Server {
-  const server = new Server({
-    name: '${serverName}-mcp',
-    version: '${serverVersion}'
-  }, {
-    capabilities: {
-      tools: {}
-    }
-  });
-
-  const apiBaseUrl = '${apiBaseUrl}';
-
-  // Helper function to format responses consistently
-  const formatResponse = async (methodName: string, args: any) => {
-    // Handle Authorization header and merge with environment headers
-    const envHeaders = getHeaders();
-    const mergedHeaders = { ...envHeaders, ...headers };
-    const client = new SwaggerClient(apiBaseUrl, mergedHeaders);
-
-    try {
-      const result = await (client as any)[methodName](args || {});
-      return {
-        content: [{
-          type: 'text',
-          text: typeof result === 'string' ? result : JSON.stringify(result, null, 2)
-        }]
-      };
-    } catch (error: any) {
-      let errorMessage = \`Error calling \${methodName}: \${error.message}\`;
-
-      // If it's an axios error, provide more detailed information
-      if (error.response) {
-        // The request was made and the server responded with a status code
-        // that falls out of the range of 2xx
-        errorMessage += \`\\n\\nHTTP Status: \${error.response.status} \${error.response.statusText || ''}\`;
-
-        if (error.response.data) {
-          errorMessage += \`\\nResponse Body: \${typeof error.response.data === 'string' ? error.response.data : JSON.stringify(error.response.data, null, 2)}\`;
-        }
-      } else if (error.request) {
-        // The request was made but no response was received
-        errorMessage += \`\\n\\nNo response received from server\`;
-        // Extract safe request details to avoid circular reference issues
-        const requestDetails = {
-          method: error.request.method,
-          path: error.request.path,
-          timeout: error.request.timeout
-        };
-        errorMessage += \`\\nRequest details: \${JSON.stringify(requestDetails, null, 2)}\`;
-      } else {
-        // Something happened in setting up the request that triggered an Error
-        errorMessage += \`\\nRequest setup error: \${error.message}\`;
-      }
-
-      return {
-        content: [{
-          type: 'text',
-          text: errorMessage
-        }]
-      };
-    }
-  };
-
-  // Handle tool calls
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params as any;
-
-    switch (name) {
-${tools
-  .map(
-    (tool) => `      case '${tool.name}':
-        return formatResponse('${tool.name}', args);`
-  )
-  .join("\n")}
-      default:
-        throw new Error(\`Unknown tool: \${name}\`);
-    }
-  });
-
-  server.setRequestHandler(ListToolsRequestSchema, async (request) => {
-    return {
-      tools: [
-${tools
-  .map(
-    (tool) => `        {
-          name: '${tool.name}',
-          description: '${tool.description}',
-          inputSchema: ${JSON.stringify(tool.inputSchema, null, 10)}
-        }`
-  )
-  .join(",\n")}
-      ]
-    };
-  });
-
-  return server;
-}
-`;
+    const serverGenerator = new ServerGenerator(
+      this.getApiBaseUrl(),
+      this.swaggerSpec,
+      this.generateTools()
+    );
+    return serverGenerator.generateServerFactory();
   }
 
   generateMcpServer(): string {
