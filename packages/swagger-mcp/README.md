@@ -5,7 +5,7 @@ Generate MCP (Model Context Protocol) servers from Swagger/OpenAPI specification
 ## Usage
 
 ```bash
-npx @tyvm/swagger-mcp <swagger-url> [output-dir] [--start-stdio]
+npx @tyvm/swagger-mcp --url <swagger-url> [--output output-dir] [--file input-file] [--start-stdio]
 ```
 
 By default, the output directory is generated based on the domain name of the swagger URL. For example, `https://api.dev.knowhow.tyvm.ai/docs/` would create `./generated/api_dev_knowhow_tyvm_ai/`.
@@ -14,10 +14,10 @@ By default, the output directory is generated based on the domain name of the sw
 
 ```bash
 # Generate and immediately start the server (creates ./generated/api_example_com/)
-npx @tyvm/swagger-mcp https://api.example.com/swagger.json --start-stdio
+npx @tyvm/swagger-mcp --url https://api.example.com/swagger.json --start-stdio
 
 # Generate MCP server from Swagger spec (creates ./generated/api_example_com/)
-npx @tyvm/swagger-mcp https://api.example.com/swagger.json
+npx @tyvm/swagger-mcp --url https://api.example.com/swagger.json
 
 ```
 
@@ -54,6 +54,7 @@ The tool creates:
       "args": [
         "-y",
         "@tyvm/swagger-mcp",
+        "--url",
         "https://api.dev.knowhow.tyvm.ai/docs/swagger.json",
         "--start-stdio"
       ],
