@@ -569,6 +569,14 @@ export abstract class BaseAgent implements IAgent {
     startIndex: number,
     endIndex: number
   ) {
+    console.log(
+      "Compressing messages from",
+      startIndex,
+      "to",
+      endIndex,
+      "total messages:",
+      messages.length
+    );
     const toCompress = messages.slice(startIndex, endIndex);
     const toCompressPrompt = `We are compressing our conversation to save memory.
     Please summarize the conversation so far, so that we may continue the original task with a smaller context
@@ -582,7 +590,6 @@ export abstract class BaseAgent implements IAgent {
     Our initial task breakdown: ${this.taskBreakdown}
 
     This summary will become the agent's only memory of the past, all other messages will be dropped:
-    <ToSummarize>${JSON.stringify(toCompress)}</ToSummarize>
 
       `;
 
@@ -591,6 +598,7 @@ export abstract class BaseAgent implements IAgent {
     const response = await this.getClient().createChatCompletion({
       model,
       messages: [
+        ...messages,
         {
           role: "user",
           content: toCompressPrompt,

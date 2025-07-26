@@ -11,115 +11,8 @@ export function generateExpressCompositionTemplate(generator: SwaggerMcpGenerato
 import { randomUUID } from 'node:crypto';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { CallToolRequestSchema, ListToolsRequestSchema, isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
-import { SwaggerClient } from './client';
-
-// Setup headers from environment variables
-function getHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {};
-  for (const [key, value] of Object.entries(process.env)) {
-    if (key.startsWith('HEADER_') && value) {
-      const headerName = key.substring(7);
-      headers[headerName] = value;
-    }
-  }
-  return headers;
-}
-
-// Merge environment headers with request headers, giving priority to request headers
-function mergeHeaders(requestHeaders?: Record<string, string>): Record<string, string> {
-  const envHeaders = getHeaders();
-  return {
-    ...envHeaders,
-    ...(requestHeaders || {})
-  };
-}
-
-// Create and configure MCP server with request headers
-function createMcpServer(requestHeaders?: Record<string, string>): Server {
-  const server = new Server({
-    name: '${serverName}-mcp',
-    version: '${serverVersion}'
-  }, {
-    capabilities: {
-      tools: {}
-    }
-  });
-
-  const apiBaseUrl = '${apiBaseUrl}';
-  
-  // Helper function to format responses consistently
-  const formatResponse = async (methodName: string, args: any) => {
-    const headers = mergeHeaders(requestHeaders);
-    const client = new SwaggerClient(apiBaseUrl, headers);
-    
-    try {
-      const result = await (client as any)[methodName](args || {});
-      return {
-        content: [{
-          type: 'text',
-          text: typeof result === 'string' ? result : JSON.stringify(result, null, 2)
-        }]
-      };
-    } catch (error: any) {
-      let errorMessage = \`Error calling \${methodName}: \${error.message}\`;
-
-      // If it's an axios error, provide more detailed information
-      if (error.response) {
-        errorMessage += \`\\n\\nHTTP Status: \${error.response.status} \${error.response.statusText || ''}\`;
-        if (error.response.data) {
-          errorMessage += \`\\nResponse Body: \${typeof error.response.data === 'string' ? error.response.data : JSON.stringify(error.response.data, null, 2)}\`;
-        }
-      } else if (error.request) {
-        errorMessage += \`\\n\\nNo response received from server\`;
-        errorMessage += \`\\nRequest details: \${JSON.stringify(error.request, null, 2)}\`;
-      } else {
-        errorMessage += \`\\nRequest setup error: \${error.message}\`;
-      }
-
-      return {
-        content: [{
-          type: 'text',
-          text: errorMessage
-        }]
-      };
-    }
-  };
-
-  // Handle tool calls
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
-    const { name, arguments: args } = request.params as any;
-    
-    switch (name) {
-${tools
-  .map(
-    (tool) => `      case '${tool.name}':
-        return formatResponse('${tool.name}', args);`
-  )
-  .join("\n")}
-      default:
-        throw new Error(\`Unknown tool: \${name}\`);
-    }
-  });
-
-  server.setRequestHandler(ListToolsRequestSchema, async (request) => {
-    return {
-      tools: [
-${tools
-  .map(
-    (tool) => `        {
-          name: '${tool.name}',
-          description: '${tool.description}',
-          inputSchema: ${JSON.stringify(tool.inputSchema, null, 10)}
-        }`
-  )
-  .join(",\n")}
-      ]
-    };
-  });
-
-  return server;
-}
+import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
+import { createMcpServer } from './server-factory';
 
 /**
  * Stateless Express app composition - creates new server instance for each request
@@ -132,7 +25,7 @@ export function statelessApp(app: express.Application, mcpPath: string = '/mcp')
     try {
       // Extract authorization header for API calls
       const authHeader = req.headers.authorization;
-      const requestHeaders = authHeader ? { Authorization: authHeader } : {};
+      const requestHeaders = authHeader ? { Authorization: authHeader } : undefined;
       
       const server = createMcpServer(requestHeaders);
       const transport = new StreamableHTTPServerTransport({
@@ -205,7 +98,7 @@ export function statefulApp(app: express.Application, mcpPath: string = '/mcp'):
   app.post(mcpPath, async (req: express.Request, res: express.Response) => {
     // Extract authorization header for API calls
     const authHeader = req.headers.authorization;
-    const requestHeaders = authHeader ? { Authorization: authHeader } : {};
+    const requestHeaders = authHeader ? { Authorization: authHeader } : undefined;
     
     // Check for existing session ID
     const sessionId = req.headers['mcp-session-id'] as string | undefined;

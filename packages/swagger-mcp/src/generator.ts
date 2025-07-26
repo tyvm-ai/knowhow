@@ -337,15 +337,14 @@ import axios, { AxiosInstance } from 'axios';
 export class SwaggerClient {
   private api: AxiosInstance;
   private baseUrl: string;
+  private headers: Record<string, string>;
 
-  constructor(baseUrl: string, headers: Record<string, string> = {}) {
+  constructor(baseUrl: string, headers?: Record<string, string>) {
     this.baseUrl = baseUrl;
+    this.headers = headers || {};
     this.api = axios.create({
       baseURL: baseUrl,
-      headers: {
-        'Content-Type': 'application/json',
-        ...headers
-      }
+      headers: this.headers
     });
   }
 
@@ -421,8 +420,136 @@ export class SwaggerClient {
     return generateExpressCompositionTemplate(this);
   }
 
-  generateMcpServer(): string {
+  generateServerFactory(): string {
     const tools = this.generateTools();
+    const apiBaseUrl = this.getApiBaseUrl();
+    const serverName = this.swaggerSpec.info.title.toLowerCase().replace(/[^a-z0-9]/g, "-");
+    const serverVersion = this.swaggerSpec.info.version;
+
+    return `import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { SwaggerClient } from './client';
+
+// Setup headers from environment variables
+function getHeaders(): Record<string, string> {
+  return Object.keys(process.env).filter(key => key.startsWith('HEADER_')).reduce((headers, key) => {
+    const headerName = key.substring(7).replace(/_/g, '-');
+    headers[headerName] = process.env[key];
+    return headers;
+  }, {} as Record<string, string>);
+}
+
+// Merge environment headers with request headers, giving priority to request headers
+// Handles Authorization header and other custom headers from environment variables
+function mergeHeaders(requestHeaders?: Record<string, string>): Record<string, string> {
+  const envHeaders = getHeaders();
+  return {
+    ...envHeaders,
+    ...(headers || {})
+  };
+}
+
+/**
+ * Creates and configures an MCP server with the specified headers (including Authorization)
+ * @param requestHeaders Optional headers to include in API requests
+ * @returns Configured MCP Server instance
+ */
+export function createMcpServer(headers?: Record<string, string>): Server {
+  const server = new Server({
+    name: '${serverName}-mcp',
+    version: '${serverVersion}'
+  }, {
+    capabilities: {
+      tools: {}
+    }
+  });
+
+  const apiBaseUrl = '${apiBaseUrl}';
+  
+  // Helper function to format responses consistently
+  const formatResponse = async (methodName: string, args: any) => {
+    // Handle Authorization header and merge with environment headers
+    const envHeaders = getHeaders();
+    const mergedHeaders = { ...envHeaders, ...headers };
+    const client = new SwaggerClient({ url: apiBaseUrl, headers: mergedHeaders });
+    
+    try {
+      const result = await (client as any)[methodName](args || {});
+      return {
+        content: [{
+          type: 'text',
+          text: typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+        }]
+      };
+    } catch (error: any) {
+      let errorMessage = \`Error calling \${methodName}: \${error.message}\`;
+
+      // If it's an axios error, provide more detailed information
+      if (error.response) {
+        // The request was made and the server responded with a status code
+        // that falls out of the range of 2xx
+        errorMessage += \`\\n\\nHTTP Status: \${error.response.status} \${error.response.statusText || ''}\`;
+
+        if (error.response.data) {
+          errorMessage += \`\\nResponse Body: \${typeof error.response.data === 'string' ? error.response.data : JSON.stringify(error.response.data, null, 2)}\`;
+        }
+      } else if (error.request) {
+        // The request was made but no response was received
+        errorMessage += \`\\n\\nNo response received from server\`;
+        errorMessage += \`\\nRequest details: \${JSON.stringify(error.request, null, 2)}\`;
+      } else {
+        // Something happened in setting up the request that triggered an Error
+        errorMessage += \`\\nRequest setup error: \${error.message}\`;
+      }
+
+      return {
+        content: [{
+          type: 'text',
+          text: errorMessage
+        }]
+      };
+    }
+  };
+
+  // Handle tool calls
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params as any;
+    
+    switch (name) {
+${tools
+  .map(
+    (tool) => `      case '${tool.name}':
+        return formatResponse('${tool.name}', args);`
+  )
+  .join("\n")}
+      default:
+        throw new Error(\`Unknown tool: \${name}\`);
+    }
+  });
+
+  server.setRequestHandler(ListToolsRequestSchema, async (request) => {
+    return {
+      tools: [
+${tools
+  .map(
+    (tool) => `        {
+          name: '${tool.name}',
+          description: '${tool.description}',
+          inputSchema: ${JSON.stringify(tool.inputSchema, null, 10)}
+        }`
+  )
+  .join(",\n")}
+      ]
+    };
+  });
+
+  return server;
+}
+`;
+  }
+
+  generateMcpServer(): string {
+    const serverFactory = this.generateServerFactory();
     const swaggerUrl = this.baseUrl;
     const apiBaseUrl = this.getApiBaseUrl();
 
@@ -430,19 +557,7 @@ export class SwaggerClient {
 
 import { SwaggerClient } from './client';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-
-const server = new Server({
-  name: '${this.swaggerSpec.info.title
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "-")}-mcp',
-  version: '${this.swaggerSpec.info.version}'
-}, {
-  capabilities: {
-    tools: {}
-  }
-});
+import { createMcpServer } from './server-factory';
 
 // Setup headers from environment variables
 const headers: Record<string, string> = {};
@@ -455,81 +570,7 @@ for (const [key, value] of Object.entries(process.env)) {
 
 const swaggerUrl = '${swaggerUrl}';
 const apiBaseUrl = '${apiBaseUrl}';
-const client = new SwaggerClient(apiBaseUrl, headers);
-
-
-
-// Helper function to format responses consistently
-const formatResponse = async (methodName: string, args: any) => {
-  try {
-    const result = await (client as any)[methodName](args || {});
-    return {
-      content: [{
-        type: 'text',
-        text: typeof result === 'string' ? result : JSON.stringify(result, null, 2)
-      }]
-    };
-  } catch (error: any) {
-    let errorMessage = \`Error calling \${methodName}: \${error.message}\`;
-
-    // If it's an axios error, provide more detailed information
-    if (error.response) {
-      // The request was made and the server responded with a status code
-      // that falls out of the range of 2xx
-      errorMessage += \`\\n\\nHTTP Status: \${error.response.status} \${error.response.statusText || ''}\`;
-
-      if (error.response.data) {
-        errorMessage += \`\\nResponse Body: \${typeof error.response.data === 'string' ? error.response.data : JSON.stringify(error.response.data, null, 2)}\`;
-      }
-    } else if (error.request) {
-      // The request was made but no response was received
-      errorMessage += \`\\n\\nNo response received from server\`;
-      errorMessage += \`\\nRequest details: \${JSON.stringify(error.request, null, 2)}\`;
-    } else {
-      // Something happened in setting up the request that triggered an Error
-      errorMessage += \`\\n\\nRequest setup error: \${error.message}\`;
-    }
-
-    return {
-      content: [{
-        type: 'text',
-        text: errorMessage
-      }]
-    };
-  }
-};
-
-// Handle tool calls
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const { name, arguments: args } = request.params as any;
-
-  switch (name) {
-${tools
-  .map(
-    (tool) => `    case '${tool.name}':
-      return formatResponse('${tool.name}', args);`
-  )
-  .join("\n")}
-    default:
-      throw new Error(\`Unknown tool: \${name}\`);
-  }
-});
-
-server.setRequestHandler(ListToolsRequestSchema, async (request) => {
-  return {
-    tools: [
-${tools
-  .map(
-    (tool) => `      {
-        name: '${tool.name}',
-        description: '${tool.description}',
-        inputSchema: ${JSON.stringify(tool.inputSchema, null, 8)}
-      }`
-  )
-  .join(",\n")}
-    ]
-  };
-});
+const server = createMcpServer(headers);
 
 async function main() {
   const transport = new StdioServerTransport();
@@ -540,7 +581,10 @@ async function main() {
   )} MCP Server running on stdio');
 }
 
-main().catch(console.error);
+// Only run main() if this file is being executed directly (not imported)
+if (require.main === module) {
+  main().catch(console.error);
+}
 `;
   }
 
@@ -559,6 +603,7 @@ main().catch(console.error);
     const tools = this.generateTools();
     const clientCode = this.generateClientFunctions();
     const mcpServer = this.generateMcpServer();
+    const serverFactory = this.generateServerFactory();
     const expressComposition = this.generateExpressComposition();
 
     // Generate package.json for the output
@@ -612,6 +657,7 @@ main().catch(console.error);
     );
     writeFileSync(join(srcDir, "client.ts"), clientCode);
     writeFileSync(join(srcDir, "mcp-server.ts"), mcpServer);
+    writeFileSync(join(srcDir, "server-factory.ts"), serverFactory);
     writeFileSync(join(srcDir, "express-app.ts"), expressComposition);
 
     // Also write the root-level mcp-server.ts for convenience
@@ -621,6 +667,7 @@ main().catch(console.error);
     console.log(`- package.json: Project configuration`);
     console.log(`- tsconfig.json: TypeScript configuration`);
     console.log(`- src/client.ts: HTTP client functions`);
+    console.log(`- src/server-factory.ts: Reusable MCP server factory`);
     console.log(`- src/mcp-server.ts: Complete MCP server implementation`);
     console.log(`- src/express-app.ts: Express app composition functions`);
     console.log(`- mcp-server.ts: Complete MCP server implementation`);

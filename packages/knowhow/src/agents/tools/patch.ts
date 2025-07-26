@@ -592,7 +592,7 @@ export async function patchFile(
         );
         // It might be valid that the patch had no real changes, but applyPatch failed anyway?
         // Let's return an error indicating failure.
-        return `Patch failed to apply and could not be fixed or resulted in no changes.`;
+        return `Patch failed to apply and could not be fixed or resulted in no changes. Make sure you are making small patches`;
       }
 
       updatedContent = applyPatch(originalContent, fixedPatch);
@@ -617,7 +617,7 @@ export async function patchFile(
           "Fixed patch also failed to apply."
         );
         // Try to provide more specific feedback from applyPatch if possible (library might not offer it)
-        return "Patch failed to apply even after attempting to fix it.";
+        return "Patch failed to apply even after attempting to fix it. Make sure you are making small patches.";
       } else {
         console.log("Successfully applied the *fixed* patch.");
       }
