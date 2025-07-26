@@ -71,7 +71,17 @@ export class McpService {
         return new MCPWebSocketTransport(mcp.params.socket);
       }
       if (mcp.url) {
-        return new StreamableHTTPClientTransport(new URL(mcp.url));
+        // TODO: also support refresh tokens
+        return new StreamableHTTPClientTransport(new URL(mcp.url), {
+          requestInit: {
+            headers: {
+              "User-Agent": knowhowMcpClient.name,
+              ...(mcp.authorization_token && {
+                Authorization: `Bearer ${mcp.authorization_token}`,
+              }),
+            },
+          },
+        });
       }
     });
 

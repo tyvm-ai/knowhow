@@ -359,6 +359,13 @@ export async function startAgent(
       ),
     ]);
 
+    activeAgent.agentEvents.on(
+      activeAgent.eventTypes.toolUsed,
+      (responseMsg) => {
+        console.log(` 🔨 Tool used: ${JSON.stringify(responseMsg, null, 2)}`);
+      }
+    );
+
     activeAgent.agentEvents.once(activeAgent.eventTypes.done, (doneMsg) => {
       console.log("Agent has finished.");
       done = true;

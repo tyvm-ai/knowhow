@@ -335,7 +335,7 @@ export class SwaggerMcpGenerator {
     const queryParams: string[] = [];
     let bodyParam = false;
     const paramParts: string[] = [];
-    
+
     // Extract path parameters from the path itself
     const pathParamMatches = path.match(/{([^}]+)}/g);
     if (pathParamMatches) {
@@ -347,14 +347,14 @@ export class SwaggerMcpGenerator {
         paramParts.push(`${paramName}: ${paramType}`);
       }
     }
-    
+
     // Add query parameters from operation parameters
     if (operation.parameters) {
       for (const param of operation.parameters) {
         if (param.in === 'query') {
           queryParams.push(param.name);
           let paramType = 'string';
-          
+
           // Determine parameter type from schema
           const schema = param.schema || param;
           if (schema.type === 'array') {
@@ -364,23 +364,23 @@ export class SwaggerMcpGenerator {
           } else if (schema.type === 'boolean') {
             paramType = 'boolean';
           }
-          
+
           paramParts.push(`${param.name}: ${paramType}`);
         }
       }
     }
-    
+
     // Add request body parameter
     if (operation.requestBody) {
       bodyParam = true;
       paramParts.push('body: any');
     }
-    
+
     // Add headers parameter
     paramParts.push('headers?: Record<string, string>');
-    
+
     const signature = paramParts.join(', ');
-    
+
     return { signature, pathParams, queryParams, bodyParam };
   }
 
@@ -410,9 +410,9 @@ export class SwaggerClient {
         const operationId =
           operation.operationId ||
           `${method}_${path.replace(/[^a-zA-Z0-9]/g, "_")}`;
-        
+
         const { signature, pathParams, queryParams, bodyParam } = this.generateMethodParameters(path, operation);
-        
+
         // Create URL with template literals for path parameters
         let urlTemplate = path;
         for (const pathParam of pathParams) {
@@ -422,13 +422,13 @@ export class SwaggerClient {
         clientCode += `
   async ${operationId}(${signature}): Promise<AxiosResponse<any>> {
     const url = \`${urlTemplate}\`;`;
-        
+
         // Build query parameters object
         if (queryParams.length > 0) {
           clientCode += `
     const queryParams = { ${queryParams.join(', ')} };`;
         }
-        
+
         // Handle different HTTP method cases
         if (bodyParam) {
           // Methods with request body (POST, PUT, PATCH)
@@ -459,10 +459,10 @@ export class SwaggerClient {
     });`;
           }
         }
-        
+
         clientCode += `
 
-    return response;
+    return response.data;
   }
 `;
       }
@@ -526,14 +526,14 @@ export function createMcpServer(headers?: Record<string, string>): Server {
   });
 
   const apiBaseUrl = '${apiBaseUrl}';
-  
+
   // Helper function to format responses consistently
   const formatResponse = async (methodName: string, args: any) => {
     // Handle Authorization header and merge with environment headers
     const envHeaders = getHeaders();
     const mergedHeaders = { ...envHeaders, ...headers };
     const client = new SwaggerClient(apiBaseUrl, mergedHeaders);
-    
+
     try {
       const result = await (client as any)[methodName](args || {});
       return {
@@ -557,7 +557,13 @@ export function createMcpServer(headers?: Record<string, string>): Server {
       } else if (error.request) {
         // The request was made but no response was received
         errorMessage += \`\\n\\nNo response received from server\`;
-        errorMessage += \`\\nRequest details: \${JSON.stringify(error.request, null, 2)}\`;
+        // Extract safe request details to avoid circular reference issues
+        const requestDetails = {
+          method: error.request.method,
+          path: error.request.path,
+          timeout: error.request.timeout
+        };
+        errorMessage += \`\\nRequest details: \${JSON.stringify(requestDetails, null, 2)}\`;
       } else {
         // Something happened in setting up the request that triggered an Error
         errorMessage += \`\\nRequest setup error: \${error.message}\`;
@@ -575,7 +581,7 @@ export function createMcpServer(headers?: Record<string, string>): Server {
   // Handle tool calls
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params as any;
-    
+
     switch (name) {
 ${tools
   .map(
