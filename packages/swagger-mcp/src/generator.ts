@@ -330,41 +330,77 @@ export class SwaggerMcpGenerator {
     return tools;
   }
 
+  private generateMethodParameters(path: string, operation: any): { signature: string; pathParams: string[]; queryParams: string[]; bodyParam: boolean } {
+    const pathParams: string[] = [];
+    const queryParams: string[] = [];
+    let bodyParam = false;
+    const paramParts: string[] = [];
+    
+    // Extract path parameters from the path itself
+    const pathParamMatches = path.match(/{([^}]+)}/g);
+    if (pathParamMatches) {
+      for (const match of pathParamMatches) {
+        const paramName = match.slice(1, -1); // Remove { and }
+        pathParams.push(paramName);
+        // For path parameters, we'll assume they're strings/numbers based on common patterns
+        const paramType = paramName.toLowerCase().includes('id') ? 'number' : 'string';
+        paramParts.push(`${paramName}: ${paramType}`);
+      }
+    }
+    
+    // Add query parameters from operation parameters
+    if (operation.parameters) {
+      for (const param of operation.parameters) {
+        if (param.in === 'query') {
+          queryParams.push(param.name);
+          let paramType = 'string';
+          
+          // Determine parameter type from schema
+          const schema = param.schema || param;
+          if (schema.type === 'array') {
+            paramType = 'string[]';
+          } else if (schema.type === 'integer' || schema.type === 'number') {
+            paramType = 'number';
+          } else if (schema.type === 'boolean') {
+            paramType = 'boolean';
+          }
+          
+          paramParts.push(`${param.name}: ${paramType}`);
+        }
+      }
+    }
+    
+    // Add request body parameter
+    if (operation.requestBody) {
+      bodyParam = true;
+      paramParts.push('body: any');
+    }
+    
+    // Add headers parameter
+    paramParts.push('headers?: Record<string, string>');
+    
+    const signature = paramParts.join(', ');
+    
+    return { signature, pathParams, queryParams, bodyParam };
+  }
+
   generateClientFunctions(): string {
-    let clientCode = `
-import axios, { AxiosInstance } from 'axios';
+    let clientCode = `\
+import axios, { AxiosInstance, AxiosResponse } from 'axios';
 
 export class SwaggerClient {
-  private api: AxiosInstance;
+  private axiosInstance: AxiosInstance;
   private baseUrl: string;
   private headers: Record<string, string>;
 
   constructor(baseUrl: string, headers?: Record<string, string>) {
     this.baseUrl = baseUrl;
     this.headers = headers || {};
-    this.api = axios.create({
-      baseURL: baseUrl,
+    this.axiosInstance = axios.create({
+      baseURL: this.baseUrl,
       headers: this.headers
     });
   }
-
-  private replacePathParams(path: string, params: Record<string, any>): string {
-    let result = path;
-    const pathParams = path.match(/{([^}]+)}/g);
-
-    if (pathParams) {
-      for (const param of pathParams) {
-        const paramName = param.slice(1, -1);
-        if (params[paramName] !== undefined) {
-          result = result.replace(param, params[paramName]);
-          delete params[paramName];
-        }
-      }
-    }
-
-    return result;
-  }
-
 `;
 
     for (const [path, pathItem] of Object.entries(this.swaggerSpec.paths)) {
@@ -374,34 +410,59 @@ export class SwaggerClient {
         const operationId =
           operation.operationId ||
           `${method}_${path.replace(/[^a-zA-Z0-9]/g, "_")}`;
-        const hasRequestBody = operation.requestBody !== undefined;
+        
+        const { signature, pathParams, queryParams, bodyParam } = this.generateMethodParameters(path, operation);
+        
+        // Create URL with template literals for path parameters
+        let urlTemplate = path;
+        for (const pathParam of pathParams) {
+          urlTemplate = urlTemplate.replace(`{${pathParam}}`, `\${${pathParam}}`);
+        }
 
         clientCode += `
-  async ${operationId}(params: Record<string, any> = {}): Promise<any> {
-    const path = this.replacePathParams('${path}', { ...params });
-    const queryParams = { ...params };
+  async ${operationId}(${signature}): Promise<AxiosResponse<any>> {
+    const url = \`${urlTemplate}\`;`;
+        
+        // Build query parameters object
+        if (queryParams.length > 0) {
+          clientCode += `
+    const queryParams = { ${queryParams.join(', ')} };`;
+        }
+        
+        // Handle different HTTP method cases
+        if (bodyParam) {
+          // Methods with request body (POST, PUT, PATCH)
+          if (queryParams.length > 0) {
+            clientCode += `
+    const response = await this.axiosInstance.${method}(url, body, {
+      params: queryParams,
+      headers: { ...this.headers, ...headers }
+    });`;
+          } else {
+            clientCode += `
+    const response = await this.axiosInstance.${method}(url, body, {
+      headers: { ...this.headers, ...headers }
+    });`;
+          }
+        } else {
+          // Methods without request body (GET, DELETE)
+          if (queryParams.length > 0) {
+            clientCode += `
+    const response = await this.axiosInstance.${method}(url, {
+      params: queryParams,
+      headers: { ...this.headers, ...headers }
+    });`;
+          } else {
+            clientCode += `
+    const response = await this.axiosInstance.${method}(url, {
+      headers: { ...this.headers, ...headers }
+    });`;
+          }
+        }
+        
+        clientCode += `
 
-    // Remove path parameters from query params
-    const pathParamNames = '${path}'.match(/{([^}]+)}/g);
-    if (pathParamNames) {
-      for (const param of pathParamNames) {
-        const paramName = param.slice(1, -1);
-        delete queryParams[paramName];
-      }
-    }
-
-    ${
-      hasRequestBody
-        ? `
-    const requestBody = { ...queryParams };
-    const response = await this.api.${method}(path, requestBody);
-    `
-        : `
-    const response = await this.api.${method}(path, { params: queryParams });
-    `
-    }
-
-    return response.data;
+    return response;
   }
 `;
       }
@@ -434,7 +495,7 @@ import { SwaggerClient } from './client';
 function getHeaders(): Record<string, string> {
   return Object.keys(process.env).filter(key => key.startsWith('HEADER_')).reduce((headers, key) => {
     const headerName = key.substring(7).replace(/_/g, '-');
-    headers[headerName] = process.env[key];
+    headers[headerName] = process.env[key]!;
     return headers;
   }, {} as Record<string, string>);
 }
@@ -445,7 +506,7 @@ function mergeHeaders(requestHeaders?: Record<string, string>): Record<string, s
   const envHeaders = getHeaders();
   return {
     ...envHeaders,
-    ...(headers || {})
+    ...(requestHeaders || {})
   };
 }
 
@@ -471,7 +532,7 @@ export function createMcpServer(headers?: Record<string, string>): Server {
     // Handle Authorization header and merge with environment headers
     const envHeaders = getHeaders();
     const mergedHeaders = { ...envHeaders, ...headers };
-    const client = new SwaggerClient({ url: apiBaseUrl, headers: mergedHeaders });
+    const client = new SwaggerClient(apiBaseUrl, mergedHeaders);
     
     try {
       const result = await (client as any)[methodName](args || {});
