@@ -1,68 +1,22 @@
 #!/usr/bin/env node
 
+import { Command } from 'commander';
 import { spawn } from 'child_process';
 import { join, resolve, dirname } from 'path';
 import { existsSync } from 'fs';
 import { SwaggerMcpGenerator } from './generator';
 
-interface ParsedArgs {
-  swaggerUrl: string;
-  outputDir: string;
-  startStdio: boolean;
-}
-
-function generateDomainBasedDir(swaggerUrl: string, packageDir: string): string {
+function generateDomainBasedDir(swaggerSource: string, packageDir: string): string {
   try {
-    const url = new URL(swaggerUrl);
-    // Extract hostname and convert to valid directory name
-    const hostname = url.hostname;
-    // Replace dots and other special characters with underscores
-    const sanitizedDomain = hostname.replace(/[^a-zA-Z0-9]/g, '_');
+    // Try to parse as URL first
+    const url = new URL(swaggerSource);
+    const sanitizedDomain = url.hostname.replace(/[^a-zA-Z0-9]/g, '_');
     return join(packageDir, 'generated', sanitizedDomain);
   } catch (error) {
-    // If URL parsing fails, fall back to generic generated directory
-    console.warn('Failed to parse URL for domain-based directory, using generic "generated" directory');
+    // If URL parsing fails, it's likely a file path - use generic directory
+    console.warn('Using generic "generated" directory for file-based swagger source');
     return join(packageDir, 'generated');
   }
-}
-
-function parseArgs(args: string[]): ParsedArgs {
-  // Get the directory where this package is installed
-  const packageDir = dirname(dirname(__filename));
-
-  const parsed: ParsedArgs = {
-    swaggerUrl: '',
-    outputDir: '', // Will be set after we have the swagger URL
-    startStdio: false
-  };
-
-  // Filter out the --start-stdio flag first
-  const filteredArgs = args.filter(arg => {
-    if (arg === '--start-stdio') {
-      parsed.startStdio = true;
-      return false;
-    }
-    return true;
-  });
-
-  // Now parse the remaining arguments in order
-  for (let i = 0; i < filteredArgs.length; i++) {
-    if (!parsed.swaggerUrl) {
-      parsed.swaggerUrl = filteredArgs[i];
-      // Set default output directory based on the swagger URL
-      if (!parsed.outputDir) {
-        parsed.outputDir = generateDomainBasedDir(parsed.swaggerUrl, packageDir);
-      }
-    } else {
-      // Second non-flag argument is the output directory
-      parsed.outputDir = filteredArgs[i];
-      break; // Only take the first two non-flag arguments
-    }
-  }
-
-  console.log(`Default output directory: ${parsed.outputDir}`);
-
-  return parsed;
 }
 
 async function buildAndRunServer(outputDir: string) {
@@ -159,27 +113,55 @@ async function buildAndRunServer(outputDir: string) {
 }
 
 async function main() {
-  const args = process.argv.slice(2);
+  const program = new Command();
   
-  if (args.length === 0) {
-    console.error('Usage: npx @tyvm/swagger-mcp <swagger-url> [output-dir] [--start-stdio]');
-    console.error('');
-    console.error('Environment variables:');
-    console.error('  HEADER_AUTHORIZATION=Bearer <token>  - Set Authorization header');
-    console.error('  HEADER_<NAME>=<value>               - Set custom header');
-    console.error('');
-    console.error('Examples:');
-    console.error('  npx @tyvm/swagger-mcp https://api.example.com/swagger.json');
-    console.error('  npx @tyvm/swagger-mcp https://api.example.com/swagger.json --start-stdio');
-    console.error('  npx @tyvm/swagger-mcp https://api.example.com/swagger.json ./my-output --start-stdio');
-    console.error('  HEADER_AUTHORIZATION="Bearer abc123" npx @tyvm/swagger-mcp https://api.example.com/swagger.json');
+  // Get the directory where this package is installed
+  const packageDir = dirname(dirname(__filename));
+
+  program
+    .name('@tyvm/swagger-mcp')
+    .description('Generate MCP servers from Swagger/OpenAPI specifications')
+    .version('0.0.8')
+    .option('-u, --url <url>', 'Swagger/OpenAPI specification URL (required - used for API client configuration)')
+    .option('-f, --file <path>', 'Swagger/OpenAPI specification file path')
+    .option('-o, --output <dir>', 'Output directory for generated MCP server')
+    .option('--start-stdio', 'Build and start the server after generation')
+    .addHelpText('after', `
+Environment variables:
+  HEADER_AUTHORIZATION=Bearer <token>  - Set Authorization header
+  HEADER_<NAME>=<value>               - Set custom header
+
+Examples:
+  $ @tyvm/swagger-mcp --url https://api.example.com/swagger.json
+  $ @tyvm/swagger-mcp --url https://api.example.com --file ./swagger.json --output ./my-server
+  $ @tyvm/swagger-mcp --url https://api.example.com/swagger.json --start-stdio
+  $ @tyvm/swagger-mcp --url https://api.example.com --file ./local-swagger.json
+  $ HEADER_AUTHORIZATION="Bearer abc123" @tyvm/swagger-mcp --url https://api.example.com/swagger.json`);
+
+  program.parse();
+
+  const options = program.opts();
+
+  // Validate that --url is always required
+  if (!options.url) {
+    console.error('Error: --url is required (used for API client configuration)');
+    program.outputHelp();
     process.exit(1);
   }
 
-  const { swaggerUrl, outputDir, startStdio } = parseArgs(args);
+  // Determine the swagger source
+  const swaggerSource = options.file || options.url;
+  
+  // Determine output directory
+  let outputDir = options.output;
+  if (!outputDir) {
+    outputDir = generateDomainBasedDir(swaggerSource, packageDir);
+    console.log(`Using default output directory: ${outputDir}`);
+  }
 
   try {
-    const generator = new SwaggerMcpGenerator(swaggerUrl);
+    // Pass both the swagger source and the API base URL
+    const generator = new SwaggerMcpGenerator(swaggerSource, options.url);
     await generator.loadSwaggerSpec();
     
     const tools = generator.generateTools();
@@ -188,7 +170,7 @@ async function main() {
     await generator.saveGeneratedFiles(outputDir);
     
     console.log('');
-    if (startStdio) {
+    if (options.startStdio) {
       console.log('Generation complete! Starting server...');
       
       // Build and run the server

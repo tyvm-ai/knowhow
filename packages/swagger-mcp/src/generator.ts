@@ -1,15 +1,18 @@
 import axios from "axios";
-import { writeFileSync, mkdirSync, existsSync } from "fs";
-import { join } from "path";
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
+import { join, isAbsolute, resolve } from "path";
 import { Tool, ToolProp, SwaggerSpec } from "./types";
 
 export class SwaggerMcpGenerator {
   private swaggerSpec!: SwaggerSpec;
-  private baseUrl: string;
+  private swaggerSource: string;
+  private apiBaseUrl: string;
   private headers: Record<string, string> = {};
 
-  constructor(swaggerUrl: string) {
-    this.baseUrl = swaggerUrl;
+  constructor(swaggerSource: string, apiBaseUrl?: string) {
+    this.swaggerSource = swaggerSource;
+    // If apiBaseUrl is not provided, assume swaggerSource is also the API base URL
+    this.apiBaseUrl = apiBaseUrl || swaggerSource;
     this.setupHeaders();
   }
 
@@ -28,17 +31,41 @@ export class SwaggerMcpGenerator {
     }
   }
 
+  private isUrl(input: string): boolean {
+    try {
+      new URL(input);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async loadSwaggerSpec(): Promise<SwaggerSpec> {
     try {
-      console.log(`Loading Swagger spec from: ${this.baseUrl}`);
-      const response = await axios.get(this.baseUrl, {
-        headers: {
-          Accept: "application/json",
-          ...this.headers,
-        },
-      });
+      console.log(`Loading Swagger spec from: ${this.swaggerSource}`);
 
-      this.swaggerSpec = response.data;
+      let specData: any;
+
+      if (this.isUrl(this.swaggerSource)) {
+        // Handle URL - use existing axios logic
+        const response = await axios.get(this.swaggerSource, {
+          headers: {
+            Accept: "application/json",
+            ...this.headers,
+          },
+        });
+        specData = response.data;
+      } else {
+        // Handle filesystem path
+        const filePath = isAbsolute(this.swaggerSource)
+          ? this.swaggerSource
+          : resolve(process.cwd(), this.swaggerSource);
+        console.log(`Reading Swagger spec from file: ${filePath}`);
+        const fileContent = readFileSync(filePath, "utf8");
+        specData = JSON.parse(fileContent);
+      }
+
+      this.swaggerSpec = specData;
       console.log(
         `Loaded Swagger spec: ${this.swaggerSpec.info.title} v${this.swaggerSpec.info.version}`
       );
@@ -59,8 +86,18 @@ export class SwaggerMcpGenerator {
   }
 
   private getApiBaseUrl(): string {
-    // Extract the base URL from the swagger URL (remove the swagger.json path)
-    const swaggerUrl = new URL(this.baseUrl);
+    // If apiBaseUrl is a file path, we need to get the base URL from the OpenAPI spec
+    if (!this.isUrl(this.apiBaseUrl)) {
+      // Extract base URL from OpenAPI spec servers array as fallback
+      if (this.swaggerSpec.servers && this.swaggerSpec.servers.length > 0) {
+        const firstServer = this.swaggerSpec.servers[0];
+        return firstServer.url || 'http://localhost';
+      }
+      return 'http://localhost';
+    }
+
+    // Extract the base URL from the API base URL (remove any swagger.json path if present)
+    const swaggerUrl = new URL(this.apiBaseUrl);
     const baseUrl = `${swaggerUrl.protocol}//${swaggerUrl.host}`;
 
     // Get the server path from the OpenAPI spec
@@ -77,7 +114,6 @@ export class SwaggerMcpGenerator {
         }
       }
     }
-
     return baseUrl + serverPath;
   }
 
@@ -140,15 +176,15 @@ export class SwaggerMcpGenerator {
   }
 
   private resolveSchemaRef(ref: string): any {
-    if (!ref.startsWith('#/')) {
+    if (!ref.startsWith("#/")) {
       return {}; // Only handle local refs for now
     }
 
-    const path = ref.substring(2).split('/');
+    const path = ref.substring(2).split("/");
     let current: any = this.swaggerSpec;
 
     for (const segment of path) {
-      if (!current || typeof current !== 'object') {
+      if (!current || typeof current !== "object") {
         return {};
       }
       current = current[segment];
@@ -161,9 +197,9 @@ export class SwaggerMcpGenerator {
     // Handle allOf by merging all schemas
     if (current.allOf) {
       const merged = {
-        type: 'object',
+        type: "object",
         properties: {},
-        required: [] as string[]
+        required: [] as string[],
       };
 
       for (const item of current.allOf) {
@@ -186,7 +222,7 @@ export class SwaggerMcpGenerator {
         }
 
         // Merge other properties (type, etc.)
-        if (resolvedItem.type && resolvedItem.type !== 'object') {
+        if (resolvedItem.type && resolvedItem.type !== "object") {
           merged.type = resolvedItem.type;
         }
       }
@@ -330,7 +366,15 @@ export class SwaggerMcpGenerator {
     return tools;
   }
 
-  private generateMethodParameters(path: string, operation: any): { signature: string; pathParams: string[]; queryParams: string[]; bodyParam: boolean } {
+  private generateMethodParameters(
+    path: string,
+    operation: any
+  ): {
+    signature: string;
+    pathParams: string[];
+    queryParams: string[];
+    bodyParam: boolean;
+  } {
     const pathParams: string[] = [];
     const queryParams: string[] = [];
     let bodyParam = false;
@@ -343,7 +387,9 @@ export class SwaggerMcpGenerator {
         const paramName = match.slice(1, -1); // Remove { and }
         pathParams.push(paramName);
         // For path parameters, we'll assume they're strings/numbers based on common patterns
-        const paramType = paramName.toLowerCase().includes('id') ? 'number' : 'string';
+        const paramType = paramName.toLowerCase().includes("id")
+          ? "number"
+          : "string";
         paramParts.push(`${paramName}: ${paramType}`);
       }
     }
@@ -351,18 +397,18 @@ export class SwaggerMcpGenerator {
     // Add query parameters from operation parameters
     if (operation.parameters) {
       for (const param of operation.parameters) {
-        if (param.in === 'query') {
+        if (param.in === "query") {
           queryParams.push(param.name);
-          let paramType = 'string';
+          let paramType = "string";
 
           // Determine parameter type from schema
           const schema = param.schema || param;
-          if (schema.type === 'array') {
-            paramType = 'string[]';
-          } else if (schema.type === 'integer' || schema.type === 'number') {
-            paramType = 'number';
-          } else if (schema.type === 'boolean') {
-            paramType = 'boolean';
+          if (schema.type === "array") {
+            paramType = "string[]";
+          } else if (schema.type === "integer" || schema.type === "number") {
+            paramType = "number";
+          } else if (schema.type === "boolean") {
+            paramType = "boolean";
           }
 
           paramParts.push(`${param.name}: ${paramType}`);
@@ -373,13 +419,13 @@ export class SwaggerMcpGenerator {
     // Add request body parameter
     if (operation.requestBody) {
       bodyParam = true;
-      paramParts.push('body: any');
+      paramParts.push("body: any");
     }
 
     // Add headers parameter
-    paramParts.push('headers?: Record<string, string>');
+    paramParts.push("headers?: Record<string, string>");
 
-    const signature = paramParts.join(', ');
+    const signature = paramParts.join(", ");
 
     return { signature, pathParams, queryParams, bodyParam };
   }
@@ -411,12 +457,16 @@ export class SwaggerClient {
           operation.operationId ||
           `${method}_${path.replace(/[^a-zA-Z0-9]/g, "_")}`;
 
-        const { signature, pathParams, queryParams, bodyParam } = this.generateMethodParameters(path, operation);
+        const { signature, pathParams, queryParams, bodyParam } =
+          this.generateMethodParameters(path, operation);
 
         // Create URL with template literals for path parameters
         let urlTemplate = path;
         for (const pathParam of pathParams) {
-          urlTemplate = urlTemplate.replace(`{${pathParam}}`, `\${${pathParam}}`);
+          urlTemplate = urlTemplate.replace(
+            `{${pathParam}}`,
+            `\${${pathParam}}`
+          );
         }
 
         clientCode += `
@@ -426,7 +476,7 @@ export class SwaggerClient {
         // Build query parameters object
         if (queryParams.length > 0) {
           clientCode += `
-    const queryParams = { ${queryParams.join(', ')} };`;
+    const queryParams = { ${queryParams.join(", ")} };`;
         }
 
         // Handle different HTTP method cases
@@ -477,14 +527,18 @@ export class SwaggerClient {
 
   generateExpressComposition(): string {
     // Import and use the Express composition template generator
-    const { generateExpressCompositionTemplate } = require('./express-template-generator');
+    const {
+      generateExpressCompositionTemplate,
+    } = require("./express-template-generator");
     return generateExpressCompositionTemplate(this);
   }
 
   generateServerFactory(): string {
     const tools = this.generateTools();
     const apiBaseUrl = this.getApiBaseUrl();
-    const serverName = this.swaggerSpec.info.title.toLowerCase().replace(/[^a-z0-9]/g, "-");
+    const serverName = this.swaggerSpec.info.title
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "-");
     const serverVersion = this.swaggerSpec.info.version;
 
     return `import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -617,7 +671,7 @@ ${tools
 
   generateMcpServer(): string {
     const serverFactory = this.generateServerFactory();
-    const swaggerUrl = this.baseUrl;
+    const swaggerUrl = this.swaggerSource;
     const apiBaseUrl = this.getApiBaseUrl();
 
     return `#!/usr/bin/env node
@@ -686,7 +740,7 @@ if (require.main === module) {
       },
       dependencies: {
         "@modelcontextprotocol/sdk": "^1.13.3",
-        "express": "^4.18.0",
+        express: "^4.18.0",
         "@types/express": "^4.17.0",
         axios: "^1.5.0",
       },
@@ -726,9 +780,6 @@ if (require.main === module) {
     writeFileSync(join(srcDir, "mcp-server.ts"), mcpServer);
     writeFileSync(join(srcDir, "server-factory.ts"), serverFactory);
     writeFileSync(join(srcDir, "express-app.ts"), expressComposition);
-
-    // Also write the root-level mcp-server.ts for convenience
-    writeFileSync(join(outputDir, "mcp-server.ts"), mcpServer);
 
     console.log(`Generated files saved to ${outputDir}/`);
     console.log(`- package.json: Project configuration`);

@@ -91,7 +91,7 @@ describe("Full Workflow Integration Test", () => {
 
     // Step 1: Generate the MCP server from REAL Petstore API (no mocking)
     console.log("📋 Step 1: Generating MCP server from Petstore API...");
-    const generateCommand = `node "${CLI_PATH}" "${PETSTORE_SWAGGER_URL}" "${testOutputDir}"`;
+    const generateCommand = `node "${CLI_PATH}" --url "${PETSTORE_SWAGGER_URL}" --output "${testOutputDir}"`;
 
     const { stdout: generateStdout, stderr: generateStderr } = await execAsync(
       generateCommand,
@@ -228,7 +228,7 @@ describe("Full Workflow Integration Test", () => {
     console.log("🔍 Testing generated tools against REAL Petstore API...");
 
     // Generate the server
-    const generateCommand = `node "${CLI_PATH}" "${PETSTORE_SWAGGER_URL}" "${testOutputDir}"`;
+    const generateCommand = `node "${CLI_PATH}" --url "${PETSTORE_SWAGGER_URL}" --output "${testOutputDir}"`;
     await execAsync(generateCommand, { timeout: 30000 });
 
     // Read the generated server factory to check what tools were created
@@ -259,7 +259,7 @@ describe("Full Workflow Integration Test", () => {
     console.log("🔄 Testing --start-stdio workflow with REAL API...");
 
     // This test will use the --start-stdio flag which should generate, build, and start
-    const command = `node "${CLI_PATH}" "${PETSTORE_SWAGGER_URL}" "${testOutputDir}" --start-stdio`;
+    const command = `node "${CLI_PATH}" --url "${PETSTORE_SWAGGER_URL}" --output "${testOutputDir}" --start-stdio`;
 
     const childProcess = spawn("bash", ["-c", command], {
       cwd: path.join(__dirname, ".."),
