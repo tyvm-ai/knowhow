@@ -7,7 +7,9 @@ export const executeScriptDefinition: Tool = {
   type: "function",
   function: {
     name: "executeScript",
-    description: `Execute TypeScript code in a secure sandbox environment with access to tools and AI models.
+    description: `Used to contruct a script that calls tools and analyzes data, not for general purpose scripting.
+
+    This is most useful for complex workflows of tool calls that need conditional logic based off tool responses.
 
   The script has access to:
   - callTool(toolName, parameters): Call any available tool
@@ -16,6 +18,10 @@ export const executeScriptDefinition: Tool = {
   - console: Standard console logging
   - getQuotaUsage(): Check resource usage
   - sleep(ms): Pause execution for a specified time, max 2000ms
+
+  The script cannot:
+    - import or require
+    - make external network requests, outside of callTool and llm
 
   Example:
   \`\`\`typescript
