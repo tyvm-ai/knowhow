@@ -55,20 +55,18 @@ export class SwaggerClient {
 
         clientCode += `
   async ${operationId}(params: Record<string, any> = {}): Promise<any> {
-    const path = this.replacePathParams('${path}', { ...params });
-    
-    // Extract remaining params as query parameters
-    const queryParams = { ...params };`;
+    const bodyOrQuery = { ...params };
+    const path = this.replacePathParams('${path}', bodyOrQuery);
+    `;
 
         if (hasRequestBody) {
           clientCode += `
-    const requestBody = queryParams.body;
-    delete queryParams.body;
+    const requestBody = { ...bodyOrQuery }
     
     const response = await this.api.${method}(path, requestBody);`;
         } else {
           clientCode += `
-    const response = await this.api.${method}(path, { params: queryParams });`;
+    const response = await this.api.${method}(path, { params: bodyOrQuery });`;
         }
 
         clientCode += `
