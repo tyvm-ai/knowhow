@@ -1,5 +1,6 @@
 import { askGptVision } from "../../ai";
 
 export async function visionTool(imageUrl: string, question: string) {
-  return askGptVision(imageUrl, question);
+  const response = await askGptVision(imageUrl, question);
+  return response.choices[0].message.content;
 }

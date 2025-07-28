@@ -2,14 +2,46 @@ import * as fs from "fs";
 import * as path from "path";
 import ytdl from "youtube-dl-exec";
 import Logger from "progress-estimator";
-import { DownloadInfo, KeyframeInfo } from "./types";
+import { DownloadInfo, KeyframeInfo, TranscriptChunk } from "./types";
 import { visionTool } from "../../agents/tools/visionTool";
 import { execAsync, fileExists, readFile, mkdir } from "../../utils";
 import { openai } from "../../ai";
+import { Clients } from "../../clients";
+import { Models } from "../../types";
 
 const logger = Logger();
 
 class DownloaderService {
+  constructor(private openAi: typeof openai, private clients: typeof Clients) {}
+
+  async askGptVision(
+    imageUrl: string,
+    question: string,
+    provider = "openai",
+    model = Models.openai.GPT_4o
+  ) {
+    const response = await this.clients.createCompletion(provider, {
+      model,
+      max_tokens: 2500,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: question },
+            {
+              type: "image_url",
+              image_url: {
+                url: imageUrl,
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    return response;
+  }
+
   async download(url: string, outputDir: string) {
     const info = await this.info(url);
     const exists = await fileExists(`${outputDir}/${info.id}.${info.ext}`);
@@ -77,19 +109,11 @@ class DownloaderService {
     return chunkNames.map((chunkName) => path.join(outputDirPath, chunkName));
   }
 
-  public async transcribeChunks(
+  public async *streamTranscription(
     files: string[],
     outputPath: string,
     reusePreviousTranscript = true
-  ) {
-    const exists = await fileExists(outputPath);
-    if (exists && reusePreviousTranscript) {
-      console.log("Transcription already exists, skipping");
-      const contents = await readFile(outputPath);
-      return JSON.parse(contents.toString()) as string[];
-    }
-
-    const fullText = [];
+  ): AsyncGenerator<TranscriptChunk> {
     for (const file of files) {
       const chunkName = path.parse(file).name;
       const chunkTranscriptPath = path.join(
@@ -101,12 +125,15 @@ class DownloaderService {
       if (chunkExists && reusePreviousTranscript) {
         console.log("Chunk transcription already exists, skipping");
         const contents = await readFile(chunkTranscriptPath);
-        fullText.push(contents.toString());
+        yield {
+          chunkPath: chunkTranscriptPath,
+          text: contents.toString(),
+        };
         continue;
       }
 
       console.log("Transcribing", file);
-      const transcript = await openai.audio.transcriptions
+      const transcript = await this.openAi.audio.transcriptions
         .create({
           file: fs.createReadStream(file),
           model: "whisper-1",
@@ -120,22 +147,52 @@ class DownloaderService {
       await fs.promises.writeFile(chunkTranscriptPath, transcript.text);
 
       // save chunk transcript to file
-      fullText.push(transcript.text);
+      yield {
+        chunkPath: chunkTranscriptPath,
+        text: transcript.text,
+      };
+    }
+  }
+
+  public async transcribeChunks(
+    files: string[],
+    outputPath: string,
+    reusePreviousTranscript = true
+  ): Promise<string[]> {
+    const exists = await fileExists(outputPath);
+    if (exists && reusePreviousTranscript) {
+      console.log("Transcription already exists, skipping");
+      const contents = await readFile(outputPath);
+      return JSON.parse(contents.toString()) as string[];
+    }
+
+    const fullText = [];
+    for await (const { chunkPath, text } of this.streamTranscription(
+      files,
+      outputPath,
+      reusePreviousTranscript
+    )) {
+      console.log("Chunk transcribed:", chunkPath);
+      fullText.push(text);
     }
 
     await fs.promises.writeFile(outputPath, JSON.stringify(fullText));
     return fullText;
   }
 
-  public async extractKeyframes(
+  public async *streamKeyFrameExtraction(
     filePath: string,
     outputPath: string,
     interval: number = 10
-  ): Promise<KeyframeInfo[]> {
+  ): AsyncGenerator<KeyframeInfo> {
     if (fs.existsSync(outputPath)) {
       console.log("Keyframes already exist, skipping");
       const contents = await readFile(outputPath);
-      return JSON.parse(contents.toString()) as KeyframeInfo[];
+      const data = JSON.parse(contents.toString()) as KeyframeInfo[];
+      for (const keyframe of data) {
+        yield keyframe;
+      }
+      return;
     }
 
     const parsed = path.parse(filePath);
@@ -148,7 +205,6 @@ class DownloaderService {
     await execAsync(command);
 
     const keyframes = await fs.promises.readdir(keyframesDir);
-    const keyframeInfos: KeyframeInfo[] = [];
 
     for (const keyframe of keyframes) {
       const keyframePath = path.join(keyframesDir, keyframe);
@@ -162,7 +218,7 @@ class DownloaderService {
       if (descriptionExists) {
         const cached = await readFile(keyframeDescriptionPath);
         const cachedJson = JSON.parse(cached.toString()) as KeyframeInfo;
-        keyframeInfos.push(cachedJson);
+        yield cachedJson;
         continue;
       }
 
@@ -176,12 +232,26 @@ class DownloaderService {
         keyframeDescriptionPath,
         JSON.stringify(keyframeJson, null, 2)
       );
-      keyframeInfos.push(keyframeJson);
+      yield keyframeJson;
+    }
+  }
+
+  public async extractKeyframes(
+    filePath: string,
+    outputPath: string,
+    interval: number = 10
+  ): Promise<KeyframeInfo[]> {
+    const keyframes: KeyframeInfo[] = [];
+    for await (const keyframe of this.streamKeyFrameExtraction(
+      filePath,
+      outputPath,
+      interval
+    )) {
+      keyframes.push(keyframe);
     }
 
-    await fs.promises.writeFile(outputPath, JSON.stringify(keyframeInfos));
-
-    return keyframeInfos;
+    await fs.promises.writeFile(outputPath, JSON.stringify(keyframes, null, 2));
+    return keyframes;
   }
 
   private async describeKeyframe(keyframePath: string): Promise<string> {
@@ -191,14 +261,146 @@ class DownloaderService {
       encoding: "base64",
     });
     const image = `data:image/jpeg;base64,${base64}`;
-    const description = await visionTool(image, question);
-    return description;
+    const response = await this.askGptVision(image, question);
+    return response.choices[0].message.content;
   }
 
   private extractTimestamp(keyframeName: string, interval: number): number {
     const frameNumber = parseInt(keyframeName.match(/\d+/)[0], 10);
     return frameNumber * interval;
   }
+
+  async processAudio(
+    filePath: string,
+    reusePreviousTranscript = true,
+    chunkTime = 30
+  ): Promise<string[]> {
+    const parsed = path.parse(filePath);
+    const outputPath = `${parsed.dir}/${parsed.name}/transcript.json`;
+
+    // Skip chunking if the full output exists
+    const exists = await fileExists(outputPath);
+    if (exists && reusePreviousTranscript) {
+      console.log(`Transcription ${outputPath} already exists, skipping`);
+      const fileContent = await readFile(outputPath, "utf8");
+      return outputPath.endsWith("txt")
+        ? fileContent.split("\n")
+        : JSON.parse(fileContent);
+    }
+
+    const chunks = await this.chunk(
+      filePath,
+      parsed.dir,
+      chunkTime,
+      reusePreviousTranscript
+    );
+    const transcription = await this.transcribeChunks(
+      chunks,
+      outputPath,
+      reusePreviousTranscript
+    );
+
+    return transcription;
+  }
+
+  async *streamProcessAudio(
+    filePath: string,
+    reusePreviousTranscript = true,
+    chunkTime = 30
+  ): AsyncGenerator<TranscriptChunk> {
+    const parsed = path.parse(filePath);
+    const outputPath = `${parsed.dir}/${parsed.name}/transcript.json`;
+
+    // Skip chunking if the full output exists
+    const exists = await fileExists(outputPath);
+    if (exists && reusePreviousTranscript) {
+      console.log(`Transcription ${outputPath} already exists, skipping`);
+      const fileContent = await readFile(outputPath, "utf8");
+      const lines = outputPath.endsWith("txt")
+        ? fileContent.split("\n")
+        : JSON.parse(fileContent);
+
+      for (const line of lines) yield { chunkPath: "", text: line };
+      return;
+    }
+
+    const chunks = await this.chunk(
+      filePath,
+      parsed.dir,
+      chunkTime,
+      reusePreviousTranscript
+    );
+
+    for await (const chunk of this.streamTranscription(
+      chunks,
+      outputPath,
+      reusePreviousTranscript
+    )) {
+      yield chunk;
+    }
+  }
+
+  async processVideo(
+    filePath: string,
+    reusePreviousTranscript = true,
+    chunkTime = 30
+  ) {
+    const parsed = path.parse(filePath);
+    const outputPath = `${parsed.dir}/${parsed.name}/video.json`;
+
+    console.log("Processing audio...");
+    const transcriptions = await this.processAudio(
+      filePath,
+      reusePreviousTranscript,
+      chunkTime
+    );
+
+    console.log("Extracting keyframes...");
+    const videoAnalysis = await this.extractKeyframes(
+      filePath,
+      outputPath,
+      chunkTime
+    );
+
+    return videoAnalysis.map((frame, index) => {
+      return {
+        frame,
+        transcription: transcriptions[index],
+      };
+    });
+  }
+
+  async *streamProcessVideo(
+    filePath: string,
+    reusePreviousTranscript = true,
+    chunkTime = 30
+  ) {
+    const parsed = path.parse(filePath);
+    const outputPath = `${parsed.dir}/${parsed.name}/video.json`;
+
+    console.log("Processing audio...");
+    const transcriptions = await this.streamProcessAudio(
+      filePath,
+      reusePreviousTranscript,
+      chunkTime
+    );
+
+    console.log("Extracting keyframes...");
+    const videoAnalysis = await this.streamKeyFrameExtraction(
+      filePath,
+      outputPath,
+      chunkTime
+    );
+
+    for await (const frame of videoAnalysis) {
+      const transcription = (await transcriptions.next())
+        ?.value as TranscriptChunk;
+      yield {
+        frame,
+        transcription,
+      };
+    }
+  }
 }
 
-export const Downloader = new DownloaderService();
+export const Downloader = new DownloaderService(openai, Clients);

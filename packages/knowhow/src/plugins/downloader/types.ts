@@ -21,6 +21,11 @@ export interface KeyframeInfo {
   timestamp: number;
 }
 
+export interface TranscriptChunk {
+  chunkPath: string;
+  text: string;
+}
+
 export class RequestedDownload {
   ext: string;
   format_id: string;

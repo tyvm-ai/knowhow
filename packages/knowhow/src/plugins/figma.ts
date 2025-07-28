@@ -135,13 +135,18 @@ export class FigmaPlugin extends PluginBase implements Plugin {
     const responses = [];
     for (const data of figmaDataFiltered) {
       for (const nodeId in data.images) {
+        if (!data.images.hasOwnProperty(nodeId)) continue;
+
         const imageUrl = data.images[nodeId];
         const imageDescription = await askGptVision(
           imageUrl,
           `Describe the image with relavant information for this user question: ${userPrompt}`
         );
 
-        console.log("FIGMA PLUGIN: Image description", imageDescription);
+        console.log(
+          "FIGMA PLUGIN: Image description",
+          imageDescription.choices[0].message.content
+        );
         responses.push({ nodeId, imageDescription });
       }
     }
