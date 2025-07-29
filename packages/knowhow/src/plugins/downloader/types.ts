@@ -19,11 +19,13 @@ export interface KeyframeInfo {
   path: string;
   description: string;
   timestamp: number;
+  usd_cost: number | null;
 }
 
 export interface TranscriptChunk {
   chunkPath: string;
   text: string;
+  usd_cost: number | null;
 }
 
 export class RequestedDownload {

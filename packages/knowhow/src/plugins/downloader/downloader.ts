@@ -11,7 +11,7 @@ import { Models } from "../../types";
 
 const logger = Logger();
 
-class DownloaderService {
+export class DownloaderService {
   constructor(private openAi: typeof openai, private clients: typeof Clients) {}
 
   async askGptVision(
@@ -128,6 +128,7 @@ class DownloaderService {
         yield {
           chunkPath: chunkTranscriptPath,
           text: contents.toString(),
+          usd_cost: 0,
         };
         continue;
       }
@@ -150,6 +151,7 @@ class DownloaderService {
       yield {
         chunkPath: chunkTranscriptPath,
         text: transcript.text,
+        usd_cost: 30 * 0.0001 // assume 30 seconds,
       };
     }
   }
@@ -190,7 +192,7 @@ class DownloaderService {
       const contents = await readFile(outputPath);
       const data = JSON.parse(contents.toString()) as KeyframeInfo[];
       for (const keyframe of data) {
-        yield keyframe;
+        yield { ...keyframe, usd_cost: 0 };
       }
       return;
     }
@@ -218,15 +220,16 @@ class DownloaderService {
       if (descriptionExists) {
         const cached = await readFile(keyframeDescriptionPath);
         const cachedJson = JSON.parse(cached.toString()) as KeyframeInfo;
-        yield cachedJson;
+        yield { ...cachedJson, usd_cost: 0 };
         continue;
       }
 
       const description = await this.describeKeyframe(keyframePath);
       const keyframeJson = {
         path: keyframePath,
-        description,
+        description: description.choices[0].message.content,
         timestamp: this.extractTimestamp(keyframe, interval),
+        usd_cost: description.usd_cost,
       };
       await fs.promises.writeFile(
         keyframeDescriptionPath,
@@ -254,7 +257,7 @@ class DownloaderService {
     return keyframes;
   }
 
-  private async describeKeyframe(keyframePath: string): Promise<string> {
+  private async describeKeyframe(keyframePath: string) {
     const question =
       "Describe this image in detail, focusing on the main elements and actions visible.";
     const base64 = await fs.promises.readFile(keyframePath, {
@@ -262,7 +265,7 @@ class DownloaderService {
     });
     const image = `data:image/jpeg;base64,${base64}`;
     const response = await this.askGptVision(image, question);
-    return response.choices[0].message.content;
+    return response;
   }
 
   private extractTimestamp(keyframeName: string, interval: number): number {
@@ -320,7 +323,8 @@ class DownloaderService {
         ? fileContent.split("\n")
         : JSON.parse(fileContent);
 
-      for (const line of lines) yield { chunkPath: "", text: line };
+      for (const line of lines)
+        yield { chunkPath: "", text: line, usd_cost: 0 };
       return;
     }
 
