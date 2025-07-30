@@ -187,9 +187,10 @@ export function getConfigSync() {
 
 export async function getConfig() {
   if (!fs.existsSync(".knowhow/knowhow.json")) {
-    throw new Error(
+    console.warn(
       "KnowHow config file not found. Please run `knowhow init` to create it."
     );
+    return {} as Config;
   }
   const config = JSON.parse(await readFile(".knowhow/knowhow.json", "utf8"));
   return config as Config;

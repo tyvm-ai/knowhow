@@ -162,11 +162,15 @@ export class McpService {
     return index;
   }
 
-  parseToolName(toolName: string) {
-    return this.toolAliases[toolName] || toolName;
+  parseToolName(wrappedName: string) {
+    return this.toolAliases[wrappedName] || wrappedName;
   }
 
   getToolClientIndex(toolName: string) {
+    if (this.clients.length <= 1) {
+      return 0;
+    }
+
     const split = toolName.split("_");
 
     if (split.length < 2) {
@@ -189,6 +193,17 @@ export class McpService {
 
   getFunction(toolName: string) {
     const client = this.getToolClient(toolName);
+
+    // Handle unwrapped tool names if we have 1 client
+    if (
+      !this.toolAliases[toolName] &&
+      !toolName.startsWith(this.mcpPrefix) &&
+      this.clients.length === 1
+    ) {
+      // Assume first client if no index is specified
+      const wrappedName = this.getWrappedFunctionName(toolName, 0);
+      toolName = this.toolAliases[wrappedName] ? wrappedName : toolName;
+    }
 
     const realName = this.parseToolName(toolName);
     return async (args: any) => {
@@ -270,7 +285,7 @@ export class McpService {
     return tools;
   }
 
-  toOpenAiTool(index: number, tool: McpTool) {
+  getToolPrefix(index = 0) {
     const mcpName = this.config[index]?.name
       ?.toLowerCase()
       ?.replaceAll(" ", "_");
@@ -279,10 +294,22 @@ export class McpService {
       ? `${this.mcpPrefix}_${index}_${mcpName}`
       : `${this.mcpPrefix}_${index}`;
 
+    return prefix;
+  }
+
+  // Wrapping tools with a prefix to avoid name collisions across many mcp servers
+  getWrappedFunctionName(toolName: string, index = 0) {
+    const prefix = this.getToolPrefix(index);
+    return `${prefix}_${toolName}`;
+  }
+
+  toOpenAiTool(index: number, tool: McpTool) {
+    const name = this.getWrappedFunctionName(tool.name, index);
+
     const transformed: Tool = {
       type: "function",
       function: {
-        name: `${prefix}_${tool.name}`,
+        name,
         description: tool.description,
         parameters: {
           type: "object",
