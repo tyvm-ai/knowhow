@@ -88,9 +88,10 @@ export class DownloaderService {
     if (existingChunkNames.length > 0) {
       if (reuseExistingChunks) {
         console.log("Chunks already exist, skipping");
-        return existingFolderFiles.map((chunkName) =>
+        const names = existingChunkNames.map((chunkName) =>
           path.join(outputDirPath, chunkName)
         );
+        return names;
       } else {
         for (const file of existingFolderFiles) {
           fs.rmSync(path.join(outputDirPath, file), { recursive: true });
@@ -123,7 +124,7 @@ export class DownloaderService {
       const chunkExists = await fileExists(chunkTranscriptPath);
 
       if (chunkExists && reusePreviousTranscript) {
-        console.log("Chunk transcription already exists, skipping");
+        console.log(chunkTranscriptPath, " transcription already exists, skipping");
         const contents = await readFile(chunkTranscriptPath);
         yield {
           chunkPath: chunkTranscriptPath,
@@ -151,7 +152,7 @@ export class DownloaderService {
       yield {
         chunkPath: chunkTranscriptPath,
         text: transcript.text,
-        usd_cost: 30 * 0.0001 // assume 30 seconds,
+        usd_cost: 30 * 0.0001, // assume 30 seconds,
       };
     }
   }
