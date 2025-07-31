@@ -71,6 +71,46 @@ function getChunkId(id: string, index: number, chunkSize: number) {
   return chunkSize ? `${id}-${index}` : id;
 }
 
+function parseIdFromChunk(chunkName: string) {
+  const split = chunkName.split("-");
+  if (
+    split.length > 1 &&
+    Number.isInteger(parseInt(split[split.length - 1], 10))
+  ) {
+    // already has chunkId
+    return split.slice(0, -1).join("-");
+  }
+  return chunkName;
+}
+
+export async function detectDeletedEmbeddingFiles(
+  source: Config["embedSources"][0],
+  ignorePattern: string[],
+  embeddings: Embeddable[]
+) {
+  if (source.kind !== "file") {
+    return;
+  }
+  const inputs = (await glob.sync(source.input, {
+    ignore: ignorePattern,
+  })) as string[];
+
+  for (const embedding of embeddings) {
+    const id = parseIdFromChunk(embedding.id);
+    const dirName = path.dirname(id);
+    const exists = await fileExists(path.resolve(id));
+
+    const hasSomeFilesInDir = inputs.some((input) => input.startsWith(dirName));
+    if (hasSomeFilesInDir && !exists) {
+      console.log("Detected deleted embedding file", embedding.id);
+      const index = embeddings.findIndex((e) => e.id === embedding.id);
+      if (index !== -1) {
+        embeddings.splice(index, 1);
+      }
+    }
+  }
+}
+
 export async function embedSource(
   model: Config["embeddingModel"],
   source: Config["embedSources"][0],
@@ -97,10 +137,8 @@ export async function embedSource(
   }
 
   console.log(`Found ${inputs.length} files`);
-  if (inputs.length > 100) {
-    console.error(
-      "woah there, that's a lot of files. I'm not going to embed that many"
-    );
+  if (inputs.length > 1000) {
+    console.error("Large number of files detected. This may take a while");
   }
   console.log(inputs);
   const embeddings: Embeddable[] = await loadEmbedding(source.output);
@@ -108,18 +146,20 @@ export async function embedSource(
   let index = 0;
   for (const file of inputs) {
     index++;
-    const shouldSave = batch.length > 20 || index === inputs.length;
+    const shouldSave = batch.length > 20;
     if (shouldSave) {
       await Promise.all(batch);
+      await saveEmbedding(source.output, embeddings);
       batch = [];
     }
-    batch.push(embedKind(model, file, source, embeddings, shouldSave));
+    batch.push(embedKind(model, file, source, embeddings));
   }
   if (batch.length > 0) {
     await Promise.all(batch);
   }
 
   // Save one last time just in case
+  await detectDeletedEmbeddingFiles(source, ignorePattern, embeddings);
   await saveEmbedding(source.output, embeddings);
 }
 
@@ -165,9 +205,31 @@ export async function embed(
     }
 
     dontPrune.push(chunkId);
-    const alreadyEmbedded = embeddings.find(
-      (e) => e.id === chunkId && e.text === textOfChunk
-    );
+    const foundMany = embeddings.filter((e) => e.id === chunkId);
+    const found = foundMany.length > 0 ? foundMany[0] : null;
+    const alreadyEmbedded = found && found.text === textOfChunk;
+
+    if (foundMany.length > 1) {
+      // We have duplicates, so we need to remove them
+      console.log(`Removing ${foundMany.length} duplicates for`, chunkId);
+
+      let toDelete = embeddings.findIndex((e) => e.id === chunkId);
+      while (toDelete !== -1) {
+        // Keep removing until we find no more duplicates
+        embeddings.splice(toDelete, 1);
+        toDelete = embeddings.findIndex((e) => e.id === chunkId);
+      }
+
+      if (alreadyEmbedded) {
+        // Put back the exact match of the current chunk
+        // if this doesn't happen, we need to generate a new embedding
+        embeddings.push({
+          ...found,
+        });
+        updates.push(chunkId);
+      }
+    }
+
     if (alreadyEmbedded) {
       console.log("Skipping", chunkId);
       continue;
@@ -235,7 +297,7 @@ export async function embedJson(
   ) as Embeddable[];
 
   const embeddings: Embeddable[] = await loadEmbedding(output);
-  let updates = [];
+  const updates = [];
   let batch = [];
 
   for (const row of sourceJson) {
@@ -264,24 +326,17 @@ export async function embedJson(
       batch = [];
     }
     updates.push(...embedded);
-
-    if (updates.length > 20) {
-      await saveEmbedding(output, embeddings);
-      updates = [];
-    }
   }
 
   // save in case we missed some
   await Promise.all(batch);
-  await saveEmbedding(output, embeddings);
 }
 
 export async function embedKind(
   model: Config["embeddingModel"],
   id: string,
   source: Config["embedSources"][0],
-  embeddings = [] as Embeddable[],
-  save = true
+  embeddings = [] as Embeddable[]
 ) {
   const { prompt, output, uploadMode, chunkSize } = source;
 
@@ -311,10 +366,6 @@ export async function embedKind(
       uploadMode
     );
     updates.push(...embedded);
-  }
-
-  if (save && updates.length > 0) {
-    await saveEmbedding(output, embeddings);
   }
 }
 
@@ -367,7 +418,12 @@ export async function handleAllKinds(
 
 export async function saveEmbedding(output: string, embeddings: Embeddable[]) {
   const fileString =
-    "[" + embeddings.map((e) => JSON.stringify(e)).join(",") + "]";
+    "[" +
+    embeddings
+      .sort((a, b) => (a.id < b.id ? -1 : 1))
+      .map((e) => JSON.stringify(e))
+      .join(",") +
+    "]";
   await writeFile(output, fileString);
 }
 
