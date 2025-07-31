@@ -175,7 +175,7 @@ export class AIClient {
       return { provider, model };
     }
 
-    if (model.includes("/")) {
+    if (model?.includes("/")) {
       const split = model.split("/");
 
       const inferredProvider = split[0];

@@ -48,6 +48,15 @@ export class MCPWebSocketTransport implements Transport {
     return new Promise((resolve, reject) => {
       const json = JSON.stringify(message);
       console.log("MCPWs sending", json);
+
+      if (this._socket.readyState !== WebSocket.OPEN) {
+        return reject(
+          new Error(
+            `WebSocket is not open: readyState ${this._socket.readyState}`
+          )
+        );
+      }
+
       this._socket.send(json, (error?: Error) => {
         if (error) {
           this.onerror?.(error);
