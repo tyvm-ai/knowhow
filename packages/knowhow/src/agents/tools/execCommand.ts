@@ -4,9 +4,9 @@ import { promisify } from "util";
 const execAsync = promisify(exec);
 
 export interface ExecCommandOptions {
-  timeout?: number; // Timeout in milliseconds
-  killOnTimeout?: boolean; // Whether to kill the command on timeout (default: false)
-  waitForCompletion?: boolean; // Whether to wait for full completion (default: true)
+  timeout?: number; // Timeout in milliseconds (default: 5000)
+  continueInBackground?: boolean; // Whether to let command continue in background on timeout (default: false)
+  waitForCompletion?: boolean; // Whether to wait for full completion regardless of timeout (default: false)
 }
 
 // Enhanced exec function with timeout support
@@ -19,13 +19,10 @@ const execWithTimeout = async (
   timedOut: boolean;
   killed: boolean;
 }> => {
-  const { timeout, killOnTimeout = false } = options;
+  const { timeout = 5000, continueInBackground = false, waitForCompletion = false } = options;
 
-  // If no timeout is specified, default to waiting for completion
-  const { waitForCompletion = !timeout } = options;
-
-  if (!timeout || waitForCompletion === true) {
-    // Default behavior - wait for completion
+  // If waitForCompletion is explicitly true, ignore timeout and wait indefinitely
+  if (waitForCompletion === true) {
     try {
       const result = await execAsync(command);
       return { ...result, timedOut: false, killed: false };
@@ -39,7 +36,7 @@ const execWithTimeout = async (
     }
   }
 
-  // Timeout behavior
+  // Timeout behavior when waitForCompletion is false
   return new Promise((resolve) => {
     const childProcess = exec(command, (error, stdout, stderr) => {
       if (error && !error.killed) {
@@ -60,7 +57,8 @@ const execWithTimeout = async (
     });
 
     const timeoutId = setTimeout(() => {
-      if (killOnTimeout) {
+      if (!continueInBackground) {
+        // Kill the process if continueInBackground is false (default behavior)
         childProcess.kill("SIGTERM");
         // Force kill after additional 5 seconds if still running
         setTimeout(() => {
@@ -75,6 +73,7 @@ const execWithTimeout = async (
           killed: true,
         });
       } else {
+        // Let command continue in background
         resolve({
           stdout: "",
           stderr: `Command timed out after ${timeout}ms but is still running in background`,
@@ -95,7 +94,7 @@ const execWithTimeout = async (
 export const execCommand = async (
   command: string,
   timeout?: number,
-  killOnTimeout?: boolean,
+  continueInBackground?: boolean,
   waitForCompletion?: boolean
 ): Promise<string> => {
   let output = "";
@@ -103,7 +102,7 @@ export const execCommand = async (
 
   const { stdout, stderr, timedOut, killed } = await execWithTimeout(command, {
     timeout,
-    killOnTimeout,
+    continueInBackground,
     waitForCompletion,
   });
 

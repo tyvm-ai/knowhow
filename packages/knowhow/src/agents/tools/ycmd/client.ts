@@ -138,15 +138,34 @@ export class YcmdClient {
   }
 
   /**
-   * Generate HMAC signature for request authentication
+   * Generate HMAC signature for request authentication using ycmd's nested HMAC algorithm
+   * Based on the official ycmd example client implementation
    */
   private generateHmac(method: string, path: string, body: string): string {
-    const hmac = crypto.createHmac('sha256', Buffer.from(this.serverInfo.hmacSecret, 'base64'));
+    const secret = Buffer.from(this.serverInfo.hmacSecret, 'base64');
     
-    // Create message to sign: METHOD&path&body
+    // Create individual HMACs for method, path, and body
+    const methodHmac = crypto.createHmac('sha256', secret).update(method, 'utf8').digest();
+    const pathHmac = crypto.createHmac('sha256', secret).update(path, 'utf8').digest();
+    const bodyHmac = crypto.createHmac('sha256', secret).update(body, 'utf8').digest();
+    
+    // Concatenate the three HMACs
+    const joinedHmacInput = Buffer.concat([methodHmac, pathHmac, bodyHmac]);
+    
+    // Create final HMAC of the concatenated result
+    const finalHmac = crypto.createHmac('sha256', secret).update(joinedHmacInput).digest();
+    
+    // Return base64 encoded result
+    return Buffer.from(finalHmac).toString('base64');
+  }
+
+  /**
+   * Original simple HMAC method for fallback
+   */
+  private generateSimpleHmac(method: string, path: string, body: string): string {
+    const hmac = crypto.createHmac('sha256', Buffer.from(this.serverInfo.hmacSecret, 'base64'));
     const message = `${method}&${path}&${body}`;
     hmac.update(message);
-    
     return Buffer.from(hmac.digest()).toString('base64');
   }
 
@@ -167,7 +186,7 @@ export class YcmdClient {
    */
   async isHealthy(): Promise<boolean> {
     try {
-      await this.request('/healthy');
+      await this.request('/ready');
       return true;
     } catch {
       return false;

@@ -53,7 +53,7 @@ export async function ycmdStart(params: YcmdStartParams = {}): Promise<{
     }
 
     // Start the server
-    const serverInfo = await server.start(params.workspaceRoot);
+    const serverInfo = await server.start(params.workspaceRoot, params.port);
 
     // Verify server is responsive
     const client = new YcmdClient(serverInfo);

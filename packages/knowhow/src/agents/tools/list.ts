@@ -52,17 +52,17 @@ export const includedTools = [
           timeout: {
             type: "number",
             description:
-              "Timeout in milliseconds (optional). If not provided, waits indefinitely.",
+              "Timeout in milliseconds (optional). If not provided, defaults to 5000ms.",
           },
-          killOnTimeout: {
+          continueInBackground: {
             type: "boolean",
             description:
-              "Whether to kill the command when timeout is reached (default: false). If false, command continues running in background.",
+              "Whether to let command continue in background on timeout (default: false). If false, command is killed on timeout.",
           },
           waitForCompletion: {
             type: "boolean",
             description:
-              "Whether to wait for full completion regardless of timeout (default: true). Overrides timeout behavior.",
+              "Whether to wait for full completion regardless of timeout (default: false). When true, overrides timeout behavior.",
           },
         },
         required: ["command"],
