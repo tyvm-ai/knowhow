@@ -12,6 +12,8 @@ export class CustomVariables {
   private setVariableToolName = "setVariable";
   private getVariableToolName = "getVariable";
   private storeToolCallToolName = "storeToolCallToVariable";
+  private listVariablesToolName = "listVariables";
+  private deleteVariableToolName = "deleteVariable";
 
   constructor(private toolsService: ToolsService) {
     this.registerTools(toolsService);
@@ -92,6 +94,45 @@ export class CustomVariables {
     } catch (error: any) {
       return `Error storing tool call result: ${error.message}`;
     }
+  }
+
+  /**
+   * Lists all stored variables with their values
+   */
+  private listVariables(): string {
+    const variableNames = Object.keys(this.variables);
+    
+    if (variableNames.length === 0) {
+      return "No variables are currently stored.";
+    }
+
+    const variableList = variableNames.map(name => {
+      const value = this.variables[name];
+      const preview = typeof value === "string" 
+        ? (value.length > 50 ? value.substring(0, 50) + "..." : value)
+        : JSON.stringify(value).substring(0, 50) + (JSON.stringify(value).length > 50 ? "..." : "");
+      return `- ${name}: ${preview}`;
+    }).join("\n");
+
+    return `Currently stored variables (${variableNames.length}):\n${variableList}`;
+  }
+
+  /**
+   * Deletes a specific variable
+   */
+  private deleteVariable(varName: string): string {
+    if (!this.isValidVariableName(varName)) {
+      return `Error: Invalid variable name "${varName}". Only alphanumeric characters and underscores are allowed.`;
+    }
+
+    if (!(varName in this.variables)) {
+      return `Error: Variable "${varName}" is not defined. Available variables: ${Object.keys(
+        this.variables
+      ).join(", ")}`;
+    }
+
+    delete this.variables[varName];
+    return `Variable "${varName}" has been deleted successfully.`;
   }
 
   /**
@@ -234,6 +275,26 @@ export class CustomVariables {
         },
       });
     }
+
+    // Register listVariables tool
+    if (!toolsService.getTool(this.listVariablesToolName)) {
+      toolsService.addTool(listVariablesToolDefinition);
+      toolsService.addFunctions({
+        [this.listVariablesToolName]: () => {
+          return this.listVariables();
+        },
+      });
+    }
+
+    // Register deleteVariable tool
+    if (!toolsService.getTool(this.deleteVariableToolName)) {
+      toolsService.addTool(deleteVariableToolDefinition);
+      toolsService.addFunctions({
+        [this.deleteVariableToolName]: (varName: string) => {
+          return this.deleteVariable(varName);
+        },
+      });
+    }
   }
 
   /**
@@ -326,6 +387,39 @@ export const storeToolCallToVariableDefinition: Tool = {
         },
       },
       required: ["varName", "toolName", "toolArgs"],
+    },
+  },
+};
+
+export const listVariablesToolDefinition: Tool = {
+  type: "function",
+  function: {
+    name: "listVariables",
+    description: "List all currently stored variables with their values.",
+    parameters: {
+      type: "object",
+      positional: false,
+      properties: {},
+      required: [],
+    },
+  },
+};
+
+export const deleteVariableToolDefinition: Tool = {
+  type: "function",
+  function: {
+    name: "deleteVariable",
+    description: "Delete a specific variable from storage.",
+    parameters: {
+      type: "object",
+      positional: true,
+      properties: {
+        varName: {
+          type: "string",
+          description: "The name of the variable to delete",
+        },
+      },
+      required: ["varName"],
     },
   },
 };

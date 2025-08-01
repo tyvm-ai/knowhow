@@ -23,6 +23,7 @@ import { BaseAgent } from "./agents";
 import { getConfig } from "./config";
 import { TokenCompressor } from "./processors/TokenCompressor";
 import { ToolResponseCache } from "./processors/ToolResponseCache";
+import { CustomVariables } from "./processors";
 
 enum ChatFlags {
   agent = "agent",
@@ -357,6 +358,7 @@ export async function startAgent(
       new TokenCompressor(activeAgent.tools).createProcessor((msg) =>
         Boolean(msg.role === "tool" && msg.tool_call_id)
       ),
+      new CustomVariables(activeAgent.tools).createProcessor(),
     ]);
 
     if (
