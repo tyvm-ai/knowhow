@@ -9,7 +9,7 @@ export const definitions = [
         properties: {
           workspaceRoot: {
             type: "string",
-            description: "Path to the project root directory (optional)",
+            description: "Path to the project root directory. Defaults to current working directory and auto-detects TypeScript/Node.js projects via tsconfig.json or package.json",
           },
           config: {
             type: "object",
@@ -48,7 +48,7 @@ export const definitions = [
         properties: {
           filepath: {
             type: "string",
-            description: "Absolute path to the file",
+            description: "Path to the file. Can be relative (defaults to current working directory) or absolute",
           },
           line: {
             type: "number",
@@ -81,7 +81,7 @@ export const definitions = [
         properties: {
           filepath: {
             type: "string",
-            description: "Absolute path to the file",
+            description: "Path to the file. Can be relative (defaults to current working directory) or absolute",
           },
           line: {
             type: "number",
@@ -119,7 +119,7 @@ export const definitions = [
         properties: {
           filepath: {
             type: "string",
-            description: "Absolute path to the file",
+            description: "Path to the file. Can be relative (defaults to current working directory) or absolute",
           },
           line: {
             type: "number",
@@ -152,7 +152,7 @@ export const definitions = [
         properties: {
           filepath: {
             type: "string",
-            description: "Absolute path to the file",
+            description: "Path to the file. Can be relative (defaults to current working directory) or absolute",
           },
           line: {
             type: "number",
@@ -194,7 +194,7 @@ export const definitions = [
         properties: {
           filepath: {
             type: "string",
-            description: "Absolute path to the file",
+            description: "Path to the file. Can be relative (defaults to current working directory) or absolute",
           },
           line: {
             type: "number",

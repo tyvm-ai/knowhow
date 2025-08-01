@@ -1,6 +1,7 @@
 import { YcmdClient, getFileTypes } from '../client';
 import { ycmdServerManager } from '../serverManager';
 import { ycmdStart } from './start';
+import { resolveFilePath } from '../utils/pathUtils';
 import * as fs from 'fs';
 
 export interface YcmdGoToParams {
@@ -27,6 +28,9 @@ export async function ycmdGoTo(params: YcmdGoToParams): Promise<{
   message: string;
 }> {
   try {
+    // Resolve file path
+    const resolvedFilePath = resolveFilePath(params.filepath);
+    
     // Validate parameters
     if (!params.filepath) {
       return {
@@ -53,7 +57,7 @@ export async function ycmdGoTo(params: YcmdGoToParams): Promise<{
     let contents = params.contents;
     if (!contents) {
       try {
-        contents = await fs.promises.readFile(params.filepath, 'utf8');
+        contents = await fs.promises.readFile(resolvedFilePath, 'utf8');
       } catch (error) {
         return {
           success: false,
@@ -63,7 +67,7 @@ export async function ycmdGoTo(params: YcmdGoToParams): Promise<{
     }
 
     // Get file types
-    const filetypes = getFileTypes(params.filepath);
+    const filetypes = getFileTypes(resolvedFilePath);
 
     // Check if ycmd server is running, start if not
     if (!(await ycmdServerManager.isRunning())) {
@@ -91,7 +95,7 @@ export async function ycmdGoTo(params: YcmdGoToParams): Promise<{
 
     // Notify server about file if needed
     try {
-      await client.notifyFileEvent('FileReadyToParse', params.filepath, contents, filetypes);
+      await client.notifyFileEvent('FileReadyToParse', resolvedFilePath, contents, filetypes);
     } catch (error) {
       console.warn('Failed to notify file event:', error);
     }
@@ -102,7 +106,7 @@ export async function ycmdGoTo(params: YcmdGoToParams): Promise<{
     switch (params.command) {
       case 'GoTo':
         response = await client.goToDefinition(
-          params.filepath,
+          resolvedFilePath,
           params.line,
           params.column,
           contents,
@@ -112,7 +116,7 @@ export async function ycmdGoTo(params: YcmdGoToParams): Promise<{
         
       case 'GoToDeclaration':
         response = await client.goToDeclaration(
-          params.filepath,
+          resolvedFilePath,
           params.line,
           params.column,
           contents,
@@ -122,7 +126,7 @@ export async function ycmdGoTo(params: YcmdGoToParams): Promise<{
         
       case 'GoToReferences':
         response = await client.goToReferences(
-          params.filepath,
+          resolvedFilePath,
           params.line,
           params.column,
           contents,

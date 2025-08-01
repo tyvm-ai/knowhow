@@ -1,5 +1,6 @@
 import { YcmdClient, getFileTypes } from '../client';
 import { ycmdServerManager } from '../serverManager';
+import { resolveFilePath } from '../utils/pathUtils';
 import * as fs from 'fs';
 
 export interface YcmdSignatureHelpParams {
@@ -35,6 +36,9 @@ export async function ycmdSignatureHelp(params: YcmdSignatureHelpParams): Promis
   message: string;
 }> {
   try {
+    // Resolve file path
+    const resolvedFilePath = resolveFilePath(params.filepath);
+    
     // Validate parameters
     if (!params.filepath) {
       return {
@@ -54,7 +58,7 @@ export async function ycmdSignatureHelp(params: YcmdSignatureHelpParams): Promis
     let contents = params.contents;
     if (!contents) {
       try {
-        contents = await fs.promises.readFile(params.filepath, 'utf8');
+        contents = await fs.promises.readFile(resolvedFilePath, 'utf8');
       } catch (error) {
         return {
           success: false,
@@ -64,7 +68,7 @@ export async function ycmdSignatureHelp(params: YcmdSignatureHelpParams): Promis
     }
 
     // Get file types
-    const filetypes = getFileTypes(params.filepath);
+    const filetypes = getFileTypes(resolvedFilePath);
 
     // Check if ycmd server is running using server manager
     if (!(await ycmdServerManager.isRunning())) {
@@ -93,14 +97,14 @@ export async function ycmdSignatureHelp(params: YcmdSignatureHelpParams): Promis
 
     // Notify server about file
     try {
-      await client.notifyFileEvent('FileReadyToParse', params.filepath, contents, filetypes);
+      await client.notifyFileEvent('FileReadyToParse', resolvedFilePath, contents, filetypes);
     } catch (error) {
       console.warn('Failed to notify file event:', error);
     }
 
     // Get signature help
     const response = await client.getSignatureHelp(
-      params.filepath,
+      resolvedFilePath,
       params.line,
       params.column,
       contents,

@@ -2,6 +2,7 @@ import { YcmdClient, getFileTypes } from '../client';
 import { ycmdServerManager } from '../serverManager';
 import { ycmdStart } from './start';
 import * as fs from 'fs';
+import { resolveFilePath } from '../utils/pathUtils';
 
 export interface YcmdCompletionParams {
   filepath: string;
@@ -30,7 +31,17 @@ export async function ycmdCompletion(params: YcmdCompletionParams): Promise<{
 }> {
   try {
     // Validate parameters
-    if (!params.filepath) {
+    if (!params.filepath || params.filepath.trim() === '') {
+      return {
+        success: false,
+        message: 'filepath is required'
+      };
+    }
+
+    // Resolve filepath to absolute path
+    const absoluteFilepath = resolveFilePath(params.filepath);
+    
+    if (!absoluteFilepath) {
       return {
         success: false,
         message: 'filepath is required'
@@ -48,7 +59,7 @@ export async function ycmdCompletion(params: YcmdCompletionParams): Promise<{
     let contents = params.contents;
     if (!contents) {
       try {
-        contents = await fs.promises.readFile(params.filepath, 'utf8');
+        contents = await fs.promises.readFile(absoluteFilepath, 'utf8');
       } catch (error) {
         return {
           success: false,
@@ -58,7 +69,7 @@ export async function ycmdCompletion(params: YcmdCompletionParams): Promise<{
     }
 
     // Get file types
-    const filetypes = getFileTypes(params.filepath);
+    const filetypes = getFileTypes(absoluteFilepath);
 
     // Check if ycmd server is running, start if not
     if (!(await ycmdServerManager.isRunning())) {
@@ -86,18 +97,18 @@ export async function ycmdCompletion(params: YcmdCompletionParams): Promise<{
 
     // Notify server about file if needed
     try {
-      await client.notifyFileEvent('FileReadyToParse', params.filepath, contents, filetypes);
+      await client.notifyFileEvent('FileReadyToParse', absoluteFilepath, contents, filetypes);
     } catch (error) {
       console.warn('Failed to notify file event:', error);
     }
 
     // Get completions
     const response = await client.getCompletions({
-      filepath: params.filepath,
+      filepath: absoluteFilepath,
       line_num: params.line,
       column_num: params.column,
       file_data: {
-        [params.filepath]: {
+        [absoluteFilepath]: {
           contents,
           filetypes
         }

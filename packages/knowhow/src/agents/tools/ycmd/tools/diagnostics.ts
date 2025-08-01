@@ -1,6 +1,7 @@
 import { YcmdClient, getFileTypes } from '../client';
 import { ycmdServerManager } from '../serverManager';
 import { ycmdStart } from './start';
+import { resolveFilePath } from '../utils/pathUtils';
 import * as fs from 'fs';
 
 export interface YcmdDiagnosticsParams {
@@ -49,6 +50,9 @@ export async function ycmdDiagnostics(params: YcmdDiagnosticsParams): Promise<{
   message: string;
 }> {
   try {
+    // Resolve file path
+    const resolvedFilePath = resolveFilePath(params.filepath);
+    
     // Validate parameters
     if (!params.filepath) {
       return {
@@ -61,7 +65,7 @@ export async function ycmdDiagnostics(params: YcmdDiagnosticsParams): Promise<{
     let contents = params.fileContents;
     if (!contents) {
       try {
-        contents = await fs.promises.readFile(params.filepath, 'utf8');
+        contents = await fs.promises.readFile(resolvedFilePath, 'utf8');
       } catch (error) {
         return {
           success: false,
@@ -71,7 +75,7 @@ export async function ycmdDiagnostics(params: YcmdDiagnosticsParams): Promise<{
     }
 
     // Get file types
-    const filetypes = getFileTypes(params.filepath);
+    const filetypes = getFileTypes(resolvedFilePath);
 
     // Check if ycmd server is running, start if not
     if (!(await ycmdServerManager.isRunning())) {
@@ -103,13 +107,13 @@ export async function ycmdDiagnostics(params: YcmdDiagnosticsParams): Promise<{
 
     // Send file event notification - required by ycmd before diagnostics
     try {
-      await client.notifyFileEvent('FileReadyToParse', params.filepath, contents, filetypes, line_num, column_num);
+      await client.notifyFileEvent('FileReadyToParse', resolvedFilePath, contents, filetypes, line_num, column_num);
     } catch (error) {
       console.warn('Failed to notify file event:', error);
     }
 
     // Get diagnostics
-    const response = await client.getDiagnostics(params.filepath, contents, filetypes, line_num, column_num);
+    const response = await client.getDiagnostics(resolvedFilePath, contents, filetypes, line_num, column_num);
 
     // Parse diagnostics
     const diagnostics: Diagnostic[] = response.map((diag: any) => ({

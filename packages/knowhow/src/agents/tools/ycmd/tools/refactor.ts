@@ -1,5 +1,6 @@
 import { YcmdClient, getFileTypes } from '../client';
 import { ycmdServerManager } from '../serverManager';
+import { resolveFilePath } from '../utils/pathUtils';
 import * as fs from 'fs';
 
 export interface YcmdRefactorParams {
@@ -41,6 +42,9 @@ export async function ycmdRefactor(params: YcmdRefactorParams): Promise<{
   message: string;
 }> {
   try {
+    // Resolve file path
+    const resolvedFilePath = resolveFilePath(params.filepath);
+    
     // Validate parameters
     if (!params.filepath) {
       return {
@@ -81,7 +85,7 @@ export async function ycmdRefactor(params: YcmdRefactorParams): Promise<{
     let contents = params.contents;
     if (!contents) {
       try {
-        contents = await fs.promises.readFile(params.filepath, 'utf8');
+        contents = await fs.promises.readFile(resolvedFilePath, 'utf8');
       } catch (error) {
         return {
           success: false,
@@ -91,7 +95,7 @@ export async function ycmdRefactor(params: YcmdRefactorParams): Promise<{
     }
 
     // Get file types
-    const filetypes = getFileTypes(params.filepath);
+    const filetypes = getFileTypes(resolvedFilePath);
 
     // Check if ycmd server is running using server manager
     if (!(await ycmdServerManager.isRunning())) {
@@ -120,7 +124,7 @@ export async function ycmdRefactor(params: YcmdRefactorParams): Promise<{
 
     // Notify server about file
     try {
-      await client.notifyFileEvent('FileReadyToParse', params.filepath, contents, filetypes);
+      await client.notifyFileEvent('FileReadyToParse', resolvedFilePath, contents, filetypes);
     } catch (error) {
       console.warn('Failed to notify file event:', error);
     }
@@ -131,7 +135,7 @@ export async function ycmdRefactor(params: YcmdRefactorParams): Promise<{
     switch (params.command) {
       case 'rename':
         response = await client.refactorRename(
-          params.filepath,
+          resolvedFilePath,
           params.line,
           params.column,
           contents,
@@ -142,7 +146,7 @@ export async function ycmdRefactor(params: YcmdRefactorParams): Promise<{
 
       case 'extract_method':
         response = await client.refactorExtractMethod(
-          params.filepath,
+          resolvedFilePath,
           params.line,
           params.column,
           contents,
@@ -152,7 +156,7 @@ export async function ycmdRefactor(params: YcmdRefactorParams): Promise<{
 
       case 'organize_imports':
         response = await client.refactorOrganizeImports(
-          params.filepath,
+          resolvedFilePath,
           params.line,
           params.column,
           contents,
@@ -162,7 +166,7 @@ export async function ycmdRefactor(params: YcmdRefactorParams): Promise<{
 
       case 'fix_it':
         response = await client.refactorFixIt(
-          params.filepath,
+          resolvedFilePath,
           params.line,
           params.column,
           contents,
@@ -180,7 +184,7 @@ export async function ycmdRefactor(params: YcmdRefactorParams): Promise<{
       const fixit = response.fixits[0];
       result = {
         edits: fixit.chunks.map((chunk: any) => ({
-          filepath: params.filepath,
+          filepath: resolvedFilePath,
           range: {
             start: {
               line: chunk.range.start.line_num,
@@ -199,7 +203,7 @@ export async function ycmdRefactor(params: YcmdRefactorParams): Promise<{
       // Handle direct chunks response format
       result = {
         edits: response.chunks.map((chunk: any) => ({
-          filepath: params.filepath,
+          filepath: resolvedFilePath,
           range: {
             start: {
               line: chunk.range.start.line_num,

@@ -1,6 +1,7 @@
 import { ycmdServerManager } from '../serverManager';
 import { YcmdClient } from '../client';
 import { YcmdInstaller } from '../installer';
+import { resolveWorkspaceRoot, findProjectRoot } from '../utils/pathUtils';
 
 export interface YcmdStartParams {
   workspaceRoot?: string;
@@ -50,8 +51,12 @@ export async function ycmdStart(params: YcmdStartParams = {}): Promise<{
       await ycmdServerManager.stop();
     }
 
-    // Start the server
-    const serverInfo = await ycmdServerManager.start(params.workspaceRoot, params.port);
+    // Resolve workspace root with CWD default and project root detection
+    const resolvedWorkspaceRoot = resolveWorkspaceRoot(params.workspaceRoot);
+    const projectRoot = findProjectRoot(resolvedWorkspaceRoot);
+
+    // Start the server with resolved project root
+    const serverInfo = await ycmdServerManager.start(projectRoot, params.port);
 
     // Verify server is responsive
     const client = new YcmdClient(serverInfo);
@@ -62,9 +67,9 @@ export async function ycmdStart(params: YcmdStartParams = {}): Promise<{
     }
 
     // Load extra conf file if workspace is specified
-    if (params.workspaceRoot) {
+    if (projectRoot) {
       try {
-        await client.loadExtraConfFile(params.workspaceRoot);
+        await client.loadExtraConfFile(projectRoot);
       } catch (error) {
         console.warn('Failed to load extra conf file:', error);
       }
