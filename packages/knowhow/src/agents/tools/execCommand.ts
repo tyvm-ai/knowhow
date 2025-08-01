@@ -24,7 +24,7 @@ const execWithTimeout = async (
   // If no timeout is specified, default to waiting for completion
   const { waitForCompletion = !timeout } = options;
 
-  if (!timeout || waitForCompletion) {
+  if (!timeout || waitForCompletion === true) {
     // Default behavior - wait for completion
     try {
       const result = await execAsync(command);

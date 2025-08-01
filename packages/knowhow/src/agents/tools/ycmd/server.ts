@@ -217,6 +217,7 @@ export class YcmdServer {
    */
   private setupProcessHandlers(): void {
     if (!this.process) return;
+    let stdoutBuffer = '';
 
     this.process.on('error', (error) => {
       console.error('ycmd server process error:', error);
@@ -233,6 +234,16 @@ export class YcmdServer {
     // Capture stdout for port detection
     this.process.stdout?.on('data', (data) => {
       const output = data.toString();
+      stdoutBuffer += output;
+      
+      // Look for server ready message with port info
+      const serverReadyMatch = output.match(/serving on http:\/\/127\.0\.0\.1:(\d+)/i);
+      if (serverReadyMatch) {
+        const port = parseInt(serverReadyMatch[1], 10);
+        console.log(`ycmd server detected on port ${port}`);
+        // Store detected port for waitForServerStart
+        (this as any)._detectedPort = port;
+      }
       console.log('ycmd stdout:', output);
     });
 
@@ -253,15 +264,54 @@ export class YcmdServer {
 
       const host = '127.0.0.1';
 
-      // Try to detect when server is ready by checking multiple ports
+      // Check for server readiness
       const checkReady = async () => {
         try {
-          for (let port = 8080; port <= 8090; port++) {
+          // Check if we detected a port from stdout
+          const detectedPort = (this as any)._detectedPort;
+          if (detectedPort) {
             try {
               const controller = new AbortController();
               const timeoutId = setTimeout(() => controller.abort(), 1000);
               
-              const response = await fetch(`http://${host}:${port}/ready`, {
+              // Try different health check endpoints
+              let response;
+              try {
+                response = await fetch(`http://${host}:${detectedPort}/healthy`, {
+                  signal: controller.signal
+                });
+              } catch {
+                // Try alternative endpoint
+                response = await fetch(`http://${host}:${detectedPort}/ready`, {
+                  signal: controller.signal
+                });
+              }
+              
+              clearTimeout(timeoutId);
+
+              if (response.ok) {
+                clearTimeout(timeout);
+                resolve({
+                  host: host,
+                  port: detectedPort,
+                  hmacSecret: this.hmacSecret,
+                  status: 'starting' as const
+                });
+                return;
+              }
+            } catch (error) {
+              console.log(`Health check failed for port ${detectedPort}:`, error);
+            }
+          }
+
+          // If no port detected yet or health check failed, try port scanning as fallback
+          if (!detectedPort) {
+            for (let port = 8080; port <= 8090; port++) {
+              try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 500);
+                
+                const response = await fetch(`http://${host}:${port}/healthy`, {
                 signal: controller.signal
               });
               
@@ -277,8 +327,9 @@ export class YcmdServer {
                 });
                 return;
               }
-            } catch {
-              // Continue trying other ports
+              } catch {
+                // Continue trying other ports
+              }
             }
           }
 
