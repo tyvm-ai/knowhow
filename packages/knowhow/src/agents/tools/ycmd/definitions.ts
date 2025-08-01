@@ -1,0 +1,218 @@
+export const definitions = [
+  {
+    type: "function",
+    function: {
+      name: "ycmdStart",
+      description: "Start ycmd server with project configuration for code intelligence features",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          workspaceRoot: {
+            type: "string",
+            description: "Path to the project root directory (optional)",
+          },
+          config: {
+            type: "object",
+            description: "Optional ycmd server configuration",
+            properties: {
+              port: {
+                type: "number",
+                description: "Port for ycmd server (0 for auto-assign)",
+              },
+              logLevel: {
+                type: "string",
+                description: "Log level: debug, info, warning, error",
+              },
+              completionTimeout: {
+                type: "number",
+                description: "Completion timeout in milliseconds",
+              },
+            },
+          },
+        },
+        required: [],
+      },
+      returns: {
+        type: "object",
+        description: "Server information including host, port, and status",
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "ycmdCompletion",
+      description: "Get code completions at a specific position in a file",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          filePath: {
+            type: "string",
+            description: "Absolute path to the file",
+          },
+          line: {
+            type: "number",
+            description: "Line number (1-based)",
+          },
+          column: {
+            type: "number",
+            description: "Column number (1-based)",
+          },
+          fileContents: {
+            type: "string",
+            description: "Current contents of the file (optional if file exists on disk)",
+          },
+        },
+        required: ["filePath", "line", "column"],
+      },
+      returns: {
+        type: "object",
+        description: "Completion results with suggestions and metadata",
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "ycmdGoTo",
+      description: "Navigate to definitions, declarations, or find references for a symbol",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          filePath: {
+            type: "string",
+            description: "Absolute path to the file",
+          },
+          line: {
+            type: "number",
+            description: "Line number (1-based)",
+          },
+          column: {
+            type: "number",
+            description: "Column number (1-based)",
+          },
+          command: {
+            type: "string",
+            description: "Navigation command: GoToDefinition, GoToDeclaration, GoToReferences, GoToImplementation",
+            enum: ["GoToDefinition", "GoToDeclaration", "GoToReferences", "GoToImplementation"],
+          },
+          fileContents: {
+            type: "string",
+            description: "Current contents of the file (optional if file exists on disk)",
+          },
+        },
+        required: ["filePath", "line", "column", "command"],
+      },
+      returns: {
+        type: "array",
+        description: "Array of locations with file paths, line numbers, and column numbers",
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "ycmdDiagnostics",
+      description: "Get error and warning diagnostics for a file",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          filePath: {
+            type: "string",
+            description: "Absolute path to the file",
+          },
+          fileContents: {
+            type: "string",
+            description: "Current contents of the file (optional if file exists on disk)",
+          },
+        },
+        required: ["filePath"],
+      },
+      returns: {
+        type: "array",
+        description: "Array of diagnostic messages with severity, location, and description",
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "ycmdRefactor",
+      description: "Execute refactoring operations like rename, extract method, organize imports",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          filePath: {
+            type: "string",
+            description: "Absolute path to the file",
+          },
+          line: {
+            type: "number",
+            description: "Line number (1-based)",
+          },
+          column: {
+            type: "number",
+            description: "Column number (1-based)",
+          },
+          command: {
+            type: "string",
+            description: "Refactoring command: RefactorRename, RefactorExtractMethod, RefactorOrganizeImports, RefactorFixIt",
+            enum: ["RefactorRename", "RefactorExtractMethod", "RefactorOrganizeImports", "RefactorFixIt"],
+          },
+          newName: {
+            type: "string",
+            description: "New name for rename operations",
+          },
+          fileContents: {
+            type: "string",
+            description: "Current contents of the file (optional if file exists on disk)",
+          },
+        },
+        required: ["filePath", "line", "column", "command"],
+      },
+      returns: {
+        type: "object",
+        description: "Refactoring result with file changes and status",
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "ycmdSignatureHelp",
+      description: "Get function signature help and parameter information at cursor position",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          filePath: {
+            type: "string",
+            description: "Absolute path to the file",
+          },
+          line: {
+            type: "number",
+            description: "Line number (1-based)",
+          },
+          column: {
+            type: "number",
+            description: "Column number (1-based)",
+          },
+          fileContents: {
+            type: "string",
+            description: "Current contents of the file (optional if file exists on disk)",
+          },
+        },
+        required: ["filePath", "line", "column"],
+      },
+      returns: {
+        type: "object",
+        description: "Signature help with function signatures and parameter information",
+      },
+    },
+  },
+];

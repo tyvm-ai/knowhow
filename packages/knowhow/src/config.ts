@@ -73,6 +73,14 @@ const defaultConfig = {
   ],
 
   modelProviders: [{ url: "http://localhost:1234", provider: "lms" }],
+
+  ycmd: {
+    enabled: false,
+    installPath: undefined, // Will default to ~/.knowhow/ycmd
+    port: 0, // 0 for auto-assign
+    logLevel: 'info',
+    completionTimeout: 5000,
+  },
 } as Config;
 
 const defaultLanguage = {

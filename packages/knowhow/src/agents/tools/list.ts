@@ -5,6 +5,7 @@ import { Plugins } from "../../plugins/plugins";
 const pluginNames = Plugins.listPlugins().join(", ");
 import * as github from "./github/definitions";
 import * as asana from "./asana/definitions";
+import * as ycmd from "./ycmd/definitions";
 import * as language from "./language/definitions";
 import { googleSearchDefinition } from "./googleSearch";
 import { executeScriptDefinition } from "./executeScript/definition";
@@ -609,6 +610,7 @@ export const includedTools = [
   executeScriptDefinition,
   googleSearchDefinition,
   ...asana.definitions,
+  ...ycmd.definitions,
   ...github.definitions,
   ...language.definitions,
 ] as Tool[];

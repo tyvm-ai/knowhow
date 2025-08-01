@@ -53,6 +53,14 @@ export type Config = {
   mcps: McpConfig[];
   modelProviders: ModelProvider[];
 
+  ycmd?: {
+    enabled?: boolean;
+    installPath?: string;
+    port?: number;
+    logLevel?: 'debug' | 'info' | 'warning' | 'error';
+    completionTimeout?: number;
+  };
+
   worker?: {
     allowedTools?: string[];
   };
