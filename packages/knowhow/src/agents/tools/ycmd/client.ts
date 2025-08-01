@@ -222,12 +222,14 @@ export class YcmdClient {
   }
 
   /**
-   * Get diagnostics for a file
+   * Get diagnostics for a file using FileReadyToParse event
    */
-  async getDiagnostics(filepath: string, contents: string, filetypes: string[]): Promise<YcmdDiagnostic[]> {
-    const response = await this.request<YcmdDiagnostic[]>('/event_notification', {
+  async getDiagnostics(filepath: string, contents: string, filetypes: string[], line_num: number = 1, column_num: number = 1): Promise<YcmdDiagnostic[]> {
+    const response = await this.request<{ diagnostics?: YcmdDiagnostic[] }>('/event_notification', {
       event_name: 'FileReadyToParse',
       filepath,
+      line_num,
+      column_num,
       file_data: {
         [filepath]: {
           contents,
@@ -236,11 +238,11 @@ export class YcmdClient {
       }
     });
 
-    return response || [];
+    return response.diagnostics || [];
   }
 
   /**
-   * Go to definition/declaration
+   * Go to definition
    */
   async goToDefinition(
     filepath: string, 
@@ -249,7 +251,8 @@ export class YcmdClient {
     contents: string, 
     filetypes: string[]
   ): Promise<YcmdGoToResponse> {
-    return this.request<YcmdGoToResponse>('/goto_definition', {
+    return this.request<YcmdGoToResponse>('/run_completer_command', {
+      command_arguments: ['GoTo'],
       filepath,
       line_num: line,
       column_num: column,
@@ -272,7 +275,8 @@ export class YcmdClient {
     contents: string, 
     filetypes: string[]
   ): Promise<YcmdGoToResponse> {
-    return this.request<YcmdGoToResponse>('/goto_declaration', {
+    return this.request<YcmdGoToResponse>('/run_completer_command', {
+      command_arguments: ['GoToDeclaration'],
       filepath,
       line_num: line,
       column_num: column,
@@ -295,7 +299,8 @@ export class YcmdClient {
     contents: string, 
     filetypes: string[]
   ): Promise<YcmdGoToResponse[]> {
-    return this.request<YcmdGoToResponse[]>('/goto_references', {
+    return this.request<YcmdGoToResponse[]>('/run_completer_command', {
+      command_arguments: ['GoToReferences'],
       filepath,
       line_num: line,
       column_num: column,
@@ -318,7 +323,8 @@ export class YcmdClient {
     contents: string, 
     filetypes: string[]
   ): Promise<any> {
-    return this.request('/signature_help', {
+    return this.request('/run_completer_command', {
+      command_arguments: ['GetType'],
       filepath,
       line_num: line,
       column_num: column,
@@ -341,7 +347,7 @@ export class YcmdClient {
     contents: string, 
     filetypes: string[]
   ): Promise<any[]> {
-    return this.request<any[]>('/refactor', {
+    return this.request<any[]>('/defined_subcommands', {
       filepath,
       line_num: line,
       column_num: column,
@@ -408,12 +414,16 @@ export class YcmdClient {
    */
   async refactorOrganizeImports(
     filepath: string, 
+    line: number, 
+    column: number, 
     contents: string, 
     filetypes: string[]
   ): Promise<any> {
     return this.request('/run_completer_command', {
       command_arguments: ['OrganizeImports'],
       filepath,
+      line_num: line,
+      column_num: column,
       file_data: {
         [filepath]: {
           contents,
@@ -465,21 +475,24 @@ export class YcmdClient {
     event: 'BufferVisit' | 'BufferUnload' | 'FileReadyToParse' | 'InsertLeave' | 'CurrentIdentifierFinished',
     filepath: string,
     contents?: string,
-    filetypes?: string[]
+    filetypes?: string[],
+    line_num: number = 1,
+    column_num: number = 1
   ): Promise<void> {
     const eventData: any = {
       event_name: event,
-      filepath
+      filepath,
+      line_num,
+      column_num
     };
 
-    if (contents && filetypes) {
-      eventData.file_data = {
-        [filepath]: {
-          contents,
-          filetypes
-        }
-      };
-    }
+    // file_data is always required by ycmd
+    eventData.file_data = {
+      [filepath]: {
+        contents: contents || '',
+        filetypes: filetypes || ['text']
+      }
+    };
 
     await this.request('/event_notification', eventData);
   }

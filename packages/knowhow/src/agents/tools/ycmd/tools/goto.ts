@@ -1,5 +1,6 @@
 import { YcmdClient, getFileTypes } from '../client';
 import { ycmdServerManager } from '../serverManager';
+import { ycmdStart } from './start';
 import * as fs from 'fs';
 
 export interface YcmdGoToParams {
@@ -7,7 +8,7 @@ export interface YcmdGoToParams {
   line: number;
   column: number;
   contents?: string;
-  command: 'definition' | 'declaration' | 'references';
+  command: 'GoTo' | 'GoToDeclaration' | 'GoToReferences';
 }
 
 export interface GoToLocation {
@@ -41,10 +42,10 @@ export async function ycmdGoTo(params: YcmdGoToParams): Promise<{
       };
     }
 
-    if (!['definition', 'declaration', 'references'].includes(params.command)) {
+    if (!['GoTo', 'GoToDeclaration', 'GoToReferences'].includes(params.command)) {
       return {
         success: false,
-        message: 'command must be one of: definition, declaration, references'
+        message: 'command must be one of: GoTo, GoToDeclaration, GoToReferences'
       };
     }
 
@@ -64,12 +65,17 @@ export async function ycmdGoTo(params: YcmdGoToParams): Promise<{
     // Get file types
     const filetypes = getFileTypes(params.filepath);
 
-    // Check if ycmd server is running using the global manager
-    if (!ycmdServerManager.isRunning()) {
-      return {
-        success: false,
-        message: 'ycmd server is not running. Please start it first.'
-      };
+    // Check if ycmd server is running, start if not
+    if (!(await ycmdServerManager.isRunning())) {
+      console.log('ycmd server not running, starting automatically...');
+      const startResult = await ycmdStart({});
+      if (!startResult.success) {
+        return {
+          success: false,
+          message: `Failed to auto-start ycmd server: ${startResult.message}`
+        };
+      }
+      console.log('ycmd server started successfully');
     }
 
     const serverInfo = ycmdServerManager.getServerInfo();
@@ -94,7 +100,7 @@ export async function ycmdGoTo(params: YcmdGoToParams): Promise<{
     let response: any;
     
     switch (params.command) {
-      case 'definition':
+      case 'GoTo':
         response = await client.goToDefinition(
           params.filepath,
           params.line,
@@ -104,7 +110,7 @@ export async function ycmdGoTo(params: YcmdGoToParams): Promise<{
         );
         break;
         
-      case 'declaration':
+      case 'GoToDeclaration':
         response = await client.goToDeclaration(
           params.filepath,
           params.line,
@@ -114,7 +120,7 @@ export async function ycmdGoTo(params: YcmdGoToParams): Promise<{
         );
         break;
         
-      case 'references':
+      case 'GoToReferences':
         response = await client.goToReferences(
           params.filepath,
           params.line,
@@ -146,7 +152,7 @@ export async function ycmdGoTo(params: YcmdGoToParams): Promise<{
       locations = [];
     }
 
-    const commandText = params.command === 'references' ? 'references' : params.command;
+    const commandText = params.command === 'GoToReferences' ? 'references' : (params.command === 'GoTo' ? 'definition' : 'declaration');
     
     if (locations.length === 0) {
       return {

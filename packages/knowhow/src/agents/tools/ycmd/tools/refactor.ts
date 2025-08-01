@@ -94,11 +94,17 @@ export async function ycmdRefactor(params: YcmdRefactorParams): Promise<{
     const filetypes = getFileTypes(params.filepath);
 
     // Check if ycmd server is running using server manager
-    if (!ycmdServerManager.isRunning()) {
-      return {
-        success: false,
-        message: 'ycmd server is not running. Please start it first.'
-      };
+    if (!(await ycmdServerManager.isRunning())) {
+      console.log('ycmd server not running, attempting to start...');
+      try {
+        await ycmdServerManager.start();
+        console.log('ycmd server started successfully for refactor operation');
+      } catch (error) {
+        return {
+          success: false,
+          message: `Failed to start ycmd server: ${(error as Error).message}`
+        };
+      }
     }
 
     const serverInfo = ycmdServerManager.getServerInfo();
@@ -147,6 +153,8 @@ export async function ycmdRefactor(params: YcmdRefactorParams): Promise<{
       case 'organize_imports':
         response = await client.refactorOrganizeImports(
           params.filepath,
+          params.line,
+          params.column,
           contents,
           filetypes
         );

@@ -121,6 +121,14 @@ export const definitions = [
             type: "string",
             description: "Absolute path to the file",
           },
+          line: {
+            type: "number",
+            description: "Line number (1-based, optional, defaults to 1)",
+          },
+          column: {
+            type: "number", 
+            description: "Column number (1-based, optional, defaults to 1)",
+          },
           fileContents: {
             type: "string",
             description: "Current contents of the file (optional if file exists on disk)",

@@ -31,7 +31,7 @@ export async function ycmdStart(params: YcmdStartParams = {}): Promise<{
     }
 
     // Check if server is already running
-    if (ycmdServerManager.isRunning() && !params.forceRestart) {
+    if ((await ycmdServerManager.isRunning()) && !params.forceRestart) {
       const serverInfo = ycmdServerManager.getServerInfo();
       return {
         success: true,
@@ -46,7 +46,7 @@ export async function ycmdStart(params: YcmdStartParams = {}): Promise<{
     }
 
     // Stop existing server if force restart
-    if (params.forceRestart && ycmdServerManager.isRunning()) {
+    if (params.forceRestart && (await ycmdServerManager.isRunning())) {
       await ycmdServerManager.stop();
     }
 

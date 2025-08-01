@@ -1,10 +1,13 @@
 import { YcmdClient, getFileTypes } from '../client';
 import { ycmdServerManager } from '../serverManager';
+import { ycmdStart } from './start';
 import * as fs from 'fs';
 
 export interface YcmdDiagnosticsParams {
   filepath: string;
-  contents?: string;
+  fileContents?: string;
+  line?: number;
+  column?: number;
 }
 
 export interface Diagnostic {
@@ -55,7 +58,7 @@ export async function ycmdDiagnostics(params: YcmdDiagnosticsParams): Promise<{
     }
 
     // Get file contents
-    let contents = params.contents;
+    let contents = params.fileContents;
     if (!contents) {
       try {
         contents = await fs.promises.readFile(params.filepath, 'utf8');
@@ -70,12 +73,17 @@ export async function ycmdDiagnostics(params: YcmdDiagnosticsParams): Promise<{
     // Get file types
     const filetypes = getFileTypes(params.filepath);
 
-    // Check if ycmd server is running using the global manager
-    if (!ycmdServerManager.isRunning()) {
-      return {
-        success: false,
-        message: 'ycmd server is not running. Please start it first.'
-      };
+    // Check if ycmd server is running, start if not
+    if (!(await ycmdServerManager.isRunning())) {
+      console.log('ycmd server not running, starting automatically...');
+      const startResult = await ycmdStart({});
+      if (!startResult.success) {
+        return {
+          success: false,
+          message: `Failed to auto-start ycmd server: ${startResult.message}`
+        };
+      }
+      console.log('ycmd server started successfully');
     }
 
     const serverInfo = ycmdServerManager.getServerInfo();
@@ -89,15 +97,19 @@ export async function ycmdDiagnostics(params: YcmdDiagnosticsParams): Promise<{
     // Create client
     const client = new YcmdClient(serverInfo);
 
-    // Notify server about file
+    // Get line and column numbers for notification
+    const line_num = params.line || 1;
+    const column_num = params.column || 1;
+
+    // Send file event notification - required by ycmd before diagnostics
     try {
-      await client.notifyFileEvent('FileReadyToParse', params.filepath, contents, filetypes);
+      await client.notifyFileEvent('FileReadyToParse', params.filepath, contents, filetypes, line_num, column_num);
     } catch (error) {
       console.warn('Failed to notify file event:', error);
     }
 
     // Get diagnostics
-    const response = await client.getDiagnostics(params.filepath, contents, filetypes);
+    const response = await client.getDiagnostics(params.filepath, contents, filetypes, line_num, column_num);
 
     // Parse diagnostics
     const diagnostics: Diagnostic[] = response.map((diag: any) => ({

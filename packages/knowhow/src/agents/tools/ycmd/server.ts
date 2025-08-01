@@ -215,6 +215,15 @@ export class YcmdServer {
   getServerInfo(): YcmdServerInfo | null {
     return this.serverInfo;
   }
+  
+  /**
+   * Set server info for external servers (not started by this instance)
+   */
+  setExternalServerInfo(serverInfo: YcmdServerInfo): void {
+    this.serverInfo = serverInfo;
+    // Don't set process since we didn't start it
+    this.hmacSecret = serverInfo.hmacSecret || '';
+  }
 
   /**
    * Health check the server

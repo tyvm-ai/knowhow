@@ -1,5 +1,6 @@
 import { YcmdClient, getFileTypes } from '../client';
 import { ycmdServerManager } from '../serverManager';
+import { ycmdStart } from './start';
 import * as fs from 'fs';
 
 export interface YcmdCompletionParams {
@@ -59,12 +60,17 @@ export async function ycmdCompletion(params: YcmdCompletionParams): Promise<{
     // Get file types
     const filetypes = getFileTypes(params.filepath);
 
-    // Check if ycmd server is running using the global manager
-    if (!ycmdServerManager.isRunning()) {
-      return {
-        success: false,
-        message: 'ycmd server is not running. Please start it first.'
-      };
+    // Check if ycmd server is running, start if not
+    if (!(await ycmdServerManager.isRunning())) {
+      console.log('ycmd server not running, starting automatically...');
+      const startResult = await ycmdStart({});
+      if (!startResult.success) {
+        return {
+          success: false,
+          message: `Failed to auto-start ycmd server: ${startResult.message}`
+        };
+      }
+      console.log('ycmd server started successfully');
     }
 
     const serverInfo = ycmdServerManager.getServerInfo();
