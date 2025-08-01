@@ -1,4 +1,4 @@
-import { YcmdServer } from '../server';
+import { ycmdServerManager } from '../serverManager';
 import { YcmdClient } from '../client';
 import { YcmdInstaller } from '../installer';
 
@@ -30,11 +30,9 @@ export async function ycmdStart(params: YcmdStartParams = {}): Promise<{
       await YcmdInstaller.install();
     }
 
-    const server = new YcmdServer();
-
     // Check if server is already running
-    if (server.isRunning() && !params.forceRestart) {
-      const serverInfo = server.getServerInfo();
+    if (ycmdServerManager.isRunning() && !params.forceRestart) {
+      const serverInfo = ycmdServerManager.getServerInfo();
       return {
         success: true,
         serverInfo: serverInfo ? {
@@ -48,12 +46,12 @@ export async function ycmdStart(params: YcmdStartParams = {}): Promise<{
     }
 
     // Stop existing server if force restart
-    if (params.forceRestart && server.isRunning()) {
-      await server.stop();
+    if (params.forceRestart && ycmdServerManager.isRunning()) {
+      await ycmdServerManager.stop();
     }
 
     // Start the server
-    const serverInfo = await server.start(params.workspaceRoot, params.port);
+    const serverInfo = await ycmdServerManager.start(params.workspaceRoot, params.port);
 
     // Verify server is responsive
     const client = new YcmdClient(serverInfo);

@@ -1,5 +1,5 @@
 import { YcmdClient, getFileTypes } from '../client';
-import { YcmdServer } from '../server';
+import { ycmdServerManager } from '../serverManager';
 import * as fs from 'fs';
 
 export interface YcmdSignatureHelpParams {
@@ -66,16 +66,15 @@ export async function ycmdSignatureHelp(params: YcmdSignatureHelpParams): Promis
     // Get file types
     const filetypes = getFileTypes(params.filepath);
 
-    // Check if ycmd server is running
-    const server = new YcmdServer();
-    if (!server.isRunning()) {
+    // Check if ycmd server is running using server manager
+    if (!ycmdServerManager.isRunning()) {
       return {
         success: false,
         message: 'ycmd server is not running. Please start it first.'
       };
     }
 
-    const serverInfo = server.getServerInfo();
+    const serverInfo = ycmdServerManager.getServerInfo();
     if (!serverInfo) {
       return {
         success: false,
