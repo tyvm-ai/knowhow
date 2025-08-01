@@ -1,6 +1,11 @@
 import { Message } from "../clients/types";
 
-export type ProcessorLifecycle = "initial_call" | "per_call" | "post_call";
+export type ProcessorLifecycle =
+  | "initial_call"
+  | "pre_call"
+  | "post_call"
+  | "per_tool"
+  | "post_tools";
 
 export type MessageProcessorFunction = (
   originalMessages: Message[],
@@ -18,9 +23,7 @@ export class MessageProcessor {
 
   constructor() {
     // Initialize lifecycle maps
-    this.processors.set("initial_call", []);
-    this.processors.set("per_call", []);
-    this.processors.set("post_call", []);
+    this.clearProcessors();
   }
 
   setProcessors(
@@ -100,8 +103,10 @@ export class MessageProcessor {
     } else {
       this.processors.clear();
       this.processors.set("initial_call", []);
-      this.processors.set("per_call", []);
+      this.processors.set("pre_call", []);
       this.processors.set("post_call", []);
+      this.processors.set("per_tool", []);
+      this.processors.set("post_tools", []);
     }
   }
 }

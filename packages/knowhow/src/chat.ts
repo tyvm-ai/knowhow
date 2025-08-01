@@ -351,7 +351,7 @@ export async function startAgent(
     activeAgent.call(formattedPrompt);
 
     // Compress tokens of tool responses
-    activeAgent.messageProcessor.setProcessors("per_call", [
+    activeAgent.messageProcessor.setProcessors("pre_call", [
       new ToolResponseCache(activeAgent.tools).createProcessor(),
 
       new TokenCompressor(activeAgent.tools).createProcessor((msg) =>

@@ -393,7 +393,7 @@ export abstract class BaseAgent implements IAgent {
       // Process messages before each AI call
       messages = await this.messageProcessor.processMessages(
         messages,
-        "per_call"
+        "pre_call"
       );
       const compressThreshold = 10000;
 
@@ -411,6 +411,11 @@ export abstract class BaseAgent implements IAgent {
       this.adjustTotalCostUsd(response?.usd_cost);
       this.logMessages(response.choices.map((c) => c.message));
 
+      messages = await this.messageProcessor.processMessages(
+        messages,
+        "post_call"
+      );
+
       const firstMessage = response.choices[0].message;
       const newToolCalls = response.choices.flatMap(
         (c) => c.message.tool_calls
@@ -424,6 +429,13 @@ export abstract class BaseAgent implements IAgent {
         if (responseMessage.tool_calls) {
           // extend conversation with assistant's reply
           messages.push(responseMessage);
+
+          // About to call a tool, process the messages
+          // We could add all the tool calls, and do this once
+          messages = await this.messageProcessor.processMessages(
+            messages,
+            "per_tool"
+          );
 
           for (const toolCall of toolCalls) {
             const toolMessages = await this.processToolMessages(toolCall);
@@ -449,7 +461,7 @@ export abstract class BaseAgent implements IAgent {
       if (newToolCalls && newToolCalls.length > 0) {
         messages = await this.messageProcessor.processMessages(
           messages,
-          "post_call"
+          "post_tools"
         );
       }
 

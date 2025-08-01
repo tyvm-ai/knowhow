@@ -141,6 +141,16 @@ export const includedTools = [
             type: "string",
             description: "The prompt related to the image",
           },
+          provider: {
+            type: "string",
+            description: "The AI provider to use (default: 'openai')",
+            default: "openai",
+          },
+          model: {
+            type: "string",
+            description: "The model to use (default: 'gpt-4o')",
+            default: "gpt-4o",
+          },
         },
         required: ["imageUrl", "question"],
       },
