@@ -32,6 +32,13 @@ export const knowhowConfig = {
 export * from "./McpServer";
 export * from "./McpWebsocketTransport";
 
+/*
+ *
+ * McpService is a service that manages connections to multiple MCP servers.
+ * Allows us to connect the tools exposed by MCP servers to our internal ToolService, which agents can use.
+ * Each of the tools are namespaced with a prefix: mcp_index_servername_toolName
+ * This services handles calls made to the namespaced function name, and finds the proper client to call the tool on.
+ */
 export class McpService {
   connected = [];
   transports: Transport[] = [];
@@ -133,11 +140,11 @@ export class McpService {
     await Promise.all(
       this.transports.map(async (transport, index) => {
         this.connected[index] = false;
-        return transport.close();
+        return transport && transport.close();
       })
     );
 
-    this.transports = [];
+    // this.transports = [];
     this.connected = [];
   }
 
@@ -207,7 +214,7 @@ export class McpService {
 
     const realName = this.parseToolName(toolName);
     return async (args: any) => {
-      console.log("Calling tool", realName, "with args", args);
+      console.log("Calling tool via mcp client", realName, "with args", args);
       const tool = await client.callTool(
         {
           name: realName,
@@ -221,6 +228,38 @@ export class McpService {
       );
       return tool;
     };
+  }
+
+  /**
+   * Call a function and unwrap the MCP response content array with type casting
+   * @param toolName The name of the tool/function to call
+   * @param args The arguments to pass to the function
+   * @returns The parsed result with type T
+   */
+  async callFunction<T = any>(toolName: string, args: any = {}): Promise<T> {
+    try {
+      const fn = this.getFunction(toolName);
+      const result = await fn(args);
+
+      // Parse the MCP result
+      if (result.content && Array.isArray(result.content)) {
+        const textContent = result.content.find((c: any) => c.type === "text");
+        if (textContent && textContent.text) {
+          const parsedResult = JSON.parse(textContent.text);
+          return parsedResult as T;
+        }
+      }
+
+      throw new Error(
+        `Invalid response format from MCP service for tool ${toolName}`
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Failed to call MCP function ${toolName}: ${errorMessage}`
+      );
+    }
   }
 
   async getFunctions() {

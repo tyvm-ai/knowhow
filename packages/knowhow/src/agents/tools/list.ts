@@ -366,7 +366,7 @@ export const includedTools = [
     type: "function",
     function: {
       name: "createAiCompletion",
-      description: "Create a completion using the knowhow ai client",
+      description: "Create a completion using the knowhow AI client",
       parameters: {
         type: "object",
         positional: true,
@@ -374,27 +374,34 @@ export const includedTools = [
           provider: {
             type: "string",
             description:
-              "The AI provider to use (e.g., 'openai', 'anthropic'). Use listAllModels to figure out which provider to use if you don't know",
+              "The AI provider to use (e.g., 'openai', 'anthropic'). Use listAllModels to discover providers.",
           },
+
           options: {
             type: "object",
-            description: "The completion options",
+            description: "Provider-specific completion options",
             properties: {
-              model: { type: "string", description: "The model to use" },
+              model: {
+                type: "string",
+                description: "The model to use",
+              },
+
               messages: {
                 type: "array",
-                description: "The messages for the completion",
-                items: {
-                  type: "object",
-                  properties: {
-                    role: { type: "string" },
-                    content: { type: "string" },
-                  },
-                },
+                description: "The chat history for the completion",
+                items: { $ref: "#/definitions/message" },
+                minItems: 1,
               },
+
               max_tokens: {
                 type: "number",
                 description: "Maximum number of tokens to generate",
+              },
+
+              tools: {
+                type: "array",
+                description: "Tool definitions the model may call",
+                items: { $ref: "#/definitions/tool" },
               },
             },
             required: ["model", "messages"],
@@ -402,9 +409,45 @@ export const includedTools = [
         },
         required: ["provider"],
       },
+
       returns: {
         type: "object",
         description: "The completion response from the AI provider",
+      },
+    },
+
+    definitions: {
+      message: {
+        type: "object",
+        properties: {
+          role: {
+            type: "string",
+            enum: ["system", "user", "assistant", "tool"],
+          },
+          content: { type: "string" },
+        },
+        required: ["role", "content"],
+      },
+
+      tool: {
+        type: "object",
+        properties: {
+          type: {
+            type: "string",
+            enum: ["function"],
+          },
+          function: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              description: { type: "string" },
+              parameters: { type: "object" },
+              returns: { type: "object" },
+            },
+            required: ["name", "description", "parameters"],
+          },
+        },
+        required: ["type", "function"],
       },
     },
   },

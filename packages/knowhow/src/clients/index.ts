@@ -248,3 +248,4 @@ export * from "./anthropic";
 export * from "./knowhow";
 export * from "./gemini";
 export * from "./xai";
+export * from "./knowhowMcp";

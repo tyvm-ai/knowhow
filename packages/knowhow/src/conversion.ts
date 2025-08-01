@@ -76,6 +76,7 @@ export async function processVideo(
   const videoAnalysis = await Downloader.extractKeyframes(
     filePath,
     outputPath,
+    reusePreviousTranscript,
     chunkTime
   );
 

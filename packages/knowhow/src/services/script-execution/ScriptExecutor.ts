@@ -37,7 +37,40 @@ export class ScriptExecutor {
     allowFileSystemAccess: false,
   };
 
-  constructor(private toolsService: ToolsService, private clients: AIClient) {}
+  constructor(private toolsService: ToolsService, private clients: AIClient) {
+    this.validateNodejsEnvironment();
+  }
+
+  /**
+   * Validate that Node.js environment is properly configured for isolated-vm
+   */
+  private validateNodejsEnvironment(): void {
+    // Get Node.js version
+    const nodeVersion = process.version;
+    const majorVersion = parseInt(nodeVersion.slice(1).split('.')[0], 10);
+    
+    // Check if Node.js 20+ and --no-node-snapshot flag is required
+    if (majorVersion >= 20) {
+      const hasNoNodeSnapshot = process.execArgv.includes('--no-node-snapshot');
+      
+      if (!hasNoNodeSnapshot) {
+        const errorMessage = [
+          `Node.js ${nodeVersion} detected. The --no-node-snapshot flag is required for isolated-vm compatibility.`,
+          '',
+          'To fix this issue:',
+          '1. Restart your application with: node --no-node-snapshot your-app.js',
+          '2. Or update your package.json scripts:',
+          '   "scripts": {',
+          '     "start": "node --no-node-snapshot dist/index.js"',
+          '   }',
+          '',
+          'This flag is necessary for the executeScript tool to function properly with isolated-vm.'
+        ].join('\n');
+        
+        throw new Error(errorMessage);
+      }
+    }
+  }
 
   /**
    * Execute a TypeScript script in sandbox

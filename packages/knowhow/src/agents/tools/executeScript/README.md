@@ -2,6 +2,22 @@
 
 The `executeScript` tool provides secure, isolated execution of TypeScript scripts with access to the Knowhow platform's tools and AI capabilities.
 
+## Requirements
+
+### Node.js Version and Configuration
+
+**Important**: For Node.js 20.x and later, the `--no-node-snapshot` flag is required due to isolated-vm compatibility requirements.
+
+```bash
+# Required for Node.js 20+
+node --no-node-snapshot your-app.js
+
+# Or set in package.json scripts
+"scripts": {
+  "start": "node --no-node-snapshot dist/index.js"
+}
+```
+
 ## Features
 
 - **Secure Sandbox**: Scripts run in isolated-vm with no access to Node.js APIs

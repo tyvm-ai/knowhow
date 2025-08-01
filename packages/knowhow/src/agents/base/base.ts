@@ -28,6 +28,7 @@ export interface AgentContext {
   Tools?: ToolsService;
   Events?: EventService;
   messageProcessor?: MessageProcessor;
+  Clients?: AIClient;
 }
 
 export abstract class BaseAgent implements IAgent {
@@ -64,13 +65,15 @@ export abstract class BaseAgent implements IAgent {
   public tools: ToolsService;
   public events: EventService;
   public messageProcessor: MessageProcessor;
+  public clientService: AIClient;
 
   disabledTools = [];
 
   constructor(context: AgentContext) {
     this.tools = context.Tools;
     this.events = context.Events;
-    this.messageProcessor = context.messageProcessor;
+    this.messageProcessor = context.messageProcessor || new MessageProcessor();
+    this.clientService = context.Clients || Clients;
 
     if (!this.tools) {
       throw new Error("ToolsService is required for BaseAgent");
@@ -78,10 +81,6 @@ export abstract class BaseAgent implements IAgent {
 
     if (!this.events) {
       throw new Error("EventService is required for BaseAgent");
-    }
-
-    if (!this.messageProcessor) {
-      this.messageProcessor = new MessageProcessor();
     }
   }
 
@@ -137,7 +136,8 @@ export abstract class BaseAgent implements IAgent {
 
   getClient() {
     if (!this.client) {
-      this.client = Clients.getClient(this.provider)?.client;
+      console.log("Getting client for provider", this.provider);
+      this.client = this.clientService.getClient(this.provider)?.client;
     }
     return this.client;
   }

@@ -99,7 +99,7 @@ export class DownloaderService {
       }
     }
 
-    const command = `ffmpeg -i "${filePath}" -f segment -segment_time ${CHUNK_LENGTH_SECONDS} -map 0:a:0 -acodec mp3 -vn "${outputDirPath}/chunk%03d.mp3"`;
+    const command = `ffmpeg -i "${filePath}" -f segment -segment_time ${CHUNK_LENGTH_SECONDS} -map 0:a:0 -acodec mp3 -vn "${outputDirPath}/chunk%04d.mp3"`;
     await execAsync(command);
 
     const folderFiles = await fs.promises.readdir(outputDirPath);
@@ -115,6 +115,18 @@ export class DownloaderService {
     outputPath: string,
     reusePreviousTranscript = true
   ): AsyncGenerator<TranscriptChunk> {
+    const exists = await fileExists(outputPath);
+    if (exists && reusePreviousTranscript) {
+      console.log("Transcription already exists, using cached data");
+      const contents = await readFile(outputPath);
+      const data = JSON.parse(contents.toString()) as TranscriptChunk[];
+      for (const item of data) {
+        yield item;
+      }
+      return;
+    }
+
+    const allTranscripts = [];
     for (const file of files) {
       const chunkName = path.parse(file).name;
       const chunkTranscriptPath = path.join(
@@ -124,13 +136,19 @@ export class DownloaderService {
       const chunkExists = await fileExists(chunkTranscriptPath);
 
       if (chunkExists && reusePreviousTranscript) {
-        console.log(chunkTranscriptPath, " transcription already exists, skipping");
+        console.log(
+          chunkTranscriptPath,
+          " transcription already exists, using cached data"
+        );
         const contents = await readFile(chunkTranscriptPath);
-        yield {
+        const cached = {
           chunkPath: chunkTranscriptPath,
           text: contents.toString(),
           usd_cost: 0,
         };
+
+        yield cached;
+        allTranscripts.push(cached);
         continue;
       }
 
@@ -149,12 +167,16 @@ export class DownloaderService {
       await fs.promises.writeFile(chunkTranscriptPath, transcript.text);
 
       // save chunk transcript to file
-      yield {
+      const data = {
         chunkPath: chunkTranscriptPath,
         text: transcript.text,
         usd_cost: 30 * 0.0001, // assume 30 seconds,
       };
+      yield data;
+      allTranscripts.push(data);
     }
+
+    fs.writeFileSync(outputPath, JSON.stringify(allTranscripts, null, 2));
   }
 
   public async transcribeChunks(
@@ -164,7 +186,7 @@ export class DownloaderService {
   ): Promise<string[]> {
     const exists = await fileExists(outputPath);
     if (exists && reusePreviousTranscript) {
-      console.log("Transcription already exists, skipping");
+      console.log("Transcription already exists, using cached data");
       const contents = await readFile(outputPath);
       return JSON.parse(contents.toString()) as string[];
     }
@@ -185,12 +207,13 @@ export class DownloaderService {
 
   public async *streamKeyFrameExtraction(
     filePath: string,
-    outputPath: string,
+    videoJsonPath: string,
+    reusePreviousKeyframes: boolean = true,
     interval: number = 10
   ): AsyncGenerator<KeyframeInfo> {
-    if (fs.existsSync(outputPath)) {
-      console.log("Keyframes already exist, skipping");
-      const contents = await readFile(outputPath);
+    if (reusePreviousKeyframes && fs.existsSync(videoJsonPath)) {
+      console.log("Keyframes already exist, using cached data");
+      const contents = await readFile(videoJsonPath);
       const data = JSON.parse(contents.toString()) as KeyframeInfo[];
       for (const keyframe of data) {
         yield { ...keyframe, usd_cost: 0 };
@@ -199,16 +222,18 @@ export class DownloaderService {
     }
 
     const parsed = path.parse(filePath);
-    const outputDir = path.dirname(outputPath);
+    const outputDir = path.dirname(videoJsonPath);
     const fileName = parsed.name;
     const keyframesDir = path.join(outputDir, `/keyframes`);
     await fs.promises.mkdir(keyframesDir, { recursive: true });
 
     const command = `ffmpeg -i "${filePath}" -vf "fps=1/${interval},scale=640:-1" "${keyframesDir}/frame%04d.jpg"`;
     await execAsync(command);
+    console.log("Extracting keyframe:", command);
 
     const keyframes = await fs.promises.readdir(keyframesDir);
 
+    const allKeyframes = [];
     for (const keyframe of keyframes) {
       const keyframePath = path.join(keyframesDir, keyframe);
       const keyframeName = path.parse(keyframe).name;
@@ -218,10 +243,11 @@ export class DownloaderService {
       );
       const descriptionExists = await fileExists(keyframeDescriptionPath);
 
-      if (descriptionExists) {
+      if (descriptionExists && reusePreviousKeyframes) {
         const cached = await readFile(keyframeDescriptionPath);
         const cachedJson = JSON.parse(cached.toString()) as KeyframeInfo;
         yield { ...cachedJson, usd_cost: 0 };
+        allKeyframes.push(cachedJson);
         continue;
       }
 
@@ -237,18 +263,26 @@ export class DownloaderService {
         JSON.stringify(keyframeJson, null, 2)
       );
       yield keyframeJson;
+      allKeyframes.push(keyframeJson);
     }
+
+    await fs.promises.writeFile(
+      videoJsonPath,
+      JSON.stringify(allKeyframes, null, 2)
+    );
   }
 
   public async extractKeyframes(
     filePath: string,
     outputPath: string,
+    reusePreviousKeyframes: boolean = true,
     interval: number = 10
   ): Promise<KeyframeInfo[]> {
     const keyframes: KeyframeInfo[] = [];
     for await (const keyframe of this.streamKeyFrameExtraction(
       filePath,
       outputPath,
+      reusePreviousKeyframes,
       interval
     )) {
       keyframes.push(keyframe);
@@ -265,6 +299,7 @@ export class DownloaderService {
       encoding: "base64",
     });
     const image = `data:image/jpeg;base64,${base64}`;
+    console.log("Describing keyframe:", keyframePath);
     const response = await this.askGptVision(image, question);
     return response;
   }
@@ -285,7 +320,9 @@ export class DownloaderService {
     // Skip chunking if the full output exists
     const exists = await fileExists(outputPath);
     if (exists && reusePreviousTranscript) {
-      console.log(`Transcription ${outputPath} already exists, skipping`);
+      console.log(
+        `Transcription ${outputPath} already exists, using cached data`
+      );
       const fileContent = await readFile(outputPath, "utf8");
       return outputPath.endsWith("txt")
         ? fileContent.split("\n")
@@ -318,14 +355,17 @@ export class DownloaderService {
     // Skip chunking if the full output exists
     const exists = await fileExists(outputPath);
     if (exists && reusePreviousTranscript) {
-      console.log(`Transcription ${outputPath} already exists, skipping`);
+      console.log(
+        `Transcription ${outputPath} already exists, using cached data`
+      );
       const fileContent = await readFile(outputPath, "utf8");
       const lines = outputPath.endsWith("txt")
         ? fileContent.split("\n")
         : JSON.parse(fileContent);
 
-      for (const line of lines)
+      for (const line of lines) {
         yield { chunkPath: "", text: line, usd_cost: 0 };
+      }
       return;
     }
 
@@ -364,6 +404,7 @@ export class DownloaderService {
     const videoAnalysis = await this.extractKeyframes(
       filePath,
       outputPath,
+      reusePreviousTranscript,
       chunkTime
     );
 
@@ -381,19 +422,20 @@ export class DownloaderService {
     chunkTime = 30
   ) {
     const parsed = path.parse(filePath);
-    const outputPath = `${parsed.dir}/${parsed.name}/video.json`;
+    const videoJson = `${parsed.dir}/${parsed.name}/video.json`;
 
     console.log("Processing audio...");
-    const transcriptions = await this.streamProcessAudio(
+    const transcriptions = this.streamProcessAudio(
       filePath,
       reusePreviousTranscript,
       chunkTime
     );
 
     console.log("Extracting keyframes...");
-    const videoAnalysis = await this.streamKeyFrameExtraction(
+    const videoAnalysis = this.streamKeyFrameExtraction(
       filePath,
-      outputPath,
+      videoJson,
+      reusePreviousTranscript,
       chunkTime
     );
 
@@ -402,7 +444,11 @@ export class DownloaderService {
         ?.value as TranscriptChunk;
       yield {
         frame,
-        transcription,
+        transcription: transcription || {
+          chunkPath: "",
+          text: "[missing transcript]",
+          usd_cost: 0,
+        },
       };
     }
   }
