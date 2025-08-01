@@ -115,15 +115,30 @@ export class AIClient {
       this.registerClient(modelProvider.provider, client);
 
       try {
-        const models = await client.getModels();
-        const ids = models.map((model) => model.id);
-        this.registerModels(modelProvider.provider, ids);
+        await this.loadProviderModels(modelProvider.provider);
       } catch (error) {
         console.error(
           `Failed to register models for provider ${modelProvider.provider}:`,
           error.message
         );
       }
+    }
+  }
+
+  async loadProviderModels(provider: string) {
+    if (!this.clients[provider]) {
+      throw new Error(`Provider ${provider} not registered.`);
+    }
+
+    try {
+      const models = await this.clients[provider].getModels();
+      const ids = models.map((model) => model.id);
+      this.registerModels(provider, ids);
+    } catch (error) {
+      console.error(
+        `Failed to load models for provider ${provider}:`,
+        error.message
+      );
     }
   }
 
@@ -138,6 +153,21 @@ export class AIClient {
     this.completionModels[provider] = Array.from<string>(
       new Set(currentCompletionModels.concat(models))
     );
+  }
+
+  /*
+   * Some clients support multiple providers, most clients are single provider
+   * For the mult-provider clients, we register them with this method
+   * TODO: currently registering overwrites any existing providers, but a fallback list could be useful
+   */
+  registerClientProviderModels(
+    client: GenericClient,
+    providerModels: Record<string, string[]>
+  ) {
+    for (const [provider, models] of Object.entries(providerModels)) {
+      this.registerClient(provider, client);
+      this.registerModels(provider, models);
+    }
   }
 
   registerEmbeddingModels(provider: string, models: string[]) {
@@ -223,6 +253,65 @@ export class AIClient {
 
   listAllModels() {
     return this.clientModels;
+  }
+
+  listAllModelsWithProvider() {
+    return Object.entries(this.listAllModels())
+      .map(([provider, models]) =>
+        models.map((m) => ({ id: `${provider}/${m}` }))
+      )
+      .flat();
+  }
+
+  /*
+   *
+   * some clients return models in the format "provider/model_name"
+   * this function parses those models into our {provider, model} format
+   * then creates a provider -> [models] map
+   * the models will not have the provider prefix
+   *
+   * if the client doesn't return models in that format, use knownProvider
+   * to set the provider
+   */
+  async parseProviderPrefixedModels(
+    client: GenericClient,
+    knownProvider = ""
+  ): Promise<Record<string, string[]>> {
+    const models = await client.getModels();
+    const providerModels = models
+      .map((m) => {
+        if (knownProvider) {
+          return {
+            provider: knownProvider,
+            model: m.id,
+          };
+        }
+
+        const splitModel = m.id.split("/");
+
+        if (splitModel.length < 2) {
+          console.error(`Cannot parse model format: ${m.id}`);
+        }
+
+        const provider = splitModel.length > 1 ? splitModel[0] : "";
+        const modelName = splitModel.slice(1).join("/");
+        return {
+          provider,
+          model: modelName,
+        };
+      })
+      .reduce((acc, { provider, model }) => {
+        acc[provider] = acc[provider] || [];
+        acc[provider].push(model);
+        return acc;
+      }, {});
+
+    for (const provider in providerModels) {
+      if (!providerModels[provider].length) {
+        delete providerModels[provider];
+      }
+    }
+    return providerModels;
   }
 
   listAllEmbeddingModels() {
