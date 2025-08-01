@@ -6,7 +6,6 @@ export const definitions = [
       description: "Start ycmd server with project configuration for code intelligence features",
       parameters: {
         type: "object",
-        positional: true,
         properties: {
           workspaceRoot: {
             type: "string",
@@ -46,9 +45,8 @@ export const definitions = [
       description: "Get code completions at a specific position in a file",
       parameters: {
         type: "object",
-        positional: true,
         properties: {
-          filePath: {
+          filepath: {
             type: "string",
             description: "Absolute path to the file",
           },
@@ -65,7 +63,7 @@ export const definitions = [
             description: "Current contents of the file (optional if file exists on disk)",
           },
         },
-        required: ["filePath", "line", "column"],
+        required: ["filepath", "line", "column"],
       },
       returns: {
         type: "object",
@@ -80,9 +78,8 @@ export const definitions = [
       description: "Navigate to definitions, declarations, or find references for a symbol",
       parameters: {
         type: "object",
-        positional: true,
         properties: {
-          filePath: {
+          filepath: {
             type: "string",
             description: "Absolute path to the file",
           },
@@ -104,7 +101,7 @@ export const definitions = [
             description: "Current contents of the file (optional if file exists on disk)",
           },
         },
-        required: ["filePath", "line", "column", "command"],
+        required: ["filepath", "line", "column", "command"],
       },
       returns: {
         type: "array",
@@ -119,9 +116,8 @@ export const definitions = [
       description: "Get error and warning diagnostics for a file",
       parameters: {
         type: "object",
-        positional: true,
         properties: {
-          filePath: {
+          filepath: {
             type: "string",
             description: "Absolute path to the file",
           },
@@ -130,7 +126,7 @@ export const definitions = [
             description: "Current contents of the file (optional if file exists on disk)",
           },
         },
-        required: ["filePath"],
+        required: ["filepath"],
       },
       returns: {
         type: "array",
@@ -145,9 +141,8 @@ export const definitions = [
       description: "Execute refactoring operations like rename, extract method, organize imports",
       parameters: {
         type: "object",
-        positional: true,
         properties: {
-          filePath: {
+          filepath: {
             type: "string",
             description: "Absolute path to the file",
           },
@@ -173,7 +168,7 @@ export const definitions = [
             description: "Current contents of the file (optional if file exists on disk)",
           },
         },
-        required: ["filePath", "line", "column", "command"],
+        required: ["filepath", "line", "column", "command"],
       },
       returns: {
         type: "object",
@@ -188,9 +183,8 @@ export const definitions = [
       description: "Get function signature help and parameter information at cursor position",
       parameters: {
         type: "object",
-        positional: true,
         properties: {
-          filePath: {
+          filepath: {
             type: "string",
             description: "Absolute path to the file",
           },
@@ -207,7 +201,7 @@ export const definitions = [
             description: "Current contents of the file (optional if file exists on disk)",
           },
         },
-        required: ["filePath", "line", "column"],
+        required: ["filepath", "line", "column"],
       },
       returns: {
         type: "object",
