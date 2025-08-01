@@ -30,7 +30,7 @@ export class YcmdInstaller {
    */
   static async install(installPath?: string): Promise<void> {
     const ycmdPath = installPath || this.getDefaultInstallPath();
-    console.log('Installing ycmd...');
+    console.log(`Installing ycmd to ${ycmdPath}...`);
 
     // Ensure parent directory exists
     const parentDir = path.dirname(ycmdPath);
@@ -68,13 +68,13 @@ export class YcmdInstaller {
    */
   private static async buildYcmd(ycmdPath: string): Promise<void> {
     const buildScript = path.join(ycmdPath, 'build.py');
-    
+
     if (!fs.existsSync(buildScript)) {
       throw new Error('build.py not found in ycmd directory');
     }
 
     const pythonCmd = YcmdDetection.getPythonCommand();
-    
+
     // Run the build script
     execSync(`${pythonCmd} build.py --all`, {
       stdio: 'inherit',
@@ -242,7 +242,7 @@ export class YcmdInstaller {
         cwd: ycmdPath,
         encoding: 'utf8'
       }).trim();
-      
+
       return gitVersion;
     } catch {
       return undefined;

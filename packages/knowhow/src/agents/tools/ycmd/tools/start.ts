@@ -27,10 +27,7 @@ export async function ycmdStart(params: YcmdStartParams = {}): Promise<{
     // Check if ycmd is installed
     const installInfo = YcmdInstaller.getInstallationInfo();
     if (!installInfo.isInstalled && installInfo.otherInstallations.length === 0) {
-      return {
-        success: false,
-        message: 'ycmd is not installed. Please install ycmd first or run the installer.'
-      };
+      await YcmdInstaller.install();
     }
 
     const server = new YcmdServer();
