@@ -2,12 +2,15 @@ import { YcmdClient, getFileTypes } from "../client";
 import { ycmdServerManager } from "../serverManager";
 import { ycmdStart } from "./start";
 import { resolveFilePath } from "../utils/pathUtils";
+import { resolveStringToLocation } from "./getLocations";
 import * as fs from "fs";
 
 export interface YcmdGoToParams {
   filepath: string;
-  line: number;
-  column: number;
+  line?: number;
+  column?: number;
+  searchString?: string;
+  matchType?: "exact" | "prefix" | "contains";
   contents?: string;
   command: "GoTo" | "GoToDeclaration" | "GoToReferences" | "GoToDefinition";
 }
@@ -28,18 +31,42 @@ export async function ycmdGoTo(params: YcmdGoToParams): Promise<{
   message: string;
 }> {
   try {
+    let line = params.line;
+    let column = params.column;
+
+    // If searchString is provided instead of line/column, resolve it
+    if (params.searchString && (!line || !column)) {
+      const location = await resolveStringToLocation(
+        params.filepath,
+        params.searchString,
+        params.contents,
+        params.matchType || "exact"
+      );
+      
+      if (!location) {
+        return {
+          success: false,
+          message: `Could not find "${params.searchString}" in file ${params.filepath}`,
+        };
+      }
+      
+      line = location.line;
+      column = location.column;
+    }
+
+    // Validate that we have line and column
+    if (!line || !column) {
+      return {
+        success: false,
+        message: "Either line/column or searchString must be provided",
+      };
+    }
+
     // Validate parameters
     if (!params.filepath) {
       return {
         success: false,
         message: "filepath is required",
-      };
-    }
-
-    if (typeof params.line !== "number" || typeof params.column !== "number") {
-      return {
-        success: false,
-        message: "line and column must be numbers",
       };
     }
 
@@ -65,8 +92,8 @@ export async function ycmdGoTo(params: YcmdGoToParams): Promise<{
       case "GoToDeclaration":
         response = await client.goToDeclaration(
           resolvedFilePath,
-          params.line,
-          params.column,
+          line,
+          column,
           contents,
           filetypes
         );
@@ -75,8 +102,8 @@ export async function ycmdGoTo(params: YcmdGoToParams): Promise<{
       case "GoToReferences":
         response = await client.goToReferences(
           resolvedFilePath,
-          params.line,
-          params.column,
+          line,
+          column,
           contents,
           filetypes
         );
@@ -87,8 +114,8 @@ export async function ycmdGoTo(params: YcmdGoToParams): Promise<{
       default:
         response = await client.goToDefinition(
           resolvedFilePath,
-          params.line,
-          params.column,
+          line,
+          column,
           contents,
           filetypes
         );

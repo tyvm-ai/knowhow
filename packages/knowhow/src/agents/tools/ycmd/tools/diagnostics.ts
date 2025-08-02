@@ -1,10 +1,13 @@
 import { ycmdServerManager } from "../serverManager";
+import { resolveStringToLocation } from "./getLocations";
 
 export interface YcmdDiagnosticsParams {
   filepath: string;
   fileContents?: string;
   line?: number;
   column?: number;
+  searchString?: string;
+  matchType?: "exact" | "prefix" | "contains";
 }
 
 export interface Diagnostic {
@@ -61,9 +64,24 @@ export async function ycmdDiagnostics(params: YcmdDiagnosticsParams): Promise<{
 
     const { client, resolvedFilePath, contents, filetypes } = setupResult;
 
-    // Get line and column numbers for notification
-    const line_num = params.line || 1;
-    const column_num = params.column || 1;
+    // Resolve line and column numbers
+    let line_num = params.line || 1;
+    let column_num = params.column || 1;
+
+    // If searchString is provided, resolve it to line/column coordinates
+    if (params.searchString) {
+      const location = await resolveStringToLocation(
+        params.filepath,
+        params.searchString,
+        contents,
+        params.matchType || "exact"
+      );
+
+      if (location) {
+        line_num = location.line;
+        column_num = location.column;
+      }
+    }
 
     // Get diagnostics
     const response = await client.getDiagnostics(

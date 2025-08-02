@@ -42,7 +42,7 @@ export const definitions = [
     type: "function",
     function: {
       name: "ycmdCompletion",
-      description: "Get code completions at a specific position in a file",
+      description: "Get code completions at a specific position in a file. You can specify the position either with line/column numbers OR with a searchString that will be located automatically.",
       parameters: {
         type: "object",
         properties: {
@@ -52,18 +52,31 @@ export const definitions = [
           },
           line: {
             type: "number",
-            description: "Line number (1-based)",
+            description: "Line number (1-based). Required if searchString is not provided.",
           },
           column: {
             type: "number",
-            description: "Column number (1-based)",
+            description: "Column number (1-based). Required if searchString is not provided.",
+          },
+          searchString: {
+            type: "string",
+            description: "String to search for in the file to determine completion position. Alternative to line/column. Completions will be provided after this string.",
+          },
+          matchType: {
+            type: "string",
+            description: "Type of matching when using searchString: 'exact' for exact match, 'prefix' for prefix matching, 'contains' for substring match",
+            enum: ["exact", "prefix", "contains"],
+          },
+          forceSemantic: {
+            type: "boolean",
+            description: "Force semantic completions instead of identifier-based completions",
           },
           fileContents: {
             type: "string",
             description: "Current contents of the file (optional if file exists on disk)",
           },
         },
-        required: ["filepath", "line", "column"],
+        required: ["filepath"],
       },
       returns: {
         type: "object",
@@ -75,7 +88,7 @@ export const definitions = [
     type: "function",
     function: {
       name: "ycmdGoTo",
-      description: "Navigate to definitions, declarations, or find references for a symbol",
+      description: "Navigate to definitions, declarations, or find references for a symbol. You can specify the position either with line/column numbers OR with a searchString that will be located automatically.",
       parameters: {
         type: "object",
         properties: {
@@ -85,11 +98,20 @@ export const definitions = [
           },
           line: {
             type: "number",
-            description: "Line number (1-based)",
+            description: "Line number (1-based). Required if searchString is not provided.",
           },
           column: {
             type: "number",
-            description: "Column number (1-based)",
+            description: "Column number (1-based). Required if searchString is not provided.",
+          },
+          searchString: {
+            type: "string",
+            description: "String to search for in the file to determine the symbol position. Alternative to line/column.",
+          },
+          matchType: {
+            type: "string",
+            description: "Type of matching when using searchString: 'exact' for exact match, 'prefix' for prefix matching, 'contains' for substring match",
+            enum: ["exact", "prefix", "contains"],
           },
           command: {
             type: "string",
@@ -101,7 +123,7 @@ export const definitions = [
             description: "Current contents of the file (optional if file exists on disk)",
           },
         },
-        required: ["filepath", "line", "column", "command"],
+        required: ["filepath", "command"],
       },
       returns: {
         type: "array",
@@ -113,7 +135,7 @@ export const definitions = [
     type: "function",
     function: {
       name: "ycmdDiagnostics",
-      description: "Get error and warning diagnostics for a file",
+      description: "Get error and warning diagnostics for a file. You can specify the position either with line/column numbers OR with a searchString that will be located automatically.",
       parameters: {
         type: "object",
         properties: {
@@ -123,11 +145,20 @@ export const definitions = [
           },
           line: {
             type: "number",
-            description: "Line number (1-based, optional, defaults to 1)",
+            description: "Line number (1-based, optional, defaults to 1). Required if searchString is not provided.",
           },
           column: {
             type: "number", 
-            description: "Column number (1-based, optional, defaults to 1)",
+            description: "Column number (1-based, optional, defaults to 1). Required if searchString is not provided.",
+          },
+          searchString: {
+            type: "string",
+            description: "String to search for in the file to determine the diagnostic position. Alternative to line/column.",
+          },
+          matchType: {
+            type: "string",
+            description: "Type of matching when using searchString: 'exact' for exact match, 'prefix' for prefix matching, 'contains' for substring match",
+            enum: ["exact", "prefix", "contains"],
           },
           fileContents: {
             type: "string",
@@ -214,6 +245,49 @@ export const definitions = [
       returns: {
         type: "object",
         description: "Signature help with function signatures and parameter information",
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "getLocations",
+      description: "Find line and column positions for a given string in a file. Useful for locating code elements by name rather than coordinates.",
+      parameters: {
+        type: "object",
+        properties: {
+          filepath: {
+            type: "string",
+            description: "Path to the file. Can be relative (defaults to current working directory) or absolute",
+          },
+          searchString: {
+            type: "string",
+            description: "The string to search for in the file",
+          },
+          fileContents: {
+            type: "string",
+            description: "Current contents of the file (optional if file exists on disk)",
+          },
+          matchType: {
+            type: "string",
+            description: "Type of matching: 'exact' for exact string match, 'prefix' for prefix matching at word boundaries, 'contains' for case-insensitive substring match",
+            enum: ["exact", "prefix", "contains"],
+          },
+          maxResults: {
+            type: "number",
+            description: "Maximum number of results to return (default: 50)",
+          },
+        },
+        required: ["filepath", "searchString"],
+      },
+      returns: {
+        type: "object",
+        description: "Array of locations with line numbers, column numbers, and context information",
+        properties: {
+          success: { type: "boolean" },
+          locations: { type: "array" },
+          message: { type: "string" }
+        }
       },
     },
   },

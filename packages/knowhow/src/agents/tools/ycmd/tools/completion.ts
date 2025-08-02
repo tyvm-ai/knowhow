@@ -1,11 +1,14 @@
 import { ycmdServerManager } from "../serverManager";
+import { resolveStringToLocation } from "./getLocations";
 
 export interface YcmdCompletionParams {
   filepath: string;
-  line: number;
-  column: number;
+  line?: number;
+  column?: number;
+  searchString?: string;
   contents?: string;
   forceSemantic?: boolean;
+  matchType?: "exact" | "prefix" | "contains";
 }
 
 export interface CompletionItem {
@@ -26,6 +29,37 @@ export async function ycmdCompletion(params: YcmdCompletionParams): Promise<{
   message: string;
 }> {
   try {
+    let line = params.line;
+    let column = params.column;
+
+    // If searchString is provided instead of line/column, resolve it
+    if (params.searchString && (!line || !column)) {
+      const location = await resolveStringToLocation(
+        params.filepath,
+        params.searchString,
+        params.contents,
+        params.matchType || "exact"
+      );
+      
+      if (!location) {
+        return {
+          success: false,
+          message: `Could not find "${params.searchString}" in file ${params.filepath}`,
+        };
+      }
+      
+      line = location.line;
+      column = location.column + params.searchString.length; // Position after the string for completions
+    }
+
+    // Validate that we have line and column
+    if (!line || !column) {
+      return {
+        success: false,
+        message: "Either line/column or searchString must be provided",
+      };
+    }
+
     // Use the common server setup utility
     const setupResult = await ycmdServerManager.setupClientAndNotifyFile({
       filepath: params.filepath,
@@ -44,8 +78,8 @@ export async function ycmdCompletion(params: YcmdCompletionParams): Promise<{
     // Get completions
     const response = await client.getCompletions({
       filepath: resolvedFilePath,
-      line_num: params.line,
-      column_num: params.column,
+      line_num: line,
+      column_num: column,
       file_data: {
         [resolvedFilePath]: {
           contents,
