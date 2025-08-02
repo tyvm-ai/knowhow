@@ -32,7 +32,7 @@ export class YcmdServer {
     // Generate a unique HMAC secret for this server instance
     this.hmacSecret = crypto.randomBytes(16).toString("base64");
     // Ensure cleanup when parent process exits
-    process.on('exit', () => this.forceCleanup());
+    process.on("exit", () => this.forceCleanup());
 
     // Find ycmd installation
     const installations = YcmdDetection.findInstallations();
@@ -63,21 +63,29 @@ export class YcmdServer {
    */
   private async startWithRetry(
     retryCount: number,
-    workspaceRoot?: string, 
+    workspaceRoot?: string,
     port?: number
   ): Promise<YcmdServerInfo> {
     const maxRetries = 5;
-    
+
     if (retryCount >= maxRetries) {
-      throw new Error(`Failed to start ycmd server after ${maxRetries} attempts`);
+      throw new Error(
+        `Failed to start ycmd server after ${maxRetries} attempts`
+      );
     }
 
     try {
       return await this.doStart(workspaceRoot, port);
     } catch (error: any) {
-      if (error.message === "PORT_IN_USE" || 
-          error.message.includes("PORT_IN_USE")) {
-        console.log(`Retrying with incremented port (attempt ${retryCount + 1}/${maxRetries})`);
+      if (
+        error.message === "PORT_IN_USE" ||
+        error.message.includes("PORT_IN_USE")
+      ) {
+        console.log(
+          `Retrying with incremented port (attempt ${
+            retryCount + 1
+          }/${maxRetries})`
+        );
         const nextPort = (port || 8080) + retryCount + 1;
         return this.startWithRetry(retryCount + 1, workspaceRoot, nextPort);
       }
@@ -88,7 +96,10 @@ export class YcmdServer {
   /**
    * Actually start the ycmd server (internal method)
    */
-  private async doStart(workspaceRoot?: string, port?: number): Promise<YcmdServerInfo> {
+  private async doStart(
+    workspaceRoot?: string,
+    port?: number
+  ): Promise<YcmdServerInfo> {
     if (this.isRunning()) {
       throw new Error("ycmd server is already running");
     }
@@ -120,14 +131,10 @@ export class YcmdServer {
       const args = ["--options_file", configPath];
       args.push("--port", availablePort.toString());
 
-      this.process = spawn(
-        pythonCmd,
-        [ycmdScript, ...args],
-        {
-          stdio: ["pipe", "pipe", "pipe"],
-          cwd: this.ycmdPath,
-        }
-      );
+      this.process = spawn(pythonCmd, [ycmdScript, ...args], {
+        stdio: ["pipe", "pipe", "pipe"],
+        cwd: this.ycmdPath,
+      });
 
       // Set up process event handlers
       try {
@@ -215,14 +222,14 @@ export class YcmdServer {
   getServerInfo(): YcmdServerInfo | null {
     return this.serverInfo;
   }
-  
+
   /**
    * Set server info for external servers (not started by this instance)
    */
   setExternalServerInfo(serverInfo: YcmdServerInfo): void {
     this.serverInfo = serverInfo;
     // Don't set process since we didn't start it
-    this.hmacSecret = serverInfo.hmacSecret || '';
+    this.hmacSecret = serverInfo.hmacSecret || "";
   }
 
   /**
@@ -294,57 +301,61 @@ export class YcmdServer {
     if (!this.process) {
       return Promise.resolve(false);
     }
-    
+
     return new Promise((resolve, reject) => {
-    let stdoutBuffer = "";
+      let stdoutBuffer = "";
 
-    this.process.on("error", (error) => {
-      console.error("ycmd server process error:", error);
-      if (this.serverInfo) {
-        this.serverInfo.status = "error";
-      }
-    });
+      this.process.on("error", (error) => {
+        console.error("ycmd server process error:", error);
+        if (this.serverInfo) {
+          this.serverInfo.status = "error";
+        }
+      });
 
-    this.process.on("exit", (code, signal) => {
-      console.log(`ycmd server exited with code ${code}, signal ${signal}`);
-      this.cleanup();
-    });
+      this.process.on("exit", (code, signal) => {
+        console.log(`ycmd server exited with code ${code}, signal ${signal}`);
+        this.cleanup();
+      });
 
-    // Capture stdout for port detection
-    this.process.stdout?.on("data", (data) => {
-      const output = data.toString();
-      stdoutBuffer += output;
+      // Capture stdout for port detection
+      this.process.stdout?.on("data", (data) => {
+        const output = data.toString();
+        stdoutBuffer += output;
 
-      // Look for server ready message with port info - try multiple patterns
-      const serverReadyMatch =
-        output.match(/serving on http:\/\/127\.0\.0\.1:(\d+)/i) ||
-        output.match(/server running at .*:(\d+)/i) ||
-        output.match(/listening on port (\d+)/i) ||
-        output.match(/port:\s*(\d+)/i);
+        // Look for server ready message with port info - try multiple patterns
+        const serverReadyMatch =
+          output.match(/serving on http:\/\/127\.0\.0\.1:(\d+)/i) ||
+          output.match(/server running at .*:(\d+)/i) ||
+          output.match(/listening on port (\d+)/i) ||
+          output.match(/port:\s*(\d+)/i);
 
-      if (serverReadyMatch) {
-        const port = parseInt(serverReadyMatch[1], 10);
-        console.log(`ycmd server detected on port ${port} from stdout`);
-        this.detectedPort = port;
-      }
-      console.log("ycmd stdout:", output);
-    });
+        if (serverReadyMatch) {
+          const port = parseInt(serverReadyMatch[1], 10);
+          console.log(`ycmd server detected on port ${port} from stdout`);
+          this.detectedPort = port;
+        }
+        console.log("ycmd stdout:", output);
+      });
 
-    this.process.stderr?.on("data", (data) => {
-      const output = data.toString();
-      console.error("ycmd stderr:", output);
-      
-      // Check for "Address already in use" error
-      if (output.includes("Address already in use") || 
+      this.process.stderr?.on("data", (data) => {
+        const output = data.toString();
+        // console.error("ycmd stderr:", output);
+
+        // Check for "Address already in use" error
+        if (
+          output.includes("Address already in use") ||
           output.includes("EADDRINUSE") ||
-          output.includes("bind: Address already in use")) {
-        console.log(`Port ${this.configuredPort} is already in use, will retry with different port`);
-        reject(new Error("PORT_IN_USE"));
-        return;
-      }
-    });
-    
-    setTimeout(() => resolve(true), 1000); // Resolve after brief delay if no errors
+          output.includes("bind: Address already in use")
+        ) {
+          console.log(
+            `Port ${this.configuredPort} is already in use, will retry with different port`
+          );
+          reject(new Error("PORT_IN_USE"));
+          return;
+        }
+      });
+
+      setTimeout(() => resolve(true), 1000); // Resolve after brief delay if no errors
     });
   }
 
@@ -369,7 +380,7 @@ export class YcmdServer {
         try {
           const port = getPort();
           console.log(`Checking ycmd server health on port ${port}`);
-          
+
           // Create a temporary server info for health check
           const tempServerInfo: YcmdServerInfo = {
             host,
@@ -377,10 +388,10 @@ export class YcmdServer {
             hmacSecret: this.hmacSecret,
             status: "starting" as const,
           };
-          
+
           const client = new YcmdClient(tempServerInfo);
           const isReady = await client.isReady();
-          
+
           if (isReady) {
             const finalPort = getPort();
             console.log(`ycmd server is ready on port ${finalPort}`);
@@ -398,7 +409,9 @@ export class YcmdServer {
           setTimeout(checkReady, 1000);
         } catch (error: any) {
           const currentPort = getPort();
-          console.log(`Health check failed for port ${currentPort}: ${error.message}`);
+          console.log(
+            `Health check failed for port ${currentPort}: ${error.message}`
+          );
           // Continue trying
           setTimeout(checkReady, 1000);
         }
@@ -424,8 +437,8 @@ export class YcmdServer {
    */
   private forceCleanup(): void {
     if (this.process && !this.process.killed) {
-      console.log('Force killing ycmd server process on parent exit');
-      this.process.kill('SIGKILL');
+      console.log("Force killing ycmd server process on parent exit");
+      this.process.kill("SIGKILL");
     }
     this.process = null;
     this.serverInfo = null;
@@ -435,7 +448,7 @@ export class YcmdServer {
    * Setup exit handler (separate method for clarity)
    */
   private setupExitHandler(): void {
-    process.on('exit', () => this.forceCleanup());
+    process.on("exit", () => this.forceCleanup());
   }
 
   /**
@@ -455,7 +468,9 @@ export class YcmdServer {
     // Scan for available ports in range 8080-8090
     for (let port = 8080; port <= 8090; port++) {
       if (await this.isPortAvailable(port)) {
-        console.log(`Port ${preferredPort} is busy, using port ${port} instead`);
+        console.log(
+          `Port ${preferredPort} is busy, using port ${port} instead`
+        );
         return port;
       }
     }
@@ -470,17 +485,20 @@ export class YcmdServer {
     return new Promise((resolve) => {
       const server = net.createServer();
       server.listen(port, () => {
-        server.once('close', () => resolve(true));
+        server.once("close", () => resolve(true));
         server.close();
       });
-      server.on('error', () => resolve(false));
+      server.on("error", () => resolve(false));
     });
   }
 
   /**
    * Restart the server
    */
-  async restart(workspaceRoot?: string, port?: number): Promise<YcmdServerInfo> {
+  async restart(
+    workspaceRoot?: string,
+    port?: number
+  ): Promise<YcmdServerInfo> {
     if (this.isRunning()) {
       await this.stop();
     }
