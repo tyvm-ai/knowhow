@@ -1,6 +1,6 @@
 #!/usr/bin/env ts-node
 
-import { ycmdGoTo } from '../../src/agents/tools/ycmd/tools/goto';
+import { ycmdGoTo } from '../../../src/agents/tools/ycmd/tools/goto';
 
 async function testIndividualYcmdTool() {
   console.log('Testing individual ycmdGoTo tool with enhanced serverManager...');

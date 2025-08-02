@@ -12,7 +12,7 @@ import {
   ycmdDiagnostics, 
   ycmdGoTo, 
   ycmdSignatureHelp 
-} from '../../src/agents/tools/ycmd';
+} from '../../../src/agents/tools/ycmd';
 
 async function runYcmdTests() {
   console.log('🚀 Starting ycmd integration tests...\n');

@@ -1,4 +1,4 @@
-import { ycmdServerManager } from '../../src/agents/tools/ycmd/serverManager';
+import { ycmdServerManager } from '../../../src/agents/tools/ycmd/serverManager';
 
 async function testServerManagerWorkflow() {
     console.log('Testing ycmd server manager workflow...');

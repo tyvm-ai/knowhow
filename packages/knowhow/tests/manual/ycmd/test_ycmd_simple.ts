@@ -1,7 +1,7 @@
 #!/usr/bin/env ts-node
 
-import { ycmdStart } from '../../src/agents/tools/ycmd/tools/start';
-import { ycmdServerManager } from '../../src/agents/tools/ycmd/serverManager';
+import { ycmdStart } from '../../../src/agents/tools/ycmd/tools/start';
+import { ycmdServerManager } from '../../../src/agents/tools/ycmd/serverManager';
 
 async function testBasicFunctionality() {
   console.log('🧪 Testing basic ycmd functionality...\n');

@@ -5,13 +5,13 @@
  * Tests all tools to ensure they work correctly after the fixes
  */
 
-import { ycmdStart } from '../../src/agents/tools/ycmd/tools/start';
-import { ycmdCompletion } from '../../src/agents/tools/ycmd/tools/completion';
-import { ycmdDiagnostics } from '../../src/agents/tools/ycmd/tools/diagnostics';
-import { ycmdGoTo } from '../../src/agents/tools/ycmd/tools/goto';
-import { ycmdRefactor } from '../../src/agents/tools/ycmd/tools/refactor';
-import { ycmdSignatureHelp } from '../../src/agents/tools/ycmd/tools/signature';
-import { ycmdServerManager } from '../../src/agents/tools/ycmd/serverManager';
+import { ycmdStart } from '../../../src/agents/tools/ycmd/tools/start';
+import { ycmdCompletion } from '../../../src/agents/tools/ycmd/tools/completion';
+import { ycmdDiagnostics } from '../../../src/agents/tools/ycmd/tools/diagnostics';
+import { ycmdGoTo } from '../../../src/agents/tools/ycmd/tools/goto';
+import { ycmdRefactor } from '../../../src/agents/tools/ycmd/tools/refactor';
+import { ycmdSignatureHelp } from '../../../src/agents/tools/ycmd/tools/signature';
+import { ycmdServerManager } from '../../../src/agents/tools/ycmd/serverManager';
 import * as fs from 'fs';
 import * as path from 'path';
 

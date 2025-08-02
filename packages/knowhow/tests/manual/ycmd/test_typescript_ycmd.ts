@@ -1,4 +1,4 @@
-import { ycmdStart, ycmdDiagnostics, ycmdCompletion, ycmdGoTo } from '../../src/agents/tools/ycmd';
+import { ycmdStart, ycmdDiagnostics, ycmdCompletion, ycmdGoTo } from '../../../src/agents/tools/ycmd';
 import * as path from 'path';
 import * as fs from 'fs';
 

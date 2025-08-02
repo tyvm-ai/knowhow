@@ -1,10 +1,10 @@
 #!/usr/bin/env tsx
 
-import { ycmdStart } from '../../src/agents/tools/ycmd/tools/start';
-import { ycmdDiagnostics } from '../../src/agents/tools/ycmd/tools/diagnostics';
-import { ycmdCompletion } from '../../src/agents/tools/ycmd/tools/completion';
-import { ycmdGoTo } from '../../src/agents/tools/ycmd/tools/goto';
-import { ycmdSignatureHelp } from '../../src/agents/tools/ycmd/tools/signature';
+import { ycmdStart } from '../../../src/agents/tools/ycmd/tools/start';
+import { ycmdDiagnostics } from '../../../src/agents/tools/ycmd/tools/diagnostics';
+import { ycmdCompletion } from '../../../src/agents/tools/ycmd/tools/completion';
+import { ycmdGoTo } from '../../../src/agents/tools/ycmd/tools/goto';
+import { ycmdSignatureHelp } from '../../../src/agents/tools/ycmd/tools/signature';
 import * as fs from 'fs';
 import * as path from 'path';
 

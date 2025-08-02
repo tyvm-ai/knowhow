@@ -1,6 +1,6 @@
 #!/usr/bin/env npx tsx
 
-import { ycmdStart, ycmdCompletion, ycmdGoTo } from '../../src/agents/tools/ycmd/index';
+import { ycmdStart, ycmdCompletion, ycmdGoTo } from '../../../src/agents/tools/ycmd/index';
 import * as fs from 'fs';
 import * as path from 'path';
 
