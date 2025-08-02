@@ -257,16 +257,14 @@ export class BenchmarkRunner {
     let output = "";
 
     try {
-      // Set up event tracking for metrics
+      // Set up event tracking for metrics  
       const eventHandlers = {
-        threadsUpdate: (data: any) => {
-          if (data.threads && data.threads.length > 0) {
-            turns = data.threads[0].messages.length;
-          }
+        threadUpdate: (messages: any) => {
+          // Turn count is tracked internally by the agent
         },
-        costUpdate: (data: any) => {
-          if (data.cost !== undefined) {
-            totalCost = data.cost;
+        costUpdate: (cost: any) => {
+          if (typeof cost === 'number') {
+            totalCost = cost;
           }
         },
         done: (data: any) => {
@@ -284,6 +282,14 @@ export class BenchmarkRunner {
       Object.entries(eventHandlers).forEach(([event, handler]) => {
         this.selectedAgent.agentEvents.on(event, handler);
       });
+      
+      // Set limits on the agent before calling
+      if (this.selectedAgent.setMaxTurns) {
+        this.selectedAgent.setMaxTurns(this.config.limits.maxTurns);
+      }
+      if (this.selectedAgent.setMaxSpend) {
+        this.selectedAgent.setMaxSpend(this.config.limits.maxCost);
+      }
 
       // Change to exercise directory
       const originalCwd = process.cwd();
@@ -291,11 +297,7 @@ export class BenchmarkRunner {
 
       try {
         // Call the agent directly with the prompt
-        const result = await this.selectedAgent.call(prompt, {
-          maxTurns: this.config.limits.maxTurns,
-          maxCost: this.config.limits.maxCost,
-          maxTime: this.config.limits.maxTime * 1000,
-        });
+        const result = await this.selectedAgent.call(prompt);
 
         // Extract final output from result
         if (result && typeof result === "string") {
@@ -309,6 +311,11 @@ export class BenchmarkRunner {
         }
 
         success = true;
+        
+        // Get turn count from the agent
+        if (this.selectedAgent.getTurnCount) {
+          turns = this.selectedAgent.getTurnCount();
+        }
       } finally {
         // Restore original directory
         process.chdir(originalCwd);

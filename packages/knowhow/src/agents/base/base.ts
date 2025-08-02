@@ -44,6 +44,9 @@ export abstract class BaseAgent implements IAgent {
   protected currentModelPreferenceIndex = 0;
   protected easyFinalAnswer = false;
   protected requiredToolNames = ["finalAnswer"];
+  protected maxTurns: number | null = null;
+  protected maxSpend: number | null = null;
+  protected turnCount = 0;
   protected totalCostUsd = 0;
   protected currentThread = 0;
   protected threads = [] as Message[][];
@@ -84,6 +87,14 @@ export abstract class BaseAgent implements IAgent {
     }
   }
 
+  setMaxTurns(maxTurns: number | null) {
+    this.maxTurns = maxTurns;
+  }
+
+  setMaxSpend(maxSpend: number | null) {
+    this.maxSpend = maxSpend;
+  }
+
   newTask() {
     this.currentThread = 0;
     this.threads = [];
@@ -91,6 +102,7 @@ export abstract class BaseAgent implements IAgent {
     this.summaries = [];
     this.totalCostUsd = 0;
     this.status = "in_progress";
+    this.turnCount = 0;
   }
 
   register() {
@@ -172,6 +184,30 @@ export abstract class BaseAgent implements IAgent {
     if (!this.isToolEnabled(toolName)) {
       this.disabledTools = this.disabledTools.filter((t) => t !== toolName);
     }
+  }
+
+  private checkLimits(): boolean {
+    // Check turn limit
+    if (this.maxTurns !== null && this.turnCount >= this.maxTurns) {
+      console.log(`Turn limit reached: ${this.turnCount}/${this.maxTurns}`);
+      return true;
+    }
+
+    // Check spend limit  
+    if (this.maxSpend !== null && this.totalCostUsd >= this.maxSpend) {
+      console.log(`Spend limit reached: $${this.totalCostUsd.toFixed(4)}/$${this.maxSpend.toFixed(4)}`);
+      return true;
+    }
+
+    return false;
+  }
+
+  private shouldTerminateFromLimits(): boolean {
+    return this.checkLimits();
+  }
+
+  getTurnCount(): number {
+    return this.turnCount;
   }
 
   adjustTotalCostUsd(cost: number) {
@@ -365,6 +401,16 @@ export abstract class BaseAgent implements IAgent {
     }
 
     await this.selectHealthyModel();
+
+    // Increment turn count and check limits (only for new calls, not recursive ones)
+    if (!_messages) {
+      this.turnCount++;
+      if (this.shouldTerminateFromLimits()) {
+        const limitMsg = `Task terminated due to limits reached. Turn: ${this.turnCount}/${this.maxTurns || 'unlimited'}, Cost: $${this.totalCostUsd.toFixed(4)}/${this.maxSpend ? '$' + this.maxSpend.toFixed(4) : 'unlimited'}`;
+        this.agentEvents.emit(this.eventTypes.done, limitMsg);
+        return limitMsg;
+      }
+    }
 
     try {
       const model = this.getModel();
