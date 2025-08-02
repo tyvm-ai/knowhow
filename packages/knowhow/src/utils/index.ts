@@ -66,6 +66,10 @@ export function replaceEscapedNewLines(str: string): string {
   return str;
 }
 
+export function escapeNewLines(str: string): string {
+  return str.replace(/\\n/g, "\\n");
+}
+
 export function restoreEscapedNewLines(str: string): string {
   const escaped = [NEWLINE_REPLACE, "<ESCAPE_NEWLINE>"];
   let replacedStr = str;

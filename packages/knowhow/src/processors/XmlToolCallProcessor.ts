@@ -20,7 +20,8 @@ export class XmlToolCallProcessor {
    */
   private detectXmlToolCalls(content: string): RegExpMatchArray[] {
     // Pattern to match XML tool calls with various formats:
-
+    // Look for tool_call tags specifically
+    const toolCallMatches = content.match(/<tool_call>/g);
     // <tool_call name="toolName">arguments</tool_call>
     // <tool_call name="toolName" arguments="json_args"/>
     // <toolCall name="toolName">arguments</toolCall>
@@ -37,13 +38,18 @@ export class XmlToolCallProcessor {
 
     // Pattern for JSON-based tool calls:
     // <tool_call>{"name": "toolName", "arguments": {...}}</tool_call>
-    const xmlToolCallPattern2 =
-      /<(?:tool_call|toolCall|function_call)>\s*(\{.*?"name"\s*:\s*"([^"]+)".*?\})\s*<\/(?:tool_call|toolCall|function_call)>/g;
+    // Updated to handle complex nested JSON with braces and multiline content
+    const xmlToolCallPattern2 = 
+      /<(?:tool_call|toolCall|function_call)>\s*(\{(?:[^{}]|{[^{}]*})*?"name"\s*:\s*"([^"]+)"(?:[^{}]|{[^{}]*})*?\})\s*<\/(?:tool_call|toolCall|function_call)>/gs;
+    
+    // Fallback pattern for very complex nested JSON
+    const xmlToolCallPattern2Complex = /<(?:tool_call|toolCall|function_call)>\s*(\{[\s\S]*?\})\s*<\/(?:tool_call|toolCall|function_call)>/g;
 
     // Pattern for nested XML tool calls:
     // <tool_call><invoke name="toolName"><parameter name="paramName">value</parameter></invoke></tool_call>
     const xmlToolCallPattern3 =
       /<(?:tool_call|toolCall|function_call)>\s*<invoke\s+name=["']([^"']+)["']>\s*(.*?)\s*<\/invoke>\s*<\/(?:tool_call|toolCall|function_call)>/gs;
+    const processedRanges: Array<{start: number, end: number}> = [];
 
     const matches: RegExpMatchArray[] = [];
     let match;
@@ -59,6 +65,7 @@ export class XmlToolCallProcessor {
       selfClosingMatch.index = match.index;
       selfClosingMatch.input = match.input;
       matches.push(selfClosingMatch);
+      processedRanges.push({start: match.index!, end: match.index! + match[0].length});
     }
 
     // First pattern: attribute-based
@@ -74,6 +81,15 @@ export class XmlToolCallProcessor {
     // Second pattern: JSON-based
     while ((match = xmlToolCallPattern2.exec(content)) !== null) {
       // For JSON-based matches, we need to extract just the arguments part
+      // Check if this range is already processed
+      const matchStart = match.index!;
+      const matchEnd = matchStart + match[0].length;
+      const alreadyProcessed = processedRanges.some(range => 
+        (matchStart >= range.start && matchStart < range.end) ||
+        (matchEnd > range.start && matchEnd <= range.end)
+      );
+      if (alreadyProcessed) continue;
+      
       const [fullMatch, jsonContent, toolName] = match;
       
       try {
@@ -122,6 +138,47 @@ export class XmlToolCallProcessor {
         restructuredMatch.index = match.index;
         restructuredMatch.input = match.input;
         matches.push(restructuredMatch);
+        processedRanges.push({start: matchStart, end: matchEnd});
+      } catch (error) {
+        // Skip this match if JSON parsing fails
+        continue;
+      }
+    }
+
+    // Reset regex lastIndex for complex pattern
+    xmlToolCallPattern2Complex.lastIndex = 0;
+
+    // Fallback: Try complex pattern for deeply nested JSON
+    while ((match = xmlToolCallPattern2Complex.exec(content)) !== null) {
+      // Check if this range is already processed
+      const matchStart = match.index!;
+      const matchEnd = matchStart + match[0].length;
+      const alreadyProcessed = processedRanges.some(range => 
+        (matchStart >= range.start && matchStart < range.end) ||
+        (matchEnd > range.start && matchEnd <= range.end)
+      );
+      if (alreadyProcessed) continue;
+      
+      const [fullMatch, jsonContent] = match;
+      
+      try {
+        const parsed = JSON.parse(jsonContent);
+        const toolName = parsed.name;
+        
+        if (toolName) {
+          let argumentsContent = parsed.arguments || "{}";
+          
+          // Convert arguments to string if it's an object
+          if (typeof argumentsContent === 'object') {
+            argumentsContent = JSON.stringify(argumentsContent);
+          }
+          
+          const restructuredMatch = [fullMatch, argumentsContent, toolName, ""] as RegExpMatchArray;
+          restructuredMatch.index = match.index;
+          restructuredMatch.input = match.input;
+          matches.push(restructuredMatch);
+          processedRanges.push({start: matchStart, end: matchEnd});
+        }
       } catch (error) {
         // Skip this match if JSON parsing fails
         continue;
@@ -191,10 +248,6 @@ export class XmlToolCallProcessor {
           return JSON.stringify(parameters);
         }
       } catch (error) {
-        console.log(
-          "[XML_PROCESSOR] Error parsing nested XML parameters:",
-          error
-        );
         // Fall through to existing logic
       }
     }
@@ -360,14 +413,16 @@ export class XmlToolCallProcessor {
     if (matches.length === 0) {
       // If no matches found with regex, try the simple string-based extractor
       const blocks = this.extractToolCallBlocks(message.content);
-      toolCalls = blocks.map(block => ({
-        id: this.generateToolCallId(),
-        type: 'function' as const,
-        function: {
-          name: block.name,
-          arguments: block.arguments,
-        },
-      }));
+      toolCalls = blocks.map(block => {
+        return {
+          id: this.generateToolCallId(),
+          type: 'function' as const,
+          function: {
+            name: block.name,
+            arguments: block.arguments,
+          },
+        };
+      });
     } else {
       // Convert XML matches to proper tool calls using existing method
       toolCalls = this.convertXmlToToolCalls(matches);
