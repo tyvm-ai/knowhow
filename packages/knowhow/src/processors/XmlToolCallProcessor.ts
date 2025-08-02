@@ -287,38 +287,30 @@ export class XmlToolCallProcessor {
    * Simple string-based extractor for tool call blocks
    */
   private extractToolCallBlocks(content: string): { name: string; arguments: string }[] {
-    console.log('🔍 String-based extractor called with content length:', content.length);
     const blocks: { name: string; arguments: string }[] = [];
     let startIndex = 0;
 
     while (true) {
       const toolCallStart = content.indexOf('<tool_call>', startIndex);
       if (toolCallStart === -1) break;
-      console.log('🔍 Found <tool_call> at position:', toolCallStart);
 
       const toolCallEnd = content.indexOf('</tool_call>', toolCallStart);
       if (toolCallEnd === -1) break;
-      console.log('🔍 Found </tool_call> at position:', toolCallEnd);
 
       // Extract JSON content between tags
       const jsonStart = toolCallStart + '<tool_call>'.length;
       const jsonContent = content.substring(jsonStart, toolCallEnd).trim();
-      console.log('🔍 Extracted JSON content:', jsonContent);
       
       try {
         // Try to parse the JSON content directly first
         const parsed = JSON.parse(jsonContent);
-        console.log('🔍 Parsed JSON successfully:', parsed);
         if (parsed.name && parsed.arguments !== undefined) {
-          console.log('🔍 Valid tool call structure found');
           blocks.push({
             name: parsed.name,
             arguments: typeof parsed.arguments === 'string' ? parsed.arguments : JSON.stringify(parsed.arguments),
           });
-          console.log('🔍 Added block, total blocks:', blocks.length);
         }
       } catch (error: any) {
-        console.log('🔍 JSON parsing failed:', error.message);
         
         // Try to fix common JSON issues like unescaped newlines
         try {
@@ -327,25 +319,21 @@ export class XmlToolCallProcessor {
             .replace(/\n/g, '\\n')
             .replace(/\r/g, '\\r')
             .replace(/\t/g, '\\t');
-          console.log('🔍 Trying with escaped content');
           const parsed = JSON.parse(fixedContent);
-          console.log('🔍 Fixed JSON parsed successfully:', parsed);
           if (parsed.name && parsed.arguments !== undefined) {
             blocks.push({
               name: parsed.name,
               arguments: typeof parsed.arguments === 'string' ? parsed.arguments : JSON.stringify(parsed.arguments),
             });
-            console.log('🔍 Added fixed block, total blocks:', blocks.length);
           }
         } catch (secondError) {
-          console.log('🔍 Second JSON parsing attempt failed:', secondError.message);
+          // Silent failure - couldn't parse this tool call
         }
       }
 
       startIndex = toolCallEnd + '</tool_call>'.length;
     }
 
-    console.log('🔍 Returning blocks:', blocks);
     return blocks;
   }
 
@@ -366,12 +354,10 @@ export class XmlToolCallProcessor {
       return;
     }
     const matches = this.detectXmlToolCalls(message.content);
-    console.log('🔍 Regex matches found:', matches.length);
 
     let toolCalls: ToolCall[] = [];
     
     if (matches.length === 0) {
-      console.log('🔍 No regex matches, trying string-based extractor');
       // If no matches found with regex, try the simple string-based extractor
       const blocks = this.extractToolCallBlocks(message.content);
       toolCalls = blocks.map(block => ({
@@ -387,12 +373,10 @@ export class XmlToolCallProcessor {
       toolCalls = this.convertXmlToToolCalls(matches);
     }
 
-    console.log('🔍 Generated tool calls:', toolCalls.length);
     if (toolCalls.length === 0) {
       return;
     }
 
-    console.log('🔍 Adding tool calls to message');
     // Add tool calls to the message (merge with existing if any)
     if (message.tool_calls) {
       message.tool_calls.push(...toolCalls);
