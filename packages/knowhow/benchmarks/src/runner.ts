@@ -3,7 +3,7 @@ import { promises as fs } from "fs";
 import * as path from "path";
 import chalk from "chalk";
 import ora from "ora";
-import { services, agents } from "@tyvm/knowhow";
+import { services, agents } from "../../ts_build/src/index";
 import {
   BenchmarkConfig,
   BenchmarkResults,
@@ -282,7 +282,7 @@ export class BenchmarkRunner {
 
       // Add event listeners
       Object.entries(eventHandlers).forEach(([event, handler]) => {
-        this.selectedAgent.on(event, handler);
+        this.selectedAgent.agentEvents.on(event, handler);
       });
 
       // Change to exercise directory
@@ -315,7 +315,7 @@ export class BenchmarkRunner {
 
         // Remove event listeners
         Object.entries(eventHandlers).forEach(([event, handler]) => {
-          this.selectedAgent.off(event, handler);
+          this.selectedAgent.agentEvents.off(event, handler);
         });
       }
 

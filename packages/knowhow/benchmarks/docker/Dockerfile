@@ -36,6 +36,10 @@ WORKDIR /app/benchmarks
 # Copy benchmarks package.json for dependency caching
 COPY benchmarks/package*.json ./
 
+# Create a symlink to make @tyvm/knowhow available
+RUN mkdir -p node_modules/@tyvm && \
+    ln -sf /app/dist node_modules/@tyvm/knowhow
+
 # Install benchmarks dependencies (cached until benchmarks package.json changes)
 RUN npm install
 
@@ -45,6 +49,9 @@ COPY benchmarks/tsconfig.json ./
 
 # Build benchmarks (will rebuild when benchmarks source changes)
 RUN npm run build
+
+# Make CLI executable
+RUN chmod +x dist/cli.js
 
 # Environment variables for AI providers
 ENV OPENAI_API_KEY=""
