@@ -19,14 +19,14 @@ program
   .option('-c, --count <count>', 'Maximum number of exercises to run', '10')
   .option('-m, --model <model>', 'AI model to use', 'gpt-4o-mini')
   .option('-p, --provider <provider>', 'AI provider to use', 'openai')
-  .option('--max-turns <turns>', 'Maximum turns per exercise', '20')
+  .option('--max-turns <turns>', 'Maximum turns per exercise', '30')
   .option('--max-time <seconds>', 'Maximum time per exercise in seconds', '300')
   .option('--max-cost <dollars>', 'Maximum cost per exercise in dollars', '1.0')
   .option('--output <file>', 'Output file for results', 'results.json')
   .action(async (options) => {
     try {
       console.log(chalk.blue('🚀 Starting Knowhow benchmarks...'));
-      
+
       const config: BenchmarkConfig = {
         language: options.language,
         maxExercises: parseInt(options.count),
@@ -42,7 +42,7 @@ program
 
       const runner = new BenchmarkRunner(config);
       await runner.run();
-      
+
       console.log(chalk.green('✅ Benchmarks completed successfully!'));
     } catch (error) {
       console.error(chalk.red('❌ Benchmark failed:'), error);
@@ -58,7 +58,7 @@ program
   .action(async (options) => {
     try {
       console.log(chalk.blue('📦 Setting up exercises...'));
-      
+
       const runner = new BenchmarkRunner({
         language: options.language,
         maxExercises: parseInt(options.count),
@@ -67,9 +67,9 @@ program
         limits: { maxTurns: 20, maxTime: 300, maxCost: 1.0 },
         outputFile: 'results.json'
       });
-      
+
       await runner.setupExercises();
-      
+
       console.log(chalk.green('✅ Exercises setup completed!'));
     } catch (error) {
       console.error(chalk.red('❌ Setup failed:'), error);

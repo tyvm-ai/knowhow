@@ -1,3 +1,4 @@
 exercises/*
 .env
 dist/
+src/custom_providers.json

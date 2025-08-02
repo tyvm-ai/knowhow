@@ -1,3 +1,5 @@
+import { TestResult } from './evaluators/types';
+
 export interface BenchmarkConfig {
   language: string;
   maxExercises: number;
@@ -17,6 +19,7 @@ export interface BenchmarkLimits {
 export interface ExerciseResult {
   exerciseName: string;
   status: 'success' | 'failure' | 'timeout' | 'cost_limit' | 'turn_limit';
+  testResult?: TestResult; // Actual test execution results
   turns: number;
   timeElapsed: number; // in seconds
   cost: number; // in dollars
@@ -31,6 +34,11 @@ export interface BenchmarkResults {
   exercises: ExerciseResult[];
   summary: {
     totalExercises: number;
+    testableExercises: number; // Exercises that had evaluatable tests
+    testsPassedCount: number; // Exercises where all tests passed
+    testsFailedCount: number; // Exercises where some tests failed
+    testPassRate: number; // Percentage of testable exercises where tests passed
+    agentSuccessRate: number; // Original success rate (agent thinks it succeeded)
     successCount: number;
     failureCount: number;
     timeoutCount: number;

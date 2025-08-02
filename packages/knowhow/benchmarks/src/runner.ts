@@ -1,5 +1,7 @@
 import { spawn } from "child_process";
 import { promises as fs } from "fs";
+import { execSync } from "child_process";
+import * as files from "fs";
 import * as path from "path";
 import chalk from "chalk";
 import ora from "ora";
@@ -10,6 +12,9 @@ import {
   ExerciseResult,
   Exercise,
 } from "./types";
+import { registerProvider } from "./providers";
+import { XmlToolCallProcessor } from "../../ts_build/src/processors";
+import { EvaluatorRegistry } from "./evaluators";
 
 export class BenchmarkRunner {
   private config: BenchmarkConfig;
@@ -17,7 +22,14 @@ export class BenchmarkRunner {
   private knowhowPath: string;
   private defaultServices = services.services();
   private defaultAgents = agents.agents(this.defaultServices);
-  private selectedAgent: any;
+  private selectedAgent: agents.BaseAgent;
+  private model: string = "";
+  private provider: string = "";
+  private isShuttingDown: boolean = false;
+  private cleanup: (() => Promise<void>)[] = [];
+  private activeSpinners: Set<any> = new Set();
+  private childProcesses: Set<any> = new Set();
+  private evaluatorRegistry: EvaluatorRegistry;
 
   constructor(config: BenchmarkConfig) {
     this.config = config;
@@ -46,10 +58,114 @@ export class BenchmarkRunner {
     if (!this.selectedAgent) {
       throw new Error(`Unknown agent: ${agentName}`);
     }
+
+    // Initialize test evaluator registry
+    this.evaluatorRegistry = new EvaluatorRegistry();
+
+    this.setupSignalHandlers();
+  }
+
+  private setupSignalHandlers(): void {
+    const gracefulShutdown = async (signal: string) => {
+      if (this.isShuttingDown) {
+        console.log(
+          chalk.red(`\n💥 Force killing process (${signal} received again)`)
+        );
+        process.exit(1);
+      }
+
+      this.isShuttingDown = true;
+      console.log(
+        chalk.yellow(`\n🛑 Graceful shutdown initiated (${signal} received)`)
+      );
+      console.log(chalk.gray("Press Ctrl+C again to force quit"));
+
+      try {
+        // Run cleanup functions
+        await Promise.all(this.cleanup.map((fn) => fn().catch(console.error)));
+
+        // Kill all child processes
+        for (const child of this.childProcesses) {
+          child.kill("SIGTERM");
+        }
+
+        // Stop all active spinners
+        for (const spinner of this.activeSpinners) {
+          spinner.stop();
+        }
+
+        // Disconnect MCP servers
+        if (this.defaultServices?.Mcp) {
+          await this.defaultServices.Mcp.closeAll();
+        }
+
+        console.log(chalk.green("✅ Cleanup completed"));
+        process.exit(0);
+      } catch (error) {
+        console.error(chalk.red("❌ Error during cleanup:"), error);
+        process.exit(1);
+      }
+    };
+
+    process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+    process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+  }
+
+  customProviders() {
+    // Load custom providers if they exist
+    const customProvidersPath = path.join(__dirname, "custom_providers.json");
+
+    if (files.existsSync(customProvidersPath)) {
+      return require(customProvidersPath);
+    }
+
+    return [];
+  }
+
+  async loadModels() {
+    // Register configured models
+    await this.defaultServices.Clients.registerConfiguredModels();
+    const customProviders = this.customProviders();
+    for (const custom of customProviders) {
+      await registerProvider(
+        custom.provider,
+        custom.url,
+        custom.headers,
+        this.defaultServices.Clients
+      );
+    }
+
+    const { model, provider } =
+      this.defaultServices.Clients.detectProviderModel(
+        this.config.provider,
+        this.config.model
+      );
+
+    if (!model || !provider) {
+      throw new Error(
+        `Invalid model/provider combination: options are: ${JSON.stringify(
+          this.defaultServices.Clients.listAllModels(),
+          null,
+          2
+        )}`
+      );
+    }
+
+    console.log(chalk.blue(`Using provider: ${provider}`));
+    console.log(chalk.blue(`Using model: ${model}`));
+
+    this.model = model;
+    this.provider = provider;
   }
 
   async initializeServices(): Promise<void> {
     const spinner = ora("Initializing Knowhow services...").start();
+
+    // Track spinner for cleanup
+    this.activeSpinners.add(spinner);
+    const cleanupSpinner = () => {
+      this.activeSpinners.delete(spinner);
+    };
 
     try {
       // Define tools
@@ -63,23 +179,28 @@ export class BenchmarkRunner {
         this.defaultServices.Tools
       );
 
-      // Register configured models
-      await this.defaultServices.Clients.registerConfiguredModels();
-
       // Set agent model preferences
       this.selectedAgent.setModelPreferences([
-        { model: this.config.model, provider: this.config.provider as any },
+        { model: this.model, provider: this.provider as any },
       ]);
 
       spinner.succeed("Services initialized successfully");
+      cleanupSpinner();
     } catch (error) {
       spinner.fail("Failed to initialize services");
+      cleanupSpinner();
       throw error;
     }
   }
 
   async setupExercises(): Promise<void> {
     const spinner = ora("Setting up exercises...").start();
+
+    // Track spinner for cleanup
+    this.activeSpinners.add(spinner);
+    const cleanupSpinner = () => {
+      this.activeSpinners.delete(spinner);
+    };
 
     try {
       // Run the clone script
@@ -90,8 +211,10 @@ export class BenchmarkRunner {
       ]);
 
       spinner.succeed("Exercises setup completed");
+      cleanupSpinner();
     } catch (error) {
       spinner.fail("Failed to setup exercises");
+      cleanupSpinner();
       throw error;
     }
   }
@@ -99,10 +222,13 @@ export class BenchmarkRunner {
   async run(): Promise<BenchmarkResults> {
     console.log(chalk.blue(`Running benchmarks with config:`));
     console.log(chalk.gray(`  Language: ${this.config.language}`));
+
+    await this.loadModels();
     await this.initializeServices();
+
     console.log(chalk.gray(`  Max exercises: ${this.config.maxExercises}`));
-    console.log(chalk.gray(`  Model: ${this.config.model}`));
-    console.log(chalk.gray(`  Provider: ${this.config.provider}`));
+    console.log(chalk.gray(`  Model: ${this.model}`));
+    console.log(chalk.gray(`  Provider: ${this.provider}`));
 
     const startTime = new Date();
     await this.setupExercises();
@@ -112,6 +238,14 @@ export class BenchmarkRunner {
     console.log(chalk.blue(`\nFound ${exercises.length} exercises to run\n`));
 
     for (const exercise of exercises) {
+      // Check if we should stop due to shutdown signal
+      if (this.isShuttingDown) {
+        console.log(
+          chalk.yellow("⏹️  Stopping exercise execution due to shutdown signal")
+        );
+        break;
+      }
+
       console.log(chalk.yellow(`Running exercise: ${exercise.name}`));
 
       const result = await this.runExercise(exercise);
@@ -174,12 +308,27 @@ export class BenchmarkRunner {
     const turns = 0;
     const cost = 0;
 
+    // Check for shutdown before starting exercise
+    if (this.isShuttingDown) {
+      throw new Error("Exercise cancelled due to shutdown");
+    }
+
     try {
       // Create the benchmark prompt for the exercise
       const prompt = await this.createExercisePrompt(exercise);
 
       // Run knowhow agent on the exercise
       const result = await this.runKnowhowAgent(exercise, prompt);
+
+      // Run test evaluation after agent execution
+      let testResult = undefined;
+      if (this.evaluatorRegistry.canEvaluateExercise(exercise.path)) {
+        const evaluation = await this.evaluatorRegistry.evaluateExercise(exercise.path, exercise.name);
+        if (evaluation) {
+          testResult = evaluation.testResult;
+          console.log(chalk.gray(`  Tests: ${testResult.passed}/${testResult.total} passed`));
+        }
+      }
 
       const endTime = new Date();
       const timeElapsed = (endTime.getTime() - startTime.getTime()) / 1000;
@@ -188,6 +337,7 @@ export class BenchmarkRunner {
         exerciseName: exercise.name,
         status: result.success ? "success" : "failure",
         turns: result.turns,
+        testResult,
         timeElapsed,
         cost: result.cost,
         startTime,
@@ -202,6 +352,7 @@ export class BenchmarkRunner {
       return {
         exerciseName: exercise.name,
         status: "failure",
+        testResult: undefined,
         turns,
         timeElapsed,
         cost,
@@ -235,6 +386,7 @@ export class BenchmarkRunner {
     prompt += `2. Implementing the required functionality\n`;
     prompt += `3. Running tests to ensure correctness\n`;
     prompt += `4. Fixing any issues that arise\n\n`;
+    prompt += `5. If tests are skipped you should unskip them after the initial test passes\n\n`;
     prompt += `Work in the current directory where all the exercise files are located.`;
 
     return prompt;
@@ -255,20 +407,35 @@ export class BenchmarkRunner {
     let success = false;
     let error: string | undefined;
     let output = "";
+    const toolUsage = {} as Record<string, number>;
+
+    // Check for shutdown before starting agent
+    if (this.isShuttingDown) {
+      throw new Error("Agent execution cancelled due to shutdown");
+    }
 
     try {
-      // Set up event tracking for metrics  
+      // Set up event tracking for metrics
       const eventHandlers = {
         threadUpdate: (messages: any) => {
           // Turn count is tracked internally by the agent
+          totalCost = this.selectedAgent.getTotalCostUsd();
+          turns = this.selectedAgent.getTurnCount();
+        },
+        [this.selectedAgent.eventTypes.toolUsed]: (call: any) => {
+          const name = call.toolCall.function.name;
+          toolUsage[name] = toolUsage[name] || 0;
+          toolUsage[name] += 1;
         },
         costUpdate: (cost: any) => {
-          if (typeof cost === 'number') {
+          if (typeof cost === "number") {
             totalCost = cost;
           }
         },
         done: (data: any) => {
           success = !data.error;
+          totalCost = this.selectedAgent.getTotalCostUsd();
+          turns = this.selectedAgent.getTurnCount();
           if (data.error) {
             error = data.error;
           }
@@ -282,7 +449,7 @@ export class BenchmarkRunner {
       Object.entries(eventHandlers).forEach(([event, handler]) => {
         this.selectedAgent.agentEvents.on(event, handler);
       });
-      
+
       // Set limits on the agent before calling
       if (this.selectedAgent.setMaxTurns) {
         this.selectedAgent.setMaxTurns(this.config.limits.maxTurns);
@@ -291,12 +458,17 @@ export class BenchmarkRunner {
         this.selectedAgent.setMaxSpend(this.config.limits.maxCost);
       }
 
+      this.selectedAgent.messageProcessor.setProcessors("post_call", [
+        new XmlToolCallProcessor().createProcessor(),
+      ]);
+
       // Change to exercise directory
       const originalCwd = process.cwd();
       process.chdir(exercise.path);
 
       try {
         // Call the agent directly with the prompt
+        this.selectedAgent.newTask();
         const result = await this.selectedAgent.call(prompt);
 
         // Extract final output from result
@@ -311,7 +483,7 @@ export class BenchmarkRunner {
         }
 
         success = true;
-        
+
         // Get turn count from the agent
         if (this.selectedAgent.getTurnCount) {
           turns = this.selectedAgent.getTurnCount();
@@ -357,6 +529,17 @@ export class BenchmarkRunner {
         stdio: ["pipe", "pipe", "pipe"],
       });
 
+      // Track child process for cleanup
+      this.childProcesses.add(child);
+
+      // Remove from tracking when it exits
+      child.on("close", () => {
+        this.childProcesses.delete(child);
+      });
+      child.on("error", () => {
+        this.childProcesses.delete(child);
+      });
+
       let stdout = "";
       let stderr = "";
 
@@ -370,6 +553,12 @@ export class BenchmarkRunner {
 
       const timeout = options?.timeout;
       let timeoutId: NodeJS.Timeout | undefined;
+      // Check for shutdown signal during command execution
+      if (this.isShuttingDown) {
+        child.kill("SIGTERM");
+        reject(new Error("Command cancelled due to shutdown"));
+        return;
+      }
 
       if (timeout) {
         timeoutId = setTimeout(() => {
@@ -411,6 +600,14 @@ export class BenchmarkRunner {
       (r) => r.status === "turn_limit"
     ).length;
 
+    // Calculate test-based metrics
+    const testableExercises = results.filter(r => r.testResult !== undefined).length;
+    const testsPassedCount = results.filter(r => r.testResult?.success === true).length;
+    const testsFailedCount = results.filter(r => r.testResult && !r.testResult.success).length;
+    const testPassRate = testableExercises > 0 ? testsPassedCount / testableExercises : 0;
+    const agentSuccessRate = successCount / results.length || 0;
+    const actualSuccessRate = testableExercises > 0 ? testPassRate : agentSuccessRate;
+
     const totalCost = results.reduce((sum, r) => sum + r.cost, 0);
     const totalTurns = results.reduce((sum, r) => sum + r.turns, 0);
     const totalExerciseTime = results.reduce(
@@ -424,6 +621,11 @@ export class BenchmarkRunner {
       summary: {
         totalExercises: results.length,
         successCount,
+        testableExercises,
+        testsPassedCount,
+        testsFailedCount,
+        testPassRate,
+        agentSuccessRate,
         failureCount,
         timeoutCount,
         costLimitCount,
@@ -432,20 +634,53 @@ export class BenchmarkRunner {
         totalCost,
         averageTurns: totalTurns / results.length || 0,
         averageTime: totalExerciseTime / results.length || 0,
-        successRate: successCount / results.length || 0,
+        successRate: actualSuccessRate,
       },
       startTime,
       endTime,
     };
   }
 
-  private async saveResults(results: BenchmarkResults): Promise<void> {
-    // Use different paths for local vs container
-    const resultsDir = process.env.CONTAINER
+  private getCommitHash(): string {
+    try {
+      // Get the current git commit hash (short format)
+      const commitHash = execSync("git rev-parse --short HEAD", {
+        encoding: "utf8",
+        cwd: process.cwd(),
+      }).trim();
+      return commitHash;
+    } catch (error) {
+      // Fallback to a timestamp-based identifier if git is not available
+      return `fallback-${Date.now()}`;
+    }
+  }
+
+  private formatDateDash(): string {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  private generateResultsPath(): string {
+    const commitHash = this.getCommitHash();
+    const dateStr = this.formatDateDash();
+    const providerModel = `${this.provider}-${this.model}`;
+
+    // Use different base paths for local vs container
+    const baseDir = process.env.CONTAINER
       ? "/app/knowhow/benchmarks/results"
       : path.join(__dirname, "..", "results");
 
-    const resultsPath = path.join(resultsDir, this.config.outputFile);
+    return path.join(baseDir, commitHash, dateStr, `${providerModel}.json`);
+  }
+
+  private async saveResults(results: BenchmarkResults): Promise<void> {
+    // Generate the new structured path
+    const resultsPath = this.generateResultsPath();
+
+    // Ensure the directory exists
     await fs.mkdir(path.dirname(resultsPath), { recursive: true });
     await fs.writeFile(resultsPath, JSON.stringify(results, null, 2));
   }
@@ -453,17 +688,29 @@ export class BenchmarkRunner {
   private printSummary(results: BenchmarkResults): void {
     console.log(chalk.blue("\n📊 Benchmark Summary"));
     console.log(chalk.gray("━".repeat(50)));
-    console.log(
-      chalk.white(`Total Exercises: ${results.summary.totalExercises}`)
-    );
-    console.log(chalk.green(`Successful: ${results.summary.successCount}`));
-    console.log(chalk.red(`Failed: ${results.summary.failureCount}`));
-    console.log(chalk.yellow(`Timeouts: ${results.summary.timeoutCount}`));
-    console.log(
-      chalk.white(
-        `Success Rate: ${(results.summary.successRate * 100).toFixed(1)}%`
-      )
-    );
+    console.log(chalk.white(`Total Exercises: ${results.summary.totalExercises}`));
+    
+    if (results.summary.testableExercises > 0) {
+      console.log(chalk.blue("\n🧪 Test Evaluation Results:"));
+      console.log(chalk.white(`  Testable exercises: ${results.summary.testableExercises}`));
+      console.log(chalk.green(`  Tests passed: ${results.summary.testsPassedCount}`));
+      console.log(chalk.red(`  Tests failed: ${results.summary.testsFailedCount}`));
+      console.log(chalk.white(`  Test pass rate: ${(results.summary.testPassRate * 100).toFixed(1)}%`));
+      console.log(chalk.white(`  Agent success rate: ${(results.summary.agentSuccessRate * 100).toFixed(1)}%`));
+      console.log(chalk.white(`  Overall success rate: ${(results.summary.successRate * 100).toFixed(1)}%`));
+    } else {
+      console.log(chalk.blue("\n🤖 Agent Evaluation Results:"));
+      console.log(chalk.green(`  Successful: ${results.summary.successCount}`));
+      console.log(chalk.red(`  Failed: ${results.summary.failureCount}`));
+      console.log(chalk.yellow(`  Timeouts: ${results.summary.timeoutCount}`));
+      console.log(chalk.yellow(`  Turn limits: ${results.summary.turnLimitCount}`));
+      console.log(chalk.yellow(`  Cost limits: ${results.summary.costLimitCount}`));
+      console.log(
+        chalk.white(
+          `  Success Rate: ${(results.summary.successRate * 100).toFixed(1)}%`
+        )
+      );
+    }
     console.log(
       chalk.white(`Average Turns: ${results.summary.averageTurns.toFixed(1)}`)
     );
@@ -471,8 +718,11 @@ export class BenchmarkRunner {
       chalk.white(`Average Time: ${results.summary.averageTime.toFixed(1)}s`)
     );
     console.log(
+      chalk.blue("\n📈 Performance Metrics:")
+    );
+    console.log(
       chalk.white(`Total Cost: $${results.summary.totalCost.toFixed(4)}`)
     );
-    console.log(chalk.gray(`Results saved to: ${this.config.outputFile}`));
+    console.log(chalk.gray(`Results saved to: ${this.generateResultsPath()}`));
   }
 }

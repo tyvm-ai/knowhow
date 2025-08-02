@@ -193,9 +193,13 @@ export abstract class BaseAgent implements IAgent {
       return true;
     }
 
-    // Check spend limit  
+    // Check spend limit
     if (this.maxSpend !== null && this.totalCostUsd >= this.maxSpend) {
-      console.log(`Spend limit reached: $${this.totalCostUsd.toFixed(4)}/$${this.maxSpend.toFixed(4)}`);
+      console.log(
+        `Spend limit reached: $${this.totalCostUsd.toFixed(
+          4
+        )}/$${this.maxSpend.toFixed(4)}`
+      );
       return true;
     }
 
@@ -403,13 +407,15 @@ export abstract class BaseAgent implements IAgent {
     await this.selectHealthyModel();
 
     // Increment turn count and check limits (only for new calls, not recursive ones)
-    if (!_messages) {
-      this.turnCount++;
-      if (this.shouldTerminateFromLimits()) {
-        const limitMsg = `Task terminated due to limits reached. Turn: ${this.turnCount}/${this.maxTurns || 'unlimited'}, Cost: $${this.totalCostUsd.toFixed(4)}/${this.maxSpend ? '$' + this.maxSpend.toFixed(4) : 'unlimited'}`;
-        this.agentEvents.emit(this.eventTypes.done, limitMsg);
-        return limitMsg;
-      }
+    this.turnCount++;
+    if (this.shouldTerminateFromLimits()) {
+      const limitMsg = `Task terminated due to limits reached. Turn: ${
+        this.turnCount
+      }/${this.maxTurns || "unlimited"}, Cost: $${this.totalCostUsd.toFixed(
+        4
+      )}/${this.maxSpend ? "$" + this.maxSpend.toFixed(4) : "unlimited"}`;
+      this.agentEvents.emit(this.eventTypes.done, limitMsg);
+      return limitMsg;
     }
 
     try {
@@ -455,27 +461,23 @@ export abstract class BaseAgent implements IAgent {
       }
 
       this.adjustTotalCostUsd(response?.usd_cost);
-      this.logMessages(response.choices.map((c) => c.message));
 
-      messages = await this.messageProcessor.processMessages(
-        messages,
-        "post_call"
-      );
-
-      const firstMessage = response.choices[0].message;
-      const newToolCalls = response.choices.flatMap(
-        (c) => c.message.tool_calls
-      );
-
+      // Typically, there's only one choice in the array, but you could have many
+      // If you set `n` to more than 1, you will get multiple choices
       for (const choice of response.choices) {
-        const responseMessage = choice.message;
-        console.log(responseMessage);
+        messages.push(choice.message);
 
-        const toolCalls = responseMessage.tool_calls;
-        if (responseMessage.tool_calls) {
-          // extend conversation with assistant's reply
-          messages.push(responseMessage);
+        messages = await this.messageProcessor.processMessages(
+          messages,
+          "post_call"
+        );
 
+        const lastMessage = messages[messages.length - 1];
+
+        this.logMessages([lastMessage]);
+
+        const toolCalls = lastMessage.tool_calls;
+        if (lastMessage.tool_calls) {
           // About to call a tool, process the messages
           // We could add all the tool calls, and do this once
           messages = await this.messageProcessor.processMessages(
@@ -503,6 +505,9 @@ export abstract class BaseAgent implements IAgent {
         }
       }
 
+      const newToolCalls = response.choices.flatMap(
+        (c) => c.message.tool_calls
+      );
       // Process messages after tool execution
       if (newToolCalls && newToolCalls.length > 0) {
         messages = await this.messageProcessor.processMessages(
@@ -512,6 +517,7 @@ export abstract class BaseAgent implements IAgent {
       }
 
       // Early exit: not required to call tool
+      const firstMessage = response.choices[0].message;
       if (
         response.choices.length === 1 &&
         firstMessage.content &&

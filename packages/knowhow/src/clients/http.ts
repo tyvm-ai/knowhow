@@ -39,15 +39,21 @@ export class HttpClient implements GenericClient {
   async createChatCompletion(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
+    const body = {
+      ...options,
+      model: options.model,
+      messages: options.messages,
+      max_tokens: options.max_tokens || 3000,
+
+      ...(options.tools && {
+        tools: options.tools,
+        tool_choice: "auto",
+      }),
+    };
+
     const response = await axios.post(
       `${this.baseUrl}/v1/chat/completions`,
-      {
-        model: options.model,
-        messages: options.messages,
-        max_tokens: options.max_tokens,
-        tools: options.tools,
-        tool_choice: options.tool_choice,
-      },
+      body,
       {
         headers: this.headers,
       }
