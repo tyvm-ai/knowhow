@@ -52,7 +52,7 @@ export async function ycmdStart(params: YcmdStartParams = {}): Promise<{
     }
 
     // Resolve workspace root with CWD default and project root detection
-    const resolvedWorkspaceRoot = resolveWorkspaceRoot(params.workspaceRoot);
+    const resolvedWorkspaceRoot = resolveWorkspaceRoot();
     const projectRoot = findProjectRoot(resolvedWorkspaceRoot);
 
     // Start the server with resolved project root

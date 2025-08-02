@@ -42,9 +42,6 @@ export async function ycmdRefactor(params: YcmdRefactorParams): Promise<{
   message: string;
 }> {
   try {
-    // Resolve file path
-    const resolvedFilePath = resolveFilePath(params.filepath);
-    
     // Validate parameters
     if (!params.filepath) {
       return {
@@ -81,53 +78,20 @@ export async function ycmdRefactor(params: YcmdRefactorParams): Promise<{
       };
     }
 
-    // Get file contents
-    let contents = params.contents;
-    if (!contents) {
-      try {
-        contents = await fs.promises.readFile(resolvedFilePath, 'utf8');
-      } catch (error) {
-        return {
-          success: false,
-          message: `Failed to read file: ${(error as Error).message}`
-        };
-      }
-    }
-
-    // Get file types
-    const filetypes = getFileTypes(resolvedFilePath);
-
-    // Check if ycmd server is running using server manager
-    if (!(await ycmdServerManager.isRunning())) {
-      console.log('ycmd server not running, attempting to start...');
-      try {
-        await ycmdServerManager.start();
-        console.log('ycmd server started successfully for refactor operation');
-      } catch (error) {
-        return {
-          success: false,
-          message: `Failed to start ycmd server: ${(error as Error).message}`
-        };
-      }
-    }
-
-    const serverInfo = ycmdServerManager.getServerInfo();
-    if (!serverInfo) {
+    // Setup client and notify file using utility method
+    const setupResult = await ycmdServerManager.setupClientAndNotifyFile({
+      filepath: params.filepath,
+      fileContents: params.contents
+    });
+    
+    if (!setupResult.success) {
       return {
         success: false,
-        message: 'Failed to get server information'
+        message: setupResult.message
       };
     }
 
-    // Create client
-    const client = new YcmdClient(serverInfo);
-
-    // Notify server about file
-    try {
-      await client.notifyFileEvent('FileReadyToParse', resolvedFilePath, contents, filetypes);
-    } catch (error) {
-      console.warn('Failed to notify file event:', error);
-    }
+    const { client, resolvedFilePath, contents, filetypes } = setupResult;
 
     let response: any;
 

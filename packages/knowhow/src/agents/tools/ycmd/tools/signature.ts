@@ -1,7 +1,7 @@
-import { YcmdClient, getFileTypes } from '../client';
-import { ycmdServerManager } from '../serverManager';
-import { resolveFilePath } from '../utils/pathUtils';
-import * as fs from 'fs';
+import { YcmdClient, getFileTypes } from "../client";
+import { ycmdServerManager } from "../serverManager";
+import { resolveFilePath } from "../utils/pathUtils";
+import * as fs from "fs";
 
 export interface YcmdSignatureHelpParams {
   filepath: string;
@@ -30,7 +30,9 @@ export interface SignatureHelp {
 /**
  * Get function signature hints
  */
-export async function ycmdSignatureHelp(params: YcmdSignatureHelpParams): Promise<{
+export async function ycmdSignatureHelp(
+  params: YcmdSignatureHelpParams
+): Promise<{
   success: boolean;
   signatureHelp?: SignatureHelp;
   message: string;
@@ -38,69 +40,37 @@ export async function ycmdSignatureHelp(params: YcmdSignatureHelpParams): Promis
   try {
     // Resolve file path
     const resolvedFilePath = resolveFilePath(params.filepath);
-    
+
     // Validate parameters
     if (!params.filepath) {
       return {
         success: false,
-        message: 'filepath is required'
+        message: "filepath is required",
       };
     }
 
-    if (typeof params.line !== 'number' || typeof params.column !== 'number') {
+    if (typeof params.line !== "number" || typeof params.column !== "number") {
       return {
         success: false,
-        message: 'line and column must be numbers'
+        message: "line and column must be numbers",
       };
     }
 
-    // Get file contents
-    let contents = params.contents;
-    if (!contents) {
-      try {
-        contents = await fs.promises.readFile(resolvedFilePath, 'utf8');
-      } catch (error) {
-        return {
-          success: false,
-          message: `Failed to read file: ${(error as Error).message}`
-        };
-      }
-    }
+    // Setup client and notify file using utility method
+    const setupResult = await ycmdServerManager.setupClientAndNotifyFile({
+      filepath: params.filepath,
+      fileContents: params.contents,
+    });
 
-    // Get file types
-    const filetypes = getFileTypes(resolvedFilePath);
-
-    // Check if ycmd server is running using server manager
-    if (!(await ycmdServerManager.isRunning())) {
-      console.log('ycmd server not running, attempting to start...');
-      try {
-        await ycmdServerManager.start();
-        console.log('ycmd server started successfully for signature help operation');
-      } catch (error) {
-        return {
-          success: false,
-          message: `Failed to start ycmd server: ${(error as Error).message}`
-        };
-      }
-    }
-
-    const serverInfo = ycmdServerManager.getServerInfo();
-    if (!serverInfo) {
+    if (!setupResult.success) {
       return {
         success: false,
-        message: 'Failed to get server information'
+        message: setupResult.message,
       };
     }
 
     // Create client
-    const client = new YcmdClient(serverInfo);
-
-    // Notify server about file
-    try {
-      await client.notifyFileEvent('FileReadyToParse', resolvedFilePath, contents, filetypes);
-    } catch (error) {
-      console.warn('Failed to notify file event:', error);
-    }
+    const { client, contents, filetypes } = setupResult;
 
     // Get signature help
     const response = await client.getSignatureHelp(
@@ -122,56 +92,70 @@ export async function ycmdSignatureHelp(params: YcmdSignatureHelpParams): Promis
           documentation: sig.documentation,
           parameters: sig.parameters?.map((param: any) => ({
             label: param.label,
-            documentation: param.documentation
-          }))
+            documentation: param.documentation,
+          })),
         })),
         activeSignature: response.activeSignature,
-        activeParameter: response.activeParameter
+        activeParameter: response.activeParameter,
       };
     } else if (response && response.detailed_info) {
       // ycmd detailed_info response - convert to signature format
       const detailedInfo = response.detailed_info;
       signatureHelp = {
-        signatures: [{
-          label: detailedInfo,
-          documentation: response.extra_menu_info
-        }],
+        signatures: [
+          {
+            label: detailedInfo,
+            documentation: response.extra_menu_info,
+          },
+        ],
         activeSignature: 0,
-        activeParameter: 0
+        activeParameter: 0,
       };
-    } else if (response && typeof response === 'string') {
+    } else if (response && typeof response === "string") {
       // Simple string response
       signatureHelp = {
-        signatures: [{
-          label: response
-        }],
+        signatures: [
+          {
+            label: response,
+          },
+        ],
         activeSignature: 0,
-        activeParameter: 0
+        activeParameter: 0,
       };
     } else {
       return {
         success: true,
         signatureHelp: {
-          signatures: []
+          signatures: [],
         },
-        message: 'No signature information available at this location'
+        message: "No signature information available at this location",
       };
     }
 
     const signatureCount = signatureHelp.signatures.length;
-    let message = 'No signature information available';
-    
+    let message = "No signature information available";
+
     if (signatureCount > 0) {
-      message = `Found ${signatureCount} signature${signatureCount === 1 ? '' : 's'}`;
-      
+      message = `Found ${signatureCount} signature${
+        signatureCount === 1 ? "" : "s"
+      }`;
+
       if (signatureHelp.activeSignature !== undefined && signatureCount > 1) {
-        message += ` (showing signature ${signatureHelp.activeSignature + 1} of ${signatureCount})`;
+        message += ` (showing signature ${
+          signatureHelp.activeSignature + 1
+        } of ${signatureCount})`;
       }
-      
+
       if (signatureHelp.activeParameter !== undefined) {
-        const activeSignature = signatureHelp.signatures[signatureHelp.activeSignature || 0];
-        if (activeSignature?.parameters && activeSignature.parameters.length > 0) {
-          message += `, parameter ${signatureHelp.activeParameter + 1} of ${activeSignature.parameters.length}`;
+        const activeSignature =
+          signatureHelp.signatures[signatureHelp.activeSignature || 0];
+        if (
+          activeSignature?.parameters &&
+          activeSignature.parameters.length > 0
+        ) {
+          message += `, parameter ${signatureHelp.activeParameter + 1} of ${
+            activeSignature.parameters.length
+          }`;
         }
       }
     }
@@ -179,13 +163,12 @@ export async function ycmdSignatureHelp(params: YcmdSignatureHelpParams): Promis
     return {
       success: true,
       signatureHelp,
-      message
+      message,
     };
-
   } catch (error) {
     return {
       success: false,
-      message: `Failed to get signature help: ${(error as Error).message}`
+      message: `Failed to get signature help: ${(error as Error).message}`,
     };
   }
 }
