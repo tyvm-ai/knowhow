@@ -94,7 +94,7 @@ console.log(result);
     // Mess with the TypeScript file to trigger diagnostics
     fs.writeFileSync(
       tsFile,
-      tsContent.replace("return { name", "return { nade")
+      tsContent.replace("return { name", "return { names")
     ); // Ensure the file is written
     await wait(1000);
     const diagnosticsResult = await ycmdDiagnostics({
@@ -216,7 +216,7 @@ console.log(result);
       typeof diagnosticsForFixit === "object" &&
       "diagnostics" in diagnosticsForFixit
     ) {
-      const diags = (diagnosticsForFixit as any).diagnostics;
+      const diags = diagnosticsForFixit.diagnostics;
       const fixitDiag = diags?.find((d: any) => d.fixit_available);
 
       if (fixitDiag) {
@@ -224,8 +224,8 @@ console.log(result);
 
         const fixitResult = await ycmdRefactor({
           filepath: tsFile,
-          line: fixitDiag.line_num,
-          column: fixitDiag.column_num,
+          line: fixitDiag.location.line,
+          column: fixitDiag.location.column,
           command: "fix_it",
         });
 
@@ -263,7 +263,10 @@ const data = fs.readFileSync('test.txt');
     });
 
     console.log("✅ Import completions succeeded");
-    console.log("Result:", JSON.stringify(importCompletion, null, 2).slice(0, 100));
+    console.log(
+      "Result:",
+      JSON.stringify(importCompletion, null, 2).slice(0, 100)
+    );
   } catch (error: any) {
     console.log(`❌ Import completions failed: ${error.message}`);
   }

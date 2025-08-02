@@ -257,7 +257,7 @@ export class YcmdClient {
     line_num: number = 1,
     column_num: number = 1
   ): Promise<YcmdDiagnostic[]> {
-    const response = await this.request<{ diagnostics?: YcmdDiagnostic[] }>(
+    const response = await this.request<YcmdDiagnostic[]>(
       "/event_notification",
       {
         event_name: "FileReadyToParse",
@@ -273,7 +273,7 @@ export class YcmdClient {
       }
     );
 
-    return (response as YcmdDiagnostic[]) || [];
+    return response || [];
   }
 
   /**

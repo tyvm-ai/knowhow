@@ -98,6 +98,11 @@ export class PatchingAgent extends BaseAgent {
         ${systemReminder}
 
         Specialization: Patcher Agent, ${this.description}
+
+        # Language Server Integration:
+        Use ycmd tools (ycmdDiagnostics, ycmdCompletion, ycmdRefactor, ycmdGoTo) to get error diagnostics, code completions, refactor symbols, and navigate definitions before making changes.
+        This helps ensure accurate modifications and can suggest fixes for compilation errors.
+
         IF you fail twice to patch a file, you may switch using writeFileChunk to rewrite the whole file.
         `,
       },
