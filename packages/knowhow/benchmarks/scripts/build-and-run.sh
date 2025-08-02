@@ -35,10 +35,12 @@ echo "🚀 Running benchmarks..."
 
 # Run the container with all provided arguments
 docker run --rm \
-    -v "$PROJECT_ROOT/benchmarks/results:/app/knowhow/benchmarks/results" \
-    -e OPENAI_API_KEY \
+    -v "$PROJECT_ROOT/benchmarks/results:/app/benchmarks/results" \
+    -e OPENAI_KEY \
     -e ANTHROPIC_API_KEY \
-    -e GOOGLE_API_KEY \
+    -e GEMINI_API_KEY \
+    -e XAI_API_KEY \
+    --env-file "$PROJECT_ROOT/benchmarks/.env" \
     knowhow-bench "$@"
 
 echo "✅ Benchmarks completed!"

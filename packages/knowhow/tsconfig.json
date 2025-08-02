@@ -27,7 +27,7 @@
   "exclude": [
     "node_modules",
     "**/*.ignore.ts",
-    "tests/**/fixtures/**/*.ts",
+    "tests/**/fixtures/**/*.ts"
 
   ]
 }
