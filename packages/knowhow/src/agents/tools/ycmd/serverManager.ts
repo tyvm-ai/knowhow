@@ -9,7 +9,7 @@ import { ycmdStart } from "./tools/start";
 import * as fs from "fs";
 import * as net from "net";
 import * as path from "path";
-import { wait } from "src/utils";
+import { wait } from "../../../utils";
 
 /**
  * Interface for setupClientAndNotifyFile parameters
@@ -264,7 +264,6 @@ class YcmdServerManager {
         console.log(`TSConfig path: ${tsconfigPath}`);
         console.log(`File types: ${filetypes.join(", ")}`);
         console.log(`Target file: ${resolvedFilePath}`);
-
 
         // Then load the target file
         console.log(`Notifying target file: ${resolvedFilePath}`);
