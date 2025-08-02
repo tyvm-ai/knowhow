@@ -1,0 +1,27 @@
+# Example configuration for Knowhow benchmarks
+# This shows the available options - CLI arguments override these values
+
+language: javascript
+maxExercises: 10
+model: gpt-4o-mini
+provider: openai
+
+limits:
+  maxTurns: 20
+  maxTime: 300    # seconds
+  maxCost: 1.0    # dollars
+
+output:
+  file: results.json
+  format: json
+
+# Future configuration options (not yet implemented)
+# filters:
+#   difficulty: ["easy", "medium"]
+#   topics: ["arrays", "strings"]
+# 
+# agents:
+#   - name: "developer"
+#     config: {}
+#   - name: "patcher" 
+#     config: {}
