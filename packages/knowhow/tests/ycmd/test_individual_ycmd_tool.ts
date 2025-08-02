@@ -1,6 +1,6 @@
 #!/usr/bin/env ts-node
 
-import { ycmdGoTo } from './src/agents/tools/ycmd/tools/goTo';
+import { ycmdGoTo } from '../../src/agents/tools/ycmd/tools/goto';
 
 async function testIndividualYcmdTool() {
   console.log('Testing individual ycmdGoTo tool with enhanced serverManager...');
@@ -17,13 +17,13 @@ async function testIndividualYcmdTool() {
     
     if (result.success) {
       console.log('✅ ycmdGoTo successful!');
-      if (result.result && Array.isArray(result.result)) {
-        console.log(`🎉 Found ${result.result.length} references for findProjectRoot`);
-        result.result.forEach((ref, index) => {
-          console.log(`  ${index + 1}. ${ref.filepath}:${ref.line_num}:${ref.column_num} - ${ref.description}`);
+      if (result.locations && Array.isArray(result.locations)) {
+        console.log(`🎉 Found ${result.locations.length} references for findProjectRoot`);
+        result.locations.forEach((ref, index) => {
+          console.log(`  ${index + 1}. ${ref.filepath}:${ref.line}:${ref.column} - ${ref.description}`);
         });
       } else {
-        console.log('Result format:', typeof result.result, result.result);
+        console.log('Result format:', typeof result.locations, result.locations);
       }
     } else {
       console.log('❌ ycmdGoTo failed:', result.message);

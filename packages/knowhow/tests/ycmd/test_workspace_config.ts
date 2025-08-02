@@ -1,4 +1,4 @@
-import { ycmdServerManager } from "./src/agents/tools/ycmd/serverManager";
+import { ycmdServerManager } from "../../src/agents/tools/ycmd/serverManager";
 import * as path from "path";
 import * as fs from "fs";
 
@@ -45,8 +45,7 @@ async function testWorkspaceConfiguration() {
       // Try to start a fresh server for each test
       console.log("\nStarting fresh ycmd server...");
       const setupResult = await ycmdServerManager.setupClientAndNotifyFile({
-        filepath,
-        workspaceRoot: cwd, // Explicitly pass workspace root
+        filepath
       });
 
       if (!setupResult.success) {
@@ -63,8 +62,6 @@ async function testWorkspaceConfiguration() {
       try {
         const diagnostics = await setupResult.client.getDiagnostics(
           setupResult.resolvedFilePath,
-          1,
-          1,
           setupResult.contents,
           setupResult.filetypes
         );

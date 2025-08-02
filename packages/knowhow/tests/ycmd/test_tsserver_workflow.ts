@@ -1,6 +1,6 @@
-import { YcmdClient } from './src/agents/tools/ycmd/client';
-import { YcmdServerInfo } from './src/agents/tools/ycmd/server';
-import { ycmdServerManager } from './src/agents/tools/ycmd/serverManager';
+import { YcmdClient } from '../../src/agents/tools/ycmd/client';
+import { YcmdServerInfo } from '../../src/agents/tools/ycmd/server';
+import { ycmdServerManager } from '../../src/agents/tools/ycmd/serverManager';
 import * as fs from 'fs';
 import * as path from 'path';
 

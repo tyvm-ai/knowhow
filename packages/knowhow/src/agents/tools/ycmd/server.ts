@@ -448,7 +448,35 @@ export class YcmdServer {
    * Setup exit handler (separate method for clarity)
    */
   private setupExitHandler(): void {
+    // Handle normal process exit
     process.on("exit", () => this.forceCleanup());
+    
+    // Handle Ctrl+C (SIGINT)
+    process.on("SIGINT", () => {
+      console.log("\nReceived SIGINT (Ctrl+C), shutting down ycmd server gracefully...");
+      this.gracefulShutdown().finally(() => {
+        process.exit(0);
+      });
+    });
+    
+    // Handle SIGTERM (termination signal)
+    process.on("SIGTERM", () => {
+      console.log("\nReceived SIGTERM, shutting down ycmd server gracefully...");
+      this.gracefulShutdown().finally(() => {
+        process.exit(0);
+      });
+    });
+  }
+
+  /**
+   * Graceful shutdown method
+   */
+  private async gracefulShutdown(): Promise<void> {
+    try {
+      await this.stop();
+    } catch (error) {
+      console.error("Error during graceful shutdown:", error);
+    }
   }
 
   /**
