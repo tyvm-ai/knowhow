@@ -1,14 +1,20 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { BenchmarkResults, ExerciseResult } from '@/types/benchmark';
-import { formatCurrency, formatTime, formatPercentage } from '@/utils/dataProcessor';
+import { useState, useEffect } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { BenchmarkResults, ExerciseResult } from "@/types/benchmark";
+import {
+  formatCurrency,
+  formatTime,
+  formatPercentage,
+} from "@/utils/dataProcessor";
 
 export default function ModelDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const [benchmarkData, setBenchmarkData] = useState<BenchmarkResults | null>(null);
+  const [benchmarkData, setBenchmarkData] = useState<BenchmarkResults | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,34 +25,40 @@ export default function ModelDetailPage() {
   useEffect(() => {
     async function fetchDetailData() {
       try {
-        const response = await fetch(`/api/benchmark-detail?model=${encodeURIComponent(model)}&provider=${encodeURIComponent(provider)}&language=${encodeURIComponent(language)}`);
+        const response = await fetch(
+          `/api/benchmark-detail?model=${encodeURIComponent(
+            model
+          )}&provider=${encodeURIComponent(
+            provider
+          )}&language=${encodeURIComponent(language)}`
+        );
         if (!response.ok) {
-          throw new Error('Failed to fetch benchmark details');
+          throw new Error("Failed to fetch benchmark details");
         }
         const data = await response.json();
         setBenchmarkData(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
+        setError(err instanceof Error ? err.message : "An error occurred");
       } finally {
         setLoading(false);
       }
     }
-    
+
     fetchDetailData();
   }, [model, provider, language]);
 
   const getStatusBadge = (status: string) => {
     const baseClasses = "px-2 py-1 text-xs font-medium rounded-full";
     switch (status) {
-      case 'success':
+      case "success":
         return `${baseClasses} bg-green-100 text-green-800`;
-      case 'failure':
+      case "failure":
         return `${baseClasses} bg-red-100 text-red-800`;
-      case 'timeout':
+      case "timeout":
         return `${baseClasses} bg-yellow-100 text-yellow-800`;
-      case 'cost_limit':
+      case "cost_limit":
         return `${baseClasses} bg-orange-100 text-orange-800`;
-      case 'turn_limit':
+      case "turn_limit":
         return `${baseClasses} bg-purple-100 text-purple-800`;
       default:
         return `${baseClasses} bg-gray-100 text-gray-800`;
@@ -55,12 +67,18 @@ export default function ModelDetailPage() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'success': return '✅';
-      case 'failure': return '❌';
-      case 'timeout': return '⏰';
-      case 'cost_limit': return '💰';
-      case 'turn_limit': return '🔄';
-      default: return '❓';
+      case "success":
+        return "✅";
+      case "failure":
+        return "❌";
+      case "timeout":
+        return "⏰";
+      case "cost_limit":
+        return "💰";
+      case "turn_limit":
+        return "🔄";
+      default:
+        return "❓";
     }
   };
 
@@ -80,8 +98,12 @@ export default function ModelDetailPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="text-red-500 text-6xl mb-4">⚠️</div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Error Loading Details</h3>
-          <p className="text-gray-500 mb-4">{error || 'Benchmark data not found'}</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            Error Loading Details
+          </h3>
+          <p className="text-gray-500 mb-4">
+            {error || "Benchmark data not found"}
+          </p>
           <button
             onClick={() => router.back()}
             className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-md"
@@ -122,7 +144,9 @@ export default function ModelDetailPage() {
                 </div>
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Success Rate</p>
+                <p className="text-sm font-medium text-gray-500">
+                  Success Rate
+                </p>
                 <p className="text-2xl font-semibold text-gray-900">
                   {formatPercentage(benchmarkData.summary.successRate * 100)}
                 </p>
@@ -138,7 +162,9 @@ export default function ModelDetailPage() {
                 </div>
               </div>
               <div className="ml-4">
-                <p className="text-sm font-medium text-gray-500">Total Exercises</p>
+                <p className="text-sm font-medium text-gray-500">
+                  Total Exercises
+                </p>
                 <p className="text-2xl font-semibold text-gray-900">
                   {benchmarkData.summary.totalExercises}
                 </p>
@@ -182,7 +208,9 @@ export default function ModelDetailPage() {
         {/* Exercise Results Table */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200">
           <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-xl font-semibold text-gray-900">Exercise Results</h2>
+            <h2 className="text-xl font-semibold text-gray-900">
+              Exercise Results
+            </h2>
             <p className="mt-1 text-sm text-gray-500">
               Detailed breakdown of each exercise performance
             </p>
@@ -219,9 +247,11 @@ export default function ModelDetailPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <span className="mr-2">{getStatusIcon(exercise.status)}</span>
-                        <span className={getStatusBadge(exercise.status)}>
-                          {exercise.status}
+                        <span className="mr-2">
+                          {getStatusIcon(exercise.testResult?.success ? "success" : "failure")}
+                        </span>
+                        <span className={getStatusBadge(exercise.testResult?.success)}>
+                          {exercise.testResult?.success ? "Pass" : "Fail"}
                         </span>
                       </div>
                     </td>
@@ -235,7 +265,7 @@ export default function ModelDetailPage() {
                       {exercise.turns}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
-                      {exercise.errorMessage || '-'}
+                      {exercise.errorMessage || "-"}
                     </td>
                   </tr>
                 ))}
@@ -246,27 +276,39 @@ export default function ModelDetailPage() {
 
         {/* Run Information */}
         <div className="mt-8 bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Run Information</h3>
+          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+            Run Information
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <h4 className="text-sm font-medium text-gray-500 mb-2">Configuration</h4>
+              <h4 className="text-sm font-medium text-gray-500 mb-2">
+                Configuration
+              </h4>
               <dl className="space-y-1">
                 <div className="flex">
                   <dt className="text-sm text-gray-500 w-24">Model:</dt>
-                  <dd className="text-sm text-gray-900">{benchmarkData.config.model}</dd>
+                  <dd className="text-sm text-gray-900">
+                    {benchmarkData.config.model}
+                  </dd>
                 </div>
                 <div className="flex">
                   <dt className="text-sm text-gray-500 w-24">Provider:</dt>
-                  <dd className="text-sm text-gray-900">{benchmarkData.config.provider}</dd>
+                  <dd className="text-sm text-gray-900">
+                    {benchmarkData.config.provider}
+                  </dd>
                 </div>
                 <div className="flex">
                   <dt className="text-sm text-gray-500 w-24">Language:</dt>
-                  <dd className="text-sm text-gray-900">{benchmarkData.config.language}</dd>
+                  <dd className="text-sm text-gray-900">
+                    {benchmarkData.config.language}
+                  </dd>
                 </div>
                 {benchmarkData.config.agent && (
                   <div className="flex">
                     <dt className="text-sm text-gray-500 w-24">Agent:</dt>
-                    <dd className="text-sm text-gray-900">{benchmarkData.config.agent}</dd>
+                    <dd className="text-sm text-gray-900">
+                      {benchmarkData.config.agent}
+                    </dd>
                   </div>
                 )}
               </dl>
@@ -276,23 +318,33 @@ export default function ModelDetailPage() {
               <dl className="space-y-1">
                 <div className="flex">
                   <dt className="text-sm text-gray-500 w-24">Max Turns:</dt>
-                  <dd className="text-sm text-gray-900">{benchmarkData.config.limits.maxTurns}</dd>
+                  <dd className="text-sm text-gray-900">
+                    {benchmarkData.config.limits.maxTurns}
+                  </dd>
                 </div>
                 <div className="flex">
                   <dt className="text-sm text-gray-500 w-24">Max Time:</dt>
-                  <dd className="text-sm text-gray-900">{formatTime(benchmarkData.config.limits.maxTime)}</dd>
+                  <dd className="text-sm text-gray-900">
+                    {formatTime(benchmarkData.config.limits.maxTime)}
+                  </dd>
                 </div>
                 <div className="flex">
                   <dt className="text-sm text-gray-500 w-24">Max Cost:</dt>
-                  <dd className="text-sm text-gray-900">{formatCurrency(benchmarkData.config.limits.maxCost)}</dd>
+                  <dd className="text-sm text-gray-900">
+                    {formatCurrency(benchmarkData.config.limits.maxCost)}
+                  </dd>
                 </div>
               </dl>
             </div>
           </div>
           <div className="mt-4 pt-4 border-t border-gray-200">
             <div className="flex justify-between text-sm text-gray-500">
-              <span>Started: {new Date(benchmarkData.startTime).toLocaleString()}</span>
-              <span>Completed: {new Date(benchmarkData.endTime).toLocaleString()}</span>
+              <span>
+                Started: {new Date(benchmarkData.startTime).toLocaleString()}
+              </span>
+              <span>
+                Completed: {new Date(benchmarkData.endTime).toLocaleString()}
+              </span>
             </div>
           </div>
         </div>

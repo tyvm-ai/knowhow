@@ -120,13 +120,13 @@ export default function LeaderboardTable({ entries }: LeaderboardTableProps) {
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
+          {sortedEntries.map((entry) => (
             <tr 
               key={`${entry.model}-${entry.provider}-${entry.language}`} 
               className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
               onClick={() => handleRowClick(entry)}
               title="Click to view detailed results"
             >
-            <tr key={`${entry.model}-${entry.provider}-${entry.language}`} className="hover:bg-gray-50">
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                 {entry.model}
               </td>
