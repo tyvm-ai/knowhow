@@ -6,13 +6,13 @@ import { BenchmarkResults } from '@/types/benchmark';
 // Recursive function to find JSON files in nested directories
 function findBenchmarkFiles(dir: string): string[] {
   const files: string[] = [];
-  
+
   try {
     const items = fs.readdirSync(dir, { withFileTypes: true });
-    
+
     for (const item of items) {
       const fullPath = path.join(dir, item.name);
-      
+
       if (item.isDirectory()) {
         // Recursively search subdirectories
         files.push(...findBenchmarkFiles(fullPath));
@@ -24,7 +24,7 @@ function findBenchmarkFiles(dir: string): string[] {
   } catch (error) {
     // Ignore directories we can't read
   }
-  
+
   return files;
 }
 
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
   try {
     // Look for benchmark result files in the results directory
     const resultsDir = path.join(process.cwd(), '..', 'benchmarks', 'results');
-    
+
     if (!fs.existsSync(resultsDir)) {
       return NextResponse.json(
         { error: 'Results directory not found' },
@@ -55,25 +55,25 @@ export async function GET(request: NextRequest) {
 
     // Find all JSON files recursively in the results directory
     const allFiles = findBenchmarkFiles(resultsDir);
-    
+
     // Filter files that match our model/provider/language criteria
     const matchingFiles = allFiles.filter(filePath => {
       try {
         // Read and parse the JSON file to check its config
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const data = JSON.parse(fileContent);
-        
+
         if (!data.config) {
           return false;
         }
-        
+
         const configModel = data.config.model;
         const configProvider = data.config.provider;
         const configLanguage = data.config.language;
-        
+
         // Exact match on all three parameters
-        return configModel === model && 
-               configProvider === provider && 
+        return configModel === model &&
+               configProvider === provider &&
                configLanguage === language;
       } catch (error) {
         return false;
@@ -90,12 +90,12 @@ export async function GET(request: NextRequest) {
     // Load all matching benchmark results
     const allResults: BenchmarkResults[] = [];
     const filePathMap = new Map<BenchmarkResults, string>(); // Track file paths for commit extraction
-    
+
     for (const filePath of matchingFiles) {
       try {
         const fileContent = fs.readFileSync(filePath, 'utf-8');
         const benchmarkData = JSON.parse(fileContent);
-        
+
         // Validate that we have the expected structure
         if (benchmarkData.exercises && benchmarkData.summary && benchmarkData.config) {
           allResults.push(benchmarkData);
@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
     if (timestamp) {
       const targetTime = timestamp;
       const specificRun = allResults.find(result => result.endTime === targetTime);
-      
+
       if (specificRun) {
         return NextResponse.json({
           latest: specificRun,
@@ -135,7 +135,7 @@ export async function GET(request: NextRequest) {
     const latestResult = allResults[0];
 
     // Create historical summary for previous runs (excluding the latest)
-    const previousRuns = allResults.slice(1); // Skip the first (latest) result
+    const previousRuns = allResults; // Skip the first (latest) result
     const historicalRuns = previousRuns.map(result => ({
       endTime: result.endTime,
       successRate: result.summary.successRate * 100, // Convert to percentage
@@ -161,7 +161,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response);
 
-    
+
   } catch (error) {
     console.error('Error reading benchmark detail:', error);
     return NextResponse.json(

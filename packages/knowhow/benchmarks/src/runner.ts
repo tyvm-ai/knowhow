@@ -462,6 +462,9 @@ export class BenchmarkRunner {
       if (this.selectedAgent.setMaxSpend) {
         this.selectedAgent.setMaxSpend(this.config.limits.maxCost);
       }
+      if (this.selectedAgent.setMaxRunTime) {
+        this.selectedAgent.setMaxRunTime(this.config.limits.maxTime * 1000); // Convert seconds to milliseconds
+      }
 
       this.selectedAgent.messageProcessor.setProcessors("post_call", [
         new XmlToolCallProcessor().createProcessor(),
@@ -694,7 +697,7 @@ export class BenchmarkRunner {
     try {
       // Generate the new structured path for incremental results
       const resultsPath = this.generateResultsPath();
-      
+
       // Ensure the directory exists
       await fs.mkdir(path.dirname(resultsPath), { recursive: true });
       await fs.writeFile(resultsPath, JSON.stringify(results, null, 2));
@@ -709,7 +712,7 @@ export class BenchmarkRunner {
     console.log(chalk.blue("\n📊 Benchmark Summary"));
     console.log(chalk.gray("━".repeat(50)));
     console.log(chalk.white(`Total Exercises: ${results.summary.totalExercises}`));
-    
+
     if (results.summary.testableExercises > 0) {
       console.log(chalk.blue("\n🧪 Test Evaluation Results:"));
       console.log(chalk.white(`  Testable exercises: ${results.summary.testableExercises}`));

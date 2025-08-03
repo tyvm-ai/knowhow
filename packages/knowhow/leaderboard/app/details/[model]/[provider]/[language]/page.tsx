@@ -294,7 +294,13 @@ export default function ModelDetailPage() {
                 {benchmarkData.exercises.map((exercise, index) => (
                   <tr key={exercise.exerciseName} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {exercise.exerciseName}
+                      <button
+                        onClick={() => router.push(`/exercise/${encodeURIComponent(model)}/${encodeURIComponent(provider)}/${encodeURIComponent(language)}/${encodeURIComponent(exercise.exerciseName)}`)}
+                        className="text-blue-600 hover:text-blue-800 hover:underline text-left"
+                        title="Click to view detailed exercise results"
+                      >
+                        {exercise.exerciseName}
+                      </button>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">

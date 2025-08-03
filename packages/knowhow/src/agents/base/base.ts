@@ -46,6 +46,8 @@ export abstract class BaseAgent implements IAgent {
   protected requiredToolNames = ["finalAnswer"];
   protected maxTurns: number | null = null;
   protected maxSpend: number | null = null;
+  protected maxRunTimeMs: number | null = null;
+  protected startTimeMs: number | null = null;
   protected turnCount = 0;
   protected totalCostUsd = 0;
   protected currentThread = 0;
@@ -95,6 +97,10 @@ export abstract class BaseAgent implements IAgent {
     this.maxSpend = maxSpend;
   }
 
+  setMaxRunTime(maxRunTimeMs: number | null) {
+    this.maxRunTimeMs = maxRunTimeMs;
+  }
+
   newTask() {
     this.currentThread = 0;
     this.threads = [];
@@ -103,6 +109,7 @@ export abstract class BaseAgent implements IAgent {
     this.totalCostUsd = 0;
     this.status = "in_progress";
     this.turnCount = 0;
+    this.startTimeMs = Date.now();
   }
 
   register() {
@@ -201,6 +208,15 @@ export abstract class BaseAgent implements IAgent {
         )}/$${this.maxSpend.toFixed(4)}`
       );
       return true;
+    }
+
+    // Check runtime limit
+    if (this.maxRunTimeMs !== null && this.startTimeMs !== null) {
+      const currentRunTimeMs = Date.now() - this.startTimeMs;
+      if (currentRunTimeMs >= this.maxRunTimeMs) {
+        console.log(`Runtime limit reached: ${currentRunTimeMs}ms/${this.maxRunTimeMs}ms`);
+        return true;
+      }
     }
 
     return false;
@@ -409,11 +425,12 @@ export abstract class BaseAgent implements IAgent {
     // Increment turn count and check limits (only for new calls, not recursive ones)
     this.turnCount++;
     if (this.shouldTerminateFromLimits()) {
+      const currentRunTimeMs = this.startTimeMs ? Date.now() - this.startTimeMs : 0;
       const limitMsg = `Task terminated due to limits reached. Turn: ${
         this.turnCount
       }/${this.maxTurns || "unlimited"}, Cost: $${this.totalCostUsd.toFixed(
         4
-      )}/${this.maxSpend ? "$" + this.maxSpend.toFixed(4) : "unlimited"}`;
+      )}/${this.maxSpend ? "$" + this.maxSpend.toFixed(4) : "unlimited"}, Runtime: ${currentRunTimeMs}ms/${this.maxRunTimeMs ? this.maxRunTimeMs + "ms" : "unlimited"}`;
       this.agentEvents.emit(this.eventTypes.done, limitMsg);
       return limitMsg;
     }
