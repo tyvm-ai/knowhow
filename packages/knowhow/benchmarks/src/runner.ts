@@ -251,12 +251,17 @@ export class BenchmarkRunner {
       const result = await this.runExercise(exercise);
       results.push(result);
 
-      // Log result
+      // Log individual result with progress
+      console.log(chalk.green(`✓ Exercise ${results.length}/${exercises.length} completed: ${exercise.name}`));
       const statusColor = result.status === "success" ? chalk.green : chalk.red;
       console.log(statusColor(`  Status: ${result.status}`));
       console.log(chalk.gray(`  Turns: ${result.turns}`));
       console.log(chalk.gray(`  Time: ${result.timeElapsed.toFixed(2)}s`));
       console.log(chalk.gray(`  Cost: $${result.cost.toFixed(4)}\n`));
+
+      // Save incremental results after each exercise
+      const incrementalResults = this.generateResults(results, startTime, new Date());
+      await this.saveIncrementalResults(incrementalResults);
     }
 
     const endTime = new Date();
@@ -666,14 +671,14 @@ export class BenchmarkRunner {
   private generateResultsPath(): string {
     const commitHash = this.getCommitHash();
     const dateStr = this.formatDateDash();
-    const providerModel = `${this.provider}-${this.model}`;
+    const modelFileName = `${this.provider}-${this.model}.json`;
 
     // Use different base paths for local vs container
     const baseDir = process.env.CONTAINER
       ? "/app/knowhow/benchmarks/results"
       : path.join(__dirname, "..", "results");
 
-    return path.join(baseDir, commitHash, dateStr, `${providerModel}.json`);
+    return path.join(baseDir, commitHash, dateStr, this.provider, modelFileName);
   }
 
   private async saveResults(results: BenchmarkResults): Promise<void> {
@@ -683,6 +688,21 @@ export class BenchmarkRunner {
     // Ensure the directory exists
     await fs.mkdir(path.dirname(resultsPath), { recursive: true });
     await fs.writeFile(resultsPath, JSON.stringify(results, null, 2));
+  }
+
+  private async saveIncrementalResults(results: BenchmarkResults): Promise<void> {
+    try {
+      // Generate the new structured path for incremental results
+      const resultsPath = this.generateResultsPath();
+      
+      // Ensure the directory exists
+      await fs.mkdir(path.dirname(resultsPath), { recursive: true });
+      await fs.writeFile(resultsPath, JSON.stringify(results, null, 2));
+      console.log(chalk.gray(`  → Incremental results saved`));
+    } catch (error) {
+      // Don't crash the benchmark if incremental save fails
+      console.log(chalk.yellow(`  ⚠ Warning: Failed to save incremental results: ${error}`));
+    }
   }
 
   private printSummary(results: BenchmarkResults): void {

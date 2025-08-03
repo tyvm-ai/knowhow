@@ -432,4 +432,37 @@ This will help me understand the content.`,
       expect(args.input).toBe("invalid json here");
     });
   });
+
+  describe("Incomplete XML tool calls", () => {
+    it("should handle incomplete tool calls with missing closing tags", () => {
+      const message: Message = {
+        role: "assistant",
+        content: `I see the issue. Let me make a clean patch with all the changes:
+
+<tool_call>
+{"name": "patchFile", "arguments": {"filePath": "bank-account.js", "patch": "//=============================================================================\\n// This is the complete implementation for the Bank Account exercise\\n//=============================================================================\\n\\nexport class BankAccount {\\n  constructor() {\\n    this._balance = 0;\\n    this._isOpen = false;\\n  }\\n\\n  open() {\\n    if (this._isOpen) {\\n      throw new ValueError();\\n    }\\n    this._isOpen = true;\\n    this._balance = 0;\\n  }\\n\\n  close() {\\n    if (!this._isOpen) {\\n      throw new ValueError();\\n    }\\n    this._isOpen = false;\\n  }\\n\\n  deposit(amount) {\\n    if (!this._isOpen || amount <= 0) {\\n      throw new ValueError();\\n    }\\n    this._balance += amount;\\n  }\\n\\n  withdraw(amount) {\\n    if (!this._isOpen || amount <= 0 || amount > this._balance) {\\n      throw new ValueError();\\n    }\\n    this._balance -= amount;\\n  }\\n\\n  get balance() {\\n    if (!this._isOpen) {\\n      throw new ValueError();\\n    }\\n    return this._balance;\\n  }\\n}\\n\\nexport class ValueError extends Error {\\n  constructor() {\\n    super('Bank account error');\\n  }\\n}"}}`,
+      };
+
+      const processorFn = processor.createProcessor();
+      processorFn([], [message]);
+
+      expect(message.tool_calls).toBeDefined();
+      expect(message.tool_calls!.length).toBe(1);
+
+      const toolCall = message.tool_calls![0];
+      expect(toolCall.function.name).toBe("patchFile");
+
+      // Parse the arguments to ensure they're correctly extracted despite missing closing tag
+      const args = JSON.parse(toolCall.function.arguments);
+      expect(args.filePath).toBe("bank-account.js");
+      expect(args.patch).toBeDefined();
+      expect(typeof args.patch).toBe("string");
+      expect(args.patch).toContain("export class BankAccount");
+      expect(args.patch).toContain("export class ValueError");
+      
+      // Verify the processor correctly handled the incomplete XML (missing </tool_call>)
+      expect(toolCall.id).toBeDefined();
+      expect(toolCall.type).toBe("function");
+    });
+  });
 });
