@@ -2,7 +2,7 @@ import fs from "fs";
 import { PluginBase, PluginMeta } from "../PluginBase";
 import { MinimalEmbedding } from "../../types";
 import { convertToText, processVideo } from "../../conversion";
-import { Downloader } from "./downloader";
+import { services } from "../../services";
 
 export class DownloaderPlugin extends PluginBase {
   static readonly meta: PluginMeta = {
@@ -40,6 +40,7 @@ export class DownloaderPlugin extends PluginBase {
       try {
         console.log("DOWNLOADER PLUGIN: attempting", url);
         const downloadDir = ".knowhow/downloads/";
+        const { Downloader } = services();
         const fileInfo = await Downloader.download(url, downloadDir);
         const filePath = `${downloadDir}${fileInfo.id}.${fileInfo.ext}`;
         transcript += await convertToText(filePath);
@@ -59,6 +60,7 @@ export class DownloaderPlugin extends PluginBase {
     const embeddings: MinimalEmbedding[] = [];
     for (const url of urls) {
       const downloadDir = ".knowhow/downloads/";
+      const { Downloader } = services();
       const fileInfo = await Downloader.download(url, downloadDir);
       const filePath = `${downloadDir}${fileInfo.id}.${fileInfo.ext}`;
       const processed = await processVideo(filePath);

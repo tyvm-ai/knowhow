@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
   const model = searchParams.get('model');
   const provider = searchParams.get('provider');
   const language = searchParams.get('language');
+  const timestamp = searchParams.get('timestamp'); // Optional parameter to get specific run
 
   if (!model || !provider || !language) {
     return NextResponse.json(
@@ -86,31 +87,80 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Use the most recent file (sort by full path to get most recent based on directory structure)
-    const latestFile = matchingFiles.sort().reverse()[0];
-    const filePath = latestFile; // Already a full path from our recursive search
+    // Load all matching benchmark results
+    const allResults: BenchmarkResults[] = [];
+    const filePathMap = new Map<BenchmarkResults, string>(); // Track file paths for commit extraction
     
-    const fileContent = fs.readFileSync(filePath, 'utf-8');
-    let benchmarkData: BenchmarkResults;
-    
-    try {
-      benchmarkData = JSON.parse(fileContent);
-    } catch (parseError) {
+    for (const filePath of matchingFiles) {
+      try {
+        const fileContent = fs.readFileSync(filePath, 'utf-8');
+        const benchmarkData = JSON.parse(fileContent);
+        
+        // Validate that we have the expected structure
+        if (benchmarkData.exercises && benchmarkData.summary && benchmarkData.config) {
+          allResults.push(benchmarkData);
+          filePathMap.set(benchmarkData, filePath);
+        }
+      } catch (parseError) {
+        console.error(`Error parsing file ${filePath}:`, parseError);
+        // Continue with other files
+      }
+    }
+
+    if (allResults.length === 0) {
       return NextResponse.json(
-        { error: 'Invalid JSON in benchmark result file' },
-        { status: 500 }
+        { error: 'No valid benchmark results found' },
+        { status: 404 }
       );
     }
 
-    // Validate that we have the expected structure
-    if (!benchmarkData.exercises || !benchmarkData.summary || !benchmarkData.config) {
-      return NextResponse.json(
-        { error: 'Invalid benchmark data structure' },
-        { status: 500 }
-      );
+    // Sort results by endTime (most recent first)
+    allResults.sort((a, b) => new Date(b.endTime).getTime() - new Date(a.endTime).getTime());
+
+    // If timestamp is provided, return that specific run
+    if (timestamp) {
+      const targetTime = timestamp;
+      const specificRun = allResults.find(result => result.endTime === targetTime);
+      
+      if (specificRun) {
+        return NextResponse.json({
+          latest: specificRun,
+          history: [], // Don't need history for specific run view
+          totalRuns: allResults.length
+        });
+      }
     }
 
-    return NextResponse.json(benchmarkData);
+    // Get the most recent result as the main data
+    const latestResult = allResults[0];
+
+    // Create historical summary for previous runs (excluding the latest)
+    const previousRuns = allResults.slice(1); // Skip the first (latest) result
+    const historicalRuns = previousRuns.map(result => ({
+      endTime: result.endTime,
+      successRate: result.summary.successRate * 100, // Convert to percentage
+      totalExercises: result.summary.totalExercises,
+      totalCost: result.summary.totalCost,
+      averageTime: result.summary.averageTime,
+      averageTurns: result.summary.averageTurns,
+      // Include commit info if available
+      commitHash: result.commitHash || 'unknown',
+      // Calculate average cost per exercise
+      averageCost: result.summary.totalCost / result.summary.totalExercises
+    }));
+
+    // Return both the latest detailed result and historical summary
+    const response = {
+      // Latest detailed benchmark data
+      latest: latestResult,
+      // Historical performance summary
+      history: historicalRuns,
+      // Total number of runs
+      totalRuns: allResults.length
+    };
+
+    return NextResponse.json(response);
+
     
   } catch (error) {
     console.error('Error reading benchmark detail:', error);

@@ -1,0 +1,2990 @@
+{
+  "config": {
+    "language": "javascript",
+    "maxExercises": 10,
+    "model": "gpt-4.1",
+    "provider": "openai",
+    "limits": {
+      "maxTurns": 30,
+      "maxTime": 300,
+      "maxCost": 1
+    },
+    "outputFile": "results.json"
+  },
+  "exercises": [
+    {
+      "exerciseName": "accumulate",
+      "status": "success",
+      "turns": 7,
+      "testResult": {
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "skipped": 0,
+        "success": true,
+        "output": "{\"numFailedTestSuites\":0,\"numFailedTests\":0,\"numPassedTestSuites\":1,\"numPassedTests\":5,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":5,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754203633452,\"success\":true,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"accumulate()\"],\"duration\":3,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulation empty\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"accumulation empty\"},{\"ancestorTitles\":[\"accumulate()\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulate squares\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"accumulate squares\"},{\"ancestorTitles\":[\"accumulate()\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulate upcases\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"accumulate upcases\"},{\"ancestorTitles\":[\"accumulate()\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulate reversed strings\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"accumulate reversed strings\"},{\"ancestorTitles\":[\"accumulate()\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulate recursively\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"accumulate recursively\"}],\"endTime\":1754203633644,\"message\":\"\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/accumulate/accumulate.spec.js\",\"startTime\":1754203633461,\"status\":\"passed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 0,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 1,
+          "numPassedTests": 5,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 5,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754203633452,
+          "success": true,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": 3,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulation empty",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "accumulation empty"
+                },
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulate squares",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "accumulate squares"
+                },
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulate upcases",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "accumulate upcases"
+                },
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulate reversed strings",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "accumulate reversed strings"
+                },
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulate recursively",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "accumulate recursively"
+                }
+              ],
+              "endTime": 1754203633644,
+              "message": "",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/accumulate/accumulate.spec.js",
+              "startTime": 1754203633461,
+              "status": "passed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 18.082,
+      "cost": 0.107503969664,
+      "startTime": "2025-08-03T06:46:55.571Z",
+      "endTime": "2025-08-03T06:47:13.653Z",
+      "finalOutput": "The accumulate function has been implemented in accumulate.js using a manual loop (without Array.map or similar standard library methods). I also unskipped all the tests in accumulate.spec.js. All tests now pass successfully:\n\n- The solution supports all the required behavior, including accumulating squares, upcasing strings, reversing, and recursive accumulation.\n\nYou can review accumulate.js to see the final implementation:\n\n```javascript\nexport const accumulate = (collection, fn) => {\n  const result = [];\n  for (let i = 0; i < collection.length; i++) {\n    result.push(fn(collection[i]));\n  }\n  return result;\n};\n```\n\nTask complete! Let me know if you need further enhancements or explanations."
+    },
+    {
+      "exerciseName": "acronym",
+      "status": "success",
+      "turns": 10,
+      "testResult": {
+        "passed": 9,
+        "failed": 0,
+        "total": 9,
+        "skipped": 0,
+        "success": true,
+        "output": "{\"numFailedTestSuites\":0,\"numFailedTests\":0,\"numPassedTestSuites\":1,\"numPassedTests\":9,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":9,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754203662734,\"success\":true,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Acronyms are produced from title cased phrases\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"title cased phrases\"},{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Acronyms are produced from other title cased phrases\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"other title cased phrases\"},{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Acronyms are produced from phrases with punctuation\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"phrases with punctuation\"},{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Acronyms are produced from phrases with all uppercase words\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"phrases with all uppercase words\"},{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Acronyms are produced from phrases with punctuation without whitespace\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"phrases with punctuation without whitespace\"},{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Acronyms are produced from long phrases\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"long phrases\"},{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Acronyms are produced from phrases with consecutive delimiters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"phrases with consecutive delimiters\"},{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Acronyms are produced from phrases with apostrophes\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"phrases with apostrophes\"},{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Acronyms are produced from phrases with underscore emphasis\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"phrases with underscore emphasis\"}],\"endTime\":1754203662816,\"message\":\"\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/acronym/acronym.spec.js\",\"startTime\":1754203662743,\"status\":\"passed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 0,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 1,
+          "numPassedTests": 9,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 9,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754203662734,
+          "success": true,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Acronyms are produced from title cased phrases",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "title cased phrases"
+                },
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Acronyms are produced from other title cased phrases",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "other title cased phrases"
+                },
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Acronyms are produced from phrases with punctuation",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "phrases with punctuation"
+                },
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Acronyms are produced from phrases with all uppercase words",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "phrases with all uppercase words"
+                },
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Acronyms are produced from phrases with punctuation without whitespace",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "phrases with punctuation without whitespace"
+                },
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Acronyms are produced from long phrases",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "long phrases"
+                },
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Acronyms are produced from phrases with consecutive delimiters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "phrases with consecutive delimiters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Acronyms are produced from phrases with apostrophes",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "phrases with apostrophes"
+                },
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Acronyms are produced from phrases with underscore emphasis",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "phrases with underscore emphasis"
+                }
+              ],
+              "endTime": 1754203662816,
+              "message": "",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/acronym/acronym.spec.js",
+              "startTime": 1754203662743,
+              "status": "passed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 29.187,
+      "cost": 0.185561933824,
+      "startTime": "2025-08-03T06:47:13.653Z",
+      "endTime": "2025-08-03T06:47:42.840Z",
+      "finalOutput": "The acronym exercise is complete and all requirements are fulfilled.\n\n- Implemented the `parse` function in `acronym.js` to satisfy the problem statement, including handling of punctuation and delimiters.\n- Unskipped all tests in `acronym.spec.js` to ensure full coverage.\n- Ran the test suite: all 9 cases pass successfully.\n- Performed lint checks and no issues were found.\n\nYou now have a robust acronym generator that meets the provided specifications and passes all tests."
+    },
+    {
+      "exerciseName": "affine-cipher",
+      "status": "success",
+      "turns": 30,
+      "testResult": {
+        "passed": 13,
+        "failed": 3,
+        "total": 16,
+        "skipped": 0,
+        "success": false,
+        "output": "{\"numFailedTestSuites\":1,\"numFailedTests\":3,\"numPassedTestSuites\":0,\"numPassedTests\":13,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":16,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754203755280,\"success\":false,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode yes\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode yes\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode no\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode no\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode OMG\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode OMG\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode O M G\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode O M G\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode mindblowingly\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode mindblowingly\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":2,\"failureDetails\":[{\"matcherResult\":{\"actual\":\"jqgjc rw123jqg jcrw\",\"expected\":\"jqgjc rw123 jqgjc rw\",\"message\":\"expect(received).toBe(expected) // Object.is equality\\n\\nExpected: \\\"jqgjc rw123 jqgjc rw\\\"\\nReceived: \\\"jqgjc rw123jqg jcrw\\\"\",\"name\":\"toBe\",\"pass\":false}}],\"failureMessages\":[\"Error: expect(received).toBe(expected) // Object.is equality\\n\\nExpected: \\\"jqgjc rw123 jqgjc rw\\\"\\nReceived: \\\"jqgjc rw123jqg jcrw\\\"\\n    at Object.toBe (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/affine-cipher.spec.js:27:65)\\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:298:28)\\n    at new Promise (<anonymous>)\\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:231:10)\\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:316:40)\\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:252:3)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:126:9)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\\n    at run (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:71:3)\\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:367:16)\\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:444:34)\"],\"fullName\":\"Affine cipher encode encode numbers\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"failed\",\"title\":\"encode numbers\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode deep thought\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode deep thought\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode all the letters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode all the letters\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode with a not coprime to m\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode with a not coprime to m\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode exercism\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode exercism\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode a sentence\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode a sentence\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode numbers\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode numbers\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":1,\"failureDetails\":[{\"matcherResult\":{\"actual\":\"thequickbrownfoxPuSVYo\\\\erthelazyJoM\",\"expected\":\"thequickbrownfoxjumpsoverthelazydog\",\"message\":\"expect(received).toBe(expected) // Object.is equality\\n\\nExpected: \\\"thequickbrownfoxjumpsoverthelazydog\\\"\\nReceived: \\\"thequickbrownfoxPuSVYo\\\\\\\\erthelazyJoM\\\"\",\"name\":\"toBe\",\"pass\":false}}],\"failureMessages\":[\"Error: expect(received).toBe(expected) // Object.is equality\\n\\nExpected: \\\"thequickbrownfoxjumpsoverthelazydog\\\"\\nReceived: \\\"thequickbrownfoxPuSVYo\\\\\\\\erthelazyJoM\\\"\\n    at Object.toBe (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/affine-cipher.spec.js:73:9)\\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:298:28)\\n    at new Promise (<anonymous>)\\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:231:10)\\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:316:40)\\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:252:3)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:126:9)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\\n    at run (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:71:3)\\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:367:16)\\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:444:34)\"],\"fullName\":\"Affine cipher decode decode all the letters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"failed\",\"title\":\"decode all the letters\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[{\"matcherResult\":{\"actual\":\"thequickbrownfoxPuSVYo\\\\erthelazyJoM\",\"expected\":\"thequickbrownfoxjumpsoverthelazydog\",\"message\":\"expect(received).toBe(expected) // Object.is equality\\n\\nExpected: \\\"thequickbrownfoxjumpsoverthelazydog\\\"\\nReceived: \\\"thequickbrownfoxPuSVYo\\\\\\\\erthelazyJoM\\\"\",\"name\":\"toBe\",\"pass\":false}}],\"failureMessages\":[\"Error: expect(received).toBe(expected) // Object.is equality\\n\\nExpected: \\\"thequickbrownfoxjumpsoverthelazydog\\\"\\nReceived: \\\"thequickbrownfoxPuSVYo\\\\\\\\erthelazyJoM\\\"\\n    at Object.toBe (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/affine-cipher.spec.js:79:9)\\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:298:28)\\n    at new Promise (<anonymous>)\\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:231:10)\\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:316:40)\\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:252:3)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:126:9)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\\n    at run (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:71:3)\\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:367:16)\\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:444:34)\"],\"fullName\":\"Affine cipher decode decode with no spaces in input\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"failed\",\"title\":\"decode with no spaces in input\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode with too many spaces\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode with too many spaces\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode with a not coprime to m\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode with a not coprime to m\"}],\"endTime\":1754203755574,\"message\":\"  ● Affine cipher › encode › encode numbers\\n\\n    expect(received).toBe(expected) // Object.is equality\\n\\n    Expected: \\\"jqgjc rw123 jqgjc rw\\\"\\n    Received: \\\"jqgjc rw123jqg jcrw\\\"\\n\\n      25 |\\n      26 |     test('encode numbers', () => {\\n    > 27 |       expect(encode('Testing,1 2 3, testing.', { a: 3, b: 4 })).toBe(\\n         |                                                                 ^\\n      28 |         'jqgjc rw123 jqgjc rw',\\n      29 |       );\\n      30 |     });\\n\\n      at Object.toBe (affine-cipher.spec.js:27:65)\\n\\n  ● Affine cipher › decode › decode all the letters\\n\\n    expect(received).toBe(expected) // Object.is equality\\n\\n    Expected: \\\"thequickbrownfoxjumpsoverthelazydog\\\"\\n    Received: \\\"thequickbrownfoxPuSVYo\\\\\\\\erthelazyJoM\\\"\\n\\n      71 |       expect(\\n      72 |         decode('swxtj npvyk lruol iejdc blaxk swxmh qzglf', { a: 17, b: 33 }),\\n    > 73 |       ).toBe('thequickbrownfoxjumpsoverthelazydog');\\n         |         ^\\n      74 |     });\\n      75 |\\n      76 |     test('decode with no spaces in input', () => {\\n\\n      at Object.toBe (affine-cipher.spec.js:73:9)\\n\\n  ● Affine cipher › decode › decode with no spaces in input\\n\\n    expect(received).toBe(expected) // Object.is equality\\n\\n    Expected: \\\"thequickbrownfoxjumpsoverthelazydog\\\"\\n    Received: \\\"thequickbrownfoxPuSVYo\\\\\\\\erthelazyJoM\\\"\\n\\n      77 |       expect(\\n      78 |         decode('swxtjnpvyklruoliejdcblaxkswxmhqzglf', { a: 17, b: 33 }),\\n    > 79 |       ).toBe('thequickbrownfoxjumpsoverthelazydog');\\n         |         ^\\n      80 |     });\\n      81 |\\n      82 |     test('decode with too many spaces', () => {\\n\\n      at Object.toBe (affine-cipher.spec.js:79:9)\\n\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/affine-cipher.spec.js\",\"startTime\":1754203755297,\"status\":\"failed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 1,
+          "numFailedTests": 3,
+          "numPassedTestSuites": 0,
+          "numPassedTests": 13,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 16,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754203755280,
+          "success": false,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode yes",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode yes"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode no",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode no"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode OMG",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode OMG"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode O M G",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode O M G"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode mindblowingly",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode mindblowingly"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": 2,
+                  "failureDetails": [
+                    {
+                      "matcherResult": {
+                        "actual": "jqgjc rw123jqg jcrw",
+                        "expected": "jqgjc rw123 jqgjc rw",
+                        "message": "expect(received).toBe(expected) // Object.is equality\n\nExpected: \"jqgjc rw123 jqgjc rw\"\nReceived: \"jqgjc rw123jqg jcrw\"",
+                        "name": "toBe",
+                        "pass": false
+                      }
+                    }
+                  ],
+                  "failureMessages": [
+                    "Error: expect(received).toBe(expected) // Object.is equality\n\nExpected: \"jqgjc rw123 jqgjc rw\"\nReceived: \"jqgjc rw123jqg jcrw\"\n    at Object.toBe (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/affine-cipher.spec.js:27:65)\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:298:28)\n    at new Promise (<anonymous>)\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:231:10)\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:316:40)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:252:3)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:126:9)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\n    at run (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:71:3)\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:367:16)\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:444:34)"
+                  ],
+                  "fullName": "Affine cipher encode encode numbers",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "failed",
+                  "title": "encode numbers"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode deep thought",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode deep thought"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode all the letters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode all the letters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode with a not coprime to m",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode with a not coprime to m"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode exercism",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode exercism"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode a sentence",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode a sentence"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode numbers",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode numbers"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [
+                    {
+                      "matcherResult": {
+                        "actual": "thequickbrownfoxPuSVYo\\erthelazyJoM",
+                        "expected": "thequickbrownfoxjumpsoverthelazydog",
+                        "message": "expect(received).toBe(expected) // Object.is equality\n\nExpected: \"thequickbrownfoxjumpsoverthelazydog\"\nReceived: \"thequickbrownfoxPuSVYo\\\\erthelazyJoM\"",
+                        "name": "toBe",
+                        "pass": false
+                      }
+                    }
+                  ],
+                  "failureMessages": [
+                    "Error: expect(received).toBe(expected) // Object.is equality\n\nExpected: \"thequickbrownfoxjumpsoverthelazydog\"\nReceived: \"thequickbrownfoxPuSVYo\\\\erthelazyJoM\"\n    at Object.toBe (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/affine-cipher.spec.js:73:9)\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:298:28)\n    at new Promise (<anonymous>)\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:231:10)\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:316:40)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:252:3)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:126:9)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\n    at run (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:71:3)\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:367:16)\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:444:34)"
+                  ],
+                  "fullName": "Affine cipher decode decode all the letters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "failed",
+                  "title": "decode all the letters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [
+                    {
+                      "matcherResult": {
+                        "actual": "thequickbrownfoxPuSVYo\\erthelazyJoM",
+                        "expected": "thequickbrownfoxjumpsoverthelazydog",
+                        "message": "expect(received).toBe(expected) // Object.is equality\n\nExpected: \"thequickbrownfoxjumpsoverthelazydog\"\nReceived: \"thequickbrownfoxPuSVYo\\\\erthelazyJoM\"",
+                        "name": "toBe",
+                        "pass": false
+                      }
+                    }
+                  ],
+                  "failureMessages": [
+                    "Error: expect(received).toBe(expected) // Object.is equality\n\nExpected: \"thequickbrownfoxjumpsoverthelazydog\"\nReceived: \"thequickbrownfoxPuSVYo\\\\erthelazyJoM\"\n    at Object.toBe (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/affine-cipher.spec.js:79:9)\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:298:28)\n    at new Promise (<anonymous>)\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:231:10)\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:316:40)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:252:3)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:126:9)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\n    at run (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:71:3)\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:367:16)\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:444:34)"
+                  ],
+                  "fullName": "Affine cipher decode decode with no spaces in input",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "failed",
+                  "title": "decode with no spaces in input"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode with too many spaces",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode with too many spaces"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode with a not coprime to m",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode with a not coprime to m"
+                }
+              ],
+              "endTime": 1754203755574,
+              "message": "  ● Affine cipher › encode › encode numbers\n\n    expect(received).toBe(expected) // Object.is equality\n\n    Expected: \"jqgjc rw123 jqgjc rw\"\n    Received: \"jqgjc rw123jqg jcrw\"\n\n      25 |\n      26 |     test('encode numbers', () => {\n    > 27 |       expect(encode('Testing,1 2 3, testing.', { a: 3, b: 4 })).toBe(\n         |                                                                 ^\n      28 |         'jqgjc rw123 jqgjc rw',\n      29 |       );\n      30 |     });\n\n      at Object.toBe (affine-cipher.spec.js:27:65)\n\n  ● Affine cipher › decode › decode all the letters\n\n    expect(received).toBe(expected) // Object.is equality\n\n    Expected: \"thequickbrownfoxjumpsoverthelazydog\"\n    Received: \"thequickbrownfoxPuSVYo\\\\erthelazyJoM\"\n\n      71 |       expect(\n      72 |         decode('swxtj npvyk lruol iejdc blaxk swxmh qzglf', { a: 17, b: 33 }),\n    > 73 |       ).toBe('thequickbrownfoxjumpsoverthelazydog');\n         |         ^\n      74 |     });\n      75 |\n      76 |     test('decode with no spaces in input', () => {\n\n      at Object.toBe (affine-cipher.spec.js:73:9)\n\n  ● Affine cipher › decode › decode with no spaces in input\n\n    expect(received).toBe(expected) // Object.is equality\n\n    Expected: \"thequickbrownfoxjumpsoverthelazydog\"\n    Received: \"thequickbrownfoxPuSVYo\\\\erthelazyJoM\"\n\n      77 |       expect(\n      78 |         decode('swxtjnpvyklruoliejdcblaxkswxmhqzglf', { a: 17, b: 33 }),\n    > 79 |       ).toBe('thequickbrownfoxjumpsoverthelazydog');\n         |         ^\n      80 |     });\n      81 |\n      82 |     test('decode with too many spaces', () => {\n\n      at Object.toBe (affine-cipher.spec.js:79:9)\n",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/affine-cipher.spec.js",
+              "startTime": 1754203755297,
+              "status": "failed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 92.748,
+      "cost": 1.00051766976,
+      "startTime": "2025-08-03T06:47:42.840Z",
+      "endTime": "2025-08-03T06:49:15.588Z",
+      "finalOutput": "Task terminated due to limits reached. Turn: 30/30, Cost: $1.0005/$1.0000"
+    },
+    {
+      "exerciseName": "all-your-base",
+      "status": "success",
+      "turns": 28,
+      "testResult": {
+        "passed": 18,
+        "failed": 0,
+        "total": 18,
+        "skipped": 0,
+        "success": true,
+        "output": "{\"numFailedTestSuites\":0,\"numFailedTests\":0,\"numPassedTestSuites\":1,\"numPassedTests\":18,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":18,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754203865487,\"success\":true,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"All Your Base\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base binary to multiple decimal\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"binary to multiple decimal\"},{\"ancestorTitles\":[\"All Your Base\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base decimal to binary\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decimal to binary\"},{\"ancestorTitles\":[\"All Your Base\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base trinary to hexadecimal\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"trinary to hexadecimal\"},{\"ancestorTitles\":[\"All Your Base\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base hexadecimal to trinary\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"hexadecimal to trinary\"},{\"ancestorTitles\":[\"All Your Base\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base 15-bit integer\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"15-bit integer\"},{\"ancestorTitles\":[\"All Your Base\"],\"duration\":3,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base empty list\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"empty list\"},{\"ancestorTitles\":[\"All Your Base\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base single zero\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"single zero\"},{\"ancestorTitles\":[\"All Your Base\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base multiple zeros\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"multiple zeros\"},{\"ancestorTitles\":[\"All Your Base\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base leading zeros\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"leading zeros\"},{\"ancestorTitles\":[\"All Your Base\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base negative digit\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"negative digit\"},{\"ancestorTitles\":[\"All Your Base\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base invalid positive digit\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"invalid positive digit\"},{\"ancestorTitles\":[\"All Your Base\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base first base is one\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"first base is one\"},{\"ancestorTitles\":[\"All Your Base\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base second base is one\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"second base is one\"},{\"ancestorTitles\":[\"All Your Base\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base first base is zero\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"first base is zero\"},{\"ancestorTitles\":[\"All Your Base\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base second base is zero\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"second base is zero\"},{\"ancestorTitles\":[\"All Your Base\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base first base is negative\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"first base is negative\"},{\"ancestorTitles\":[\"All Your Base\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base second base is negative\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"second base is negative\"},{\"ancestorTitles\":[\"All Your Base\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"All Your Base both bases are negative\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"both bases are negative\"}],\"endTime\":1754203865704,\"message\":\"\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/all-your-base/all-your-base.spec.js\",\"startTime\":1754203865496,\"status\":\"passed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 0,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 1,
+          "numPassedTests": 18,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 18,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754203865487,
+          "success": true,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base binary to multiple decimal",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "binary to multiple decimal"
+                },
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base decimal to binary",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decimal to binary"
+                },
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base trinary to hexadecimal",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "trinary to hexadecimal"
+                },
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base hexadecimal to trinary",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "hexadecimal to trinary"
+                },
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base 15-bit integer",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "15-bit integer"
+                },
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 3,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base empty list",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "empty list"
+                },
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base single zero",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "single zero"
+                },
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base multiple zeros",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "multiple zeros"
+                },
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base leading zeros",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "leading zeros"
+                },
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base negative digit",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "negative digit"
+                },
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base invalid positive digit",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "invalid positive digit"
+                },
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base first base is one",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "first base is one"
+                },
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base second base is one",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "second base is one"
+                },
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base first base is zero",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "first base is zero"
+                },
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base second base is zero",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "second base is zero"
+                },
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base first base is negative",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "first base is negative"
+                },
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base second base is negative",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "second base is negative"
+                },
+                {
+                  "ancestorTitles": [
+                    "All Your Base"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "All Your Base both bases are negative",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "both bases are negative"
+                }
+              ],
+              "endTime": 1754203865704,
+              "message": "",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/all-your-base/all-your-base.spec.js",
+              "startTime": 1754203865496,
+              "status": "passed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 110.126,
+      "cost": 1.026641678208,
+      "startTime": "2025-08-03T06:49:15.588Z",
+      "endTime": "2025-08-03T06:51:05.714Z",
+      "finalOutput": "Task terminated due to limits reached. Turn: 28/30, Cost: $1.0266/$1.0000"
+    },
+    {
+      "exerciseName": "allergies",
+      "status": "success",
+      "turns": 12,
+      "testResult": {
+        "passed": 50,
+        "failed": 0,
+        "total": 50,
+        "skipped": 0,
+        "success": true,
+        "output": "{\"numFailedTestSuites\":0,\"numFailedTests\":0,\"numPassedTestSuites\":1,\"numPassedTests\":50,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":50,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754203882891,\"success\":true,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"Allergies\",\"testing for eggs allergy\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for eggs allergy not allergic to anything\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"not allergic to anything\"},{\"ancestorTitles\":[\"Allergies\",\"testing for eggs allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for eggs allergy allergic only to eggs\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic only to eggs\"},{\"ancestorTitles\":[\"Allergies\",\"testing for eggs allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for eggs allergy allergic to eggs and something else\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to eggs and something else\"},{\"ancestorTitles\":[\"Allergies\",\"testing for eggs allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for eggs allergy allergic to something, but not eggs\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to something, but not eggs\"},{\"ancestorTitles\":[\"Allergies\",\"testing for eggs allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for eggs allergy allergic to everything\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to everything\"},{\"ancestorTitles\":[\"Allergies\",\"testing for peanuts allergy\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for peanuts allergy not allergic to anything\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"not allergic to anything\"},{\"ancestorTitles\":[\"Allergies\",\"testing for peanuts allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for peanuts allergy allergic only to peanuts\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic only to peanuts\"},{\"ancestorTitles\":[\"Allergies\",\"testing for peanuts allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for peanuts allergy allergic to peanuts and something else\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to peanuts and something else\"},{\"ancestorTitles\":[\"Allergies\",\"testing for peanuts allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for peanuts allergy allergic to something, but not peanuts\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to something, but not peanuts\"},{\"ancestorTitles\":[\"Allergies\",\"testing for peanuts allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for peanuts allergy allergic to everything\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to everything\"},{\"ancestorTitles\":[\"Allergies\",\"testing for shellfish allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for shellfish allergy not allergic to anything\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"not allergic to anything\"},{\"ancestorTitles\":[\"Allergies\",\"testing for shellfish allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for shellfish allergy allergic only to shellfish\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic only to shellfish\"},{\"ancestorTitles\":[\"Allergies\",\"testing for shellfish allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for shellfish allergy allergic to shellfish and something else\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to shellfish and something else\"},{\"ancestorTitles\":[\"Allergies\",\"testing for shellfish allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for shellfish allergy allergic to something, but not shellfish\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to something, but not shellfish\"},{\"ancestorTitles\":[\"Allergies\",\"testing for shellfish allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for shellfish allergy allergic to everything\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to everything\"},{\"ancestorTitles\":[\"Allergies\",\"testing for strawberries allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for strawberries allergy not allergic to anything\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"not allergic to anything\"},{\"ancestorTitles\":[\"Allergies\",\"testing for strawberries allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for strawberries allergy allergic only to strawberries\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic only to strawberries\"},{\"ancestorTitles\":[\"Allergies\",\"testing for strawberries allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for strawberries allergy allergic to strawberries and something else\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to strawberries and something else\"},{\"ancestorTitles\":[\"Allergies\",\"testing for strawberries allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for strawberries allergy allergic to something, but not strawberries\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to something, but not strawberries\"},{\"ancestorTitles\":[\"Allergies\",\"testing for strawberries allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for strawberries allergy allergic to everything\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to everything\"},{\"ancestorTitles\":[\"Allergies\",\"testing for tomatoes allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for tomatoes allergy not allergic to anything\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"not allergic to anything\"},{\"ancestorTitles\":[\"Allergies\",\"testing for tomatoes allergy\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for tomatoes allergy allergic only to tomatoes\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic only to tomatoes\"},{\"ancestorTitles\":[\"Allergies\",\"testing for tomatoes allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for tomatoes allergy allergic to tomatoes and something else\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to tomatoes and something else\"},{\"ancestorTitles\":[\"Allergies\",\"testing for tomatoes allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for tomatoes allergy allergic to something, but not tomatoes\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to something, but not tomatoes\"},{\"ancestorTitles\":[\"Allergies\",\"testing for tomatoes allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for tomatoes allergy allergic to everything\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to everything\"},{\"ancestorTitles\":[\"Allergies\",\"testing for chocolate allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for chocolate allergy not allergic to anything\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"not allergic to anything\"},{\"ancestorTitles\":[\"Allergies\",\"testing for chocolate allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for chocolate allergy allergic only to chocolate\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic only to chocolate\"},{\"ancestorTitles\":[\"Allergies\",\"testing for chocolate allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for chocolate allergy allergic to chocolate and something else\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to chocolate and something else\"},{\"ancestorTitles\":[\"Allergies\",\"testing for chocolate allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for chocolate allergy allergic to something, but not chocolate\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to something, but not chocolate\"},{\"ancestorTitles\":[\"Allergies\",\"testing for chocolate allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for chocolate allergy allergic to everything\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to everything\"},{\"ancestorTitles\":[\"Allergies\",\"testing for pollen allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for pollen allergy not allergic to anything\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"not allergic to anything\"},{\"ancestorTitles\":[\"Allergies\",\"testing for pollen allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for pollen allergy allergic only to pollen\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic only to pollen\"},{\"ancestorTitles\":[\"Allergies\",\"testing for pollen allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for pollen allergy allergic to pollen and something else\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to pollen and something else\"},{\"ancestorTitles\":[\"Allergies\",\"testing for pollen allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for pollen allergy allergic to something, but not pollen\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to something, but not pollen\"},{\"ancestorTitles\":[\"Allergies\",\"testing for pollen allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for pollen allergy allergic to everything\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to everything\"},{\"ancestorTitles\":[\"Allergies\",\"testing for cats allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for cats allergy not allergic to anything\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"not allergic to anything\"},{\"ancestorTitles\":[\"Allergies\",\"testing for cats allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for cats allergy allergic only to cats\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic only to cats\"},{\"ancestorTitles\":[\"Allergies\",\"testing for cats allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for cats allergy allergic to cats and something else\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to cats and something else\"},{\"ancestorTitles\":[\"Allergies\",\"testing for cats allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for cats allergy allergic to something, but not cats\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to something, but not cats\"},{\"ancestorTitles\":[\"Allergies\",\"testing for cats allergy\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies testing for cats allergy allergic to everything\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"allergic to everything\"},{\"ancestorTitles\":[\"Allergies\",\"list when:\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies list when: no allergies\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"no allergies\"},{\"ancestorTitles\":[\"Allergies\",\"list when:\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies list when: just eggs\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"just eggs\"},{\"ancestorTitles\":[\"Allergies\",\"list when:\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies list when: just peanuts\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"just peanuts\"},{\"ancestorTitles\":[\"Allergies\",\"list when:\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies list when: just strawberries\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"just strawberries\"},{\"ancestorTitles\":[\"Allergies\",\"list when:\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies list when: eggs and peanuts\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"eggs and peanuts\"},{\"ancestorTitles\":[\"Allergies\",\"list when:\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies list when: more than eggs but not peanuts\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"more than eggs but not peanuts\"},{\"ancestorTitles\":[\"Allergies\",\"list when:\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies list when: lots of stuff\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"lots of stuff\"},{\"ancestorTitles\":[\"Allergies\",\"list when:\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies list when: everything\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"everything\"},{\"ancestorTitles\":[\"Allergies\",\"list when:\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies list when: no allergen score parts\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"no allergen score parts\"},{\"ancestorTitles\":[\"Allergies\",\"list when:\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Allergies list when: no allergen score parts without highest valid score\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"no allergen score parts without highest valid score\"}],\"endTime\":1754203882970,\"message\":\"\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/allergies/allergies.spec.js\",\"startTime\":1754203882900,\"status\":\"passed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 0,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 1,
+          "numPassedTests": 50,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 50,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754203882891,
+          "success": true,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for eggs allergy"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for eggs allergy not allergic to anything",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "not allergic to anything"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for eggs allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for eggs allergy allergic only to eggs",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic only to eggs"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for eggs allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for eggs allergy allergic to eggs and something else",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to eggs and something else"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for eggs allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for eggs allergy allergic to something, but not eggs",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to something, but not eggs"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for eggs allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for eggs allergy allergic to everything",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to everything"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for peanuts allergy"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for peanuts allergy not allergic to anything",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "not allergic to anything"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for peanuts allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for peanuts allergy allergic only to peanuts",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic only to peanuts"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for peanuts allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for peanuts allergy allergic to peanuts and something else",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to peanuts and something else"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for peanuts allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for peanuts allergy allergic to something, but not peanuts",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to something, but not peanuts"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for peanuts allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for peanuts allergy allergic to everything",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to everything"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for shellfish allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for shellfish allergy not allergic to anything",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "not allergic to anything"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for shellfish allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for shellfish allergy allergic only to shellfish",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic only to shellfish"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for shellfish allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for shellfish allergy allergic to shellfish and something else",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to shellfish and something else"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for shellfish allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for shellfish allergy allergic to something, but not shellfish",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to something, but not shellfish"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for shellfish allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for shellfish allergy allergic to everything",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to everything"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for strawberries allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for strawberries allergy not allergic to anything",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "not allergic to anything"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for strawberries allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for strawberries allergy allergic only to strawberries",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic only to strawberries"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for strawberries allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for strawberries allergy allergic to strawberries and something else",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to strawberries and something else"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for strawberries allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for strawberries allergy allergic to something, but not strawberries",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to something, but not strawberries"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for strawberries allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for strawberries allergy allergic to everything",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to everything"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for tomatoes allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for tomatoes allergy not allergic to anything",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "not allergic to anything"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for tomatoes allergy"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for tomatoes allergy allergic only to tomatoes",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic only to tomatoes"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for tomatoes allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for tomatoes allergy allergic to tomatoes and something else",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to tomatoes and something else"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for tomatoes allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for tomatoes allergy allergic to something, but not tomatoes",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to something, but not tomatoes"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for tomatoes allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for tomatoes allergy allergic to everything",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to everything"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for chocolate allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for chocolate allergy not allergic to anything",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "not allergic to anything"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for chocolate allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for chocolate allergy allergic only to chocolate",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic only to chocolate"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for chocolate allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for chocolate allergy allergic to chocolate and something else",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to chocolate and something else"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for chocolate allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for chocolate allergy allergic to something, but not chocolate",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to something, but not chocolate"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for chocolate allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for chocolate allergy allergic to everything",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to everything"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for pollen allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for pollen allergy not allergic to anything",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "not allergic to anything"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for pollen allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for pollen allergy allergic only to pollen",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic only to pollen"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for pollen allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for pollen allergy allergic to pollen and something else",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to pollen and something else"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for pollen allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for pollen allergy allergic to something, but not pollen",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to something, but not pollen"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for pollen allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for pollen allergy allergic to everything",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to everything"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for cats allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for cats allergy not allergic to anything",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "not allergic to anything"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for cats allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for cats allergy allergic only to cats",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic only to cats"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for cats allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for cats allergy allergic to cats and something else",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to cats and something else"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for cats allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for cats allergy allergic to something, but not cats",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to something, but not cats"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "testing for cats allergy"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies testing for cats allergy allergic to everything",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "allergic to everything"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "list when:"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies list when: no allergies",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "no allergies"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "list when:"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies list when: just eggs",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "just eggs"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "list when:"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies list when: just peanuts",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "just peanuts"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "list when:"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies list when: just strawberries",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "just strawberries"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "list when:"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies list when: eggs and peanuts",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "eggs and peanuts"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "list when:"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies list when: more than eggs but not peanuts",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "more than eggs but not peanuts"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "list when:"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies list when: lots of stuff",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "lots of stuff"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "list when:"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies list when: everything",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "everything"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "list when:"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies list when: no allergen score parts",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "no allergen score parts"
+                },
+                {
+                  "ancestorTitles": [
+                    "Allergies",
+                    "list when:"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Allergies list when: no allergen score parts without highest valid score",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "no allergen score parts without highest valid score"
+                }
+              ],
+              "endTime": 1754203882970,
+              "message": "",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/allergies/allergies.spec.js",
+              "startTime": 1754203882900,
+              "status": "passed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 17.285,
+      "cost": 0.291009891456,
+      "startTime": "2025-08-03T06:51:05.714Z",
+      "endTime": "2025-08-03T06:51:22.999Z",
+      "finalOutput": "The allergies exercise is now fully implemented and passing all tests.\n\nWhat was done:\n- Implemented the Allergies class in allergies.js to handle score masking, allergen lookups, and lists.\n- Used relevant bit masking to ignore scores not tied to the main allergen set.\n- All test cases in allergies.spec.js are now enabled and passing.\n- Code has been linted for both allergies.js and allergies.spec.js.\n\nYou are ready to submit! If you need any additional explanation or changes, let me know."
+    },
+    {
+      "exerciseName": "alphametics",
+      "status": "success",
+      "turns": 23,
+      "testResult": {
+        "passed": 9,
+        "failed": 0,
+        "total": 9,
+        "skipped": 0,
+        "success": true,
+        "output": "{\"numFailedTestSuites\":0,\"numFailedTests\":0,\"numPassedTestSuites\":1,\"numPassedTests\":9,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":9,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754203999155,\"success\":true,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"Solve the alphametics puzzle\"],\"duration\":2,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Solve the alphametics puzzle puzzle with three letters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"puzzle with three letters\"},{\"ancestorTitles\":[\"Solve the alphametics puzzle\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Solve the alphametics puzzle solution must have unique value for each letter\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"solution must have unique value for each letter\"},{\"ancestorTitles\":[\"Solve the alphametics puzzle\"],\"duration\":8,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Solve the alphametics puzzle leading zero solution is invalid\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"leading zero solution is invalid\"},{\"ancestorTitles\":[\"Solve the alphametics puzzle\"],\"duration\":6,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Solve the alphametics puzzle puzzle with four letters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"puzzle with four letters\"},{\"ancestorTitles\":[\"Solve the alphametics puzzle\"],\"duration\":138,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Solve the alphametics puzzle puzzle with six letters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"puzzle with six letters\"},{\"ancestorTitles\":[\"Solve the alphametics puzzle\"],\"duration\":396,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Solve the alphametics puzzle puzzle with seven letters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"puzzle with seven letters\"},{\"ancestorTitles\":[\"Solve the alphametics puzzle\"],\"duration\":2308,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Solve the alphametics puzzle puzzle with eight letters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"puzzle with eight letters\"},{\"ancestorTitles\":[\"Solve the alphametics puzzle\"],\"duration\":3188,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Solve the alphametics puzzle puzzle with ten letters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"puzzle with ten letters\"},{\"ancestorTitles\":[\"Solve the alphametics puzzle\"],\"duration\":18363,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Solve the alphametics puzzle puzzle with ten letters and 199 addends\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"puzzle with ten letters and 199 addends\"}],\"endTime\":1754204023705,\"message\":\"\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/alphametics/alphametics.spec.js\",\"startTime\":1754203999171,\"status\":\"passed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 0,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 1,
+          "numPassedTests": 9,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 9,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754203999155,
+          "success": true,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "Solve the alphametics puzzle"
+                  ],
+                  "duration": 2,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Solve the alphametics puzzle puzzle with three letters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "puzzle with three letters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Solve the alphametics puzzle"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Solve the alphametics puzzle solution must have unique value for each letter",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "solution must have unique value for each letter"
+                },
+                {
+                  "ancestorTitles": [
+                    "Solve the alphametics puzzle"
+                  ],
+                  "duration": 8,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Solve the alphametics puzzle leading zero solution is invalid",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "leading zero solution is invalid"
+                },
+                {
+                  "ancestorTitles": [
+                    "Solve the alphametics puzzle"
+                  ],
+                  "duration": 6,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Solve the alphametics puzzle puzzle with four letters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "puzzle with four letters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Solve the alphametics puzzle"
+                  ],
+                  "duration": 138,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Solve the alphametics puzzle puzzle with six letters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "puzzle with six letters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Solve the alphametics puzzle"
+                  ],
+                  "duration": 396,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Solve the alphametics puzzle puzzle with seven letters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "puzzle with seven letters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Solve the alphametics puzzle"
+                  ],
+                  "duration": 2308,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Solve the alphametics puzzle puzzle with eight letters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "puzzle with eight letters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Solve the alphametics puzzle"
+                  ],
+                  "duration": 3188,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Solve the alphametics puzzle puzzle with ten letters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "puzzle with ten letters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Solve the alphametics puzzle"
+                  ],
+                  "duration": 18363,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Solve the alphametics puzzle puzzle with ten letters and 199 addends",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "puzzle with ten letters and 199 addends"
+                }
+              ],
+              "endTime": 1754204023705,
+              "message": "",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/alphametics/alphametics.spec.js",
+              "startTime": 1754203999171,
+              "status": "passed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 140.721,
+      "cost": 0.5704617903360001,
+      "startTime": "2025-08-03T06:51:22.999Z",
+      "endTime": "2025-08-03T06:53:43.720Z",
+      "finalOutput": "The alphametics solver has been implemented in alphametics.js. All tests in alphametics.spec.js are now passing, including for large puzzles like 'SEND + MORE == MONEY' and the extended test cases. The implementation uses a brute-force permutation approach to assign digits to letters, taking care of the constraints (unique digits, no leading zero). If you need further optimizations or explanations of the code, let me know!"
+    },
+    {
+      "exerciseName": "anagram",
+      "status": "success",
+      "turns": 16,
+      "testResult": {
+        "passed": 18,
+        "failed": 0,
+        "total": 18,
+        "skipped": 0,
+        "success": true,
+        "output": "{\"numFailedTestSuites\":0,\"numFailedTests\":0,\"numPassedTestSuites\":1,\"numPassedTests\":18,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":18,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754204063733,\"success\":true,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"Anagram\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram no matches\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"no matches\"},{\"ancestorTitles\":[\"Anagram\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram detects two anagrams\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"detects two anagrams\"},{\"ancestorTitles\":[\"Anagram\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram does not detect anagram subsets\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"does not detect anagram subsets\"},{\"ancestorTitles\":[\"Anagram\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram detects anagram\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"detects anagram\"},{\"ancestorTitles\":[\"Anagram\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram detects three anagrams\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"detects three anagrams\"},{\"ancestorTitles\":[\"Anagram\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram detects multiple anagrams with different case\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"detects multiple anagrams with different case\"},{\"ancestorTitles\":[\"Anagram\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram does not detect non-anagrams with identical checksum\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"does not detect non-anagrams with identical checksum\"},{\"ancestorTitles\":[\"Anagram\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram detects anagrams case-insensitively\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"detects anagrams case-insensitively\"},{\"ancestorTitles\":[\"Anagram\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram detects anagrams using case-insensitive subject\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"detects anagrams using case-insensitive subject\"},{\"ancestorTitles\":[\"Anagram\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram detects anagrams using case-insensitive possible matches\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"detects anagrams using case-insensitive possible matches\"},{\"ancestorTitles\":[\"Anagram\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram does not detect an anagram if the original word is repeated\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"does not detect an anagram if the original word is repeated\"},{\"ancestorTitles\":[\"Anagram\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram anagrams must use all letters exactly once\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"anagrams must use all letters exactly once\"},{\"ancestorTitles\":[\"Anagram\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram words are not anagrams of themselves\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"words are not anagrams of themselves\"},{\"ancestorTitles\":[\"Anagram\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram words are not anagrams of themselves even if letter case is partially different\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"words are not anagrams of themselves even if letter case is partially different\"},{\"ancestorTitles\":[\"Anagram\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram words are not anagrams of themselves even if letter case is completely different\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"words are not anagrams of themselves even if letter case is completely different\"},{\"ancestorTitles\":[\"Anagram\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram words other than themselves can be anagrams\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"words other than themselves can be anagrams\"},{\"ancestorTitles\":[\"Anagram\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram handles case of greek letters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"handles case of greek letters\"},{\"ancestorTitles\":[\"Anagram\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Anagram different characters may have the same bytes\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"different characters may have the same bytes\"}],\"endTime\":1754204063820,\"message\":\"\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/anagram/anagram.spec.js\",\"startTime\":1754204063742,\"status\":\"passed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 0,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 1,
+          "numPassedTests": 18,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 18,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754204063733,
+          "success": true,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram no matches",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "no matches"
+                },
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram detects two anagrams",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "detects two anagrams"
+                },
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram does not detect anagram subsets",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "does not detect anagram subsets"
+                },
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram detects anagram",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "detects anagram"
+                },
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram detects three anagrams",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "detects three anagrams"
+                },
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram detects multiple anagrams with different case",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "detects multiple anagrams with different case"
+                },
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram does not detect non-anagrams with identical checksum",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "does not detect non-anagrams with identical checksum"
+                },
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram detects anagrams case-insensitively",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "detects anagrams case-insensitively"
+                },
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram detects anagrams using case-insensitive subject",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "detects anagrams using case-insensitive subject"
+                },
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram detects anagrams using case-insensitive possible matches",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "detects anagrams using case-insensitive possible matches"
+                },
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram does not detect an anagram if the original word is repeated",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "does not detect an anagram if the original word is repeated"
+                },
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram anagrams must use all letters exactly once",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "anagrams must use all letters exactly once"
+                },
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram words are not anagrams of themselves",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "words are not anagrams of themselves"
+                },
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram words are not anagrams of themselves even if letter case is partially different",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "words are not anagrams of themselves even if letter case is partially different"
+                },
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram words are not anagrams of themselves even if letter case is completely different",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "words are not anagrams of themselves even if letter case is completely different"
+                },
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram words other than themselves can be anagrams",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "words other than themselves can be anagrams"
+                },
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram handles case of greek letters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "handles case of greek letters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Anagram"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Anagram different characters may have the same bytes",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "different characters may have the same bytes"
+                }
+              ],
+              "endTime": 1754204063820,
+              "message": "",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/anagram/anagram.spec.js",
+              "startTime": 1754204063742,
+              "status": "passed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 40.122,
+      "cost": 0.4995238193919999,
+      "startTime": "2025-08-03T06:53:43.720Z",
+      "endTime": "2025-08-03T06:54:23.842Z",
+      "finalOutput": "The 'Anagram' exercise has been fully solved:\n\n- The implementation for `findAnagrams` is complete in `anagram.js`.\n- All tests in `anagram.spec.js` are passing after being unskipped.\n- The code was also linted for style and correctness, with no issues found.\n\nYou now have a working and clean solution to the anagram exercise."
+    },
+    {
+      "exerciseName": "armstrong-numbers",
+      "status": "success",
+      "turns": 12,
+      "testResult": {
+        "passed": 11,
+        "failed": 0,
+        "total": 11,
+        "skipped": 0,
+        "success": true,
+        "output": "{\"numFailedTestSuites\":0,\"numFailedTests\":0,\"numPassedTestSuites\":1,\"numPassedTests\":11,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":11,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754204081604,\"success\":true,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Zero is an Armstrong number\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Zero is an Armstrong number\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Single-digit numbers are Armstrong numbers\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Single-digit numbers are Armstrong numbers\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers There are no two-digit Armstrong numbers\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"There are no two-digit Armstrong numbers\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Three-digit number that is an Armstrong number\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Three-digit number that is an Armstrong number\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Three-digit number that is not an Armstrong number\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Three-digit number that is not an Armstrong number\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Four-digit number that is an Armstrong number\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Four-digit number that is an Armstrong number\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Four-digit number that is not an Armstrong number\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Four-digit number that is not an Armstrong number\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Seven-digit number that is an Armstrong number\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Seven-digit number that is an Armstrong number\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Seven-digit number that is not an Armstrong number\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Seven-digit number that is not an Armstrong number\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Armstrong number containing seven zeroes\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Armstrong number containing seven zeroes\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers The largest and last Armstrong number\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"The largest and last Armstrong number\"}],\"endTime\":1754204081683,\"message\":\"\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/armstrong-numbers/armstrong-numbers.spec.js\",\"startTime\":1754204081614,\"status\":\"passed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 0,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 1,
+          "numPassedTests": 11,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 11,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754204081604,
+          "success": true,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Zero is an Armstrong number",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Zero is an Armstrong number"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Single-digit numbers are Armstrong numbers",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Single-digit numbers are Armstrong numbers"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers There are no two-digit Armstrong numbers",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "There are no two-digit Armstrong numbers"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Three-digit number that is an Armstrong number",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Three-digit number that is an Armstrong number"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Three-digit number that is not an Armstrong number",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Three-digit number that is not an Armstrong number"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Four-digit number that is an Armstrong number",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Four-digit number that is an Armstrong number"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Four-digit number that is not an Armstrong number",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Four-digit number that is not an Armstrong number"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Seven-digit number that is an Armstrong number",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Seven-digit number that is an Armstrong number"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Seven-digit number that is not an Armstrong number",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Seven-digit number that is not an Armstrong number"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Armstrong number containing seven zeroes",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Armstrong number containing seven zeroes"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers The largest and last Armstrong number",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "The largest and last Armstrong number"
+                }
+              ],
+              "endTime": 1754204081683,
+              "message": "",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/armstrong-numbers/armstrong-numbers.spec.js",
+              "startTime": 1754204081614,
+              "status": "passed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 17.871,
+      "cost": 0.21396392652800003,
+      "startTime": "2025-08-03T06:54:23.842Z",
+      "endTime": "2025-08-03T06:54:41.713Z",
+      "finalOutput": "All requirements for the Armstrong numbers exercise have been completed:\n\n- Implemented the isArmstrongNumber function in armstrong-numbers.js.\n- Unskipped all test cases in armstrong-numbers.spec.js.\n- All test cases pass, including large BigInt Armstrong numbers.\n- Code style was checked with linting and is clean.\n\nYou can now consider this exercise complete."
+    },
+    {
+      "exerciseName": "atbash-cipher",
+      "status": "success",
+      "turns": 11,
+      "testResult": {
+        "passed": 14,
+        "failed": 0,
+        "total": 14,
+        "skipped": 0,
+        "success": true,
+        "output": "{\"numFailedTestSuites\":0,\"numFailedTests\":0,\"numPassedTestSuites\":1,\"numPassedTests\":14,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":14,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754204100968,\"success\":true,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"Atbash Cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher encode encode yes\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode yes\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher encode encode no\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode no\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher encode encode OMG\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode OMG\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher encode encode spaces\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode spaces\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher encode encode mindblowingly\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode mindblowingly\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"encode\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher encode encode numbers\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode numbers\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher encode encode deep thought\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode deep thought\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher encode encode all the letters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode all the letters\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher decode decode exercism\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode exercism\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher decode decode a sentence\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode a sentence\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher decode decode numbers\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode numbers\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"decode\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher decode decode all the letters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode all the letters\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher decode decode with too many spaces\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode with too many spaces\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher decode decode with no spaces\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode with no spaces\"}],\"endTime\":1754204101051,\"message\":\"\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/atbash-cipher/atbash-cipher.spec.js\",\"startTime\":1754204100978,\"status\":\"passed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 0,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 1,
+          "numPassedTests": 14,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 14,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754204100968,
+          "success": true,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher encode encode yes",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode yes"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher encode encode no",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode no"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher encode encode OMG",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode OMG"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher encode encode spaces",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode spaces"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher encode encode mindblowingly",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode mindblowingly"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "encode"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher encode encode numbers",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode numbers"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher encode encode deep thought",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode deep thought"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher encode encode all the letters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode all the letters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher decode decode exercism",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode exercism"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher decode decode a sentence",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode a sentence"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher decode decode numbers",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode numbers"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "decode"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher decode decode all the letters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode all the letters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher decode decode with too many spaces",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode with too many spaces"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher decode decode with no spaces",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode with no spaces"
+                }
+              ],
+              "endTime": 1754204101051,
+              "message": "",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/atbash-cipher/atbash-cipher.spec.js",
+              "startTime": 1754204100978,
+              "status": "passed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 19.363,
+      "cost": 0.21449992281600003,
+      "startTime": "2025-08-03T06:54:41.713Z",
+      "endTime": "2025-08-03T06:55:01.076Z",
+      "finalOutput": "The Atbash Cipher implementation is complete and all tests pass successfully.\n\nSummary of what was done:\n- Implemented the 'encode' and 'decode' functions in atbash-cipher.js.\n- The encode function:\n  - Substitutes each letter using the Atbash rule, preserves digits, strips punctuation, and outputs in groups of 5 characters with spaces.\n- The decode function:\n  - Ignores all whitespace and punctuation, reverses letters by the Atbash rule, preserves digits, and does not group output.\n- All previously skipped tests were unskipped, and all tests pass.\n- Checked and linted the implementation for code correctness and style.\n\nYou can now use this Atbash cipher implementation as required."
+    },
+    {
+      "exerciseName": "bank-account",
+      "status": "success",
+      "turns": 30,
+      "testResult": {
+        "passed": 0,
+        "failed": 0,
+        "total": 0,
+        "success": false,
+        "output": "Command failed: npx jest --json --verbose\n● Multiple configurations found:\n\n    * /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/jest.config.js\n    * /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/jest.config.cjs\n\n  Implicit config resolution does not allow multiple configuration files.\n  Either remove unused config files or select one explicitly with `--config`.\n\n  Configuration Documentation:\n  https://jestjs.io/docs/configuration\n\n",
+        "errorMessage": "Command failed: npx jest --json --verbose\n● Multiple configurations found:\n\n    * /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/jest.config.js\n    * /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/jest.config.cjs\n\n  Implicit config resolution does not allow multiple configuration files.\n  Either remove unused config files or select one explicitly with `--config`.\n\n  Configuration Documentation:\n  https://jestjs.io/docs/configuration\n\n",
+        "details": {
+          "status": 1,
+          "signal": null,
+          "output": [
+            null,
+            "",
+            "● Multiple configurations found:\n\n    * /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/jest.config.js\n    * /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/jest.config.cjs\n\n  Implicit config resolution does not allow multiple configuration files.\n  Either remove unused config files or select one explicitly with `--config`.\n\n  Configuration Documentation:\n  https://jestjs.io/docs/configuration\n\n"
+          ],
+          "pid": 3832,
+          "stdout": "",
+          "stderr": "● Multiple configurations found:\n\n    * /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/jest.config.js\n    * /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/jest.config.cjs\n\n  Implicit config resolution does not allow multiple configuration files.\n  Either remove unused config files or select one explicitly with `--config`.\n\n  Configuration Documentation:\n  https://jestjs.io/docs/configuration\n\n"
+        }
+      },
+      "timeElapsed": 46.665,
+      "cost": 0.7939257059839997,
+      "startTime": "2025-08-03T06:55:01.076Z",
+      "endTime": "2025-08-03T06:55:47.741Z",
+      "finalOutput": "Task terminated due to limits reached. Turn: 30/30, Cost: $0.7939/$1.0000"
+    }
+  ],
+  "summary": {
+    "totalExercises": 10,
+    "successCount": 10,
+    "testableExercises": 10,
+    "testsPassedCount": 8,
+    "testsFailedCount": 2,
+    "testPassRate": 0.8,
+    "agentSuccessRate": 1,
+    "failureCount": 0,
+    "timeoutCount": 0,
+    "costLimitCount": 0,
+    "turnLimitCount": 0,
+    "totalTime": 532.17,
+    "totalCost": 4.903610307968,
+    "averageTurns": 17.9,
+    "averageTime": 53.217,
+    "successRate": 0.8
+  },
+  "startTime": "2025-08-03T06:46:55.484Z",
+  "endTime": "2025-08-03T06:55:47.741Z"
+}

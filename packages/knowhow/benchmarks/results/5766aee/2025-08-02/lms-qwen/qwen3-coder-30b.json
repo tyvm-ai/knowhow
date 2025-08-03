@@ -1,0 +1,98 @@
+{
+  "config": {
+    "language": "javascript",
+    "maxExercises": 1,
+    "model": "qwen/qwen3-coder-30b",
+    "provider": "lms",
+    "limits": {
+      "maxTurns": 30,
+      "maxTime": 300,
+      "maxCost": 1
+    },
+    "outputFile": "results.json"
+  },
+  "exercises": [
+    {
+      "exerciseName": "accumulate",
+      "status": "success",
+      "turns": 30,
+      "testResult": {
+        "passed": 0,
+        "failed": 0,
+        "total": 0,
+        "skipped": 0,
+        "success": false,
+        "output": "{\"numFailedTestSuites\":1,\"numFailedTests\":0,\"numPassedTestSuites\":0,\"numPassedTests\":0,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":1,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":0,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754193337344,\"success\":false,\"testResults\":[{\"assertionResults\":[],\"coverage\":{},\"endTime\":1754193337574,\"message\":\"  ● Test suite failed to run\\n\\n    Jest encountered an unexpected token\\n\\n    Jest failed to parse a file. This happens e.g. when your code or its dependencies use non-standard JavaScript syntax, or when Jest is not configured to support such syntax.\\n\\n    Out of the box Jest supports Babel, which will be used to transform your files into valid JS based on your Babel configuration.\\n\\n    By default \\\"node_modules\\\" folder is ignored by transformers.\\n\\n    Here's what you can do:\\n     • If you are trying to use ECMAScript Modules, see https://jestjs.io/docs/ecmascript-modules for how to enable it.\\n     • If you are trying to use TypeScript, see https://jestjs.io/docs/getting-started#using-typescript\\n     • To have some of your \\\"node_modules\\\" files transformed, you can specify a custom \\\"transformIgnorePatterns\\\" in your config.\\n     • If you need a custom transformation specify a \\\"transform\\\" option in your config.\\n     • If you simply want to mock your non-JS modules (e.g. binary assets) you can stub them out with the \\\"moduleNameMapper\\\" config option.\\n\\n    You'll find more details and examples of these config options in the docs:\\n    https://jestjs.io/docs/configuration\\n    For information about custom transformations, see:\\n    https://jestjs.io/docs/code-transformation\\n\\n    Details:\\n\\n    SyntaxError: /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/accumulate/accumulate.spec.js: Identifier 'test' has already been declared. (1:33)\\n\\n    > 1 | import { describe, expect, test, test } from '@jest/globals';\\n        |                                  ^\\n      2 | import { accumulate } from './accumulate';\\n      3 |\\n      4 | describe('accumulate()', () => {\\n\\n      at constructor (node_modules/@babel/parser/src/parse-error.ts:95:45)\\n      at Parser.toParseError [as raise] (node_modules/@babel/parser/src/tokenizer/index.ts:1503:19)\\n      at ScopeHandler.raise [as checkRedeclarationInScope] (node_modules/@babel/parser/src/util/scope.ts:164:19)\\n      at ScopeHandler.checkRedeclarationInScope [as declareName] (node_modules/@babel/parser/src/util/scope.ts:118:12)\\n      at Parser.declareName [as declareNameFromIdentifier] (node_modules/@babel/parser/src/parser/lval.ts:818:16)\\n      at Parser.declareNameFromIdentifier [as checkIdentifier] (node_modules/@babel/parser/src/parser/lval.ts:813:12)\\n      at Parser.checkIdentifier [as checkLVal] (node_modules/@babel/parser/src/parser/lval.ts:713:12)\\n      at Parser.checkLVal [as finishImportSpecifier] (node_modules/@babel/parser/src/parser/statement.ts:3223:10)\\n      at Parser.finishImportSpecifier [as parseImportSpecifier] (node_modules/@babel/parser/src/parser/statement.ts:3480:17)\\n      at Parser.parseImportSpecifier [as parseNamedImportSpecifiers] (node_modules/@babel/parser/src/parser/statement.ts:3441:36)\\n      at Parser.parseNamedImportSpecifiers [as parseImportSpecifiersAndAfter] (node_modules/@babel/parser/src/parser/statement.ts:3173:37)\\n      at Parser.parseImportSpecifiersAndAfter [as parseImport] (node_modules/@babel/parser/src/parser/statement.ts:3142:17)\\n      at Parser.parseImport [as parseStatementContent] (node_modules/@babel/parser/src/parser/statement.ts:642:25)\\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/@babel/parser/src/parser/statement.ts:477:17)\\n      at Parser.parseStatementLike [as parseModuleItem] (node_modules/@babel/parser/src/parser/statement.ts:414:17)\\n      at Parser.parseModuleItem [as parseBlockOrModuleBlockBody] (node_modules/@babel/parser/src/parser/statement.ts:1438:16)\\n      at Parser.parseBlockOrModuleBlockBody [as parseBlockBody] (node_modules/@babel/parser/src/parser/statement.ts:1412:10)\\n      at Parser.parseBlockBody [as parseProgram] (node_modules/@babel/parser/src/parser/statement.ts:229:10)\\n      at Parser.parseProgram [as parseTopLevel] (node_modules/@babel/parser/src/parser/statement.ts:203:25)\\n      at Parser.parseTopLevel [as parse] (node_modules/@babel/parser/src/parser/index.ts:93:10)\\n      at parse (node_modules/@babel/parser/src/index.ts:92:38)\\n      at parser (node_modules/@babel/core/src/parser/index.ts:28:19)\\n          at parser.next (<anonymous>)\\n      at normalizeFile (node_modules/@babel/core/src/transformation/normalize-file.ts:49:24)\\n          at normalizeFile.next (<anonymous>)\\n      at run (node_modules/@babel/core/src/transformation/index.ts:40:36)\\n          at run.next (<anonymous>)\\n      at transform (node_modules/@babel/core/src/transform.ts:29:20)\\n          at transform.next (<anonymous>)\\n      at evaluateSync (node_modules/gensync/index.js:251:28)\\n      at sync (node_modules/gensync/index.js:89:14)\\n      at fn (node_modules/@babel/core/src/errors/rewrite-stack-trace.ts:99:14)\\n      at transformSync (node_modules/@babel/core/src/transform.ts:66:52)\\n      at ScriptTransformer.transformSource (node_modules/@jest/transform/build/ScriptTransformer.js:545:31)\\n      at ScriptTransformer._transformAndBuildScript (node_modules/@jest/transform/build/ScriptTransformer.js:674:40)\\n      at ScriptTransformer.transform (node_modules/@jest/transform/build/ScriptTransformer.js:726:19)\\n\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/accumulate/accumulate.spec.js\",\"startTime\":1754193337574,\"status\":\"failed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 1,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 0,
+          "numPassedTests": 0,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 1,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 0,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754193337344,
+          "success": false,
+          "testResults": [
+            {
+              "assertionResults": [],
+              "coverage": {},
+              "endTime": 1754193337574,
+              "message": "  ● Test suite failed to run\n\n    Jest encountered an unexpected token\n\n    Jest failed to parse a file. This happens e.g. when your code or its dependencies use non-standard JavaScript syntax, or when Jest is not configured to support such syntax.\n\n    Out of the box Jest supports Babel, which will be used to transform your files into valid JS based on your Babel configuration.\n\n    By default \"node_modules\" folder is ignored by transformers.\n\n    Here's what you can do:\n     • If you are trying to use ECMAScript Modules, see https://jestjs.io/docs/ecmascript-modules for how to enable it.\n     • If you are trying to use TypeScript, see https://jestjs.io/docs/getting-started#using-typescript\n     • To have some of your \"node_modules\" files transformed, you can specify a custom \"transformIgnorePatterns\" in your config.\n     • If you need a custom transformation specify a \"transform\" option in your config.\n     • If you simply want to mock your non-JS modules (e.g. binary assets) you can stub them out with the \"moduleNameMapper\" config option.\n\n    You'll find more details and examples of these config options in the docs:\n    https://jestjs.io/docs/configuration\n    For information about custom transformations, see:\n    https://jestjs.io/docs/code-transformation\n\n    Details:\n\n    SyntaxError: /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/accumulate/accumulate.spec.js: Identifier 'test' has already been declared. (1:33)\n\n    > 1 | import { describe, expect, test, test } from '@jest/globals';\n        |                                  ^\n      2 | import { accumulate } from './accumulate';\n      3 |\n      4 | describe('accumulate()', () => {\n\n      at constructor (node_modules/@babel/parser/src/parse-error.ts:95:45)\n      at Parser.toParseError [as raise] (node_modules/@babel/parser/src/tokenizer/index.ts:1503:19)\n      at ScopeHandler.raise [as checkRedeclarationInScope] (node_modules/@babel/parser/src/util/scope.ts:164:19)\n      at ScopeHandler.checkRedeclarationInScope [as declareName] (node_modules/@babel/parser/src/util/scope.ts:118:12)\n      at Parser.declareName [as declareNameFromIdentifier] (node_modules/@babel/parser/src/parser/lval.ts:818:16)\n      at Parser.declareNameFromIdentifier [as checkIdentifier] (node_modules/@babel/parser/src/parser/lval.ts:813:12)\n      at Parser.checkIdentifier [as checkLVal] (node_modules/@babel/parser/src/parser/lval.ts:713:12)\n      at Parser.checkLVal [as finishImportSpecifier] (node_modules/@babel/parser/src/parser/statement.ts:3223:10)\n      at Parser.finishImportSpecifier [as parseImportSpecifier] (node_modules/@babel/parser/src/parser/statement.ts:3480:17)\n      at Parser.parseImportSpecifier [as parseNamedImportSpecifiers] (node_modules/@babel/parser/src/parser/statement.ts:3441:36)\n      at Parser.parseNamedImportSpecifiers [as parseImportSpecifiersAndAfter] (node_modules/@babel/parser/src/parser/statement.ts:3173:37)\n      at Parser.parseImportSpecifiersAndAfter [as parseImport] (node_modules/@babel/parser/src/parser/statement.ts:3142:17)\n      at Parser.parseImport [as parseStatementContent] (node_modules/@babel/parser/src/parser/statement.ts:642:25)\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/@babel/parser/src/parser/statement.ts:477:17)\n      at Parser.parseStatementLike [as parseModuleItem] (node_modules/@babel/parser/src/parser/statement.ts:414:17)\n      at Parser.parseModuleItem [as parseBlockOrModuleBlockBody] (node_modules/@babel/parser/src/parser/statement.ts:1438:16)\n      at Parser.parseBlockOrModuleBlockBody [as parseBlockBody] (node_modules/@babel/parser/src/parser/statement.ts:1412:10)\n      at Parser.parseBlockBody [as parseProgram] (node_modules/@babel/parser/src/parser/statement.ts:229:10)\n      at Parser.parseProgram [as parseTopLevel] (node_modules/@babel/parser/src/parser/statement.ts:203:25)\n      at Parser.parseTopLevel [as parse] (node_modules/@babel/parser/src/parser/index.ts:93:10)\n      at parse (node_modules/@babel/parser/src/index.ts:92:38)\n      at parser (node_modules/@babel/core/src/parser/index.ts:28:19)\n          at parser.next (<anonymous>)\n      at normalizeFile (node_modules/@babel/core/src/transformation/normalize-file.ts:49:24)\n          at normalizeFile.next (<anonymous>)\n      at run (node_modules/@babel/core/src/transformation/index.ts:40:36)\n          at run.next (<anonymous>)\n      at transform (node_modules/@babel/core/src/transform.ts:29:20)\n          at transform.next (<anonymous>)\n      at evaluateSync (node_modules/gensync/index.js:251:28)\n      at sync (node_modules/gensync/index.js:89:14)\n      at fn (node_modules/@babel/core/src/errors/rewrite-stack-trace.ts:99:14)\n      at transformSync (node_modules/@babel/core/src/transform.ts:66:52)\n      at ScriptTransformer.transformSource (node_modules/@jest/transform/build/ScriptTransformer.js:545:31)\n      at ScriptTransformer._transformAndBuildScript (node_modules/@jest/transform/build/ScriptTransformer.js:674:40)\n      at ScriptTransformer.transform (node_modules/@jest/transform/build/ScriptTransformer.js:726:19)\n",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/accumulate/accumulate.spec.js",
+              "startTime": 1754193337574,
+              "status": "failed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 94.651,
+      "cost": 0,
+      "startTime": "2025-08-03T03:54:02.932Z",
+      "endTime": "2025-08-03T03:55:37.583Z",
+      "finalOutput": "Task terminated due to limits reached. Turn: 30/30, Cost: $0.0000/$1.0000"
+    }
+  ],
+  "summary": {
+    "totalExercises": 1,
+    "successCount": 1,
+    "testableExercises": 1,
+    "testsPassedCount": 0,
+    "testsFailedCount": 1,
+    "testPassRate": 0,
+    "agentSuccessRate": 1,
+    "failureCount": 0,
+    "timeoutCount": 0,
+    "costLimitCount": 0,
+    "turnLimitCount": 0,
+    "totalTime": 94.651,
+    "totalCost": 0,
+    "averageTurns": 30,
+    "averageTime": 94.651,
+    "successRate": 0
+  },
+  "startTime": "2025-08-03T03:54:02.903Z",
+  "endTime": "2025-08-03T03:55:37.583Z"
+}

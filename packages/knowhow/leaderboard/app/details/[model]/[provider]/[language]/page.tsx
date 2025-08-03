@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { BenchmarkResults, ExerciseResult } from "@/types/benchmark";
 import {
   formatCurrency,
@@ -9,10 +9,28 @@ import {
   formatPercentage,
 } from "@/utils/dataProcessor";
 
+interface HistoricalRun {
+  endTime: string;
+  successRate: number;
+  totalExercises: number;
+  totalCost: number;
+  averageTime: number;
+  averageTurns: number;
+  commitHash: string;
+  averageCost: number;
+}
+
+interface DetailResponse {
+  latest: BenchmarkResults;
+  history: HistoricalRun[];
+  totalRuns: number;
+}
+
 export default function ModelDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const [benchmarkData, setBenchmarkData] = useState<BenchmarkResults | null>(
+  const searchParams = useSearchParams();
+  const [detailData, setDetailData] = useState<DetailResponse | null>(
     null
   );
   const [loading, setLoading] = useState(true);
@@ -21,6 +39,7 @@ export default function ModelDetailPage() {
   const model = decodeURIComponent(params.model as string);
   const provider = decodeURIComponent(params.provider as string);
   const language = decodeURIComponent(params.language as string);
+  const timestamp = searchParams.get('timestamp');
 
   useEffect(() => {
     async function fetchDetailData() {
@@ -30,13 +49,15 @@ export default function ModelDetailPage() {
             model
           )}&provider=${encodeURIComponent(
             provider
-          )}&language=${encodeURIComponent(language)}`
+          )}&language=${encodeURIComponent(language)}${
+            timestamp ? `&timestamp=${timestamp}` : ''
+          }`
         );
         if (!response.ok) {
           throw new Error("Failed to fetch benchmark details");
         }
         const data = await response.json();
-        setBenchmarkData(data);
+        setDetailData(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : "An error occurred");
       } finally {
@@ -45,7 +66,17 @@ export default function ModelDetailPage() {
     }
 
     fetchDetailData();
-  }, [model, provider, language]);
+  }, [model, provider, language, timestamp]);
+
+  const loadHistoricalRun = async (timestamp: string) => {
+    // Navigate to the same page but with timestamp parameter
+    router.push(`/details/${encodeURIComponent(model)}/${encodeURIComponent(provider)}/${encodeURIComponent(language)}?timestamp=${timestamp}`);
+  };
+
+  const backToLatestRun = () => {
+    // Navigate to the same page without timestamp parameter
+    router.push(`/details/${encodeURIComponent(model)}/${encodeURIComponent(provider)}/${encodeURIComponent(language)}`);
+  };
 
   const getStatusBadge = (status: string) => {
     const baseClasses = "px-2 py-1 text-xs font-medium rounded-full";
@@ -93,7 +124,7 @@ export default function ModelDetailPage() {
     );
   }
 
-  if (error || !benchmarkData) {
+  if (error || !detailData) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -115,13 +146,17 @@ export default function ModelDetailPage() {
     );
   }
 
+  // Extract the latest benchmark data for display
+  const benchmarkData = detailData.latest;
+  const isHistoricalView = timestamp !== null;
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
           <button
-            onClick={() => router.back()}
+            onClick={() => router.push("/")}
             className="mb-4 text-blue-600 hover:text-blue-800 flex items-center"
           >
             ← Back to Leaderboard
@@ -132,6 +167,19 @@ export default function ModelDetailPage() {
           <p className="mt-2 text-gray-600">
             Provider: {provider} • Language: {language}
           </p>
+          {isHistoricalView && (
+            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-md">
+              <p className="text-blue-800 text-sm">
+                Viewing historical run from {new Date(benchmarkData.endTime).toLocaleString()}
+              </p>
+              <button
+                onClick={backToLatestRun}
+                className="mt-2 text-blue-600 hover:text-blue-800 text-sm underline"
+              >
+                ← Back to latest run
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Summary Cards */}
@@ -291,6 +339,81 @@ export default function ModelDetailPage() {
             </table>
           </div>
         </div>
+
+        {/* Historical Performance Section */}
+        {detailData.history.length > 0 && (
+          <div className="mt-8 bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="px-6 py-4 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">
+                Historical Performance
+              </h2>
+              <p className="mt-1 text-sm text-gray-500">
+                Previous runs for this model/provider/language combination ({detailData.totalRuns} total runs)
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Run Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Success Rate
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Exercises
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Avg Cost
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Avg Time
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Avg Turns
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Commit
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {detailData.history.map((run, index) => (
+                    <tr
+                      key={`${run.endTime}-${index}`}
+                      className="hover:bg-gray-50 cursor-pointer"
+                      onClick={() => loadHistoricalRun(run.endTime)}
+                      title="Click to view detailed results for this run"
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(run.endTime).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatPercentage(run.successRate)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {run.totalExercises}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatCurrency(run.averageCost)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {formatTime(run.averageTime)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {run.averageTurns.toFixed(1)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
+                        {run.commitHash.slice(0, 8)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Run Information */}
         <div className="mt-8 bg-white rounded-lg shadow-sm border border-gray-200 p-6">

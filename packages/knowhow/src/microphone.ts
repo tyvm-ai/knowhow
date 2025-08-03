@@ -3,7 +3,6 @@ import * as fs from "fs";
 import * as path from "path";
 import { openai } from "./ai";
 import { execAsync, ask } from "./utils";
-import { Downloader } from "./plugins/downloader/downloader";
 import { convertToText, convertAudioToText } from "./conversion";
 
 interface MicrophoneConfig {

@@ -671,7 +671,7 @@ export class BenchmarkRunner {
   private generateResultsPath(): string {
     const commitHash = this.getCommitHash();
     const dateStr = this.formatDateDash();
-    const modelFileName = `${this.provider}-${this.model}.json`;
+    const modelFileName = `${this.provider}-${this.model.replace(/\//g, '-')}.json`;
 
     // Use different base paths for local vs container
     const baseDir = process.env.CONTAINER
