@@ -226,6 +226,9 @@ export default function ModelDetailPage() {
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Pass / Total
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Time
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -235,7 +238,7 @@ export default function ModelDetailPage() {
                     Turns
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Error
+                    Output
                   </th>
                 </tr>
               </thead>
@@ -248,11 +251,26 @@ export default function ModelDetailPage() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <span className="mr-2">
-                          {getStatusIcon(exercise.testResult?.success ? "success" : "failure")}
+                          {getStatusIcon(
+                            exercise.testResult?.success ? "success" : "failure"
+                          )}
                         </span>
-                        <span className={getStatusBadge(exercise.testResult?.success)}>
+                        <span
+                          className={getStatusBadge(
+                            exercise.testResult?.success
+                          )}
+                        >
                           {exercise.testResult?.success ? "Pass" : "Fail"}
                         </span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {exercise.testResult?.passed} /{" "}
+                      {exercise.testResult?.total}{" "}
+                      <div>
+                        {exercise.testResult?.skipped
+                          ? `(${exercise.testResult?.skipped} skipped)`
+                          : ""}
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -265,7 +283,7 @@ export default function ModelDetailPage() {
                       {exercise.turns}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">
-                      {exercise.errorMessage || "-"}
+                      {exercise.finalOutput?.slice(0, 100) || "-"}
                     </td>
                   </tr>
                 ))}
