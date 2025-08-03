@@ -140,8 +140,24 @@ export class XmlToolCallProcessor {
         matches.push(restructuredMatch);
         processedRanges.push({start: matchStart, end: matchEnd});
       } catch (error) {
-        // Skip this match if JSON parsing fails
-        continue;
+        // Try string-based parsing as fallback when JSON.parse fails
+        try {
+          const stringBlocks = this.extractToolCallBlocks(fullMatch);
+          if (stringBlocks.length > 0) {
+            const block = stringBlocks[0]; // Take the first block found
+            const restructuredMatch = [fullMatch, block.name, block.arguments, ""] as RegExpMatchArray;
+            restructuredMatch.index = match.index;
+            restructuredMatch.input = match.input;
+            matches.push(restructuredMatch);
+            processedRanges.push({start: matchStart, end: matchEnd});
+          } else {
+            // If string-based parsing also fails, skip this match
+            continue;
+          }
+        } catch (stringError) {
+          // If both JSON and string parsing fail, skip this match
+          continue;
+        }
       }
     }
 
@@ -159,7 +175,7 @@ export class XmlToolCallProcessor {
       );
       if (alreadyProcessed) continue;
       
-      const [fullMatch, jsonContent] = match;
+      const [fullMatch, jsonContent, ...rest] = match;
       
       try {
         const parsed = JSON.parse(jsonContent);
@@ -173,7 +189,7 @@ export class XmlToolCallProcessor {
             argumentsContent = JSON.stringify(argumentsContent);
           }
           
-          const restructuredMatch = [fullMatch, argumentsContent, toolName, ""] as RegExpMatchArray;
+          const restructuredMatch = [fullMatch, toolName, argumentsContent, ""] as RegExpMatchArray;
           restructuredMatch.index = match.index;
           restructuredMatch.input = match.input;
           matches.push(restructuredMatch);
@@ -367,11 +383,19 @@ export class XmlToolCallProcessor {
         
         // Try to fix common JSON issues like unescaped newlines
         try {
-          // First attempt: fix unescaped newlines and other control characters
-          const fixedContent = jsonContent
-            .replace(/\n/g, '\\n')
-            .replace(/\r/g, '\\r')
-            .replace(/\t/g, '\\t');
+          // More robust approach: escape all control characters in JSON string values
+          let fixedContent = jsonContent;
+          
+          // Find all JSON string values and escape control characters within them
+          fixedContent = fixedContent.replace(/"((?:[^"\\]|\\.)*)"/g, (match, content) => {
+            const escapedContent = content
+              .replace(/\\/g, '\\\\')  // Escape backslashes first
+              .replace(/\n/g, '\\n')   // Escape newlines
+              .replace(/\r/g, '\\r')   // Escape carriage returns
+              .replace(/\t/g, '\\t');  // Escape tabs
+            return `"${escapedContent}"`;
+          });
+          
           const parsed = JSON.parse(fixedContent);
           if (parsed.name && parsed.arguments !== undefined) {
             blocks.push({

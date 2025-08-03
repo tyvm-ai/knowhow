@@ -457,7 +457,10 @@ export abstract class BaseAgent implements IAgent {
       });
 
       if (response?.usd_cost === undefined) {
-        console.warn("Response cost is undefined", response);
+        console.warn(
+          "Response cost is undefined",
+          JSON.stringify(response, null, 2)
+        );
       }
 
       this.adjustTotalCostUsd(response?.usd_cost);
