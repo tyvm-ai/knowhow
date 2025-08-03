@@ -1,3 +1,5 @@
+import { openai } from "../ai";
+import { DownloaderService } from "../plugins/downloader/downloader";
 import { Clients } from "../clients";
 import { Plugins } from "../plugins/plugins";
 import { AgentService } from "./AgentService";
@@ -31,6 +33,7 @@ let Singletons = {} as {
   knowhowApiClient: KnowhowSimpleClient;
   Plugins: typeof Plugins;
   Clients: typeof Clients;
+  Downloader: DownloaderService;
 };
 
 export const services = (): typeof Singletons => {
@@ -38,10 +41,12 @@ export const services = (): typeof Singletons => {
     const Tools = new ToolsService();
     const Events = new EventService();
     const Agents = new AgentService(Tools, Events);
+    const Downloader = new DownloaderService(openai, Clients);
     Singletons = {
       Tools,
       Events,
       Agents,
+      Downloader,
 
       Flags: new FlagsService(),
       GitHub: new GitHubService(),

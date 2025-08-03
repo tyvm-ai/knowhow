@@ -2,7 +2,7 @@ import pdf from "pdf-parse";
 import * as fs from "fs";
 import * as path from "path";
 import { readFile, fileExists } from "./utils";
-import { Downloader } from "./plugins/downloader/downloader";
+import { services } from "./services";
 
 export async function processAudio(
   filePath: string,
@@ -21,6 +21,7 @@ export async function processAudio(
       : JSON.parse(fileContent);
   }
 
+  const { Downloader } = services();
   const chunks = await Downloader.chunk(
     filePath,
     parsed.dir,
@@ -73,6 +74,7 @@ export async function processVideo(
   );
 
   console.log("Extracting keyframes...");
+  const { Downloader } = services();
   const videoAnalysis = await Downloader.extractKeyframes(
     filePath,
     outputPath,

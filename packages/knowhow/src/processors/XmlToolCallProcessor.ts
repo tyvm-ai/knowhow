@@ -353,6 +353,51 @@ export class XmlToolCallProcessor {
   }
 
   /**
+   * Detects incomplete XML tool calls that are missing closing tags
+   * This handles cases where the AI finishes the JSON but not the closing tag
+   */
+  private detectIncompleteToolCalls(content: string): { name: string; arguments: string }[] {
+    const blocks: { name: string; arguments: string }[] = [];
+    let startIndex = 0;
+
+    while (true) {
+      const toolCallStart = content.indexOf('<tool_call>', startIndex);
+      if (toolCallStart === -1) break;
+
+      const toolCallEnd = content.indexOf('</tool_call>', toolCallStart);
+      
+      // If no closing tag found, check if we have complete JSON at the end
+      if (toolCallEnd === -1) {
+        const jsonStart = toolCallStart + '<tool_call>'.length;
+        const remainingContent = content.substring(jsonStart).trim();
+        
+        // Try to parse the remaining content as JSON
+        try {
+          const parsed = JSON.parse(remainingContent);
+          if (parsed.name && parsed.arguments !== undefined) {
+            blocks.push({
+              name: parsed.name,
+              arguments: typeof parsed.arguments === 'string' ? parsed.arguments : JSON.stringify(parsed.arguments),
+            });
+          }
+        } catch (error) {
+          // If JSON parsing fails, this might be incomplete or malformed
+          // We'll skip it for now
+        }
+        
+        // Move past this opening tag for next iteration
+        startIndex = toolCallStart + '<tool_call>'.length;
+        continue;
+      }
+
+      // If we found a closing tag, move past it for next iteration
+      startIndex = toolCallEnd + '</tool_call>'.length;
+    }
+
+    return blocks;
+  }
+
+  /**
    * Simple string-based extractor for tool call blocks
    */
   private extractToolCallBlocks(content: string): { name: string; arguments: string }[] {
@@ -435,9 +480,16 @@ export class XmlToolCallProcessor {
     let toolCalls: ToolCall[] = [];
     
     if (matches.length === 0) {
-      // If no matches found with regex, try the simple string-based extractor
+      // If no matches found with regex, try the simple string-based extractor first
       const blocks = this.extractToolCallBlocks(message.content);
-      toolCalls = blocks.map(block => {
+      
+      // If still no blocks found, try to detect incomplete tool calls
+      let allBlocks = blocks;
+      if (blocks.length === 0) {
+        allBlocks = this.detectIncompleteToolCalls(message.content);
+      }
+      
+      toolCalls = allBlocks.map(block => {
         return {
           id: this.generateToolCallId(),
           type: 'function' as const,

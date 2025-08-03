@@ -5,14 +5,14 @@ import Logger from "progress-estimator";
 import { DownloadInfo, KeyframeInfo, TranscriptChunk } from "./types";
 import { visionTool } from "../../agents/tools/visionTool";
 import { execAsync, fileExists, readFile, mkdir } from "../../utils";
-import { openai } from "../../ai";
+import OpenAI from "openai";
 import { Clients } from "../../clients";
 import { Models } from "../../types";
 
 const logger = Logger();
 
 export class DownloaderService {
-  constructor(private openAi: typeof openai, private clients: typeof Clients) {}
+  constructor(private openAi: OpenAI, private clients: typeof Clients) {}
 
   async askGptVision(
     imageUrl: string,
@@ -453,5 +453,3 @@ export class DownloaderService {
     }
   }
 }
-
-export const Downloader = new DownloaderService(openai, Clients);
