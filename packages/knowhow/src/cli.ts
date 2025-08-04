@@ -10,6 +10,7 @@ import { services } from "./services";
 import { login } from "./login";
 import { worker } from "./worker";
 import { agents } from "./agents";
+import { startChat2 } from "./chat2";
 
 const command = process.argv[2];
 
@@ -53,6 +54,9 @@ async function main() {
       break;
     case "chat":
       await chat();
+      break;
+    case "chat2":
+      await startChat2();
       break;
     case "worker":
       await worker();
