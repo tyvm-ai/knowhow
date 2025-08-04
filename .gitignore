@@ -26,4 +26,4 @@ dist
 **/src/dataset/**/*.json*
 **/src/dataset/**/test_files
 .next
-tsconfig.tsbuildinfo
+**/tsconfig.tsbuildinfo
