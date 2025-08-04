@@ -79,6 +79,9 @@ export class PluginService {
   }
 
   async callMany(plugins: string[], userInput?: string) {
+    if (!plugins || plugins.length === 0) {
+      return "";
+    }
     const calls = plugins.map(async (p) => {
       return this.call(p, userInput);
     });

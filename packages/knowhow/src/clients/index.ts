@@ -236,6 +236,13 @@ export class AIClient {
     options: CompletionOptions
   ): Promise<CompletionResponse> {
     const { client, model } = this.getClient(provider, options.model);
+    if (!model || !client) {
+      throw new Error(
+        `provider: ${provider} does not have ${
+          options.model
+        } model registered. Try using ${JSON.stringify(this.listAllModels())}`
+      );
+    }
     return client.createChatCompletion({ ...options, model });
   }
 
@@ -244,6 +251,13 @@ export class AIClient {
     options: EmbeddingOptions
   ): Promise<EmbeddingResponse> {
     const { client, model } = this.getClient(provider, options.model);
+    if (!model || !client) {
+      throw new Error(
+        `provider: ${provider} does not have ${
+          options.model
+        } model registered. Try using ${JSON.stringify(this.listAllModels())}`
+      );
+    }
     return client.createEmbedding({ ...options, model });
   }
 

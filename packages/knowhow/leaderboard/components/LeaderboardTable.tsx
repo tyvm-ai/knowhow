@@ -7,12 +7,13 @@ import { formatCurrency, formatTime, formatPercentage } from '@/utils/dataProces
 
 interface LeaderboardTableProps {
   entries: LeaderboardEntry[];
+  showLanguageColumn?: boolean;
 }
 
 type SortField = keyof LeaderboardEntry;
 type SortDirection = 'asc' | 'desc';
 
-export default function LeaderboardTable({ entries }: LeaderboardTableProps) {
+export default function LeaderboardTable({ entries, showLanguageColumn = true }: LeaderboardTableProps) {
   const router = useRouter();
   const [sortField, setSortField] = useState<SortField>('successRate');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -75,12 +76,14 @@ export default function LeaderboardTable({ entries }: LeaderboardTableProps) {
             >
               Provider {getSortIcon('provider')}
             </th>
-            <th 
-              className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-              onClick={() => handleSort('language')}
-            >
-              Language {getSortIcon('language')}
-            </th>
+            {showLanguageColumn && (
+              <th 
+                className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                onClick={() => handleSort('language')}
+              >
+                Language {getSortIcon('language')}
+              </th>
+            )}
             <th 
               className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
               onClick={() => handleSort('successRate')}
@@ -133,9 +136,11 @@ export default function LeaderboardTable({ entries }: LeaderboardTableProps) {
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 {entry.provider}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                {entry.language}
-              </td>
+              {showLanguageColumn && (
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {entry.language}
+                </td>
+              )}
               <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${getStatusColor(entry.successRate)}`}>
                 {formatPercentage(entry.successRate)}
               </td>

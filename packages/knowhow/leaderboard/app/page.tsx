@@ -8,6 +8,7 @@ import { LeaderboardEntry } from '@/types/benchmark';
 
 export default function Home() {
   const [leaderboardEntries, setLeaderboardEntries] = useState<LeaderboardEntry[]>([]);
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('all');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -19,11 +20,24 @@ export default function Home() {
     fetchData();
   }, []);
 
-  const totalModels = leaderboardEntries.length;
-  const totalExercises = leaderboardEntries.reduce((sum, entry) => sum + entry.totalExercises, 0);
-  const averageSuccessRate = leaderboardEntries.length > 0 
-    ? leaderboardEntries.reduce((sum, entry) => sum + entry.successRate, 0) / leaderboardEntries.length 
+  // Extract unique languages for dropdown
+  const availableLanguages = Array.from(new Set(leaderboardEntries.map(entry => entry.language))).sort();
+  
+  // Filter entries by selected language
+  const filteredEntries = selectedLanguage === 'all' 
+    ? leaderboardEntries 
+    : leaderboardEntries.filter(entry => entry.language === selectedLanguage);
+
+  // Update statistics to use filtered data
+  const totalModels = filteredEntries.length;
+  const totalExercises = filteredEntries.reduce((sum, entry) => sum + entry.totalExercises, 0);
+  const averageSuccessRate = filteredEntries.length > 0 
+    ? filteredEntries.reduce((sum, entry) => sum + entry.successRate, 0) / filteredEntries.length 
     : 0;
+
+  const handleLanguageChange = (language: string) => {
+    setSelectedLanguage(language);
+  };
 
   if (loading) {
     return (
@@ -45,6 +59,28 @@ export default function Home() {
           <p className="mt-2 text-gray-600">
             Track and compare model performance across coding exercises
           </p>
+          
+          {/* Language Filter Dropdown */}
+          {availableLanguages.length > 1 && (
+            <div className="mt-4">
+              <label htmlFor="language-select" className="block text-sm font-medium text-gray-700 mb-2">
+                Filter by Language:
+              </label>
+              <select
+                id="language-select"
+                value={selectedLanguage}
+                onChange={(e) => handleLanguageChange(e.target.value)}
+                className="block w-48 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+              >
+                <option value="all">All Languages</option>
+                {availableLanguages.map((language) => (
+                  <option key={language} value={language}>
+                    {language.charAt(0).toUpperCase() + language.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Summary Stats */}
@@ -93,10 +129,10 @@ export default function Home() {
         </div>
 
         {/* Charts */}
-        {leaderboardEntries.length > 0 && (
+        {filteredEntries.length > 0 && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-            <PerformanceChart entries={leaderboardEntries} chartType="success-rate" />
-            <PerformanceChart entries={leaderboardEntries} chartType="cost-vs-performance" />
+            <PerformanceChart entries={filteredEntries} chartType="success-rate" selectedLanguage={selectedLanguage} />
+            <PerformanceChart entries={filteredEntries} chartType="cost-vs-performance" selectedLanguage={selectedLanguage} />
           </div>
         )}
 
@@ -109,8 +145,8 @@ export default function Home() {
             </p>
           </div>
           <div className="p-6">
-            {leaderboardEntries.length > 0 ? (
-              <LeaderboardTable entries={leaderboardEntries} />
+            {filteredEntries.length > 0 ? (
+              <LeaderboardTable entries={filteredEntries} showLanguageColumn={selectedLanguage === 'all'} />
             ) : (
               <div className="text-center py-12">
                 <div className="text-gray-400 text-6xl mb-4">📊</div>

@@ -6,16 +6,17 @@ import { formatCurrency, formatPercentage } from '@/utils/dataProcessor';
 
 interface PerformanceChartProps {
   entries: LeaderboardEntry[];
+  selectedLanguage?: string;
   chartType?: 'success-rate' | 'cost-vs-performance';
 }
 
-export default function PerformanceChart({ entries, chartType = 'success-rate' }: PerformanceChartProps) {
+export default function PerformanceChart({ entries, selectedLanguage = 'all', chartType = 'success-rate' }: PerformanceChartProps) {
   if (chartType === 'success-rate') {
     const chartData = entries
       .sort((a, b) => b.successRate - a.successRate)
       .slice(0, 10) // Show top 10
       .map(entry => ({
-        name: `${entry.model} (${entry.language})`,
+        name: selectedLanguage === 'all' ? `${entry.model} (${entry.language})` : entry.model,
         successRate: entry.successRate,
         exercises: entry.totalExercises,
       }));
@@ -53,7 +54,7 @@ export default function PerformanceChart({ entries, chartType = 'success-rate' }
 
   // Cost vs Performance scatter plot
   const scatterData = entries.map(entry => ({
-    name: `${entry.model} (${entry.language})`,
+    name: selectedLanguage === 'all' ? `${entry.model} (${entry.language})` : entry.model,
     cost: entry.averageCost,
     successRate: entry.successRate,
     exercises: entry.totalExercises,

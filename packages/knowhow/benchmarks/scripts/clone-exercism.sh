@@ -49,6 +49,10 @@ IMPL_DIR="$LANGUAGE_DIR/exercises"
 
 # Create filtered exercises directory
 FILTERED_DIR="$EXERCISES_DIR/filtered"
+if [ -d "$FILTERED_DIR" ]; then
+    echo "Removing existing filtered directory: $FILTERED_DIR"
+    rm -rf "$FILTERED_DIR"
+fi
 mkdir -p "$FILTERED_DIR"
 
 count=0
@@ -56,30 +60,30 @@ for exercise in $(ls "$SPEC_DIR" 2>/dev/null | sort); do
     if [ $count -ge $MAX_EXERCISES ]; then
         break
     fi
-    
+
     if [ -d "$IMPL_DIR/practice/$exercise" ] || [ -d "$IMPL_DIR/$exercise" ]; then
         echo "Found exercise: $exercise"
-        
+
         # Create exercise directory
         exercise_dir="$FILTERED_DIR/$exercise"
         mkdir -p "$exercise_dir"
-        
+
         # Copy problem specification
         if [ -f "$SPEC_DIR/$exercise/description.md" ]; then
             cp "$SPEC_DIR/$exercise/description.md" "$exercise_dir/"
         fi
-        
+
         if [ -f "$SPEC_DIR/$exercise/metadata.yml" ]; then
             cp "$SPEC_DIR/$exercise/metadata.yml" "$exercise_dir/"
         fi
-        
+
         # Copy language implementation
         if [ -d "$IMPL_DIR/practice/$exercise" ]; then
             cp -r "$IMPL_DIR/practice/$exercise"/* "$exercise_dir/"
         elif [ -d "$IMPL_DIR/$exercise" ]; then
             cp -r "$IMPL_DIR/$exercise"/* "$exercise_dir/"
         fi
-        
+
         count=$((count + 1))
     fi
 done

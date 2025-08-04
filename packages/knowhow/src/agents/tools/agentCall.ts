@@ -7,8 +7,12 @@ export async function agentCall(agentName: string, userInput: string) {
     const toolService = this as ToolsService;
 
     const { Events, Plugins } = toolService.getContext();
-    const pluginText = await Plugins.callMany(config.plugins, userInput);
-    const fullPrompt = `${userInput} \n ${pluginText}`;
+
+    let fullPrompt = `${userInput}`;
+    if (config.plugins?.length) {
+      const pluginText = await Plugins.callMany(config.plugins, userInput);
+      fullPrompt += `\n ${pluginText}`;
+    }
 
     Events.emit("agents:call", {
       name: agentName,

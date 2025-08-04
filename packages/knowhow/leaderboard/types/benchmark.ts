@@ -29,6 +29,7 @@ export interface ExerciseResult {
 
 export interface BenchmarkResults {
   config: BenchmarkConfig;
+  commitHash?: string;
   exercises: ExerciseResult[];
   summary: {
     totalExercises: number;
