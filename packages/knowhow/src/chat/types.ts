@@ -1,6 +1,7 @@
 /**
  * Core Types for Modular Chat System
  */
+import { BaseAgent } from '../agents/base/base.js';
 
 export interface ChatContext {
   debugMode?: boolean;
@@ -47,6 +48,37 @@ export interface ChatService {
   disableMode(name: string): void;
   processInput(input: string): Promise<boolean>;
   getInput(prompt?: string, options?: string[], chatHistory?: any[]): Promise<string>;
+}
+
+// Enhanced task management types
+export interface TaskInfo {
+  taskId: string;
+  agentName: string;
+  agent: BaseAgent;
+  initialInput: string;
+  status: 'running' | 'paused' | 'completed' | 'failed';
+  startTime: number;
+  endTime?: number;
+  totalCost: number;
+  sessionFile?: string;
+}
+
+export interface ChatSession {
+  sessionId: string;
+  taskId: string;
+  agentName: string;
+  initialInput: string;
+  startTime: number;
+  endTime?: number;
+  status: 'running' | 'paused' | 'completed' | 'failed';
+  totalCost: number;
+  threads: any[][];
+  currentThread: number;
+  lastUpdated: number;
+}
+
+export interface ChatHistory {
+  inputs: string[];
 }
 
 export interface ChatModule {

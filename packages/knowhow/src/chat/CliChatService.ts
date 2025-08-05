@@ -3,11 +3,14 @@
  */
 
 import { ChatService, ChatContext, ChatCommand, ChatMode, InputMethod } from './types.js';
+import { ChatHistory } from './types.js';
 import { ask } from '../utils/index.js';
 import { ChatModule } from './types.js';
 import { ChatInteraction } from '../types.js';
 import { recordAudio, voiceToText } from '../microphone.js';
 import editor from '@inquirer/editor';
+import fs from 'fs';
+import path from 'path';
 
 export class CliChatService implements ChatService {
   private context: ChatContext;
@@ -15,8 +18,10 @@ export class CliChatService implements ChatService {
   private modes: ChatMode[] = [];
   private chatHistory: ChatInteraction[] = [];
   private modules: ChatModule[] = [];
+  private inputHistory: string[] = [];
+  private readonly historyFile = '.knowhow/chats/history.json';
 
-  constructor() {
+  constructor(plugins: string[] = []) {
     this.context = {
       debugMode: false,
       agentMode: false,
@@ -27,8 +32,63 @@ export class CliChatService implements ChatService {
       currentModel: 'gpt-4o',
       currentProvider: 'openai',
       chatHistory: this.chatHistory,
-      plugins: [],
+      plugins: plugins,
     };
+    this.loadInputHistory();
+  }
+
+  /**
+   * Load input history from disk for scrollback functionality
+   */
+  private loadInputHistory(): void {
+    try {
+      if (fs.existsSync(this.historyFile)) {
+        const historyData = fs.readFileSync(this.historyFile, 'utf8');
+        const chatHistory: ChatHistory = JSON.parse(historyData);
+        this.inputHistory = chatHistory.inputs || [];
+      }
+    } catch (error) {
+      console.error('Error loading input history:', error);
+      this.inputHistory = [];
+    }
+  }
+
+  /**
+   * Save input history to disk
+   */
+  private saveInputHistory(): void {
+    try {
+      // Ensure directory exists
+      const dir = path.dirname(this.historyFile);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+
+      const chatHistory: ChatHistory = {
+        inputs: this.inputHistory
+      };
+      
+      fs.writeFileSync(this.historyFile, JSON.stringify(chatHistory, null, 2));
+    } catch (error) {
+      console.error('Error saving input history:', error);
+    }
+  }
+
+  /**
+   * Add input to history and persist it
+   */
+  private addToInputHistory(input: string): void {
+    // Don't save commands or empty inputs
+    if (!input.startsWith('/') && input.trim() !== '') {
+      this.inputHistory.push(input);
+      
+      // Keep history size manageable (last 1000 inputs)
+      if (this.inputHistory.length > 1000) {
+        this.inputHistory = this.inputHistory.slice(-1000);
+      }
+      
+      this.saveInputHistory();
+    }
   }
 
   getContext(): ChatContext {
@@ -76,6 +136,9 @@ export class CliChatService implements ChatService {
   }
 
   async processInput(input: string): Promise<boolean> {
+    // Add input to history (if not a command)
+    this.addToInputHistory(input);
+
     // Check if input is a command
     if (input.startsWith('/')) {
       const [commandName, ...args] = input.slice(1).split(' ');
@@ -132,7 +195,8 @@ export class CliChatService implements ChatService {
       value = await editor({ message: prompt });
       this.context.multilineMode = false; // Disable after use like original
     } else {
-      const history = chatHistory.map((c) => c.input).reverse();
+      // Use saved input history for scrollback instead of current chat history
+      const history = this.inputHistory.slice().reverse();
       value = await ask(prompt, options, history);
     }
 
@@ -146,6 +210,21 @@ export class CliChatService implements ChatService {
 
   getChatHistory(): ChatInteraction[] {
     return this.chatHistory;
+  }
+
+  /**
+   * Get input history for external access
+   */
+  getInputHistory(): string[] {
+    return [...this.inputHistory];
+  }
+
+  /**
+   * Clear input history
+   */
+  clearInputHistory(): void {
+    this.inputHistory = [];
+    this.saveInputHistory();
   }
 
   async startChatLoop(): Promise<void> {

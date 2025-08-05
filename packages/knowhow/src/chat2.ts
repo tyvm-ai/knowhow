@@ -6,11 +6,21 @@
 
 import { CliChatService } from './chat/CliChatService.js';
 import { InternalChatModule } from './chat/modules/InternalChatModule.js';
+import { getConfig } from './config.js';
 
 async function main() {
   try {
-    // Create chat service
-    const chatService = new CliChatService();
+    // Load configuration and plugins
+    let config;
+    try {
+      config = await getConfig();
+    } catch (configError) {
+      console.warn('Warning: Could not load config, using default plugins:', configError);
+      config = { plugins: ['embeddings', 'language', 'vim', 'github', 'asana', 'jira', 'linear', 'download', 'figma', 'url'] };
+    }
+    
+    // Create chat service with plugins
+    const chatService = new CliChatService(config.plugins);
     
     // Load internal chat module (includes all core functionality)
     const internalModule = new InternalChatModule();
