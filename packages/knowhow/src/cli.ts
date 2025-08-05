@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import "source-map-support/register";
+import { Command } from "commander";
 import { generate, embed, upload, chat } from "./index";
 import { init } from "./config";
 
@@ -12,9 +13,7 @@ import { worker } from "./worker";
 import { agents } from "./agents";
 import { startChat2 } from "./chat2";
 
-const command = process.argv[2];
-
-async function main() {
+async function setupServices() {
   const { Tools, Agents, Mcp, Clients } = services();
   const { Researcher, Developer, Patcher } = agents();
   Agents.registerAgent(Researcher);
@@ -26,45 +25,93 @@ async function main() {
 
   await Mcp.connectToConfigured(Tools);
   await Clients.registerConfiguredModels();
-
-  switch (command) {
-    case "init":
-      await init();
-      break;
-    case "login":
-      await login();
-      break;
-    case "generate":
-      await generate();
-      break;
-    case "embed":
-      await embed();
-      break;
-    case "embed:purge":
-      await purge(process.argv[3]);
-      break;
-    case "upload":
-      await upload();
-      break;
-    case "download":
-      await download();
-      break;
-    case "chat":
-      await chat();
-      break;
-    case "chat2":
-      await startChat2();
-      break;
-    case "worker":
-      await worker();
-      break;
-    default:
-      console.log(
-        "Unknown command. Please use one of the following: init, login, generate, embed, embed:purge, upload, download, chat"
-      );
-      break;
-  }
 }
+
+async function main() {
+  const program = new Command();
+  
+  program
+    .name("knowhow")
+    .description("AI CLI with plugins and agents")
+    .version("0.0.33");
+
+  // Initialize services for all commands
+  await setupServices();
+
+  program
+    .command("init")
+    .description("Initialize knowhow configuration")
+    .action(async () => {
+      await init();
+    });
+
+  program
+    .command("login")
+    .description("Login to knowhow")
+    .action(async () => {
+      await login();
+    });
+
+  program
+    .command("generate")
+    .description("Generate documentation")
+    .action(async () => {
+      await generate();
+    });
+
+  program
+    .command("embed")
+    .description("Create embeddings")
+    .action(async () => {
+      await embed();
+    });
+
+  program
+    .command("embed:purge")
+    .description("Purge embeddings matching a glob pattern")
+    .argument("<pattern>", "Glob pattern to match files for purging")
+    .action(async (pattern) => {
+      await purge(pattern);
+    });
+
+  program
+    .command("upload")
+    .description("Upload data")
+    .action(async () => {
+      await upload();
+    });
+
+  program
+    .command("download")
+    .description("Download data")
+    .action(async () => {
+      await download();
+    });
+
+  program
+    .command("chat")
+    .description("Start chat interface")
+    .action(async () => {
+      await chat();
+    });
+
+  program
+    .command("chat2")
+    .description("Start new chat interface")
+    .action(async () => {
+      await startChat2();
+    });
+
+  program
+    .command("worker")
+    .description("Start worker process")
+    .action(async () => {
+      await worker();
+    });
+
+  await program.parseAsync(process.argv);
+}
+
 
 if (require.main === module) {
   main()

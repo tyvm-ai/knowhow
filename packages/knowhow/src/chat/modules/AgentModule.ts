@@ -675,9 +675,6 @@ ${reason}
         chatHistory
       );
 
-      // Start the agent with the formatted prompt
-      selectedAgent.call(formattedPrompt);
-
       // Set up message processors like in original startAgent
 
       selectedAgent.messageProcessor.setProcessors("pre_call", [
@@ -728,6 +725,10 @@ ${reason}
         }
       );
 
+
+      // Start the agent with the formatted prompt
+      selectedAgent.call(formattedPrompt);
+
       return await this.attachedAgentChatLoop(taskId, selectedAgent);
     } catch (error) {
       console.error("Agent setup failed:", error);
@@ -753,9 +754,11 @@ ${reason}
 
       history.push(input);
 
+      let finished = false;
       const donePromise = new Promise<string>((resolve) => {
         selectedAgent.agentEvents.on(selectedAgent.eventTypes.done, () => {
-          done = true;
+          console.log("Agent has completed the task.");
+          finished = true;
           resolve("done");
         });
       });
@@ -763,6 +766,10 @@ ${reason}
       while (!done) {
         switch (input) {
           case "":
+            if (finished) {
+              output = "Agent has completed the task.";
+              done = true;
+            }
             break;
           case "done":
             output = "Exited agent interaction.";
