@@ -1,0 +1,1920 @@
+{
+  "config": {
+    "language": "javascript",
+    "maxExercises": 10,
+    "model": "qwen/qwen3-30b-a3b-2507",
+    "provider": "lms",
+    "limits": {
+      "maxTurns": 30,
+      "maxTime": 300,
+      "maxCost": 1
+    },
+    "outputFile": "results.json"
+  },
+  "exercises": [
+    {
+      "exerciseName": "accumulate",
+      "status": "success",
+      "turns": 12,
+      "testResult": {
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "skipped": 0,
+        "success": true,
+        "output": "{\"numFailedTestSuites\":0,\"numFailedTests\":0,\"numPassedTestSuites\":1,\"numPassedTests\":5,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":5,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754328862977,\"success\":true,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"accumulate()\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulation empty\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"accumulation empty\"},{\"ancestorTitles\":[\"accumulate()\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulate squares\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"accumulate squares\"},{\"ancestorTitles\":[\"accumulate()\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulate upcases\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"accumulate upcases\"},{\"ancestorTitles\":[\"accumulate()\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulate reversed strings\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"accumulate reversed strings\"},{\"ancestorTitles\":[\"accumulate()\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulate recursively\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"accumulate recursively\"}],\"endTime\":1754328863074,\"message\":\"\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/accumulate/accumulate.spec.js\",\"startTime\":1754328862988,\"status\":\"passed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 0,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 1,
+          "numPassedTests": 5,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 5,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754328862977,
+          "success": true,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulation empty",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "accumulation empty"
+                },
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulate squares",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "accumulate squares"
+                },
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulate upcases",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "accumulate upcases"
+                },
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulate reversed strings",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "accumulate reversed strings"
+                },
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulate recursively",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "accumulate recursively"
+                }
+              ],
+              "endTime": 1754328863074,
+              "message": "",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/accumulate/accumulate.spec.js",
+              "startTime": 1754328862988,
+              "status": "passed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 105.243,
+      "cost": 0,
+      "startTime": "2025-08-04T17:32:37.841Z",
+      "endTime": "2025-08-04T17:34:23.084Z",
+      "finalOutput": "I've successfully implemented the accumulate operation as required. The solution:\n\n1. Takes a collection and an operation function as parameters\n2. Uses a simple for loop to iterate through each element\n3. Applies the operation to each element and builds a new collection with the results\n4. Returns the new collection without using any built-in map/fmap functionality\n\nAll test cases pass successfully, including:\n- Empty collection handling\n- Squaring numbers (1, 2, 3 → 1, 4, 9)\n- Converting strings to uppercase\n- Reversing strings\n- Nested accumulation (creating arrays of combined characters)\n\nThe implementation meets all requirements and works correctly across all test cases."
+    },
+    {
+      "exerciseName": "acronym",
+      "status": "success",
+      "turns": 18,
+      "testResult": {
+        "passed": 0,
+        "failed": 0,
+        "total": 0,
+        "skipped": 0,
+        "success": false,
+        "output": "{\"numFailedTestSuites\":1,\"numFailedTests\":0,\"numPassedTestSuites\":0,\"numPassedTests\":0,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":1,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":0,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754329175456,\"success\":false,\"testResults\":[{\"assertionResults\":[],\"coverage\":{},\"endTime\":1754329175798,\"message\":\"  ● Test suite failed to run\\n\\n    SyntaxError: /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/acronym/acronym.js: Unexpected token, expected \\\",\\\" (11:64)\\n\\n       9 |\\n      10 |   // Remove all punctuation except spaces and hyphens\\n    > 11 |   const cleanedPhrase = normalizedPhrase.replace(/[\\\\p{P}]/gu, '';\\n         |                                                                 ^\\n      12 |\\n      13 |   // Split by whitespace and take the first letter of each word\\n      14 |   const acronym = cleanedPhrase\\n\\n      1 | import { describe, expect, test, xtest } from '@jest/globals';\\n    > 2 | import { parse } from './acronym';\\n        | ^\\n      3 |\\n      4 | describe('Acronyms are produced from', () => {\\n      5 |   // basic\\n\\n      at constructor (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parse-error.ts:95:45)\\n      at Parser.toParseError [as raise] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/tokenizer/index.ts:1503:19)\\n      at Parser.raise [as unexpected] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/tokenizer/index.ts:1543:16)\\n      at Parser.unexpected [as expect] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/util.ts:157:12)\\n      at Parser.expect [as parseCallExpressionArguments] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:1023:14)\\n      at Parser.parseCallExpressionArguments [as parseCoverCallAndAsyncArrowHead] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:914:29)\\n      at Parser.parseCoverCallAndAsyncArrowHead [as parseSubscript] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:796:19)\\n      at Parser.parseSubscript [as parseSubscripts] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:755:19)\\n      at Parser.parseSubscripts [as parseExprSubscripts] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:740:17)\\n      at Parser.parseExprSubscripts [as parseUpdate] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:713:21)\\n      at Parser.parseUpdate [as parseMaybeUnary] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:675:23)\\n      at Parser.parseMaybeUnary [as parseMaybeUnaryOrPrivate] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:409:14)\\n      at Parser.parseMaybeUnaryOrPrivate [as parseExprOps] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:421:23)\\n      at Parser.parseExprOps [as parseMaybeConditional] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:376:23)\\n      at Parser.parseMaybeConditional [as parseMaybeAssign] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:301:21)\\n      at parseMaybeAssign (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:257:12)\\n      at Parser.callback [as allowInAnd] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:3187:16)\\n      at Parser.allowInAnd [as parseMaybeAssignAllowIn] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:256:17)\\n      at Parser.parseMaybeAssignAllowIn [as parseVar] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1582:18)\\n      at Parser.parseVar [as parseVarStatement] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1246:10)\\n      at Parser.parseVarStatement [as parseStatementContent] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:607:21)\\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:477:17)\\n      at Parser.parseStatementLike [as parseStatementListItem] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:426:17)\\n      at Parser.parseStatementListItem [as parseBlockOrModuleBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1439:16)\\n      at Parser.parseBlockOrModuleBlockBody [as parseBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1412:10)\\n      at Parser.parseBlockBody [as parseBlock] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1380:10)\\n      at Parser.parseBlock [as parseFunctionBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:2616:24)\\n      at Parser.parseFunctionBody [as parseArrowExpression] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:2553:10)\\n      at Parser.parseArrowExpression [as parseParenAndDistinguishExpression] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:1837:12)\\n      at Parser.parseParenAndDistinguishExpression [as parseExprAtom] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:1162:21)\\n      at Parser.parseExprAtom [as parseExprSubscripts] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:734:23)\\n      at Parser.parseExprSubscripts [as parseUpdate] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:713:21)\\n      at Parser.parseUpdate [as parseMaybeUnary] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:675:23)\\n      at Parser.parseMaybeUnary [as parseMaybeUnaryOrPrivate] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:409:14)\\n      at Parser.parseMaybeUnaryOrPrivate [as parseExprOps] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:421:23)\\n      at Parser.parseExprOps [as parseMaybeConditional] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:376:23)\\n      at Parser.parseMaybeConditional [as parseMaybeAssign] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:301:21)\\n      at parseMaybeAssign (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:257:12)\\n      at Parser.callback [as allowInAnd] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:3187:16)\\n      at Parser.allowInAnd [as parseMaybeAssignAllowIn] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:256:17)\\n      at Parser.parseMaybeAssignAllowIn [as parseVar] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1582:18)\\n      at Parser.parseVar [as parseVarStatement] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1246:10)\\n      at Parser.parseVarStatement [as parseStatementContent] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:607:21)\\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:477:17)\\n      at Parser.parseStatementLike [as parseStatementListItem] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:426:17)\\n      at Parser.parseStatementListItem (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2630:17)\\n      at Parser.parseExportDeclaration [as maybeParseExportDeclaration] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2546:31)\\n      at Parser.maybeParseExportDeclaration [as parseExport] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2427:29)\\n      at Parser.parseExport [as parseStatementContent] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:644:25)\\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:477:17)\\n      at Parser.parseStatementLike [as parseModuleItem] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:414:17)\\n      at Parser.parseModuleItem [as parseBlockOrModuleBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1438:16)\\n      at Parser.parseBlockOrModuleBlockBody [as parseBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1412:10)\\n      at Parser.parseBlockBody [as parseProgram] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:229:10)\\n      at Parser.parseProgram [as parseTopLevel] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:203:25)\\n      at Parser.parseTopLevel [as parse] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/index.ts:93:10)\\n      at parse (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/index.ts:92:38)\\n      at parser (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/parser/index.ts:28:19)\\n          at parser.next (<anonymous>)\\n      at normalizeFile (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transformation/normalize-file.ts:49:24)\\n          at normalizeFile.next (<anonymous>)\\n      at run (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transformation/index.ts:40:36)\\n          at run.next (<anonymous>)\\n      at transform (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transform.ts:29:20)\\n          at transform.next (<anonymous>)\\n      at evaluateSync (node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:251:28)\\n      at sync (node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:89:14)\\n      at fn (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/errors/rewrite-stack-trace.ts:99:14)\\n      at transformSync (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transform.ts:66:52)\\n      at ScriptTransformer.transformSource (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:545:31)\\n      at ScriptTransformer._transformAndBuildScript (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:674:40)\\n      at ScriptTransformer.transform (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:726:19)\\n      at Object.require (acronym.spec.js:2:1)\\n\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/acronym/acronym.spec.js\",\"startTime\":1754329175798,\"status\":\"failed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 1,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 0,
+          "numPassedTests": 0,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 1,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 0,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754329175456,
+          "success": false,
+          "testResults": [
+            {
+              "assertionResults": [],
+              "coverage": {},
+              "endTime": 1754329175798,
+              "message": "  ● Test suite failed to run\n\n    SyntaxError: /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/acronym/acronym.js: Unexpected token, expected \",\" (11:64)\n\n       9 |\n      10 |   // Remove all punctuation except spaces and hyphens\n    > 11 |   const cleanedPhrase = normalizedPhrase.replace(/[\\p{P}]/gu, '';\n         |                                                                 ^\n      12 |\n      13 |   // Split by whitespace and take the first letter of each word\n      14 |   const acronym = cleanedPhrase\n\n      1 | import { describe, expect, test, xtest } from '@jest/globals';\n    > 2 | import { parse } from './acronym';\n        | ^\n      3 |\n      4 | describe('Acronyms are produced from', () => {\n      5 |   // basic\n\n      at constructor (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parse-error.ts:95:45)\n      at Parser.toParseError [as raise] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/tokenizer/index.ts:1503:19)\n      at Parser.raise [as unexpected] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/tokenizer/index.ts:1543:16)\n      at Parser.unexpected [as expect] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/util.ts:157:12)\n      at Parser.expect [as parseCallExpressionArguments] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:1023:14)\n      at Parser.parseCallExpressionArguments [as parseCoverCallAndAsyncArrowHead] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:914:29)\n      at Parser.parseCoverCallAndAsyncArrowHead [as parseSubscript] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:796:19)\n      at Parser.parseSubscript [as parseSubscripts] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:755:19)\n      at Parser.parseSubscripts [as parseExprSubscripts] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:740:17)\n      at Parser.parseExprSubscripts [as parseUpdate] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:713:21)\n      at Parser.parseUpdate [as parseMaybeUnary] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:675:23)\n      at Parser.parseMaybeUnary [as parseMaybeUnaryOrPrivate] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:409:14)\n      at Parser.parseMaybeUnaryOrPrivate [as parseExprOps] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:421:23)\n      at Parser.parseExprOps [as parseMaybeConditional] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:376:23)\n      at Parser.parseMaybeConditional [as parseMaybeAssign] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:301:21)\n      at parseMaybeAssign (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:257:12)\n      at Parser.callback [as allowInAnd] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:3187:16)\n      at Parser.allowInAnd [as parseMaybeAssignAllowIn] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:256:17)\n      at Parser.parseMaybeAssignAllowIn [as parseVar] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1582:18)\n      at Parser.parseVar [as parseVarStatement] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1246:10)\n      at Parser.parseVarStatement [as parseStatementContent] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:607:21)\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:477:17)\n      at Parser.parseStatementLike [as parseStatementListItem] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:426:17)\n      at Parser.parseStatementListItem [as parseBlockOrModuleBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1439:16)\n      at Parser.parseBlockOrModuleBlockBody [as parseBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1412:10)\n      at Parser.parseBlockBody [as parseBlock] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1380:10)\n      at Parser.parseBlock [as parseFunctionBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:2616:24)\n      at Parser.parseFunctionBody [as parseArrowExpression] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:2553:10)\n      at Parser.parseArrowExpression [as parseParenAndDistinguishExpression] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:1837:12)\n      at Parser.parseParenAndDistinguishExpression [as parseExprAtom] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:1162:21)\n      at Parser.parseExprAtom [as parseExprSubscripts] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:734:23)\n      at Parser.parseExprSubscripts [as parseUpdate] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:713:21)\n      at Parser.parseUpdate [as parseMaybeUnary] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:675:23)\n      at Parser.parseMaybeUnary [as parseMaybeUnaryOrPrivate] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:409:14)\n      at Parser.parseMaybeUnaryOrPrivate [as parseExprOps] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:421:23)\n      at Parser.parseExprOps [as parseMaybeConditional] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:376:23)\n      at Parser.parseMaybeConditional [as parseMaybeAssign] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:301:21)\n      at parseMaybeAssign (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:257:12)\n      at Parser.callback [as allowInAnd] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:3187:16)\n      at Parser.allowInAnd [as parseMaybeAssignAllowIn] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/expression.ts:256:17)\n      at Parser.parseMaybeAssignAllowIn [as parseVar] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1582:18)\n      at Parser.parseVar [as parseVarStatement] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1246:10)\n      at Parser.parseVarStatement [as parseStatementContent] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:607:21)\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:477:17)\n      at Parser.parseStatementLike [as parseStatementListItem] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:426:17)\n      at Parser.parseStatementListItem (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2630:17)\n      at Parser.parseExportDeclaration [as maybeParseExportDeclaration] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2546:31)\n      at Parser.maybeParseExportDeclaration [as parseExport] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2427:29)\n      at Parser.parseExport [as parseStatementContent] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:644:25)\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:477:17)\n      at Parser.parseStatementLike [as parseModuleItem] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:414:17)\n      at Parser.parseModuleItem [as parseBlockOrModuleBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1438:16)\n      at Parser.parseBlockOrModuleBlockBody [as parseBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1412:10)\n      at Parser.parseBlockBody [as parseProgram] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:229:10)\n      at Parser.parseProgram [as parseTopLevel] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:203:25)\n      at Parser.parseTopLevel [as parse] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/index.ts:93:10)\n      at parse (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/index.ts:92:38)\n      at parser (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/parser/index.ts:28:19)\n          at parser.next (<anonymous>)\n      at normalizeFile (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transformation/normalize-file.ts:49:24)\n          at normalizeFile.next (<anonymous>)\n      at run (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transformation/index.ts:40:36)\n          at run.next (<anonymous>)\n      at transform (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transform.ts:29:20)\n          at transform.next (<anonymous>)\n      at evaluateSync (node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:251:28)\n      at sync (node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:89:14)\n      at fn (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/errors/rewrite-stack-trace.ts:99:14)\n      at transformSync (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transform.ts:66:52)\n      at ScriptTransformer.transformSource (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:545:31)\n      at ScriptTransformer._transformAndBuildScript (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:674:40)\n      at ScriptTransformer.transform (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:726:19)\n      at Object.require (acronym.spec.js:2:1)\n",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/acronym/acronym.spec.js",
+              "startTime": 1754329175798,
+              "status": "failed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 312.695,
+      "cost": 0,
+      "startTime": "2025-08-04T17:34:23.117Z",
+      "endTime": "2025-08-04T17:39:35.812Z",
+      "finalOutput": "Task terminated due to limits reached. Turn: 18/30, Cost: $0.0000/$1.0000, Runtime: 311790ms/300000ms"
+    },
+    {
+      "exerciseName": "affine-cipher",
+      "status": "success",
+      "turns": 15,
+      "testResult": {
+        "passed": 2,
+        "failed": 0,
+        "total": 16,
+        "skipped": 14,
+        "success": true,
+        "output": "{\"numFailedTestSuites\":0,\"numFailedTests\":0,\"numPassedTestSuites\":1,\"numPassedTests\":2,\"numPendingTestSuites\":0,\"numPendingTests\":14,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":16,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754329514106,\"success\":true,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode yes\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode yes\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode no\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"encode no\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode OMG\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"encode OMG\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode O M G\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"encode O M G\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode mindblowingly\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"encode mindblowingly\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode numbers\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"encode numbers\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode deep thought\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"encode deep thought\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode all the letters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"encode all the letters\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode with a not coprime to m\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"encode with a not coprime to m\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode exercism\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode exercism\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode a sentence\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"decode a sentence\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode numbers\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"decode numbers\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode all the letters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"decode all the letters\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode with no spaces in input\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"decode with no spaces in input\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode with too many spaces\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"decode with too many spaces\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode with a not coprime to m\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"decode with a not coprime to m\"}],\"endTime\":1754329514205,\"message\":\"\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/affine-cipher.spec.js\",\"startTime\":1754329514117,\"status\":\"focused\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 0,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 1,
+          "numPassedTests": 2,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 14,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 16,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754329514106,
+          "success": true,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode yes",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode yes"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode no",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "encode no"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode OMG",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "encode OMG"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode O M G",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "encode O M G"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode mindblowingly",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "encode mindblowingly"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode numbers",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "encode numbers"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode deep thought",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "encode deep thought"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode all the letters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "encode all the letters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode with a not coprime to m",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "encode with a not coprime to m"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode exercism",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode exercism"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode a sentence",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "decode a sentence"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode numbers",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "decode numbers"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode all the letters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "decode all the letters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode with no spaces in input",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "decode with no spaces in input"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode with too many spaces",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "decode with too many spaces"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode with a not coprime to m",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "decode with a not coprime to m"
+                }
+              ],
+              "endTime": 1754329514205,
+              "message": "",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/affine-cipher/affine-cipher.spec.js",
+              "startTime": 1754329514117,
+              "status": "focused",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 338.381,
+      "cost": 0,
+      "startTime": "2025-08-04T17:39:35.834Z",
+      "endTime": "2025-08-04T17:45:14.215Z",
+      "finalOutput": "Task terminated due to limits reached. Turn: 15/30, Cost: $0.0000/$1.0000, Runtime: 337876ms/300000ms"
+    },
+    {
+      "exerciseName": "all-your-base",
+      "status": "success",
+      "turns": 10,
+      "testResult": {
+        "passed": 21,
+        "failed": 0,
+        "total": 21,
+        "skipped": 0,
+        "success": true,
+        "output": "{\"numFailedTestSuites\":0,\"numFailedTests\":0,\"numPassedTestSuites\":1,\"numPassedTests\":21,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":21,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754329654167,\"success\":true,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"Converter\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter single bit one to decimal\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"single bit one to decimal\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter binary to single decimal\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"binary to single decimal\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter single decimal to binary\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"single decimal to binary\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter binary to multiple decimal\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"binary to multiple decimal\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter decimal to binary\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decimal to binary\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter trinary to hexadecimal\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"trinary to hexadecimal\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter hexadecimal to trinary\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"hexadecimal to trinary\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter 15-bit integer\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"15-bit integer\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":4,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter empty list\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"empty list\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter single zero\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"single zero\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter multiple zeros\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"multiple zeros\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter leading zeros\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"leading zeros\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter negative digit\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"negative digit\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter invalid positive digit\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"invalid positive digit\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter first base is one\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"first base is one\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter second base is one\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"second base is one\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter first base is zero\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"first base is zero\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter second base is zero\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"second base is zero\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter first base is negative\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"first base is negative\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter second base is negative\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"second base is negative\"},{\"ancestorTitles\":[\"Converter\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Converter both bases are negative\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"both bases are negative\"}],\"endTime\":1754329654271,\"message\":\"\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/all-your-base/all-your-base.spec.js\",\"startTime\":1754329654179,\"status\":\"passed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 0,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 1,
+          "numPassedTests": 21,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 21,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754329654167,
+          "success": true,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter single bit one to decimal",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "single bit one to decimal"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter binary to single decimal",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "binary to single decimal"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter single decimal to binary",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "single decimal to binary"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter binary to multiple decimal",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "binary to multiple decimal"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter decimal to binary",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decimal to binary"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter trinary to hexadecimal",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "trinary to hexadecimal"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter hexadecimal to trinary",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "hexadecimal to trinary"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter 15-bit integer",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "15-bit integer"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 4,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter empty list",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "empty list"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter single zero",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "single zero"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter multiple zeros",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "multiple zeros"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter leading zeros",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "leading zeros"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter negative digit",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "negative digit"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter invalid positive digit",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "invalid positive digit"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter first base is one",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "first base is one"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter second base is one",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "second base is one"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter first base is zero",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "first base is zero"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter second base is zero",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "second base is zero"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter first base is negative",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "first base is negative"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter second base is negative",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "second base is negative"
+                },
+                {
+                  "ancestorTitles": [
+                    "Converter"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Converter both bases are negative",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "both bases are negative"
+                }
+              ],
+              "endTime": 1754329654271,
+              "message": "",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/all-your-base/all-your-base.spec.js",
+              "startTime": 1754329654179,
+              "status": "passed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 140.05,
+      "cost": 0,
+      "startTime": "2025-08-04T17:45:14.230Z",
+      "endTime": "2025-08-04T17:47:34.280Z",
+      "finalOutput": "I've successfully implemented the base conversion functionality for the 'all-your-base' exercise. The solution handles all the required test cases correctly, including:\n\n1. Basic conversions between different bases (binary to decimal, decimal to binary, etc.)\n2. Edge cases like empty arrays, leading zeros, and invalid digits\n3. Error handling for invalid bases (less than 2)\n4. Proper handling of the single zero case\n\nAll 21 tests are now passing, confirming that the implementation works correctly for all scenarios. The solution uses standard base conversion algorithms and properly validates all inputs according to the requirements."
+    },
+    {
+      "exerciseName": "allergies",
+      "status": "success",
+      "turns": 16,
+      "testResult": {
+        "passed": 0,
+        "failed": 0,
+        "total": 0,
+        "skipped": 0,
+        "success": false,
+        "output": "{\"numFailedTestSuites\":1,\"numFailedTests\":0,\"numPassedTestSuites\":0,\"numPassedTests\":0,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":1,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":0,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754330096738,\"success\":false,\"testResults\":[{\"assertionResults\":[],\"coverage\":{},\"endTime\":1754330097069,\"message\":\"  ● Test suite failed to run\\n\\n    Jest encountered an unexpected token\\n\\n    Jest failed to parse a file. This happens e.g. when your code or its dependencies use non-standard JavaScript syntax, or when Jest is not configured to support such syntax.\\n\\n    Out of the box Jest supports Babel, which will be used to transform your files into valid JS based on your Babel configuration.\\n\\n    By default \\\"node_modules\\\" folder is ignored by transformers.\\n\\n    Here's what you can do:\\n     • If you are trying to use ECMAScript Modules, see https://jestjs.io/docs/ecmascript-modules for how to enable it.\\n     • If you are trying to use TypeScript, see https://jestjs.io/docs/getting-started#using-typescript\\n     • To have some of your \\\"node_modules\\\" files transformed, you can specify a custom \\\"transformIgnorePatterns\\\" in your config.\\n     • If you need a custom transformation specify a \\\"transform\\\" option in your config.\\n     • If you simply want to mock your non-JS modules (e.g. binary assets) you can stub them out with the \\\"moduleNameMapper\\\" config option.\\n\\n    You'll find more details and examples of these config options in the docs:\\n    https://jestjs.io/docs/configuration\\n    For information about custom transformations, see:\\n    https://jestjs.io/docs/code-transformation\\n\\n    Details:\\n\\n    SyntaxError: /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/allergies/allergies.js: Identifier 'Allergies' has already been declared. (40:13)\\n\\n      38 | //\\n      39 |\\n    > 40 | export class Allergies {\\n         |              ^\\n      41 |   constructor(score) {\\n      42 |     this.score = score;\\n      43 |     this.allergens = {\\n\\n      1 | import { describe, expect, test, xtest } from '@jest/globals';\\n    > 2 | import { Allergies } from './allergies';\\n        | ^\\n      3 |\\n      4 | describe('Allergies', () => {\\n      5 |   describe('testing for eggs allergy', () => {\\n\\n      at constructor (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parse-error.ts:95:45)\\n      at Parser.toParseError [as raise] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/tokenizer/index.ts:1503:19)\\n      at ScopeHandler.raise [as checkRedeclarationInScope] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/util/scope.ts:164:19)\\n      at ScopeHandler.checkRedeclarationInScope [as declareName] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/util/scope.ts:118:12)\\n      at Parser.declareName [as declareNameFromIdentifier] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/lval.ts:818:16)\\n      at Parser.declareNameFromIdentifier [as parseClassId] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2350:14)\\n      at Parser.parseClassId [as parseClass] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1766:10)\\n      at Parser.parseClass [as parseExportDeclaration] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2623:25)\\n      at Parser.parseExportDeclaration [as maybeParseExportDeclaration] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2546:31)\\n      at Parser.maybeParseExportDeclaration [as parseExport] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2427:29)\\n      at Parser.parseExport [as parseStatementContent] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:644:25)\\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:477:17)\\n      at Parser.parseStatementLike [as parseModuleItem] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:414:17)\\n      at Parser.parseModuleItem [as parseBlockOrModuleBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1438:16)\\n      at Parser.parseBlockOrModuleBlockBody [as parseBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1412:10)\\n      at Parser.parseBlockBody [as parseProgram] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:229:10)\\n      at Parser.parseProgram [as parseTopLevel] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:203:25)\\n      at Parser.parseTopLevel [as parse] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/index.ts:93:10)\\n      at parse (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/index.ts:92:38)\\n      at parser (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/parser/index.ts:28:19)\\n          at parser.next (<anonymous>)\\n      at normalizeFile (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transformation/normalize-file.ts:49:24)\\n          at normalizeFile.next (<anonymous>)\\n      at run (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transformation/index.ts:40:36)\\n          at run.next (<anonymous>)\\n      at transform (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transform.ts:29:20)\\n          at transform.next (<anonymous>)\\n      at evaluateSync (node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:251:28)\\n      at sync (node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:89:14)\\n      at fn (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/errors/rewrite-stack-trace.ts:99:14)\\n      at transformSync (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transform.ts:66:52)\\n      at ScriptTransformer.transformSource (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:545:31)\\n      at ScriptTransformer._transformAndBuildScript (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:674:40)\\n      at ScriptTransformer.transform (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:726:19)\\n      at Object.require (allergies.spec.js:2:1)\\n\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/allergies/allergies.spec.js\",\"startTime\":1754330097069,\"status\":\"failed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 1,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 0,
+          "numPassedTests": 0,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 1,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 0,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754330096738,
+          "success": false,
+          "testResults": [
+            {
+              "assertionResults": [],
+              "coverage": {},
+              "endTime": 1754330097069,
+              "message": "  ● Test suite failed to run\n\n    Jest encountered an unexpected token\n\n    Jest failed to parse a file. This happens e.g. when your code or its dependencies use non-standard JavaScript syntax, or when Jest is not configured to support such syntax.\n\n    Out of the box Jest supports Babel, which will be used to transform your files into valid JS based on your Babel configuration.\n\n    By default \"node_modules\" folder is ignored by transformers.\n\n    Here's what you can do:\n     • If you are trying to use ECMAScript Modules, see https://jestjs.io/docs/ecmascript-modules for how to enable it.\n     • If you are trying to use TypeScript, see https://jestjs.io/docs/getting-started#using-typescript\n     • To have some of your \"node_modules\" files transformed, you can specify a custom \"transformIgnorePatterns\" in your config.\n     • If you need a custom transformation specify a \"transform\" option in your config.\n     • If you simply want to mock your non-JS modules (e.g. binary assets) you can stub them out with the \"moduleNameMapper\" config option.\n\n    You'll find more details and examples of these config options in the docs:\n    https://jestjs.io/docs/configuration\n    For information about custom transformations, see:\n    https://jestjs.io/docs/code-transformation\n\n    Details:\n\n    SyntaxError: /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/allergies/allergies.js: Identifier 'Allergies' has already been declared. (40:13)\n\n      38 | //\n      39 |\n    > 40 | export class Allergies {\n         |              ^\n      41 |   constructor(score) {\n      42 |     this.score = score;\n      43 |     this.allergens = {\n\n      1 | import { describe, expect, test, xtest } from '@jest/globals';\n    > 2 | import { Allergies } from './allergies';\n        | ^\n      3 |\n      4 | describe('Allergies', () => {\n      5 |   describe('testing for eggs allergy', () => {\n\n      at constructor (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parse-error.ts:95:45)\n      at Parser.toParseError [as raise] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/tokenizer/index.ts:1503:19)\n      at ScopeHandler.raise [as checkRedeclarationInScope] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/util/scope.ts:164:19)\n      at ScopeHandler.checkRedeclarationInScope [as declareName] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/util/scope.ts:118:12)\n      at Parser.declareName [as declareNameFromIdentifier] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/lval.ts:818:16)\n      at Parser.declareNameFromIdentifier [as parseClassId] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2350:14)\n      at Parser.parseClassId [as parseClass] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1766:10)\n      at Parser.parseClass [as parseExportDeclaration] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2623:25)\n      at Parser.parseExportDeclaration [as maybeParseExportDeclaration] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2546:31)\n      at Parser.maybeParseExportDeclaration [as parseExport] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2427:29)\n      at Parser.parseExport [as parseStatementContent] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:644:25)\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:477:17)\n      at Parser.parseStatementLike [as parseModuleItem] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:414:17)\n      at Parser.parseModuleItem [as parseBlockOrModuleBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1438:16)\n      at Parser.parseBlockOrModuleBlockBody [as parseBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1412:10)\n      at Parser.parseBlockBody [as parseProgram] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:229:10)\n      at Parser.parseProgram [as parseTopLevel] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:203:25)\n      at Parser.parseTopLevel [as parse] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/index.ts:93:10)\n      at parse (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/index.ts:92:38)\n      at parser (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/parser/index.ts:28:19)\n          at parser.next (<anonymous>)\n      at normalizeFile (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transformation/normalize-file.ts:49:24)\n          at normalizeFile.next (<anonymous>)\n      at run (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transformation/index.ts:40:36)\n          at run.next (<anonymous>)\n      at transform (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transform.ts:29:20)\n          at transform.next (<anonymous>)\n      at evaluateSync (node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:251:28)\n      at sync (node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:89:14)\n      at fn (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/errors/rewrite-stack-trace.ts:99:14)\n      at transformSync (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transform.ts:66:52)\n      at ScriptTransformer.transformSource (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:545:31)\n      at ScriptTransformer._transformAndBuildScript (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:674:40)\n      at ScriptTransformer.transform (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:726:19)\n      at Object.require (allergies.spec.js:2:1)\n",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/allergies/allergies.spec.js",
+              "startTime": 1754330097069,
+              "status": "failed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 442.776,
+      "cost": 0,
+      "startTime": "2025-08-04T17:47:34.303Z",
+      "endTime": "2025-08-04T17:54:57.079Z",
+      "finalOutput": "Task terminated due to limits reached. Turn: 16/30, Cost: $0.0000/$1.0000, Runtime: 441943ms/300000ms"
+    },
+    {
+      "exerciseName": "alphametics",
+      "status": "success",
+      "turns": 13,
+      "testResult": {
+        "passed": 0,
+        "failed": 0,
+        "total": 0,
+        "skipped": 0,
+        "success": false,
+        "output": "{\"numFailedTestSuites\":1,\"numFailedTests\":0,\"numPassedTestSuites\":0,\"numPassedTests\":0,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":1,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":0,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754330454339,\"success\":false,\"testResults\":[{\"assertionResults\":[],\"coverage\":{},\"endTime\":1754330454673,\"message\":\"  ● Test suite failed to run\\n\\n    Jest encountered an unexpected token\\n\\n    Jest failed to parse a file. This happens e.g. when your code or its dependencies use non-standard JavaScript syntax, or when Jest is not configured to support such syntax.\\n\\n    Out of the box Jest supports Babel, which will be used to transform your files into valid JS based on your Babel configuration.\\n\\n    By default \\\"node_modules\\\" folder is ignored by transformers.\\n\\n    Here's what you can do:\\n     • If you are trying to use ECMAScript Modules, see https://jestjs.io/docs/ecmascript-modules for how to enable it.\\n     • If you are trying to use TypeScript, see https://jestjs.io/docs/getting-started#using-typescript\\n     • To have some of your \\\"node_modules\\\" files transformed, you can specify a custom \\\"transformIgnorePatterns\\\" in your config.\\n     • If you need a custom transformation specify a \\\"transform\\\" option in your config.\\n     • If you simply want to mock your non-JS modules (e.g. binary assets) you can stub them out with the \\\"moduleNameMapper\\\" config option.\\n\\n    You'll find more details and examples of these config options in the docs:\\n    https://jestjs.io/docs/configuration\\n    For information about custom transformations, see:\\n    https://jestjs.io/docs/code-transformation\\n\\n    Details:\\n\\n    SyntaxError: /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/alphametics/alphametics.js: Identifier 'solve' has already been declared. (197:13)\\n\\n      195 | //\\n      196 |\\n    > 197 | export const solve = () => {\\n          |              ^\\n      198 |   throw new Error('Remove this line and implement the function');\\n      199 | };\\n      200 |\\n\\n      1 | import { describe, expect, test, xtest } from '@jest/globals';\\n    > 2 | import { solve } from './alphametics';\\n        | ^\\n      3 |\\n      4 | describe('Solve the alphametics puzzle', () => {\\n      5 |   test('puzzle with three letters', () => {\\n\\n      at constructor (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parse-error.ts:95:45)\\n      at Parser.toParseError [as raise] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/tokenizer/index.ts:1503:19)\\n      at ScopeHandler.raise [as checkRedeclarationInScope] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/util/scope.ts:164:19)\\n      at ScopeHandler.checkRedeclarationInScope [as declareName] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/util/scope.ts:118:12)\\n      at Parser.declareName [as declareNameFromIdentifier] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/lval.ts:818:16)\\n      at Parser.declareNameFromIdentifier [as checkIdentifier] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/lval.ts:813:12)\\n      at Parser.checkIdentifier [as checkLVal] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/lval.ts:713:12)\\n      at Parser.checkLVal [as parseVarId] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1628:10)\\n      at Parser.parseVarId [as parseVar] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1577:12)\\n      at Parser.parseVar [as parseVarStatement] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1246:10)\\n      at Parser.parseVarStatement [as parseStatementContent] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:607:21)\\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:477:17)\\n      at Parser.parseStatementLike [as parseStatementListItem] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:426:17)\\n      at Parser.parseStatementListItem (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2630:17)\\n      at Parser.parseExportDeclaration [as maybeParseExportDeclaration] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2546:31)\\n      at Parser.maybeParseExportDeclaration [as parseExport] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2427:29)\\n      at Parser.parseExport [as parseStatementContent] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:644:25)\\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:477:17)\\n      at Parser.parseStatementLike [as parseModuleItem] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:414:17)\\n      at Parser.parseModuleItem [as parseBlockOrModuleBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1438:16)\\n      at Parser.parseBlockOrModuleBlockBody [as parseBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1412:10)\\n      at Parser.parseBlockBody [as parseProgram] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:229:10)\\n      at Parser.parseProgram [as parseTopLevel] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:203:25)\\n      at Parser.parseTopLevel [as parse] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/index.ts:93:10)\\n      at parse (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/index.ts:92:38)\\n      at parser (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/parser/index.ts:28:19)\\n          at parser.next (<anonymous>)\\n      at normalizeFile (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transformation/normalize-file.ts:49:24)\\n          at normalizeFile.next (<anonymous>)\\n      at run (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transformation/index.ts:40:36)\\n          at run.next (<anonymous>)\\n      at transform (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transform.ts:29:20)\\n          at transform.next (<anonymous>)\\n      at evaluateSync (node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:251:28)\\n      at sync (node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:89:14)\\n      at fn (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/errors/rewrite-stack-trace.ts:99:14)\\n      at transformSync (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transform.ts:66:52)\\n      at ScriptTransformer.transformSource (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:545:31)\\n      at ScriptTransformer._transformAndBuildScript (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:674:40)\\n      at ScriptTransformer.transform (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:726:19)\\n      at Object.require (alphametics.spec.js:2:1)\\n\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/alphametics/alphametics.spec.js\",\"startTime\":1754330454673,\"status\":\"failed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 1,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 0,
+          "numPassedTests": 0,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 1,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 0,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754330454339,
+          "success": false,
+          "testResults": [
+            {
+              "assertionResults": [],
+              "coverage": {},
+              "endTime": 1754330454673,
+              "message": "  ● Test suite failed to run\n\n    Jest encountered an unexpected token\n\n    Jest failed to parse a file. This happens e.g. when your code or its dependencies use non-standard JavaScript syntax, or when Jest is not configured to support such syntax.\n\n    Out of the box Jest supports Babel, which will be used to transform your files into valid JS based on your Babel configuration.\n\n    By default \"node_modules\" folder is ignored by transformers.\n\n    Here's what you can do:\n     • If you are trying to use ECMAScript Modules, see https://jestjs.io/docs/ecmascript-modules for how to enable it.\n     • If you are trying to use TypeScript, see https://jestjs.io/docs/getting-started#using-typescript\n     • To have some of your \"node_modules\" files transformed, you can specify a custom \"transformIgnorePatterns\" in your config.\n     • If you need a custom transformation specify a \"transform\" option in your config.\n     • If you simply want to mock your non-JS modules (e.g. binary assets) you can stub them out with the \"moduleNameMapper\" config option.\n\n    You'll find more details and examples of these config options in the docs:\n    https://jestjs.io/docs/configuration\n    For information about custom transformations, see:\n    https://jestjs.io/docs/code-transformation\n\n    Details:\n\n    SyntaxError: /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/alphametics/alphametics.js: Identifier 'solve' has already been declared. (197:13)\n\n      195 | //\n      196 |\n    > 197 | export const solve = () => {\n          |              ^\n      198 |   throw new Error('Remove this line and implement the function');\n      199 | };\n      200 |\n\n      1 | import { describe, expect, test, xtest } from '@jest/globals';\n    > 2 | import { solve } from './alphametics';\n        | ^\n      3 |\n      4 | describe('Solve the alphametics puzzle', () => {\n      5 |   test('puzzle with three letters', () => {\n\n      at constructor (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parse-error.ts:95:45)\n      at Parser.toParseError [as raise] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/tokenizer/index.ts:1503:19)\n      at ScopeHandler.raise [as checkRedeclarationInScope] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/util/scope.ts:164:19)\n      at ScopeHandler.checkRedeclarationInScope [as declareName] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/util/scope.ts:118:12)\n      at Parser.declareName [as declareNameFromIdentifier] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/lval.ts:818:16)\n      at Parser.declareNameFromIdentifier [as checkIdentifier] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/lval.ts:813:12)\n      at Parser.checkIdentifier [as checkLVal] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/lval.ts:713:12)\n      at Parser.checkLVal [as parseVarId] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1628:10)\n      at Parser.parseVarId [as parseVar] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1577:12)\n      at Parser.parseVar [as parseVarStatement] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1246:10)\n      at Parser.parseVarStatement [as parseStatementContent] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:607:21)\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:477:17)\n      at Parser.parseStatementLike [as parseStatementListItem] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:426:17)\n      at Parser.parseStatementListItem (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2630:17)\n      at Parser.parseExportDeclaration [as maybeParseExportDeclaration] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2546:31)\n      at Parser.maybeParseExportDeclaration [as parseExport] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2427:29)\n      at Parser.parseExport [as parseStatementContent] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:644:25)\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:477:17)\n      at Parser.parseStatementLike [as parseModuleItem] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:414:17)\n      at Parser.parseModuleItem [as parseBlockOrModuleBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1438:16)\n      at Parser.parseBlockOrModuleBlockBody [as parseBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1412:10)\n      at Parser.parseBlockBody [as parseProgram] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:229:10)\n      at Parser.parseProgram [as parseTopLevel] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:203:25)\n      at Parser.parseTopLevel [as parse] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/index.ts:93:10)\n      at parse (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/index.ts:92:38)\n      at parser (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/parser/index.ts:28:19)\n          at parser.next (<anonymous>)\n      at normalizeFile (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transformation/normalize-file.ts:49:24)\n          at normalizeFile.next (<anonymous>)\n      at run (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transformation/index.ts:40:36)\n          at run.next (<anonymous>)\n      at transform (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transform.ts:29:20)\n          at transform.next (<anonymous>)\n      at evaluateSync (node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:251:28)\n      at sync (node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:89:14)\n      at fn (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/errors/rewrite-stack-trace.ts:99:14)\n      at transformSync (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transform.ts:66:52)\n      at ScriptTransformer.transformSource (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:545:31)\n      at ScriptTransformer._transformAndBuildScript (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:674:40)\n      at ScriptTransformer.transform (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:726:19)\n      at Object.require (alphametics.spec.js:2:1)\n",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/alphametics/alphametics.spec.js",
+              "startTime": 1754330454673,
+              "status": "failed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 357.593,
+      "cost": 0,
+      "startTime": "2025-08-04T17:54:57.095Z",
+      "endTime": "2025-08-04T18:00:54.688Z",
+      "finalOutput": "Task terminated due to limits reached. Turn: 13/30, Cost: $0.0000/$1.0000, Runtime: 356715ms/300000ms"
+    },
+    {
+      "exerciseName": "anagram",
+      "status": "success",
+      "turns": 13,
+      "testResult": {
+        "passed": 0,
+        "failed": 0,
+        "total": 0,
+        "skipped": 0,
+        "success": false,
+        "output": "{\"numFailedTestSuites\":1,\"numFailedTests\":0,\"numPassedTestSuites\":0,\"numPassedTests\":0,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":1,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":0,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754330870002,\"success\":false,\"testResults\":[{\"assertionResults\":[],\"coverage\":{},\"endTime\":1754330870348,\"message\":\"  ● Test suite failed to run\\n\\n    Jest encountered an unexpected token\\n\\n    Jest failed to parse a file. This happens e.g. when your code or its dependencies use non-standard JavaScript syntax, or when Jest is not configured to support such syntax.\\n\\n    Out of the box Jest supports Babel, which will be used to transform your files into valid JS based on your Babel configuration.\\n\\n    By default \\\"node_modules\\\" folder is ignored by transformers.\\n\\n    Here's what you can do:\\n     • If you are trying to use ECMAScript Modules, see https://jestjs.io/docs/ecmascript-modules for how to enable it.\\n     • If you are trying to use TypeScript, see https://jestjs.io/docs/getting-started#using-typescript\\n     • To have some of your \\\"node_modules\\\" files transformed, you can specify a custom \\\"transformIgnorePatterns\\\" in your config.\\n     • If you need a custom transformation specify a \\\"transform\\\" option in your config.\\n     • If you simply want to mock your non-JS modules (e.g. binary assets) you can stub them out with the \\\"moduleNameMapper\\\" config option.\\n\\n    You'll find more details and examples of these config options in the docs:\\n    https://jestjs.io/docs/configuration\\n    For information about custom transformations, see:\\n    https://jestjs.io/docs/code-transformation\\n\\n    Details:\\n\\n    SyntaxError: /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/anagram/anagram.js: Identifier 'findAnagrams' has already been declared. (33:13)\\n\\n      31 | //\\n      32 |\\n    > 33 | export const findAnagrams = (subject, candidates) => {\\n         |              ^\\n      34 |   // Convert subject to lowercase for case-insensitive comparison\\n      35 |   const subjectLower = subject.toLowerCase();\\n      36 |\\n\\n      1 | import { describe, expect, test, xtest } from '@jest/globals';\\n    > 2 | import { findAnagrams } from './anagram';\\n        | ^\\n      3 |\\n      4 | const areSetsEqual = (setA, setB) =>\\n      5 |   setA.size === setB.size && [...setA].every((val) => setB.has(val));\\n\\n      at constructor (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parse-error.ts:95:45)\\n      at Parser.toParseError [as raise] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/tokenizer/index.ts:1503:19)\\n      at ScopeHandler.raise [as checkRedeclarationInScope] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/util/scope.ts:164:19)\\n      at ScopeHandler.checkRedeclarationInScope [as declareName] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/util/scope.ts:118:12)\\n      at Parser.declareName [as declareNameFromIdentifier] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/lval.ts:818:16)\\n      at Parser.declareNameFromIdentifier [as checkIdentifier] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/lval.ts:813:12)\\n      at Parser.checkIdentifier [as checkLVal] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/lval.ts:713:12)\\n      at Parser.checkLVal [as parseVarId] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1628:10)\\n      at Parser.parseVarId [as parseVar] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1577:12)\\n      at Parser.parseVar [as parseVarStatement] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1246:10)\\n      at Parser.parseVarStatement [as parseStatementContent] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:607:21)\\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:477:17)\\n      at Parser.parseStatementLike [as parseStatementListItem] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:426:17)\\n      at Parser.parseStatementListItem (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2630:17)\\n      at Parser.parseExportDeclaration [as maybeParseExportDeclaration] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2546:31)\\n      at Parser.maybeParseExportDeclaration [as parseExport] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2427:29)\\n      at Parser.parseExport [as parseStatementContent] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:644:25)\\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:477:17)\\n      at Parser.parseStatementLike [as parseModuleItem] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:414:17)\\n      at Parser.parseModuleItem [as parseBlockOrModuleBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1438:16)\\n      at Parser.parseBlockOrModuleBlockBody [as parseBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1412:10)\\n      at Parser.parseBlockBody [as parseProgram] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:229:10)\\n      at Parser.parseProgram [as parseTopLevel] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:203:25)\\n      at Parser.parseTopLevel [as parse] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/index.ts:93:10)\\n      at parse (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/index.ts:92:38)\\n      at parser (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/parser/index.ts:28:19)\\n          at parser.next (<anonymous>)\\n      at normalizeFile (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transformation/normalize-file.ts:49:24)\\n          at normalizeFile.next (<anonymous>)\\n      at run (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transformation/index.ts:40:36)\\n          at run.next (<anonymous>)\\n      at transform (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transform.ts:29:20)\\n          at transform.next (<anonymous>)\\n      at evaluateSync (node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:251:28)\\n      at sync (node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:89:14)\\n      at fn (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/errors/rewrite-stack-trace.ts:99:14)\\n      at transformSync (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transform.ts:66:52)\\n      at ScriptTransformer.transformSource (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:545:31)\\n      at ScriptTransformer._transformAndBuildScript (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:674:40)\\n      at ScriptTransformer.transform (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:726:19)\\n      at Object.require (anagram.spec.js:2:1)\\n\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/anagram/anagram.spec.js\",\"startTime\":1754330870348,\"status\":\"failed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 1,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 0,
+          "numPassedTests": 0,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 1,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 0,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754330870002,
+          "success": false,
+          "testResults": [
+            {
+              "assertionResults": [],
+              "coverage": {},
+              "endTime": 1754330870348,
+              "message": "  ● Test suite failed to run\n\n    Jest encountered an unexpected token\n\n    Jest failed to parse a file. This happens e.g. when your code or its dependencies use non-standard JavaScript syntax, or when Jest is not configured to support such syntax.\n\n    Out of the box Jest supports Babel, which will be used to transform your files into valid JS based on your Babel configuration.\n\n    By default \"node_modules\" folder is ignored by transformers.\n\n    Here's what you can do:\n     • If you are trying to use ECMAScript Modules, see https://jestjs.io/docs/ecmascript-modules for how to enable it.\n     • If you are trying to use TypeScript, see https://jestjs.io/docs/getting-started#using-typescript\n     • To have some of your \"node_modules\" files transformed, you can specify a custom \"transformIgnorePatterns\" in your config.\n     • If you need a custom transformation specify a \"transform\" option in your config.\n     • If you simply want to mock your non-JS modules (e.g. binary assets) you can stub them out with the \"moduleNameMapper\" config option.\n\n    You'll find more details and examples of these config options in the docs:\n    https://jestjs.io/docs/configuration\n    For information about custom transformations, see:\n    https://jestjs.io/docs/code-transformation\n\n    Details:\n\n    SyntaxError: /Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/anagram/anagram.js: Identifier 'findAnagrams' has already been declared. (33:13)\n\n      31 | //\n      32 |\n    > 33 | export const findAnagrams = (subject, candidates) => {\n         |              ^\n      34 |   // Convert subject to lowercase for case-insensitive comparison\n      35 |   const subjectLower = subject.toLowerCase();\n      36 |\n\n      1 | import { describe, expect, test, xtest } from '@jest/globals';\n    > 2 | import { findAnagrams } from './anagram';\n        | ^\n      3 |\n      4 | const areSetsEqual = (setA, setB) =>\n      5 |   setA.size === setB.size && [...setA].every((val) => setB.has(val));\n\n      at constructor (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parse-error.ts:95:45)\n      at Parser.toParseError [as raise] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/tokenizer/index.ts:1503:19)\n      at ScopeHandler.raise [as checkRedeclarationInScope] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/util/scope.ts:164:19)\n      at ScopeHandler.checkRedeclarationInScope [as declareName] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/util/scope.ts:118:12)\n      at Parser.declareName [as declareNameFromIdentifier] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/lval.ts:818:16)\n      at Parser.declareNameFromIdentifier [as checkIdentifier] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/lval.ts:813:12)\n      at Parser.checkIdentifier [as checkLVal] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/lval.ts:713:12)\n      at Parser.checkLVal [as parseVarId] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1628:10)\n      at Parser.parseVarId [as parseVar] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1577:12)\n      at Parser.parseVar [as parseVarStatement] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1246:10)\n      at Parser.parseVarStatement [as parseStatementContent] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:607:21)\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:477:17)\n      at Parser.parseStatementLike [as parseStatementListItem] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:426:17)\n      at Parser.parseStatementListItem (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2630:17)\n      at Parser.parseExportDeclaration [as maybeParseExportDeclaration] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2546:31)\n      at Parser.maybeParseExportDeclaration [as parseExport] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:2427:29)\n      at Parser.parseExport [as parseStatementContent] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:644:25)\n      at Parser.parseStatementContent [as parseStatementLike] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:477:17)\n      at Parser.parseStatementLike [as parseModuleItem] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:414:17)\n      at Parser.parseModuleItem [as parseBlockOrModuleBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1438:16)\n      at Parser.parseBlockOrModuleBlockBody [as parseBlockBody] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:1412:10)\n      at Parser.parseBlockBody [as parseProgram] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:229:10)\n      at Parser.parseProgram [as parseTopLevel] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/statement.ts:203:25)\n      at Parser.parseTopLevel [as parse] (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/parser/index.ts:93:10)\n      at parse (node_modules/.pnpm/@babel+parser@7.28.0/node_modules/@babel/parser/src/index.ts:92:38)\n      at parser (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/parser/index.ts:28:19)\n          at parser.next (<anonymous>)\n      at normalizeFile (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transformation/normalize-file.ts:49:24)\n          at normalizeFile.next (<anonymous>)\n      at run (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transformation/index.ts:40:36)\n          at run.next (<anonymous>)\n      at transform (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transform.ts:29:20)\n          at transform.next (<anonymous>)\n      at evaluateSync (node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:251:28)\n      at sync (node_modules/.pnpm/gensync@1.0.0-beta.2/node_modules/gensync/index.js:89:14)\n      at fn (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/errors/rewrite-stack-trace.ts:99:14)\n      at transformSync (node_modules/.pnpm/@babel+core@7.28.0/node_modules/@babel/core/src/transform.ts:66:52)\n      at ScriptTransformer.transformSource (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:545:31)\n      at ScriptTransformer._transformAndBuildScript (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:674:40)\n      at ScriptTransformer.transform (node_modules/.pnpm/@jest+transform@29.7.0/node_modules/@jest/transform/build/ScriptTransformer.js:726:19)\n      at Object.require (anagram.spec.js:2:1)\n",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/anagram/anagram.spec.js",
+              "startTime": 1754330870348,
+              "status": "failed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 415.655,
+      "cost": 0,
+      "startTime": "2025-08-04T18:00:54.702Z",
+      "endTime": "2025-08-04T18:07:50.357Z",
+      "finalOutput": "Task terminated due to limits reached. Turn: 13/30, Cost: $0.0000/$1.0000, Runtime: 414826ms/300000ms"
+    },
+    {
+      "exerciseName": "armstrong-numbers",
+      "status": "success",
+      "turns": 17,
+      "testResult": {
+        "passed": 11,
+        "failed": 0,
+        "total": 11,
+        "skipped": 0,
+        "success": true,
+        "output": "{\"numFailedTestSuites\":0,\"numFailedTests\":0,\"numPassedTestSuites\":1,\"numPassedTests\":11,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":11,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754331199321,\"success\":true,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Zero is an Armstrong number\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Zero is an Armstrong number\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Single-digit numbers are Armstrong numbers\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Single-digit numbers are Armstrong numbers\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers There are no two-digit Armstrong numbers\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"There are no two-digit Armstrong numbers\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Three-digit number that is an Armstrong number\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Three-digit number that is an Armstrong number\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Three-digit number that is not an Armstrong number\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Three-digit number that is not an Armstrong number\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Four-digit number that is an Armstrong number\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Four-digit number that is an Armstrong number\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Four-digit number that is not an Armstrong number\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Four-digit number that is not an Armstrong number\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Seven-digit number that is an Armstrong number\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Seven-digit number that is an Armstrong number\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Seven-digit number that is not an Armstrong number\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Seven-digit number that is not an Armstrong number\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers Armstrong number containing seven zeroes\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"Armstrong number containing seven zeroes\"},{\"ancestorTitles\":[\"Armstrong Numbers\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Armstrong Numbers The largest and last Armstrong number\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"The largest and last Armstrong number\"}],\"endTime\":1754331199641,\"message\":\"\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/armstrong-numbers/armstrong-numbers.spec.js\",\"startTime\":1754331199340,\"status\":\"passed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 0,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 1,
+          "numPassedTests": 11,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 11,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754331199321,
+          "success": true,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Zero is an Armstrong number",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Zero is an Armstrong number"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Single-digit numbers are Armstrong numbers",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Single-digit numbers are Armstrong numbers"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers There are no two-digit Armstrong numbers",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "There are no two-digit Armstrong numbers"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Three-digit number that is an Armstrong number",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Three-digit number that is an Armstrong number"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Three-digit number that is not an Armstrong number",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Three-digit number that is not an Armstrong number"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Four-digit number that is an Armstrong number",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Four-digit number that is an Armstrong number"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Four-digit number that is not an Armstrong number",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Four-digit number that is not an Armstrong number"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Seven-digit number that is an Armstrong number",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Seven-digit number that is an Armstrong number"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Seven-digit number that is not an Armstrong number",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Seven-digit number that is not an Armstrong number"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers Armstrong number containing seven zeroes",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "Armstrong number containing seven zeroes"
+                },
+                {
+                  "ancestorTitles": [
+                    "Armstrong Numbers"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Armstrong Numbers The largest and last Armstrong number",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "The largest and last Armstrong number"
+                }
+              ],
+              "endTime": 1754331199641,
+              "message": "",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/armstrong-numbers/armstrong-numbers.spec.js",
+              "startTime": 1754331199340,
+              "status": "passed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 329.277,
+      "cost": 0,
+      "startTime": "2025-08-04T18:07:50.377Z",
+      "endTime": "2025-08-04T18:13:19.654Z",
+      "finalOutput": "Task terminated due to limits reached. Turn: 17/30, Cost: $0.0000/$1.0000, Runtime: 328328ms/300000ms"
+    },
+    {
+      "exerciseName": "atbash-cipher",
+      "status": "success",
+      "turns": 23,
+      "testResult": {
+        "passed": 14,
+        "failed": 0,
+        "total": 14,
+        "skipped": 0,
+        "success": true,
+        "output": "{\"numFailedTestSuites\":0,\"numFailedTests\":0,\"numPassedTestSuites\":1,\"numPassedTests\":14,\"numPendingTestSuites\":0,\"numPendingTests\":0,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":14,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754331690419,\"success\":true,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"Atbash Cipher\",\"encode\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher encode encode yes\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode yes\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher encode encode no\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode no\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher encode encode OMG\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode OMG\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher encode encode spaces\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode spaces\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher encode encode mindblowingly\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode mindblowingly\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher encode encode numbers\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode numbers\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher encode encode deep thought\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode deep thought\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"encode\"],\"duration\":1,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher encode encode all the letters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"encode all the letters\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher decode decode exercism\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode exercism\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher decode decode a sentence\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode a sentence\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher decode decode numbers\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode numbers\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher decode decode all the letters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode all the letters\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher decode decode with too many spaces\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode with too many spaces\"},{\"ancestorTitles\":[\"Atbash Cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Atbash Cipher decode decode with no spaces\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":1,\"retryReasons\":[],\"status\":\"passed\",\"title\":\"decode with no spaces\"}],\"endTime\":1754331690547,\"message\":\"\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/atbash-cipher/atbash-cipher.spec.js\",\"startTime\":1754331690436,\"status\":\"passed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 0,
+          "numFailedTests": 0,
+          "numPassedTestSuites": 1,
+          "numPassedTests": 14,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 0,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 14,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754331690419,
+          "success": true,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "encode"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher encode encode yes",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode yes"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher encode encode no",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode no"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher encode encode OMG",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode OMG"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher encode encode spaces",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode spaces"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher encode encode mindblowingly",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode mindblowingly"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher encode encode numbers",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode numbers"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher encode encode deep thought",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode deep thought"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "encode"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher encode encode all the letters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "encode all the letters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher decode decode exercism",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode exercism"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher decode decode a sentence",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode a sentence"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher decode decode numbers",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode numbers"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher decode decode all the letters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode all the letters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher decode decode with too many spaces",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode with too many spaces"
+                },
+                {
+                  "ancestorTitles": [
+                    "Atbash Cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Atbash Cipher decode decode with no spaces",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 1,
+                  "retryReasons": [],
+                  "status": "passed",
+                  "title": "decode with no spaces"
+                }
+              ],
+              "endTime": 1754331690547,
+              "message": "",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/atbash-cipher/atbash-cipher.spec.js",
+              "startTime": 1754331690436,
+              "status": "passed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 490.88,
+      "cost": 0,
+      "startTime": "2025-08-04T18:13:19.676Z",
+      "endTime": "2025-08-04T18:21:30.556Z",
+      "finalOutput": "Task terminated due to limits reached. Turn: 23/30, Cost: $0.0000/$1.0000, Runtime: 490259ms/300000ms"
+    },
+    {
+      "exerciseName": "bank-account",
+      "status": "success",
+      "turns": 17,
+      "testResult": {
+        "passed": 0,
+        "failed": 1,
+        "total": 15,
+        "skipped": 14,
+        "success": false,
+        "output": "{\"numFailedTestSuites\":1,\"numFailedTests\":1,\"numPassedTestSuites\":0,\"numPassedTests\":0,\"numPendingTestSuites\":0,\"numPendingTests\":14,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":15,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1754332021458,\"success\":false,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"Bank Account\"],\"duration\":0,\"failureDetails\":[{}],\"failureMessages\":[\"Error: Remove this line and implement the function\\n    at BankAccount.open (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/bank-account.js:77:11)\\n    at Object.open (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/bank-account.spec.js:7:13)\\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/utils.js:298:28)\\n    at new Promise (<anonymous>)\\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/utils.js:231:10)\\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:316:40)\\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:252:3)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:126:9)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:121:9)\\n    at run (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:71:3)\\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-runner@29.7.0/node_modules/jest-runner/build/runTest.js:367:16)\\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-runner@29.7.0/node_modules/jest-runner/build/runTest.js:444:34)\"],\"fullName\":\"Bank Account newly opened account has zero balance\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"failed\",\"title\":\"newly opened account has zero balance\"},{\"ancestorTitles\":[\"Bank Account\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Bank Account can deposit money\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"can deposit money\"},{\"ancestorTitles\":[\"Bank Account\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Bank Account can deposit money sequentially\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"can deposit money sequentially\"},{\"ancestorTitles\":[\"Bank Account\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Bank Account can withdraw money\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"can withdraw money\"},{\"ancestorTitles\":[\"Bank Account\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Bank Account can withdraw money sequentially\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"can withdraw money sequentially\"},{\"ancestorTitles\":[\"Bank Account\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Bank Account checking balance of closed account throws error\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"checking balance of closed account throws error\"},{\"ancestorTitles\":[\"Bank Account\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Bank Account deposit into closed account throws error\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"deposit into closed account throws error\"},{\"ancestorTitles\":[\"Bank Account\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Bank Account withdraw from closed account throws error\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"withdraw from closed account throws error\"},{\"ancestorTitles\":[\"Bank Account\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Bank Account close already closed account throws error\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"close already closed account throws error\"},{\"ancestorTitles\":[\"Bank Account\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Bank Account open already opened account throws error\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"open already opened account throws error\"},{\"ancestorTitles\":[\"Bank Account\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Bank Account reopened account does not retain balance\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"reopened account does not retain balance\"},{\"ancestorTitles\":[\"Bank Account\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Bank Account cannot withdraw more than deposited\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"cannot withdraw more than deposited\"},{\"ancestorTitles\":[\"Bank Account\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Bank Account cannot withdraw negative amount\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"cannot withdraw negative amount\"},{\"ancestorTitles\":[\"Bank Account\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Bank Account cannot deposit negative amount\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"cannot deposit negative amount\"},{\"ancestorTitles\":[\"Bank Account\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Bank Account changing balance directly throws error\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"changing balance directly throws error\"}],\"endTime\":1754332021585,\"message\":\"  ● Bank Account › newly opened account has zero balance\\n\\n    Remove this line and implement the function\\n\\n      75 |\\n      76 |   open() {\\n    > 77 |     throw new Error('Remove this line and implement the function');\\n         |           ^\\n      78 |   }\\n      79 |\\n      80 |   close() {\\n\\n      at BankAccount.open (bank-account.js:77:11)\\n      at Object.open (bank-account.spec.js:7:13)\\n\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/bank-account.spec.js\",\"startTime\":1754332021476,\"status\":\"failed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 1,
+          "numFailedTests": 1,
+          "numPassedTestSuites": 0,
+          "numPassedTests": 0,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 14,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 15,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1754332021458,
+          "success": false,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "Bank Account"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [
+                    {}
+                  ],
+                  "failureMessages": [
+                    "Error: Remove this line and implement the function\n    at BankAccount.open (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/bank-account.js:77:11)\n    at Object.open (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/bank-account.spec.js:7:13)\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/utils.js:298:28)\n    at new Promise (<anonymous>)\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/utils.js:231:10)\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:316:40)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:252:3)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:126:9)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:121:9)\n    at run (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/run.js:71:3)\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-circus@29.7.0/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-runner@29.7.0/node_modules/jest-runner/build/runTest.js:367:16)\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/node_modules/.pnpm/jest-runner@29.7.0/node_modules/jest-runner/build/runTest.js:444:34)"
+                  ],
+                  "fullName": "Bank Account newly opened account has zero balance",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "failed",
+                  "title": "newly opened account has zero balance"
+                },
+                {
+                  "ancestorTitles": [
+                    "Bank Account"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Bank Account can deposit money",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "can deposit money"
+                },
+                {
+                  "ancestorTitles": [
+                    "Bank Account"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Bank Account can deposit money sequentially",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "can deposit money sequentially"
+                },
+                {
+                  "ancestorTitles": [
+                    "Bank Account"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Bank Account can withdraw money",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "can withdraw money"
+                },
+                {
+                  "ancestorTitles": [
+                    "Bank Account"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Bank Account can withdraw money sequentially",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "can withdraw money sequentially"
+                },
+                {
+                  "ancestorTitles": [
+                    "Bank Account"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Bank Account checking balance of closed account throws error",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "checking balance of closed account throws error"
+                },
+                {
+                  "ancestorTitles": [
+                    "Bank Account"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Bank Account deposit into closed account throws error",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "deposit into closed account throws error"
+                },
+                {
+                  "ancestorTitles": [
+                    "Bank Account"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Bank Account withdraw from closed account throws error",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "withdraw from closed account throws error"
+                },
+                {
+                  "ancestorTitles": [
+                    "Bank Account"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Bank Account close already closed account throws error",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "close already closed account throws error"
+                },
+                {
+                  "ancestorTitles": [
+                    "Bank Account"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Bank Account open already opened account throws error",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "open already opened account throws error"
+                },
+                {
+                  "ancestorTitles": [
+                    "Bank Account"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Bank Account reopened account does not retain balance",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "reopened account does not retain balance"
+                },
+                {
+                  "ancestorTitles": [
+                    "Bank Account"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Bank Account cannot withdraw more than deposited",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "cannot withdraw more than deposited"
+                },
+                {
+                  "ancestorTitles": [
+                    "Bank Account"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Bank Account cannot withdraw negative amount",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "cannot withdraw negative amount"
+                },
+                {
+                  "ancestorTitles": [
+                    "Bank Account"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Bank Account cannot deposit negative amount",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "cannot deposit negative amount"
+                },
+                {
+                  "ancestorTitles": [
+                    "Bank Account"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Bank Account changing balance directly throws error",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "changing balance directly throws error"
+                }
+              ],
+              "endTime": 1754332021585,
+              "message": "  ● Bank Account › newly opened account has zero balance\n\n    Remove this line and implement the function\n\n      75 |\n      76 |   open() {\n    > 77 |     throw new Error('Remove this line and implement the function');\n         |           ^\n      78 |   }\n      79 |\n      80 |   close() {\n\n      at BankAccount.open (bank-account.js:77:11)\n      at Object.open (bank-account.spec.js:7:13)\n",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow/benchmarks/exercises/filtered/bank-account/bank-account.spec.js",
+              "startTime": 1754332021476,
+              "status": "failed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 331.017,
+      "cost": 0,
+      "startTime": "2025-08-04T18:21:30.581Z",
+      "endTime": "2025-08-04T18:27:01.598Z",
+      "finalOutput": "Task terminated due to limits reached. Turn: 17/30, Cost: $0.0000/$1.0000, Runtime: 330301ms/300000ms"
+    }
+  ],
+  "summary": {
+    "totalExercises": 10,
+    "successCount": 10,
+    "testableExercises": 10,
+    "testsPassedCount": 5,
+    "testsFailedCount": 5,
+    "testPassRate": 0.5,
+    "agentSuccessRate": 1,
+    "failureCount": 0,
+    "timeoutCount": 0,
+    "costLimitCount": 0,
+    "turnLimitCount": 0,
+    "totalTime": 3263.567,
+    "totalCost": 0,
+    "averageTurns": 15.4,
+    "averageTime": 326.3567,
+    "successRate": 0.5
+  },
+  "startTime": "2025-08-04T17:32:22.308Z",
+  "endTime": "2025-08-04T18:27:01.621Z"
+}
