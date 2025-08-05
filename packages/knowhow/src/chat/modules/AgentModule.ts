@@ -1,6 +1,7 @@
 /**
  * Agent Chat Module - Handles agent interactions
  */
+import { KnowhowSimpleClient } from "../../services/KnowhowClient";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -231,6 +232,59 @@ export class AgentModule extends BaseChatModule {
     }
   }
 
+  async logSessionTable() {
+    // Display unified table
+    const runningTasks = Array.from(this.taskRegistry.values());
+    const savedSessions = await this.listAvailableSessions();
+    console.log("\n📋 Sessions & Tasks:");
+
+    const data = [];
+    // Display saved sessions first (historical)
+    savedSessions.forEach((session) => {
+      const lastUpdated = new Date(session.lastUpdated).toLocaleString();
+      const inputPreview =
+        session.initialInput && session.initialInput.length > 30
+          ? session.initialInput.substring(0, 27) + "..."
+          : session.initialInput || "[No input]";
+      const cost = session.totalCost
+        ? `$${session.totalCost.toFixed(3)}`
+        : "$0.000";
+
+      data.push({
+        ID: session.sessionId,
+        Agent: session.agentName,
+        Status: session.status,
+        Type: "saved",
+        Time: lastUpdated,
+        Cost: cost,
+        "Initial Input": inputPreview,
+      });
+    });
+
+    // Display running tasks at the bottom
+    runningTasks.forEach((task) => {
+      const elapsed = task.endTime
+        ? `${Math.round((task.endTime - task.startTime) / 1000)}s`
+        : `${Math.round((Date.now() - task.startTime) / 1000)}s`;
+      const cost = `$${task.totalCost.toFixed(3)}`;
+      const inputPreview =
+        task.initialInput.length > 30
+          ? task.initialInput.substring(0, 27) + "..."
+          : task.initialInput;
+      data.push({
+        ID: task.taskId,
+        Agent: task.agentName,
+        Status: task.status,
+        Type: "running",
+        Time: elapsed,
+        Cost: cost,
+        "Initial Input": inputPreview,
+      });
+    });
+
+    console.table(data);
+  }
+
   async handleSessionsCommand(args: string[]): Promise<void> {
     try {
       // Get both running tasks and saved sessions
@@ -242,65 +296,7 @@ export class AgentModule extends BaseChatModule {
         return;
       }
 
-      // Display unified table
-      console.log("\n📋 Sessions & Tasks:");
-      console.log("─".repeat(120));
-      console.log(
-        "ID".padEnd(25) +
-          "Agent".padEnd(15) +
-          "Status".padEnd(12) +
-          "Type".padEnd(10) +
-          "Time".padEnd(12) +
-          "Cost".padEnd(8) +
-          "Initial Input"
-      );
-      console.log("─".repeat(120));
-
-      // Display saved sessions first (historical)
-      savedSessions.forEach((session) => {
-        const lastUpdated = new Date(session.lastUpdated).toLocaleString();
-        const inputPreview =
-          session.initialInput && session.initialInput.length > 30
-            ? session.initialInput.substring(0, 27) + "..."
-            : session.initialInput || "[No input]";
-        const cost = session.totalCost
-          ? `$${session.totalCost.toFixed(3)}`
-          : "$0.000";
-
-        console.log(
-          session.sessionId.padEnd(25) +
-            session.agentName.padEnd(15) +
-            session.status.padEnd(12) +
-            "saved".padEnd(10) +
-            lastUpdated.slice(-10).padEnd(12) + // Show just time portion
-            cost.padEnd(8) +
-            inputPreview
-        );
-      });
-
-      // Display running tasks at the bottom
-      runningTasks.forEach((task) => {
-        const elapsed = task.endTime
-          ? `${Math.round((task.endTime - task.startTime) / 1000)}s`
-          : `${Math.round((Date.now() - task.startTime) / 1000)}s`;
-        const cost = `$${task.totalCost.toFixed(3)}`;
-        const inputPreview =
-          task.initialInput.length > 30
-            ? task.initialInput.substring(0, 27) + "..."
-            : task.initialInput;
-
-        console.log(
-          task.taskId.padEnd(25) +
-            task.agentName.padEnd(15) +
-            task.status.padEnd(12) +
-            "running".padEnd(10) +
-            elapsed.padEnd(12) +
-            cost.padEnd(8) +
-            inputPreview
-        );
-      });
-
-      console.log("─".repeat(120));
+      await this.logSessionTable();
 
       // Interactive selection for both types
       const allIds = [
@@ -394,7 +390,7 @@ export class AgentModule extends BaseChatModule {
   /**
    * List available session files
    */
-  private async listAvailableSessions(): Promise<ChatSession[]> {
+  public async listAvailableSessions(): Promise<ChatSession[]> {
     try {
       const files = fs.readdirSync(this.sessionsDir);
       const sessionFiles = files.filter((f) => f.endsWith(".json"));
@@ -444,6 +440,28 @@ export class AgentModule extends BaseChatModule {
   }
 
   /**
+   * List both active tasks and saved sessions for CLI usage
+   */
+  public async listSessionsAndTasks(): Promise<{
+    runningTasks: TaskInfo[];
+    savedSessions: ChatSession[];
+  }> {
+    const runningTasks = Array.from(this.taskRegistry.values());
+    const savedSessions = await this.listAvailableSessions();
+    return {
+      runningTasks,
+      savedSessions,
+    };
+  }
+
+  /**
+   * Get the task registry for CLI access
+   */
+  public getTaskRegistry(): Map<string, TaskInfo> {
+    return this.taskRegistry;
+  }
+
+  /**
    * Resume a session from saved state
    */
   private async resumeSession(
@@ -488,7 +506,16 @@ ${reason}
         return;
       }
 
-      await this.startAgent(selectedAgent, resumePrompt, []);
+      // Start agent with Knowhow task context if available
+      const { agent, taskId } = await this.setupAgent({
+        agentName: selectedAgent.name,
+        input: resumePrompt,
+        messageId: session.knowhowMessageId,
+        existingKnowhowTaskId: session.knowhowTaskId,
+        chatHistory: [],
+        run: true,
+      });
+      await this.attachedAgentChatLoop(taskId, agent);
     } catch (error) {
       console.error(
         `Failed to resume session ${sessionId}:`,
@@ -508,6 +535,206 @@ ${reason}
       return result;
     }
     return false;
+  }
+
+  /**
+   * Setup and run an agent directly with CLI options (for CLI usage)
+   */
+  public async setupAgent(options: {
+    agentName: string;
+    input: string;
+    messageId?: string;
+    existingKnowhowTaskId?: string;
+    provider?: string;
+    model?: string;
+    maxTimeLimit?: number; // in minutes
+    maxSpendLimit?: number; // in dollars
+    chatHistory?: ChatInteraction[];
+    run?: boolean; // whether to run immediately
+  }) {
+    const allAgents = agents();
+
+    if (!allAgents[options.agentName]) {
+      throw new Error(
+        `Agent "${
+          options.agentName
+        }" not found. Available agents: ${Object.keys(allAgents).join(", ")}`
+      );
+    }
+
+    const { input, chatHistory = [], agentName } = options;
+    const agent = allAgents[options.agentName] as BaseAgent;
+
+    let done = false;
+    let output = "Done";
+    const taskId = this.generateTaskId(input);
+    let knowhowTaskId: string | undefined;
+
+    try {
+      // Create task info object
+      let taskInfo: TaskInfo = {
+        taskId,
+        knowhowMessageId: options.messageId,
+        knowhowTaskId: options.existingKnowhowTaskId, // Use existing or will be set after creating chat task
+        agentName,
+        agent,
+        initialInput: input,
+        status: "running",
+        startTime: Date.now(),
+        totalCost: 0,
+      };
+
+      // Add to task registry
+      this.taskRegistry.set(taskId, taskInfo);
+
+      // Save initial session
+      this.saveSession(taskId, taskInfo, []);
+
+      // Create Knowhow chat task if messageId provided
+      if (options.messageId && !options.existingKnowhowTaskId) {
+        try {
+          const client = new KnowhowSimpleClient(process.env.KNOWHOW_BASE_URL || "https://app.knowhow.ai");
+          const response = await client.createChatTask({
+            messageId: options.messageId,
+            prompt: input
+          });
+          knowhowTaskId = response.data.taskId;
+          console.log(`✅ Created Knowhow chat task: ${knowhowTaskId}`);
+          
+          // Update TaskInfo with the created knowhowTaskId
+          taskInfo.knowhowTaskId = knowhowTaskId;
+          this.taskRegistry.set(taskId, taskInfo);
+        } catch (error) {
+          console.error(`❌ Failed to create Knowhow chat task:`, error);
+          // Continue execution even if task creation fails
+        }
+      }
+
+      // Set up session update listener
+      agent.agentEvents.on("threadUpdate", (threadState) => {
+        // Update task cost from agent's current total cost
+        taskInfo.totalCost = agent.getTotalCostUsd();
+        this.updateSession(taskId, threadState);
+        
+        // Update Knowhow chat task if created
+        if (knowhowTaskId && options.messageId) {
+          const client = new KnowhowSimpleClient(process.env.KNOWHOW_BASE_URL || "https://app.knowhow.ai");
+          client.updateChatTask(knowhowTaskId, {
+            status: taskInfo.status,
+            notes: `Thread updated: ${threadState.length} messages`,
+            progress: taskInfo.status === "completed" ? 100 : 50,
+            metadata: { threadLength: threadState.length, totalCost: taskInfo.totalCost }
+          }).catch(error => {
+            console.error(`❌ Failed to update Knowhow chat task:`, error);
+          });
+        }
+      });
+
+      // Also listen for cost updates specifically
+      agent.agentEvents.on("costUpdate", (currentCost) => {
+        taskInfo.totalCost = currentCost;
+        // Update session with new cost
+        this.updateSession(taskId, agent.getThreads());
+      });
+
+      console.log(
+        Marked.parse(`**Starting ${agent.name} with task ID: ${taskId}...**`)
+      );
+      console.log(Marked.parse(`**Task:** ${input}`));
+
+      // Initialize new task
+      await agent.newTask();
+
+      // Get context for plugins
+      const context = this.chatService?.getContext();
+      const plugins = context?.plugins || [];
+
+      // Format the prompt with plugins and chat history
+      const formattedPrompt = await formatChatInput(
+        input,
+        plugins,
+        chatHistory
+      );
+
+      // Set up message processors like in original startAgent
+
+      agent.messageProcessor.setProcessors("pre_call", [
+        new ToolResponseCache(agent.tools).createProcessor(),
+        new TokenCompressor(agent.tools).createProcessor((msg) =>
+          Boolean(msg.role === "tool" && msg.tool_call_id)
+        ),
+        new CustomVariables(agent.tools).createProcessor(),
+      ]);
+
+      agent.messageProcessor.setProcessors("post_call", [
+        new XmlToolCallProcessor().createProcessor(),
+      ]);
+
+      // Set up event listeners
+      if (!agent.agentEvents.listenerCount(agent.eventTypes.toolUsed)) {
+        agent.agentEvents.on(agent.eventTypes.toolUsed, (responseMsg) => {
+          console.log(` 🔨 Tool used: ${JSON.stringify(responseMsg, null, 2)}`);
+        });
+      }
+
+      agent.agentEvents.once(agent.eventTypes.done, (doneMsg) => {
+        console.log("Agent has finished.");
+        // Update task info
+        taskInfo = this.taskRegistry.get(taskId);
+        if (taskInfo) {
+          taskInfo.status = "completed";
+          // Update final cost from agent
+          taskInfo.totalCost = agent.getTotalCostUsd();
+          // Update session with final state
+          this.updateSession(taskId, agent.getThreads());
+          taskInfo.endTime = Date.now();
+          
+          // Final update to Knowhow chat task
+          if (knowhowTaskId && options.messageId) {
+            const client = new KnowhowSimpleClient(process.env.KNOWHOW_BASE_URL || "https://app.knowhow.ai");
+            client.updateChatTask(knowhowTaskId, {
+              status: "completed",
+              notes: `Task completed successfully. Final output: ${doneMsg || "Task finished"}`,
+              progress: 100,
+              metadata: { totalCost: taskInfo.totalCost, endTime: taskInfo.endTime }
+            }).catch(error => {
+              console.error(`❌ Failed to update Knowhow chat task on completion:`, error);
+            });
+          }
+        }
+        done = true;
+        output = doneMsg || "No response from the AI";
+        console.log(Marked.parse(output));
+      });
+
+      // Set up time limit if provided
+      if (options.maxTimeLimit) {
+        agent.setMaxRunTime(options.maxTimeLimit * 60 * 1000); // Convert minutes to milliseconds
+      }
+
+      console.log(`🤖 Starting agent: ${options.agentName}`);
+      console.log(`📝 Task: ${options.input}`);
+
+      if (options.maxTimeLimit) {
+        console.log(`⏱️  Time limit: ${options.maxTimeLimit} minutes`);
+      }
+      if (options.maxSpendLimit) {
+        console.log(`💰 Spend limit: $${options.maxSpendLimit}`);
+      }
+      console.log("─".repeat(50));
+
+      await agent.newTask();
+
+      let taskCompleted = Promise.resolve();
+      if (options.run) {
+        taskCompleted = agent.call(formattedPrompt);
+      }
+
+      return { agent, taskId, formattedPrompt, taskCompleted };
+    } catch (error) {
+      console.error("Agent setup failed:", error);
+      this.taskRegistry.delete(taskId);
+    }
   }
 
   /**
@@ -564,6 +791,8 @@ ${reason}
       const sessionPath = path.join(this.sessionsDir, `${taskId}.json`);
       const session: ChatSession = {
         sessionId: taskId,
+        knowhowMessageId: taskInfo.knowhowMessageId,
+        knowhowTaskId: taskInfo.knowhowTaskId,
         taskId,
         agentName: taskInfo.agentName,
         initialInput: taskInfo.initialInput,
@@ -601,6 +830,10 @@ ${reason}
           session.status = taskInfo.status;
           session.endTime = taskInfo.endTime;
           session.totalCost = taskInfo.totalCost;
+          
+          // Update Knowhow task fields if they exist in TaskInfo
+          session.knowhowMessageId = taskInfo.knowhowMessageId;
+          session.knowhowTaskId = taskInfo.knowhowTaskId;
         }
 
         fs.writeFileSync(sessionPath, JSON.stringify(session, null, 2));
@@ -618,121 +851,16 @@ ${reason}
     initialInput: string,
     chatHistory: ChatInteraction[] = []
   ): Promise<boolean> {
-    let done = false;
-    let output = "Done";
-    const taskId = this.generateTaskId(initialInput);
-
     try {
-      // Create task info object
-      const taskInfo: TaskInfo = {
-        taskId,
+      const { agent, taskId } = await this.setupAgent({
         agentName: selectedAgent.name,
-        agent: selectedAgent,
-        initialInput,
-        status: "running",
-        startTime: Date.now(),
-        totalCost: 0,
-      };
-
-      // Add to task registry
-      this.taskRegistry.set(taskId, taskInfo);
-
-      // Save initial session
-      this.saveSession(taskId, taskInfo, []);
-
-      // Set up session update listener
-      selectedAgent.agentEvents.on("threadUpdate", (threadState) => {
-        // Update task cost from agent's current total cost
-        taskInfo.totalCost = selectedAgent.getTotalCostUsd();
-        this.updateSession(taskId, threadState);
+        input: initialInput,
+        chatHistory,
+        run: true,
       });
-
-      // Also listen for cost updates specifically
-      selectedAgent.agentEvents.on("costUpdate", (currentCost) => {
-        taskInfo.totalCost = currentCost;
-        // Update session with new cost
-        this.updateSession(taskId, selectedAgent.getThreads());
-      });
-
-      console.log(
-        Marked.parse(
-          `**Starting ${selectedAgent.name} with task ID: ${taskId}...**`
-        )
-      );
-      console.log(Marked.parse(`**Task:** ${initialInput}`));
-
-      // Initialize new task
-      await selectedAgent.newTask();
-
-      // Get context for plugins
-      const context = this.chatService?.getContext();
-      const plugins = context?.plugins || [];
-
-      // Format the prompt with plugins and chat history
-      const formattedPrompt = await formatChatInput(
-        initialInput,
-        plugins,
-        chatHistory
-      );
-
-      // Set up message processors like in original startAgent
-
-      selectedAgent.messageProcessor.setProcessors("pre_call", [
-        new ToolResponseCache(selectedAgent.tools).createProcessor(),
-        new TokenCompressor(selectedAgent.tools).createProcessor((msg) =>
-          Boolean(msg.role === "tool" && msg.tool_call_id)
-        ),
-        new CustomVariables(selectedAgent.tools).createProcessor(),
-      ]);
-
-      selectedAgent.messageProcessor.setProcessors("post_call", [
-        new XmlToolCallProcessor().createProcessor(),
-      ]);
-
-      // Set up event listeners
-      if (
-        !selectedAgent.agentEvents.listenerCount(
-          selectedAgent.eventTypes.toolUsed
-        )
-      ) {
-        selectedAgent.agentEvents.on(
-          selectedAgent.eventTypes.toolUsed,
-          (responseMsg) => {
-            console.log(
-              ` 🔨 Tool used: ${JSON.stringify(responseMsg, null, 2)}`
-            );
-          }
-        );
-      }
-
-      selectedAgent.agentEvents.once(
-        selectedAgent.eventTypes.done,
-        (doneMsg) => {
-          console.log("Agent has finished.");
-          // Update task info
-          const taskInfo = this.taskRegistry.get(taskId);
-          if (taskInfo) {
-            taskInfo.status = "completed";
-            // Update final cost from agent
-            taskInfo.totalCost = selectedAgent.getTotalCostUsd();
-            // Update session with final state
-            this.updateSession(taskId, selectedAgent.getThreads());
-            taskInfo.endTime = Date.now();
-          }
-          done = true;
-          output = doneMsg || "No response from the AI";
-          console.log(Marked.parse(output));
-        }
-      );
-
-
-      // Start the agent with the formatted prompt
-      selectedAgent.call(formattedPrompt);
-
-      return await this.attachedAgentChatLoop(taskId, selectedAgent);
+      return await this.attachedAgentChatLoop(taskId, agent);
     } catch (error) {
-      console.error("Agent setup failed:", error);
-      this.taskRegistry.delete(taskId);
+      console.error("Error starting agent:", error);
       return false;
     }
   }

@@ -7,6 +7,12 @@ import {
   EmbeddingOptions,
   EmbeddingResponse,
 } from "src/clients";
+import {
+  CreateMessageTaskRequest,
+  CreateMessageTaskResponse,
+  UpdateOrgTaskRequest,
+  UpdateOrgTaskResponse,
+} from "../types";
 import { Config } from "../types";
 
 export function loadKnowhowJwt(): string {
@@ -105,6 +111,28 @@ export class KnowhowSimpleClient {
     return axios.get(`${this.baseUrl}/api/proxy/v1/models`, {
       headers: this.headers,
     });
+  }
+
+  createChatTask(request: CreateMessageTaskRequest) {
+    this.checkJwt();
+    return axios.post<CreateMessageTaskResponse>(
+      `${this.baseUrl}/api/chat/tasks`,
+      request,
+      {
+        headers: this.headers,
+      }
+    );
+  }
+
+  updateChatTask(taskId: string, updates: UpdateOrgTaskRequest) {
+    this.checkJwt();
+    return axios.put<UpdateOrgTaskResponse>(
+      `${this.baseUrl}/api/chat/tasks/${taskId}`,
+      updates,
+      {
+        headers: this.headers,
+      }
+    );
   }
 }
 

@@ -45,7 +45,7 @@ export class AskModule extends BaseChatModule {
   /**
    * Process AI query with full chat functionality (like original chat.ts)
    */
-  private async processAIQuery(
+  public async processAIQuery(
     input: string,
     context: ChatContext
   ): Promise<boolean> {

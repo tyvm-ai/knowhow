@@ -86,4 +86,81 @@ export class SearchModule extends BaseChatModule {
       input = await ask(promptText + ": ");
     }
   }
+
+  /**
+   * Search embeddings for CLI usage
+   */
+  public async searchEmbeddingsCLI(
+    query: string,
+    embeddingPath?: string
+  ): Promise<void> {
+    try {
+      const config = await getConfig();
+      let embedMap = await getConfiguredEmbeddingMap();
+
+      console.log(`🔍 Searching embeddings for: "${query}"`);
+      console.log(`📂 Embedding scope: ${embeddingPath || "all"}`);
+      console.log("─".repeat(50));
+
+      // If specific embedding path is requested, filter to that one
+      if (embeddingPath && embeddingPath !== "all") {
+        if (embedMap[embeddingPath]) {
+          embedMap = { [embeddingPath]: embedMap[embeddingPath] };
+        } else {
+          console.log("No results found.");
+          return;
+        }
+      }
+
+      const embeddings = Object.values(embedMap).flat();
+
+      const results = await queryEmbedding(
+        query,
+        embeddings,
+        config.embeddingModel
+      );
+
+      if (results && results.length > 0) {
+        results.slice(0, 5).forEach((result, index) => {
+          const metadata = result.metadata as any;
+          console.log(`\n${index + 1}. ${result.id}`);
+          console.log(
+            `   Metadata: ${JSON.stringify(
+              result.metadata || {},
+              null,
+              2
+            ).slice(0, 100)}`
+          );
+          console.log(
+            `Content: \n${result.text?.substring(0, 500)}${
+              result.text?.length > 500 ? "..." : ""
+            }`
+          );
+        });
+      } else {
+        console.log("No results found.");
+      }
+    } catch (error) {
+      console.error("Error searching embeddings:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Show embedding selection menu
+   */
+  private async showEmbeddingSelectionMenu(): Promise<string[]> {
+    const embedMap = await getConfiguredEmbeddingMap();
+    const files = Object.keys(embedMap);
+    const searchOptions = ["all", ...files];
+
+    console.log("Available embeddings:");
+    searchOptions.forEach((option, index) => {
+      console.log(`  ${index + 1}. ${option}`);
+    });
+
+    const embeddingName = await ask("Embedding to search: ", searchOptions);
+
+    return embeddingName === "all" ? files : [embeddingName];
+  }
 }

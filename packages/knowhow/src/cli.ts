@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 import "source-map-support/register";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 import { Command } from "commander";
 import { generate, embed, upload, chat } from "./index";
 import { init } from "./config";
@@ -12,6 +15,14 @@ import { login } from "./login";
 import { worker } from "./worker";
 import { agents } from "./agents";
 import { startChat2 } from "./chat2";
+import { askAI } from "./chat";
+import { getConfiguredEmbeddingMap, queryEmbedding } from "./embeddings";
+import { getConfig } from "./config";
+import { marked } from "marked";
+import { BaseAgent } from "./agents/base/base";
+import { AskModule } from "./chat/modules/AskModule";
+import { SearchModule } from "./chat/modules/SearchModule";
+import { AgentModule } from "./chat/modules/AgentModule";
 
 async function setupServices() {
   const { Tools, Agents, Mcp, Clients } = services();
@@ -23,13 +34,36 @@ async function setupServices() {
 
   Tools.defineTools(includedTools, allTools);
 
-  await Mcp.connectToConfigured(Tools);
-  await Clients.registerConfiguredModels();
+  await Promise.all([
+    Mcp.connectToConfigured(Tools),
+    Clients.registerConfiguredModels(),
+  ]);
+}
+
+// Utility function to read from stdin
+async function readStdin(): Promise<string> {
+  return new Promise((resolve) => {
+    let data = "";
+    process.stdin.setEncoding("utf8");
+
+    if (process.stdin.isTTY) {
+      resolve("");
+      return;
+    }
+
+    process.stdin.on("readable", () => {
+      const chunk = process.stdin.read();
+      if (chunk !== null) data += chunk;
+    });
+
+    process.stdin.on("end", () => resolve(data.trim()));
+  });
 }
 
 async function main() {
   const program = new Command();
-  
+  const config = await getConfig();
+
   program
     .name("knowhow")
     .description("AI CLI with plugins and agents")
@@ -103,6 +137,127 @@ async function main() {
     });
 
   program
+    .command("agent")
+    .description("Spin up agents directly from CLI")
+    .option(
+      "--provider <provider>",
+      "AI provider (openai, anthropic, google, xai)",
+      "openai"
+    )
+    .option("--model <model>", "Specific model for the provider")
+    .option("--agent-name <name>", "Which agent to use", "Patcher")
+    .option(
+      "--max-time-limit <minutes>",
+      "Time limit for agent execution (minutes)",
+      "30"
+    )
+    .option(
+      "--max-spend-limit <dollars>",
+      "Cost limit for agent execution (dollars)",
+      "10"
+    )
+    .option("--message-id <messageId>", "Knowhow message ID for task tracking")
+    .option("--input <text>", "Task input (fallback to stdin if not provided)")
+    .action(async (options) => {
+      try {
+        let input = options.input;
+        if (!input) {
+          input = await readStdin();
+          if (!input) {
+            console.error(
+              "Error: No input provided. Use --input flag or pipe input via stdin."
+            );
+            process.exit(1);
+          }
+        }
+
+        const { taskCompleted } = await new AgentModule().setupAgent({
+          ...options,
+          input,
+          maxTimeLimit: parseInt(options.maxTimeLimit, 10),
+          maxSpendLimit: parseFloat(options.maxSpendLimit),
+          run: true,
+        });
+        await taskCompleted;
+      } catch (error) {
+        console.error("Error running agent:", error);
+        process.exit(1);
+      }
+    });
+
+  program
+    .command("ask")
+    .description("Direct AI questioning without agent overhead")
+    .option("--provider <provider>", "AI provider to use", "openai")
+    .option("--model <model>", "Specific model")
+    .option("--input <text>", "Question (fallback to stdin if not provided)")
+    .action(async (options) => {
+      try {
+        let input = options.input;
+        if (!input) {
+          input = await readStdin();
+          if (!input) {
+            console.error(
+              "Error: No question provided. Use --input flag or pipe input via stdin."
+            );
+            process.exit(1);
+          }
+        }
+
+        await new AskModule().processAIQuery(input, {
+          plugins: config.plugins,
+        });
+      } catch (error) {
+        console.error("Error asking AI:", error);
+        process.exit(1);
+      }
+    });
+
+  program
+    .command("search")
+    .description("Search embeddings directly from CLI")
+    .option(
+      "--input <text>",
+      "Search query (fallback to stdin if not provided)"
+    )
+    .option(
+      "-e, --embedding <path>",
+      "Specific embedding path (default: all)",
+      "all"
+    )
+    .action(async (options) => {
+      try {
+        let input = options.input;
+        if (!input) {
+          input = await readStdin();
+          if (!input) {
+            console.error(
+              "Error: No search query provided. Use --input flag or pipe input via stdin."
+            );
+            process.exit(1);
+          }
+        }
+
+        await new SearchModule().searchEmbeddingsCLI(input, options.embedding);
+      } catch (error) {
+        console.error("Error searching embeddings:", error);
+        process.exit(1);
+      }
+    });
+
+  program
+    .command("sessions")
+    .description("Manage agent sessions from CLI")
+    .action(async () => {
+      try {
+        await new AgentModule().logSessionTable();
+      } catch (error) {
+        console.error("Error listing sessions:", error);
+        process.exit(1);
+      }
+    });
+
+  program
     .command("worker")
     .description("Start worker process")
     .action(async () => {
@@ -111,7 +266,6 @@ async function main() {
 
   await program.parseAsync(process.argv);
 }
-
 
 if (require.main === module) {
   main()

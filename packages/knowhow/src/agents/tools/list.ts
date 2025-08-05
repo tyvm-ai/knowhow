@@ -9,6 +9,7 @@ import * as ycmd from "./ycmd/definitions";
 import * as language from "./language/definitions";
 import { googleSearchDefinition } from "./googleSearch";
 import { executeScriptDefinition } from "./executeScript/definition";
+import { startChatTaskDefinition } from "./startChatTask";
 
 export const includedTools = [
   {
@@ -609,6 +610,7 @@ export const includedTools = [
   },
   executeScriptDefinition,
   googleSearchDefinition,
+  startChatTaskDefinition,
   ...asana.definitions,
   ...ycmd.definitions,
   ...github.definitions,

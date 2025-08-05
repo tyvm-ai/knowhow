@@ -240,3 +240,33 @@ export const GoogleImageModels = [
 export const GoogleVideoModels = [Models.google.Veo_2];
 
 export const GoogleEmbeddingModels = [EmbeddingModels.google.Gemini_Embedding];
+
+// Chat Task interfaces
+export interface CreateMessageTaskRequest {
+  messageId: string;
+  prompt: string;
+}
+
+export interface CreateMessageTaskResponse {
+  taskId: string;
+  messageId: string;
+  prompt: string;
+  status: string;
+  createdAt: string;
+}
+
+export interface UpdateOrgTaskRequest {
+  status?: string;
+  notes?: string;
+  progress?: number;
+  metadata?: Record<string, any>;
+}
+
+export interface UpdateOrgTaskResponse {
+  taskId: string;
+  status: string;
+  notes?: string;
+  progress?: number;
+  metadata?: Record<string, any>;
+  updatedAt: string;
+}

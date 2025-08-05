@@ -53,6 +53,8 @@ export interface ChatService {
 // Enhanced task management types
 export interface TaskInfo {
   taskId: string;
+  knowhowMessageId?: string;
+  knowhowTaskId?: string;
   agentName: string;
   agent: BaseAgent;
   initialInput: string;
@@ -64,6 +66,8 @@ export interface TaskInfo {
 }
 
 export interface ChatSession {
+  knowhowMessageId?: string;
+  knowhowTaskId?: string;
   sessionId: string;
   taskId: string;
   agentName: string;
