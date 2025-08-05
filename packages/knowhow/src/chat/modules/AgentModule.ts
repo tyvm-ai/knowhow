@@ -52,23 +52,13 @@ export class AgentModule extends BaseChatModule {
       },
       {
         name: "attach",
-        description: "Attach to an existing agent task",
+        description: "Attach to an existing agent task or resume a session",
         handler: this.handleAttachCommand.bind(this),
       },
       {
-        name: "tasks",
-        description: "List active agent tasks",
-        handler: this.handleTasksCommand.bind(this),
-      },
-      {
         name: "sessions",
-        description: "List saved sessions",
+        description: "List active tasks and saved sessions",
         handler: this.handleSessionsCommand.bind(this),
-      },
-      {
-        name: "resume",
-        description: "Resume a saved session",
-        handler: this.handleResumeCommand.bind(this),
       },
     ];
   }
@@ -117,115 +107,62 @@ export class AgentModule extends BaseChatModule {
 
   async handleAttachCommand(args: string[]): Promise<void> {
     if (args.length === 0) {
-      // Show active tasks
-      const activeTasks = this.getActiveTasks();
-      if (activeTasks.length === 0) {
-        console.log("No active agent tasks found.");
+      // Get both running tasks and saved sessions
+      const runningTasks = Array.from(this.taskRegistry.values());
+      const savedSessions = await this.listAvailableSessions();
+      
+      if (runningTasks.length === 0 && savedSessions.length === 0) {
+        console.log("No active tasks or saved sessions found to attach to.");
         return;
       }
 
-      console.log("Active agent tasks:");
-      activeTasks.forEach(({ taskId, agent }) => {
-        console.log(`  ${taskId}: ${agent.agentName}`);
+      // Show available options for selection
+      console.log("\n📋 Available Sessions & Tasks:");
+      console.log("─".repeat(80));
+      console.log("ID".padEnd(25) + "Agent".padEnd(15) + "Status".padEnd(12) + "Type");
+      console.log("─".repeat(80));
+      
+      // Show saved sessions
+      savedSessions.forEach((session) => {
+        console.log(
+          session.sessionId.padEnd(25) +
+          session.agentName.padEnd(15) +
+          session.status.padEnd(12) +
+          "saved"
+        );
       });
-      return;
-    }
+      
+      // Show running tasks
+      runningTasks.forEach((task) => {
+        console.log(
+          task.taskId.padEnd(25) +
+          task.agentName.padEnd(15) +
+          task.status.padEnd(12) +
+          "running"
+        );
+      });
+      
+      console.log("─".repeat(80));
 
-    const taskId = args[0];
-    this.attachToTask(taskId);
-  }
-
-  async handleTasksCommand(args: string[]): Promise<void> {
-    const allTasks = Array.from(this.taskRegistry.values());
-    if (allTasks.length === 0) {
-      console.log("No agent tasks found.");
-      return;
-    }
-
-    if (args.length === 0) {
-      // Show task table and provide interactive selection
-      this.displayTaskTable(allTasks);
-
-      // Get task IDs for autocomplete
-      const taskIds = allTasks.map((task) => task.taskId);
-
-      // Interactive selection
-      const selectedTaskId = await this.chatService?.getInput(
-        "Select a task to attach to (or press Enter to skip): ",
-        taskIds
+      // Interactive selection for both types
+      const allIds = [
+        ...savedSessions.map(s => s.sessionId),
+        ...runningTasks.map(t => t.taskId)
+      ];
+      
+      const selectedId = await this.chatService?.getInput(
+        "Select a session/task to attach to (or press Enter to skip): ",
+        allIds
       );
 
-      if (
-        selectedTaskId &&
-        selectedTaskId.trim() &&
-        taskIds.includes(selectedTaskId.trim())
-      ) {
-        this.attachToTask(selectedTaskId.trim());
+      if (selectedId && selectedId.trim() && allIds.includes(selectedId.trim())) {
+        await this.handleAttachById(selectedId.trim());
       }
       return;
     }
 
-    // Handle specific task ID argument
     const taskId = args[0];
-    if (this.taskRegistry.has(taskId)) {
-      const taskInfo = this.taskRegistry.get(taskId)!;
-      this.displaySingleTask(taskInfo);
-    } else {
-      console.log(`Task "${taskId}" not found.`);
-    }
-  }
-
-  /**
-   * Display task table with full metadata
-   */
-  private displayTaskTable(tasks: TaskInfo[]): void {
-    console.log("\n📋 Task Registry:");
-    console.log("─".repeat(100));
-    console.log(
-      "Task ID".padEnd(20) +
-        "Agent".padEnd(15) +
-        "Status".padEnd(12) +
-        "Elapsed".padEnd(10) +
-        "Cost".padEnd(8) +
-        "Initial Input"
-    );
-    console.log("─".repeat(100));
-
-    tasks.forEach((task) => {
-      const elapsed = task.endTime
-        ? `${Math.round((task.endTime - task.startTime) / 1000)}s`
-        : `${Math.round((Date.now() - task.startTime) / 1000)}s`;
-      const cost = `$${task.totalCost.toFixed(3)}`;
-      const preview =
-        task.initialInput.length > 35
-          ? task.initialInput.substring(0, 32) + "..."
-          : task.initialInput;
-
-      console.log(
-        task.taskId.padEnd(20) +
-          task.agentName.padEnd(15) +
-          task.status.padEnd(12) +
-          elapsed.padEnd(10) +
-          cost.padEnd(8) +
-          preview
-      );
-    });
-    console.log("─".repeat(100));
-
-    // Also output JSON for analysis
-    const taskData = tasks.map((task) => ({
-      taskId: task.taskId,
-      agentName: task.agentName,
-      status: task.status,
-      elapsedTimeMs: task.endTime
-        ? task.endTime - task.startTime
-        : Date.now() - task.startTime,
-      totalCost: task.totalCost,
-      initialInput: task.initialInput,
-    }));
-
-    console.log("\n📊 Task Data (JSON):");
-    console.log(JSON.stringify(taskData, null, 2));
+    await this.handleAttachById(taskId);
   }
 
   /**
@@ -250,19 +187,6 @@ export class AgentModule extends BaseChatModule {
     }
     console.log(`Total Cost: $${task.totalCost.toFixed(3)}`);
     console.log("─".repeat(50));
-  }
-
-  async handleTasksCommandOld(args: string[]): Promise<void> {
-    const activeTasks = this.getActiveTasks();
-    if (activeTasks.length === 0) {
-      console.log("No active agent tasks found.");
-      return;
-    }
-
-    console.log("Active agent tasks:");
-    activeTasks.forEach(({ taskId, agent }) => {
-      console.log(`  ${taskId}: ${agent.agentName}`);
-    });
   }
 
   async handleAgentsCommand(args: string[]): Promise<void> {
@@ -305,92 +229,118 @@ export class AgentModule extends BaseChatModule {
 
   async handleSessionsCommand(args: string[]): Promise<void> {
     try {
-      const sessionFiles = fs
-        .readdirSync(this.sessionsDir)
-        .filter((file) => file.endsWith(".json"))
-        .map((file) => file.replace(".json", ""));
-
-      if (sessionFiles.length === 0) {
-        console.log("No saved sessions found.");
+      // Get both running tasks and saved sessions
+      const runningTasks = Array.from(this.taskRegistry.values());
+      const savedSessions = await this.listAvailableSessions();
+      
+      if (runningTasks.length === 0 && savedSessions.length === 0) {
+        console.log("No active tasks or saved sessions found.");
         return;
       }
 
-      console.log("Saved sessions:");
-      for (const sessionId of sessionFiles) {
-        try {
-          const sessionPath = path.join(this.sessionsDir, `${sessionId}.json`);
-          const sessionData: ChatSession = JSON.parse(
-            fs.readFileSync(sessionPath, "utf8")
-          );
-          const lastUpdated = new Date(
-            sessionData.lastUpdated
-          ).toLocaleString();
-          const inputPreview =
-            sessionData.initialInput && sessionData.initialInput.length > 100
-              ? sessionData.initialInput.substring(0, 100) + "..."
-              : sessionData.initialInput || "[No initial input]";
-          console.log(
-            `  ${sessionId}: ${sessionData.agentName} - ${sessionData.status} (${lastUpdated}) - "${inputPreview}"`
-          );
-        } catch (error) {
-          console.log(`  ${sessionId}: [Error reading session]`);
-        }
-      }
-    } catch (error) {
-      console.error("Error listing sessions:", error);
-    }
-  }
-
-  async handleResumeCommand(args: string[]): Promise<void> {
-    if (args.length === 0) {
-      // List available sessions for selection
-      const sessions = await this.listAvailableSessions();
-      if (sessions.length === 0) {
-        console.log("No saved sessions found.");
-        return;
-      }
-
-      console.log("\n💾 Available Sessions:");
-      console.log("─".repeat(80));
+      // Display unified table
+      console.log("\n📋 Sessions & Tasks:");
+      console.log("─".repeat(120));
       console.log(
-        "Session ID".padEnd(25) +
+        "ID".padEnd(25) +
           "Agent".padEnd(15) +
           "Status".padEnd(12) +
-          "Last Updated"
+          "Type".padEnd(10) +
+          "Time".padEnd(12) +
+          "Cost".padEnd(8) +
+          "Initial Input"
       );
-      console.log("─".repeat(80));
+      console.log("─".repeat(120));
 
-      sessions.forEach((session) => {
+      // Display saved sessions first (historical)
+      savedSessions.forEach((session) => {
         const lastUpdated = new Date(session.lastUpdated).toLocaleString();
+        const inputPreview =
+          session.initialInput && session.initialInput.length > 30
+            ? session.initialInput.substring(0, 27) + "..."
+            : session.initialInput || "[No input]";
+        const cost = session.totalCost ? `$${session.totalCost.toFixed(3)}` : "$0.000";
+        
         console.log(
           session.sessionId.padEnd(25) +
             session.agentName.padEnd(15) +
             session.status.padEnd(12) +
-            lastUpdated
+            "saved".padEnd(10) +
+            lastUpdated.slice(-8).padEnd(12) + // Show just time portion
+            cost.padEnd(8) +
+            inputPreview
         );
       });
-      console.log("─".repeat(80));
 
-      // Interactive selection
-      const sessionIds = sessions.map((s) => s.sessionId);
-      const selectedSessionId = await this.chatService?.getInput(
-        "Select a session to resume (or press Enter to skip): ",
-        sessionIds
-      );
+      // Display running tasks at the bottom
+      runningTasks.forEach((task) => {
+        const elapsed = task.endTime
+          ? `${Math.round((task.endTime - task.startTime) / 1000)}s`
+          : `${Math.round((Date.now() - task.startTime) / 1000)}s`;
+        const cost = `$${task.totalCost.toFixed(3)}`;
+        const inputPreview =
+          task.initialInput.length > 30
+            ? task.initialInput.substring(0, 27) + "..."
+            : task.initialInput;
 
-      if (
-        selectedSessionId &&
-        selectedSessionId.trim() &&
-        sessionIds.includes(selectedSessionId.trim())
-      ) {
-        await this.resumeSession(selectedSessionId.trim());
+        console.log(
+          task.taskId.padEnd(25) +
+            task.agentName.padEnd(15) +
+            task.status.padEnd(12) +
+            "running".padEnd(10) +
+            elapsed.padEnd(12) +
+            cost.padEnd(8) +
+            inputPreview
+        );
+      });
+      
+      console.log("─".repeat(120));
+
+      // Interactive selection for both types
+      const allIds = [
+        ...savedSessions.map(s => s.sessionId),
+        ...runningTasks.map(t => t.taskId)
+      ];
+      
+      if (allIds.length > 0) {
+        const selectedId = await this.chatService?.getInput(
+          "Select a session/task to attach to (or press Enter to skip): ",
+          allIds
+        );
+
+        if (selectedId && selectedId.trim() && allIds.includes(selectedId.trim())) {
+          await this.handleAttachById(selectedId.trim());
+        }
       }
+      
+    } catch (error) {
+      console.error("Error listing sessions and tasks:", error);
+    }
+  }
+
+  /**
+   * Handle attachment by ID - works for both running tasks and saved sessions
+   */
+  private async handleAttachById(id: string): Promise<void> {
+    // Check if it's a running task first
+    if (this.taskRegistry.has(id)) {
+      console.log(Marked.parse(`**Attached to running task: ${id}**`));
       return;
     }
 
-    // Resume specific session
-    const sessionId = args[0];
-    await this.resumeSession(sessionId);
+    // Check if it's a saved session
+    try {
+      const sessionPath = path.join(this.sessionsDir, `${id}.json`);
+      if (fs.existsSync(sessionPath)) {
+        console.log(Marked.parse(`**Resuming saved session: ${id}**`));
+        await this.resumeSession(id);
+        return;
+      }
+    } catch (error) {
+      // Session file doesn't exist or error reading it
+    }
+    
+    console.log(Marked.parse(`**Session/Task ${id} not found.**`));
   }
 
   /**
