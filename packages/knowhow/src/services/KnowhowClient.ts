@@ -1,5 +1,6 @@
 import axios from "axios";
 import fs from "fs";
+import { Message } from "../clients/types";
 import path from "path";
 import {
   CompletionOptions,
@@ -7,13 +8,29 @@ import {
   EmbeddingOptions,
   EmbeddingResponse,
 } from "src/clients";
-import {
-  CreateMessageTaskRequest,
-  CreateMessageTaskResponse,
-  UpdateOrgTaskRequest,
-  UpdateOrgTaskResponse,
-} from "../types";
 import { Config } from "../types";
+
+// Chat Task interfaces
+export interface CreateMessageTaskRequest {
+  messageId: string;
+  prompt: string;
+}
+
+export interface CreateMessageTaskResponse {
+  id: string;
+}
+
+export interface UpdateOrgTaskRequest {
+  threads: Message[][];
+  totalCostUsd: number;
+  inProgress: boolean;
+}
+
+export interface UpdateOrgTaskResponse {
+  threadCount: Message[][];
+  totalCostUsd: number;
+  inProgress: boolean;
+}
 
 export function loadKnowhowJwt(): string {
   const jwtFile = path.join(process.cwd(), ".knowhow", ".jwt");
@@ -78,8 +95,6 @@ export class KnowhowSimpleClient {
       }
     );
 
-    console.log(presignedUrlResp.data);
-
     const presignedUrl = presignedUrlResp.data.downloadUrl;
     return presignedUrl;
   }
@@ -135,4 +150,3 @@ export class KnowhowSimpleClient {
     );
   }
 }
-

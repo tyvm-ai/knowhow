@@ -591,16 +591,17 @@ ${reason}
       this.saveSession(taskId, taskInfo, []);
 
       // Create Knowhow chat task if messageId provided
-      if (options.messageId && !options.existingKnowhowTaskId) {
+      const baseUrl = process.env.KNOWHOW_BASE_URL;
+      if (options.messageId && !options.existingKnowhowTaskId && baseUrl) {
         try {
-          const client = new KnowhowSimpleClient(process.env.KNOWHOW_BASE_URL || "https://app.knowhow.ai");
+          const client = new KnowhowSimpleClient(baseUrl);
           const response = await client.createChatTask({
             messageId: options.messageId,
-            prompt: input
+            prompt: input,
           });
-          knowhowTaskId = response.data.taskId;
+          knowhowTaskId = response.data.id;
           console.log(`✅ Created Knowhow chat task: ${knowhowTaskId}`);
-          
+
           // Update TaskInfo with the created knowhowTaskId
           taskInfo.knowhowTaskId = knowhowTaskId;
           this.taskRegistry.set(taskId, taskInfo);
@@ -615,26 +616,20 @@ ${reason}
         // Update task cost from agent's current total cost
         taskInfo.totalCost = agent.getTotalCostUsd();
         this.updateSession(taskId, threadState);
-        
-        // Update Knowhow chat task if created
-        if (knowhowTaskId && options.messageId) {
-          const client = new KnowhowSimpleClient(process.env.KNOWHOW_BASE_URL || "https://app.knowhow.ai");
-          client.updateChatTask(knowhowTaskId, {
-            status: taskInfo.status,
-            notes: `Thread updated: ${threadState.length} messages`,
-            progress: taskInfo.status === "completed" ? 100 : 50,
-            metadata: { threadLength: threadState.length, totalCost: taskInfo.totalCost }
-          }).catch(error => {
-            console.error(`❌ Failed to update Knowhow chat task:`, error);
-          });
-        }
-      });
 
-      // Also listen for cost updates specifically
-      agent.agentEvents.on("costUpdate", (currentCost) => {
-        taskInfo.totalCost = currentCost;
-        // Update session with new cost
-        this.updateSession(taskId, agent.getThreads());
+        // Update Knowhow chat task if created
+        if (knowhowTaskId && options.messageId && baseUrl) {
+          const client = new KnowhowSimpleClient(baseUrl);
+          client
+            .updateChatTask(knowhowTaskId, {
+              threads: agent.getThreads(),
+              totalCostUsd: agent.getTotalCostUsd(),
+              inProgress: true,
+            })
+            .catch((error) => {
+              console.error(`❌ Failed to update Knowhow chat task:`, error);
+            });
+        }
       });
 
       console.log(
@@ -688,18 +683,22 @@ ${reason}
           // Update session with final state
           this.updateSession(taskId, agent.getThreads());
           taskInfo.endTime = Date.now();
-          
+
           // Final update to Knowhow chat task
           if (knowhowTaskId && options.messageId) {
-            const client = new KnowhowSimpleClient(process.env.KNOWHOW_BASE_URL || "https://app.knowhow.ai");
-            client.updateChatTask(knowhowTaskId, {
-              status: "completed",
-              notes: `Task completed successfully. Final output: ${doneMsg || "Task finished"}`,
-              progress: 100,
-              metadata: { totalCost: taskInfo.totalCost, endTime: taskInfo.endTime }
-            }).catch(error => {
-              console.error(`❌ Failed to update Knowhow chat task on completion:`, error);
-            });
+            const client = new KnowhowSimpleClient(baseUrl);
+            client
+              .updateChatTask(knowhowTaskId, {
+                inProgress: false,
+                threads: agent.getThreads(),
+                totalCostUsd: agent.getTotalCostUsd(),
+              })
+              .catch((error) => {
+                console.error(
+                  `❌ Failed to update Knowhow chat task on completion:`,
+                  error
+                );
+              });
           }
         }
         done = true;
@@ -830,7 +829,7 @@ ${reason}
           session.status = taskInfo.status;
           session.endTime = taskInfo.endTime;
           session.totalCost = taskInfo.totalCost;
-          
+
           // Update Knowhow task fields if they exist in TaskInfo
           session.knowhowMessageId = taskInfo.knowhowMessageId;
           session.knowhowTaskId = taskInfo.knowhowTaskId;
