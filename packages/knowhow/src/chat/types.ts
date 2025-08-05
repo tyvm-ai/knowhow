@@ -86,7 +86,7 @@ export interface ChatModule {
   description: string;
   commands: ChatCommand[];
   modes: ChatMode[];
-  
+
   initialize(service: ChatService): Promise<void>;
   handleInput(input: string, context: ChatContext): Promise<boolean>;
   cleanup(): Promise<void>;

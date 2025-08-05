@@ -2,9 +2,9 @@
  * Voice Chat Module - Handles voice input functionality
  */
 
-import { BaseChatModule } from "./BaseChatModule.js";
-import { ChatCommand, ChatMode, ChatContext, InputMethod } from "../types.js";
-import { voiceToText } from "../../microphone.js";
+import { BaseChatModule } from "./BaseChatModule";
+import { ChatCommand, ChatMode, ChatContext, InputMethod } from "../types";
+import { voiceToText } from "../../microphone";
 
 export class VoiceModule extends BaseChatModule {
   name = "voice";
@@ -39,14 +39,14 @@ export class VoiceModule extends BaseChatModule {
     const newVoiceMode = !context?.voiceMode;
     this.chatService?.setContext({ voiceMode: newVoiceMode });
 
-    console.log(`Voice mode: ${newVoiceMode ? 'enabled' : 'disabled'}`);
+    console.log(`Voice mode: ${newVoiceMode ? "enabled" : "disabled"}`);
   }
 
   private async getVoiceInput(prompt?: string): Promise<string> {
     try {
       // This would integrate with actual voice recognition
       // For now, we'll simulate it
-      console.log("🎤 Listening... (Press Enter to simulate voice input)");
+      console.log("🎤 Listening... (Press Enter to record)");
 
       const value = await voiceToText();
 

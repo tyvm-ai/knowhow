@@ -1,21 +1,21 @@
-import { BaseChatModule } from './BaseChatModule.js';
-import { ChatContext, ChatCommand } from '../types.js';
-import { getConfiguredEmbeddingMap, queryEmbedding } from '../../embeddings.js';
-import { getConfig } from '../../config.js';
-import { ask } from '../../utils';
-import { marked } from 'marked';
+import { BaseChatModule } from "./BaseChatModule";
+import { ChatContext, ChatCommand } from "../types";
+import { getConfiguredEmbeddingMap, queryEmbedding } from "../../embeddings";
+import { getConfig } from "../../config";
+import { ask } from "../../utils";
+import { marked } from "marked";
 
 export class SearchModule extends BaseChatModule {
-  name = 'Search';
-  description = 'Search through embeddings for relevant information';
+  name = "Search";
+  description = "Search through embeddings for relevant information";
 
   getCommands(): ChatCommand[] {
     return [
       {
-        name: 'search',
-        description: 'Search embeddings',
-        handler: this.handleSearchCommand.bind(this)
-      }
+        name: "search",
+        description: "Search embeddings",
+        handler: this.handleSearchCommand.bind(this),
+      },
     ];
   }
 
@@ -24,7 +24,7 @@ export class SearchModule extends BaseChatModule {
   }
 
   async executeCommand(command: string, context: ChatContext): Promise<void> {
-    if (command === 'search') {
+    if (command === "search") {
       await this.askEmbedding("searching");
     }
   }
@@ -52,7 +52,10 @@ export class SearchModule extends BaseChatModule {
         case "use":
           const searchOptions = ["all", ...files];
           console.log(searchOptions);
-          const embeddingName = await ask("Embedding to search: ", searchOptions);
+          const embeddingName = await ask(
+            "Embedding to search: ",
+            searchOptions
+          );
           if (embeddingName === "all") {
             embedMap = await getConfiguredEmbeddingMap();
             break;

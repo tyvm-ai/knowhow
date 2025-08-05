@@ -4,20 +4,17 @@
 import * as fs from "fs";
 import * as path from "path";
 
-import { formatChatInput } from "../../chat.js";
-import { BaseChatModule } from "./BaseChatModule.js";
-import { services } from "../../services/index.js";
-import { BaseAgent } from "../../agents/index.js";
-import { ChatCommand, ChatMode, ChatContext } from "../types.js";
-import { ChatInteraction } from "../../types.js";
-import { Marked } from "../../utils/index.js";
-import { TokenCompressor } from "../../processors/TokenCompressor.js";
-import { ToolResponseCache } from "../../processors/ToolResponseCache.js";
-import {
-  CustomVariables,
-  XmlToolCallProcessor,
-} from "../../processors/index.js";
-import { TaskInfo, ChatSession } from "../types.js";
+import { formatChatInput } from "../../chat";
+import { BaseChatModule } from "./BaseChatModule";
+import { services } from "../../services/index";
+import { BaseAgent } from "../../agents/index";
+import { ChatCommand, ChatMode, ChatContext } from "../types";
+import { ChatInteraction } from "../../types";
+import { Marked } from "../../utils/index";
+import { TokenCompressor } from "../../processors/TokenCompressor";
+import { ToolResponseCache } from "../../processors/ToolResponseCache";
+import { CustomVariables, XmlToolCallProcessor } from "../../processors/index";
+import { TaskInfo, ChatSession } from "../types";
 import { agents } from "../../agents";
 
 export class AgentModule extends BaseChatModule {
@@ -52,7 +49,7 @@ export class AgentModule extends BaseChatModule {
       },
       {
         name: "attach",
-        description: "Attach to an existing agent task or resume a session",
+        description: "Attach to a running session or resume an old session",
         handler: this.handleAttachCommand.bind(this),
       },
       {
@@ -90,7 +87,8 @@ export class AgentModule extends BaseChatModule {
         const context = this.chatService?.getContext();
         if (context) {
           context.selectedAgent = allAgents[agentName];
-          context.mode = "agent";
+          context.agentMode = true;
+          context.currentAgent = agentName;
         }
         console.log(
           `Agent mode enabled. Selected agent: ${agentName}. Type your task to get started.`
@@ -110,7 +108,7 @@ export class AgentModule extends BaseChatModule {
       // Get both running tasks and saved sessions
       const runningTasks = Array.from(this.taskRegistry.values());
       const savedSessions = await this.listAvailableSessions();
-      
+
       if (runningTasks.length === 0 && savedSessions.length === 0) {
         console.log("No active tasks or saved sessions found to attach to.");
         return;
@@ -119,43 +117,49 @@ export class AgentModule extends BaseChatModule {
       // Show available options for selection
       console.log("\n📋 Available Sessions & Tasks:");
       console.log("─".repeat(80));
-      console.log("ID".padEnd(25) + "Agent".padEnd(15) + "Status".padEnd(12) + "Type");
+      console.log(
+        "ID".padEnd(25) + "Agent".padEnd(15) + "Status".padEnd(12) + "Type"
+      );
       console.log("─".repeat(80));
-      
+
       // Show saved sessions
       savedSessions.forEach((session) => {
         console.log(
           session.sessionId.padEnd(25) +
-          session.agentName.padEnd(15) +
-          session.status.padEnd(12) +
-          "saved"
+            session.agentName.padEnd(15) +
+            session.status.padEnd(12) +
+            "saved"
         );
       });
-      
+
       // Show running tasks
       runningTasks.forEach((task) => {
         console.log(
           task.taskId.padEnd(25) +
-          task.agentName.padEnd(15) +
-          task.status.padEnd(12) +
-          "running"
+            task.agentName.padEnd(15) +
+            task.status.padEnd(12) +
+            "running"
         );
       });
-      
+
       console.log("─".repeat(80));
 
       // Interactive selection for both types
       const allIds = [
-        ...savedSessions.map(s => s.sessionId),
-        ...runningTasks.map(t => t.taskId)
+        ...savedSessions.map((s) => s.sessionId),
+        ...runningTasks.map((t) => t.taskId),
       ];
-      
+
       const selectedId = await this.chatService?.getInput(
         "Select a session/task to attach to (or press Enter to skip): ",
         allIds
       );
 
-      if (selectedId && selectedId.trim() && allIds.includes(selectedId.trim())) {
+      if (
+        selectedId &&
+        selectedId.trim() &&
+        allIds.includes(selectedId.trim())
+      ) {
         await this.handleAttachById(selectedId.trim());
       }
       return;
@@ -191,16 +195,16 @@ export class AgentModule extends BaseChatModule {
 
   async handleAgentsCommand(args: string[]): Promise<void> {
     try {
-      const { agents } = await import("../../agents/index.js");
       const allAgents = agents();
 
       if (allAgents && Object.keys(allAgents).length > 0) {
         const agentNames = Object.keys(allAgents);
 
-        console.log("Available agents:");
+        console.log("\nAvailable agents:");
         Object.entries(allAgents).forEach(([name, agent]: [string, any]) => {
           console.log(`  - ${name}: ${agent.description || "No description"}`);
         });
+        console.log("─".repeat(80), "\n");
 
         // Interactive selection with autocomplete
         const selectedAgent = await this.chatService?.getInput(
@@ -232,7 +236,7 @@ export class AgentModule extends BaseChatModule {
       // Get both running tasks and saved sessions
       const runningTasks = Array.from(this.taskRegistry.values());
       const savedSessions = await this.listAvailableSessions();
-      
+
       if (runningTasks.length === 0 && savedSessions.length === 0) {
         console.log("No active tasks or saved sessions found.");
         return;
@@ -259,14 +263,16 @@ export class AgentModule extends BaseChatModule {
           session.initialInput && session.initialInput.length > 30
             ? session.initialInput.substring(0, 27) + "..."
             : session.initialInput || "[No input]";
-        const cost = session.totalCost ? `$${session.totalCost.toFixed(3)}` : "$0.000";
-        
+        const cost = session.totalCost
+          ? `$${session.totalCost.toFixed(3)}`
+          : "$0.000";
+
         console.log(
           session.sessionId.padEnd(25) +
             session.agentName.padEnd(15) +
             session.status.padEnd(12) +
             "saved".padEnd(10) +
-            lastUpdated.slice(-8).padEnd(12) + // Show just time portion
+            lastUpdated.slice(-10).padEnd(12) + // Show just time portion
             cost.padEnd(8) +
             inputPreview
         );
@@ -293,26 +299,29 @@ export class AgentModule extends BaseChatModule {
             inputPreview
         );
       });
-      
+
       console.log("─".repeat(120));
 
       // Interactive selection for both types
       const allIds = [
-        ...savedSessions.map(s => s.sessionId),
-        ...runningTasks.map(t => t.taskId)
+        ...savedSessions.map((s) => s.sessionId),
+        ...runningTasks.map((t) => t.taskId),
       ];
-      
+
       if (allIds.length > 0) {
         const selectedId = await this.chatService?.getInput(
           "Select a session/task to attach to (or press Enter to skip): ",
           allIds
         );
 
-        if (selectedId && selectedId.trim() && allIds.includes(selectedId.trim())) {
+        if (
+          selectedId &&
+          selectedId.trim() &&
+          allIds.includes(selectedId.trim())
+        ) {
           await this.handleAttachById(selectedId.trim());
         }
       }
-      
     } catch (error) {
       console.error("Error listing sessions and tasks:", error);
     }
@@ -324,6 +333,24 @@ export class AgentModule extends BaseChatModule {
   private async handleAttachById(id: string): Promise<void> {
     // Check if it's a running task first
     if (this.taskRegistry.has(id)) {
+      const taskInfo = this.taskRegistry.get(id);
+      if (taskInfo) {
+        // Switch to agent mode and set the selected agent
+        const context = this.chatService?.getContext();
+        const allAgents = agents();
+        const selectedAgent = allAgents[taskInfo.agentName];
+
+        if (context && selectedAgent) {
+          context.selectedAgent = selectedAgent;
+          context.agentMode = true;
+          context.currentAgent = taskInfo.agentName;
+          console.log(`🔄 Switched to agent mode with ${taskInfo.agentName}`);
+          console.log(`📋 Attached to running task: ${id}`);
+          console.log(`Task: ${taskInfo.initialInput}`);
+          console.log(`Status: ${taskInfo.status}`);
+          return;
+        }
+      }
       console.log(Marked.parse(`**Attached to running task: ${id}**`));
       return;
     }
@@ -333,13 +360,34 @@ export class AgentModule extends BaseChatModule {
       const sessionPath = path.join(this.sessionsDir, `${id}.json`);
       if (fs.existsSync(sessionPath)) {
         console.log(Marked.parse(`**Resuming saved session: ${id}**`));
-        await this.resumeSession(id);
-        return;
+        // Read session to get agent information
+        const content = fs.readFileSync(sessionPath, "utf-8");
+        const session: ChatSession = JSON.parse(content);
+
+        // Switch to agent mode and set the selected agent
+        const context = this.chatService?.getContext();
+        const allAgents = agents();
+        const selectedAgent = allAgents[session.agentName];
+
+        if (context && selectedAgent) {
+          context.selectedAgent = selectedAgent;
+          context.agentMode = true;
+          console.log(`🔄 Switched to agent mode with ${session.agentName}`);
+          console.log(`📋 Resuming saved session: ${id}`);
+          console.log(`Original task: ${session.initialInput}`);
+          console.log(`Status: ${session.status}`);
+
+          const addedContext = await this.chatService.getInput(
+            "Add any additional context for resuming this session (or press Enter to skip): "
+          );
+          await this.resumeSession(id);
+          return;
+        }
       }
     } catch (error) {
       // Session file doesn't exist or error reading it
     }
-    
+
     console.log(Marked.parse(`**Session/Task ${id} not found.**`));
   }
 
@@ -352,11 +400,33 @@ export class AgentModule extends BaseChatModule {
       const sessionFiles = files.filter((f) => f.endsWith(".json"));
 
       const sessions: ChatSession[] = [];
+      const thresholdTime = 15 * 60 * 1000; // 15 minutes
       for (const file of sessionFiles) {
+        const filePath = path.join(this.sessionsDir, file);
         try {
-          const filePath = path.join(this.sessionsDir, file);
-          const content = fs.readFileSync(filePath, "utf-8");
-          const session: ChatSession = JSON.parse(content);
+          const content = fs.readFileSync(filePath, "utf8");
+          const session = JSON.parse(content) as ChatSession;
+
+          // Cleanup check: mark stale running sessions as failed
+          const isStale = Date.now() - session.lastUpdated > thresholdTime;
+          const isRunningAndNotInRegistry =
+            session.status === "running" &&
+            !this.taskRegistry.has(session.sessionId);
+
+          if (isRunningAndNotInRegistry && isStale) {
+            console.log(
+              `🧹 Marking stale session ${
+                session.sessionId
+              } as failed (last updated: ${new Date(
+                session.lastUpdated
+              ).toLocaleString()})`
+            );
+            session.status = "failed";
+            session.lastUpdated = Date.now();
+            // Update the session file with failed status
+            fs.writeFileSync(filePath, JSON.stringify(session, null, 2));
+          }
+
           sessions.push(session);
         } catch (error) {
           console.warn(
@@ -376,17 +446,23 @@ export class AgentModule extends BaseChatModule {
   /**
    * Resume a session from saved state
    */
-  private async resumeSession(sessionId: string): Promise<void> {
+  private async resumeSession(
+    sessionId: string,
+    resumeReason?: string
+  ): Promise<void> {
     try {
       const sessionPath = path.join(this.sessionsDir, `${sessionId}.json`);
       const content = fs.readFileSync(sessionPath, "utf-8");
       const session: ChatSession = JSON.parse(content);
       const lastThread = session.threads[session.threads.length - 1];
-
       console.log(`\n🔄 Resuming session: ${sessionId}`);
       console.log(`Agent: ${session.agentName}`);
       console.log(`Original task: ${session.initialInput}`);
       console.log(`Status: ${session.status}`);
+
+      const reason = resumeReason
+        ? `Reason for resuming:  ${resumeReason}`
+        : "";
 
       // Create resume prompt
       const resumePrompt = `You are resuming a previously started task. Here's the context:
@@ -396,7 +472,10 @@ ${session.initialInput}
 LAST Progress State:
 ${JSON.stringify(lastThread)}
 
-Please continue from where you left off and complete the original request.`;
+Please continue from where you left off and complete the original request.
+${reason}
+
+`;
 
       console.log("🚀 Session resumption would restart the agent here...");
       const context = this.chatService?.getContext() || {};
@@ -420,7 +499,7 @@ Please continue from where you left off and complete the original request.`;
 
   async handleInput(input: string, context: ChatContext): Promise<boolean> {
     // If in agent mode, start agent with the input as initial task (like original chat.ts)
-    if (context.mode === "agent" && context.selectedAgent) {
+    if (context.agentMode && context.selectedAgent) {
       const result = await this.startAgent(
         context.selectedAgent,
         input,
@@ -590,7 +669,6 @@ Please continue from where you left off and complete the original request.`;
       const plugins = context?.plugins || [];
 
       // Format the prompt with plugins and chat history
-      const { formatChatInput } = await import("../../chat.js");
       const formattedPrompt = await formatChatInput(
         initialInput,
         plugins,
@@ -601,15 +679,6 @@ Please continue from where you left off and complete the original request.`;
       selectedAgent.call(formattedPrompt);
 
       // Set up message processors like in original startAgent
-      const { ToolResponseCache } = await import(
-        "../../processors/ToolResponseCache.js"
-      );
-      const { TokenCompressor } = await import(
-        "../../processors/TokenCompressor.js"
-      );
-      const { CustomVariables, XmlToolCallProcessor } = await import(
-        "../../processors/index.js"
-      );
 
       selectedAgent.messageProcessor.setProcessors("pre_call", [
         new ToolResponseCache(selectedAgent.tools).createProcessor(),
@@ -658,6 +727,19 @@ Please continue from where you left off and complete the original request.`;
           console.log(Marked.parse(output));
         }
       );
+
+      return await this.attachedAgentChatLoop(taskId, selectedAgent);
+    } catch (error) {
+      console.error("Agent setup failed:", error);
+      this.taskRegistry.delete(taskId);
+      return false;
+    }
+  }
+
+  async attachedAgentChatLoop(taskId: string, selectedAgent: BaseAgent) {
+    try {
+      let done = false;
+      let output = "Done";
 
       // Define available commands
       const commands = ["pause", "unpause", "kill", "detach"];
@@ -710,13 +792,10 @@ Please continue from where you left off and complete the original request.`;
         }
 
         if (!done) {
-          input = await Promise.race([
-            this.chatService?.getInput(
-              `Enter command or message for ${selectedAgent.name}: `,
-              commands
-            ) || Promise.resolve(""),
-            donePromise,
-          ]);
+          input = await this.chatService?.getInput(
+            `Enter command or message for ${selectedAgent.name}: `,
+            commands
+          );
         }
       }
 

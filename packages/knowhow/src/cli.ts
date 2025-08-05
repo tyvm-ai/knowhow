@@ -27,9 +27,6 @@ async function main() {
   await Mcp.connectToConfigured(Tools);
   await Clients.registerConfiguredModels();
 
-  // VIMMER is disabled for now
-  // Agents.registerAgent(Vimmer);
-
   switch (command) {
     case "init":
       await init();

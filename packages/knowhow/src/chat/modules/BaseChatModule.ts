@@ -2,21 +2,27 @@
  * Base Chat Module - Abstract base class for all chat modules
  */
 
-import { ChatModule, ChatService, ChatCommand, ChatMode, ChatContext } from '../types.js';
+import {
+  ChatModule,
+  ChatService,
+  ChatCommand,
+  ChatMode,
+  ChatContext,
+} from "../types";
 
 export abstract class BaseChatModule implements ChatModule {
   public abstract name: string;
   public abstract description: string;
   public commands: ChatCommand[] = [];
   public modes: ChatMode[] = [];
-  
+
   protected chatService!: ChatService;
 
   async initialize(service: ChatService): Promise<void> {
     this.chatService = service;
     this.commands = this.getCommands();
     this.modes = this.getModes();
-    
+
     // Register all commands with the ChatService
     for (const command of this.commands) {
       this.chatService.registerCommand(command);
