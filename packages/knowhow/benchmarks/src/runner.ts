@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
-import { promises as fs } from "fs";
+import { promises as fsasync } from "fs";
 import { execSync } from "child_process";
-import * as files from "fs";
+import * as fs from "fs";
 import * as path from "path";
 import chalk from "chalk";
 import ora from "ora";
@@ -13,7 +13,10 @@ import {
   Exercise,
 } from "./types";
 import { registerProvider } from "./providers";
-import { XmlToolCallProcessor, HarmonyToolProcessor } from "../../ts_build/src/processors";
+import {
+  XmlToolCallProcessor,
+  HarmonyToolProcessor,
+} from "../../ts_build/src/processors";
 import { EvaluatorRegistry } from "./evaluators";
 
 export class BenchmarkRunner {
@@ -115,7 +118,7 @@ export class BenchmarkRunner {
     // Load custom providers if they exist
     const customProvidersPath = path.join(__dirname, "custom_providers.json");
 
-    if (files.existsSync(customProvidersPath)) {
+    if (fs.existsSync(customProvidersPath)) {
       return require(customProvidersPath);
     }
 
@@ -252,7 +255,11 @@ export class BenchmarkRunner {
       results.push(result);
 
       // Log individual result with progress
-      console.log(chalk.green(`✓ Exercise ${results.length}/${exercises.length} completed: ${exercise.name}`));
+      console.log(
+        chalk.green(
+          `✓ Exercise ${results.length}/${exercises.length} completed: ${exercise.name}`
+        )
+      );
       const statusColor = result.status === "success" ? chalk.green : chalk.red;
       console.log(statusColor(`  Status: ${result.status}`));
       console.log(chalk.gray(`  Turns: ${result.turns}`));
@@ -260,7 +267,11 @@ export class BenchmarkRunner {
       console.log(chalk.gray(`  Cost: $${result.cost.toFixed(4)}\n`));
 
       // Save incremental results after each exercise
-      const incrementalResults = this.generateResults(results, startTime, new Date());
+      const incrementalResults = this.generateResults(
+        results,
+        startTime,
+        new Date()
+      );
       await this.saveIncrementalResults(incrementalResults);
     }
 
@@ -280,15 +291,15 @@ export class BenchmarkRunner {
     const filteredDir = path.join(this.exercisesDir, "filtered");
 
     try {
-      const exerciseNames = await fs.readdir(filteredDir);
+      const exerciseNames = await fsasync.readdir(filteredDir);
       const exercises: Exercise[] = [];
 
       for (const name of exerciseNames) {
         const exercisePath = path.join(filteredDir, name);
-        const stat = await fs.stat(exercisePath);
+        const stat = await fsasync.stat(exercisePath);
 
         if (stat.isDirectory()) {
-          const files = await fs.readdir(exercisePath);
+          const files = await fsasync.readdir(exercisePath);
           const hasTests = files.some(
             (f) => f.includes("test") || f.includes("spec")
           );
@@ -310,8 +321,6 @@ export class BenchmarkRunner {
 
   private async runExercise(exercise: Exercise): Promise<ExerciseResult> {
     const startTime = new Date();
-    const turns = 0;
-    const cost = 0;
 
     // Check for shutdown before starting exercise
     if (this.isShuttingDown) {
@@ -326,12 +335,19 @@ export class BenchmarkRunner {
       const result = await this.runKnowhowAgent(exercise, prompt);
 
       // Run test evaluation after agent execution
-      let testResult = undefined;
+      let testResult;
       if (this.evaluatorRegistry.canEvaluateExercise(exercise.path)) {
-        const evaluation = await this.evaluatorRegistry.evaluateExercise(exercise.path, exercise.name);
+        const evaluation = await this.evaluatorRegistry.evaluateExercise(
+          exercise.path,
+          exercise.name
+        );
         if (evaluation) {
           testResult = evaluation.testResult;
-          console.log(chalk.gray(`  Tests: ${testResult.passed}/${testResult.total} passed`));
+          console.log(
+            chalk.gray(
+              `  Tests: ${testResult.passed}/${testResult.total} passed`
+            )
+          );
         }
       }
 
@@ -350,7 +366,7 @@ export class BenchmarkRunner {
         errorMessage: result.error,
         finalOutput: result.output,
       };
-    } catch (error) {
+    } catch (error: any) {
       const endTime = new Date();
       const timeElapsed = (endTime.getTime() - startTime.getTime()) / 1000;
 
@@ -358,9 +374,9 @@ export class BenchmarkRunner {
         exerciseName: exercise.name,
         status: "failure",
         testResult: undefined,
-        turns,
+        turns: error?.turns || 0,
         timeElapsed,
-        cost,
+        cost: error?.cost || 0,
         startTime,
         endTime,
         errorMessage: error instanceof Error ? error.message : String(error),
@@ -374,7 +390,7 @@ export class BenchmarkRunner {
     // Add description if available
     const descriptionPath = path.join(exercise.path, "description.md");
     try {
-      const description = await fs.readFile(descriptionPath, "utf-8");
+      const description = await fsasync.readFile(descriptionPath, "utf-8");
       prompt += `## Exercise Description\n${description}\n\n`;
     } catch {
       prompt += `## Exercise: ${exercise.name}\n\n`;
@@ -613,12 +629,20 @@ export class BenchmarkRunner {
     ).length;
 
     // Calculate test-based metrics
-    const testableExercises = results.filter(r => r.testResult !== undefined).length;
-    const testsPassedCount = results.filter(r => r.testResult?.success === true).length;
-    const testsFailedCount = results.filter(r => r.testResult && !r.testResult.success).length;
-    const testPassRate = testableExercises > 0 ? testsPassedCount / testableExercises : 0;
+    const testableExercises = results.filter(
+      (r) => r.testResult !== undefined
+    ).length;
+    const testsPassedCount = results.filter(
+      (r) => r.testResult?.success === true
+    ).length;
+    const testsFailedCount = results.filter(
+      (r) => r.testResult && !r.testResult.success
+    ).length;
+    const testPassRate =
+      testableExercises > 0 ? testsPassedCount / testableExercises : 0;
     const agentSuccessRate = successCount / results.length || 0;
-    const actualSuccessRate = testableExercises > 0 ? testPassRate : agentSuccessRate;
+    const actualSuccessRate =
+      testableExercises > 0 ? testPassRate : agentSuccessRate;
 
     const totalCost = results.reduce((sum, r) => sum + r.cost, 0);
     const totalTurns = results.reduce((sum, r) => sum + r.turns, 0);
@@ -678,14 +702,23 @@ export class BenchmarkRunner {
   private generateResultsPath(): string {
     const commitHash = this.getCommitHash();
     const dateStr = this.formatDateDash();
-    const modelFileName = `${this.provider}-${this.model.replace(/\//g, '-')}.json`;
+    const modelFileName = `${this.provider}-${this.model.replace(
+      /\//g,
+      "-"
+    )}.json`;
 
     // Use different base paths for local vs container
     const baseDir = process.env.CONTAINER
       ? "/app/knowhow/benchmarks/results"
       : path.join(__dirname, "..", "results");
 
-    return path.join(baseDir, commitHash, dateStr, this.provider, modelFileName);
+    return path.join(
+      baseDir,
+      commitHash,
+      dateStr,
+      this.provider,
+      modelFileName
+    );
   }
 
   private async saveResults(results: BenchmarkResults): Promise<void> {
@@ -693,45 +726,83 @@ export class BenchmarkRunner {
     const resultsPath = this.generateResultsPath();
 
     // Ensure the directory exists
-    await fs.mkdir(path.dirname(resultsPath), { recursive: true });
-    await fs.writeFile(resultsPath, JSON.stringify(results, null, 2));
+    await fsasync.mkdir(path.dirname(resultsPath), { recursive: true });
+    await fsasync.writeFile(resultsPath, JSON.stringify(results, null, 2));
   }
 
-  private async saveIncrementalResults(results: BenchmarkResults): Promise<void> {
+  private async saveIncrementalResults(
+    results: BenchmarkResults
+  ): Promise<void> {
     try {
       // Generate the new structured path for incremental results
       const resultsPath = this.generateResultsPath();
 
       // Ensure the directory exists
-      await fs.mkdir(path.dirname(resultsPath), { recursive: true });
-      await fs.writeFile(resultsPath, JSON.stringify(results, null, 2));
+      await fsasync.mkdir(path.dirname(resultsPath), { recursive: true });
+      await fsasync.writeFile(resultsPath, JSON.stringify(results, null, 2));
       console.log(chalk.gray(`  → Incremental results saved`));
     } catch (error) {
       // Don't crash the benchmark if incremental save fails
-      console.log(chalk.yellow(`  ⚠ Warning: Failed to save incremental results: ${error}`));
+      console.log(
+        chalk.yellow(
+          `  ⚠ Warning: Failed to save incremental results: ${error}`
+        )
+      );
     }
   }
 
   private printSummary(results: BenchmarkResults): void {
     console.log(chalk.blue("\n📊 Benchmark Summary"));
     console.log(chalk.gray("━".repeat(50)));
-    console.log(chalk.white(`Total Exercises: ${results.summary.totalExercises}`));
+    console.log(
+      chalk.white(`Total Exercises: ${results.summary.totalExercises}`)
+    );
 
     if (results.summary.testableExercises > 0) {
       console.log(chalk.blue("\n🧪 Test Evaluation Results:"));
-      console.log(chalk.white(`  Testable exercises: ${results.summary.testableExercises}`));
-      console.log(chalk.green(`  Tests passed: ${results.summary.testsPassedCount}`));
-      console.log(chalk.red(`  Tests failed: ${results.summary.testsFailedCount}`));
-      console.log(chalk.white(`  Test pass rate: ${(results.summary.testPassRate * 100).toFixed(1)}%`));
-      console.log(chalk.white(`  Agent success rate: ${(results.summary.agentSuccessRate * 100).toFixed(1)}%`));
-      console.log(chalk.white(`  Overall success rate: ${(results.summary.successRate * 100).toFixed(1)}%`));
+      console.log(
+        chalk.white(
+          `  Testable exercises: ${results.summary.testableExercises}`
+        )
+      );
+      console.log(
+        chalk.green(`  Tests passed: ${results.summary.testsPassedCount}`)
+      );
+      console.log(
+        chalk.red(`  Tests failed: ${results.summary.testsFailedCount}`)
+      );
+      console.log(
+        chalk.white(
+          `  Test pass rate: ${(results.summary.testPassRate * 100).toFixed(
+            1
+          )}%`
+        )
+      );
+      console.log(
+        chalk.white(
+          `  Agent success rate: ${(
+            results.summary.agentSuccessRate * 100
+          ).toFixed(1)}%`
+        )
+      );
+      console.log(
+        chalk.white(
+          `  Overall success rate: ${(
+            results.summary.successRate * 100
+          ).toFixed(1)}%`
+        )
+      );
     } else {
       console.log(chalk.blue("\n🤖 Agent Evaluation Results:"));
       console.log(chalk.green(`  Successful: ${results.summary.successCount}`));
       console.log(chalk.red(`  Failed: ${results.summary.failureCount}`));
       console.log(chalk.yellow(`  Timeouts: ${results.summary.timeoutCount}`));
-      console.log(chalk.yellow(`  Turn limits: ${results.summary.turnLimitCount}`));
-      console.log(chalk.yellow(`  Cost limits: ${results.summary.costLimitCount}`));
+      console.log(
+        chalk.yellow(`  Turn limits: ${results.summary.turnLimitCount}`)
+      );
+      console.log(
+        chalk.yellow(`  Cost limits: ${results.summary.costLimitCount}`)
+      );
       console.log(
         chalk.white(
           `  Success Rate: ${(results.summary.successRate * 100).toFixed(1)}%`
@@ -744,9 +815,7 @@ export class BenchmarkRunner {
     console.log(
       chalk.white(`Average Time: ${results.summary.averageTime.toFixed(1)}s`)
     );
-    console.log(
-      chalk.blue("\n📈 Performance Metrics:")
-    );
+    console.log(chalk.blue("\n📈 Performance Metrics:"));
     console.log(
       chalk.white(`Total Cost: $${results.summary.totalCost.toFixed(4)}`)
     );

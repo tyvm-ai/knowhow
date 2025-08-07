@@ -214,7 +214,9 @@ export abstract class BaseAgent implements IAgent {
     if (this.maxRunTimeMs !== null && this.startTimeMs !== null) {
       const currentRunTimeMs = Date.now() - this.startTimeMs;
       if (currentRunTimeMs >= this.maxRunTimeMs) {
-        console.log(`Runtime limit reached: ${currentRunTimeMs}ms/${this.maxRunTimeMs}ms`);
+        console.log(
+          `Runtime limit reached: ${currentRunTimeMs}ms/${this.maxRunTimeMs}ms`
+        );
         return true;
       }
     }
@@ -425,12 +427,18 @@ export abstract class BaseAgent implements IAgent {
     // Increment turn count and check limits (only for new calls, not recursive ones)
     this.turnCount++;
     if (this.shouldTerminateFromLimits()) {
-      const currentRunTimeMs = this.startTimeMs ? Date.now() - this.startTimeMs : 0;
+      const currentRunTimeMs = this.startTimeMs
+        ? Date.now() - this.startTimeMs
+        : 0;
       const limitMsg = `Task terminated due to limits reached. Turn: ${
         this.turnCount
       }/${this.maxTurns || "unlimited"}, Cost: $${this.totalCostUsd.toFixed(
         4
-      )}/${this.maxSpend ? "$" + this.maxSpend.toFixed(4) : "unlimited"}, Runtime: ${currentRunTimeMs}ms/${this.maxRunTimeMs ? this.maxRunTimeMs + "ms" : "unlimited"}`;
+      )}/${
+        this.maxSpend ? "$" + this.maxSpend.toFixed(4) : "unlimited"
+      }, Runtime: ${currentRunTimeMs}ms/${
+        this.maxRunTimeMs ? this.maxRunTimeMs + "ms" : "unlimited"
+      }`;
       this.agentEvents.emit(this.eventTypes.done, limitMsg);
       return limitMsg;
     }
@@ -585,9 +593,43 @@ export abstract class BaseAgent implements IAgent {
         console.log(
           "Agent continuing to the next iteration, reminding agent how to terminate"
         );
+
+        const remainingTime =
+          this.maxRunTimeMs && this.startTimeMs
+            ? this.maxRunTimeMs - (Date.now() - this.startTimeMs)
+            : null;
+
+        const remainingTurns = this.maxTurns
+          ? this.maxTurns - this.turnCount
+          : null;
+
+        const timeRemainsingMsg = remainingTime
+          ? `You have approximately ${Math.floor(
+              remainingTime / 1000
+            )} seconds remaining for this task. `
+          : "";
+
+        const turnsRemainingMsg = remainingTurns
+          ? `You have ${remainingTurns} turns remaining. `
+          : "";
+
+        const remainingBudget = this.maxSpend
+          ? this.maxSpend - this.totalCostUsd
+          : null;
+        const budgetRemainingMsg = remainingBudget
+          ? `You have $${remainingBudget.toFixed(4)} remaining in your budget.`
+          : "";
+
+        const continuation = `<Workflow>
+        workflow continues until you call one of ${this.requiredToolNames}.\n
+        ${timeRemainsingMsg}
+        ${turnsRemainingMsg}
+        ${budgetRemainingMsg}
+        </Workflow>`;
+
         messages.push({
           role: "user",
-          content: `<Workflow>workflow continues until you call on of ${this.requiredToolNames}. Any continuation messages should be enclosed in workflow tags to hide intermediate work from users.</Workflow>`,
+          content: continuation,
         });
       }
 
