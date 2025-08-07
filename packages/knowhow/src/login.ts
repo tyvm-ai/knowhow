@@ -3,22 +3,20 @@ import fs from "fs";
 import path from "path";
 import { chmod } from "fs/promises";
 import { ask } from "./utils";
+import { getConfig, updateConfig } from "./config";
+import { KNOWHOW_API_URL } from "./services/KnowhowClient";
 
-const API_URL = process.env.KNOWHOW_API_URL;
-
-export async function login(): Promise<void> {
-  if (!API_URL) {
+export async function login(jwtFlag?: string): Promise<void> {
+  if (!KNOWHOW_API_URL) {
     throw new Error("Error: KNOWHOW_API_URL environment variable not set.");
   }
 
-  const [flag] = process.argv.slice(3);
-
-  if (flag === "--jwt") {
+  if (jwtFlag) {
     const jwt = await ask("Enter your JWT: ");
 
     // Update the JWT file
     const configDir = path.join(process.cwd(), ".knowhow");
-    const jwtFile = path.join(configDir, ".jwt");
+    const jwtFile = path.join(process.cwd(), ".knowhow", ".jwt");
 
     if (!fs.existsSync(configDir)) {
       fs.mkdirSync(configDir, { recursive: true });
@@ -31,7 +29,7 @@ export async function login(): Promise<void> {
   // Get current user/org information
   try {
     const storedJwt = await loadJwt();
-    const response = await axios.get(`${API_URL}/api/users/me`, {
+    const response = await axios.get(`${KNOWHOW_API_URL}/api/users/me`, {
       headers: {
         Authorization: `Bearer ${storedJwt}`,
       },
@@ -47,6 +45,25 @@ export async function login(): Promise<void> {
     console.log(
       `Current user: ${user.email}, \nOrganization: ${currentOrg?.organization?.name} - ${orgId}`
     );
+
+    const config = await getConfig();
+    const proxyUrl = KNOWHOW_API_URL + "/api/proxy";
+    const hasProvider = config.modelProviders.find(
+      (provider) => provider.provider === "knowhow" && provider.url === proxyUrl
+    );
+    if (!hasProvider) {
+      if (!config.modelProviders) {
+        config.modelProviders = [];
+      }
+
+      config.modelProviders.push({
+        provider: "knowhow",
+        url: proxyUrl,
+        jwtFile: ".knowhow/.jwt",
+      });
+
+      await updateConfig(config);
+    }
   } catch (error) {
     if (axios.isAxiosError(error) && error.response) {
       throw new Error(

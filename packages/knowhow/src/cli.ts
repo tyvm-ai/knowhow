@@ -23,13 +23,17 @@ import { BaseAgent } from "./agents/base/base";
 import { AskModule } from "./chat/modules/AskModule";
 import { SearchModule } from "./chat/modules/SearchModule";
 import { AgentModule } from "./chat/modules/AgentModule";
+import { readPromptFile } from "./ai";
+import { SetupModule } from "./chat/modules/SetupModule";
+import { CliChatService } from "./chat/CliChatService";
 
 async function setupServices() {
   const { Tools, Agents, Mcp, Clients } = services();
-  const { Researcher, Developer, Patcher } = agents();
+  const { Researcher, Developer, Patcher, Setup } = agents();
   Agents.registerAgent(Researcher);
   Agents.registerAgent(Patcher);
   Agents.registerAgent(Developer);
+  Agents.registerAgent(Setup);
   Agents.loadAgentsFromConfig(services());
 
   Tools.defineTools(includedTools, allTools);
@@ -82,8 +86,9 @@ async function main() {
   program
     .command("login")
     .description("Login to knowhow")
-    .action(async () => {
-      await login();
+    .option("--jwt", "should use JWT login", "true")
+    .action(async (opts) => {
+      await login(opts.jwt);
     });
 
   program
@@ -157,6 +162,7 @@ async function main() {
       "10"
     )
     .option("--message-id <messageId>", "Knowhow message ID for task tracking")
+    .option("--prompt-file <path>", "Custom prompt template file with {text}")
     .option("--input <text>", "Task input (fallback to stdin if not provided)")
     .action(async (options) => {
       try {
@@ -171,6 +177,7 @@ async function main() {
           }
         }
 
+        input = readPromptFile(options.promptFile, input);
         const { taskCompleted } = await new AgentModule().setupAgent({
           ...options,
           input,
@@ -191,6 +198,7 @@ async function main() {
     .option("--provider <provider>", "AI provider to use", "openai")
     .option("--model <model>", "Specific model")
     .option("--input <text>", "Question (fallback to stdin if not provided)")
+    .option("--prompt-file <path>", "Custom prompt template file")
     .action(async (options) => {
       try {
         let input = options.input;
@@ -204,11 +212,30 @@ async function main() {
           }
         }
 
+        input = readPromptFile(options.promptFile, input);
+
         await new AskModule().processAIQuery(input, {
           plugins: config.plugins,
+          currentModel: options.model,
+          currentProvider: options.provider,
         });
       } catch (error) {
         console.error("Error asking AI:", error);
+        process.exit(1);
+      }
+    });
+
+  program
+    .command("setup")
+    .description("Ask the agent to configure knowhow")
+    .action(async (options) => {
+      try {
+        const chatService = new CliChatService(config.plugins);
+        const setupModule = new SetupModule();
+        await setupModule.initialize(chatService);
+        await setupModule.handleSetupCommand([]);
+      } catch (error) {
+        console.error("Error running agent:", error);
         process.exit(1);
       }
     });

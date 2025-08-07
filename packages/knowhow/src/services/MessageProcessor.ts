@@ -4,7 +4,7 @@ export type ProcessorLifecycle =
   | "initial_call"
   | "pre_call"
   | "post_call"
-  | "per_tool"
+  | "pre_tools"
   | "post_tools";
 
 export type MessageProcessorFunction = (
@@ -105,7 +105,7 @@ export class MessageProcessor {
       this.processors.set("initial_call", []);
       this.processors.set("pre_call", []);
       this.processors.set("post_call", []);
-      this.processors.set("per_tool", []);
+      this.processors.set("pre_tools", []);
       this.processors.set("post_tools", []);
     }
   }

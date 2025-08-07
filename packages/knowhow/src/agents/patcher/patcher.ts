@@ -77,13 +77,11 @@ export class PatchingAgent extends BaseAgent {
 
   constructor(context: AgentContext) {
     super(context);
-    this.disableTool("sendVimInput");
-    this.disableTool("openFileInVim");
 
     this.setModelPreferences([
       { model: Models.anthropic.Sonnet4, provider: "anthropic" },
       {
-        model: Models.openai.GPT_41,
+        model: Models.openai.GPT_41_Mini,
         provider: "openai",
       },
     ]);
@@ -106,7 +104,6 @@ export class PatchingAgent extends BaseAgent {
         IF you fail twice to patch a file, you may switch using writeFileChunk to rewrite the whole file.
         `,
       },
-      // { role: "user", content: systemReminder },
       { role: "user", content: userInput },
     ] as Message[];
   }

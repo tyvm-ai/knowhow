@@ -14,7 +14,11 @@ import { ChatInteraction } from "../../types";
 import { Marked } from "../../utils/index";
 import { TokenCompressor } from "../../processors/TokenCompressor";
 import { ToolResponseCache } from "../../processors/ToolResponseCache";
-import { CustomVariables, XmlToolCallProcessor } from "../../processors/index";
+import {
+  CustomVariables,
+  XmlToolCallProcessor,
+  HarmonyToolProcessor,
+} from "../../processors/index";
 import { TaskInfo, ChatSession } from "../types";
 import { agents } from "../../agents";
 
@@ -66,17 +70,32 @@ export class AgentModule extends BaseChatModule {
       {
         name: "agent",
         description: "Agent interaction mode",
-        active: false,
+        active: true,
       },
     ];
   }
 
   async handleAgentCommand(args: string[]): Promise<void> {
+    const context = this.chatService?.getContext();
+    
+    // If no args provided, toggle agent mode
     if (args.length === 0) {
-      console.log(
-        "Please specify an agent name. Use /agents to list available agents."
-      );
-      return;
+      if (context?.agentMode) {
+        // Disable agent mode
+        if (context) {
+          context.agentMode = false;
+          context.selectedAgent = undefined;
+          context.currentAgent = undefined;
+        }
+        console.log("Agent mode disabled. Switched to chat mode.");
+        return;
+      } else {
+        // Show usage when not in agent mode and no args
+        console.log(
+          "Agent mode is currently disabled. Use /agent <agent_name> to enable it, or /agents to list available agents."
+        );
+        return;
+      }
     }
 
     const agentName = args[0];
@@ -85,7 +104,6 @@ export class AgentModule extends BaseChatModule {
     try {
       if (allAgents && allAgents[agentName]) {
         // Set selected agent in context and enable agent mode
-        const context = this.chatService?.getContext();
         if (context) {
           context.selectedAgent = allAgents[agentName];
           context.agentMode = true;
@@ -591,10 +609,13 @@ ${reason}
       this.saveSession(taskId, taskInfo, []);
 
       // Create Knowhow chat task if messageId provided
-      const baseUrl = process.env.KNOWHOW_BASE_URL;
+      const baseUrl = process.env.KNOWHOW_API_URL;
+      console.log(
+        `Base URL for Knowhow API: ${baseUrl}, Message ID: ${options.messageId}`
+      );
+      const client = new KnowhowSimpleClient(baseUrl);
       if (options.messageId && !options.existingKnowhowTaskId && baseUrl) {
         try {
-          const client = new KnowhowSimpleClient(baseUrl);
           const response = await client.createChatTask({
             messageId: options.messageId,
             prompt: input,
@@ -612,15 +633,14 @@ ${reason}
       }
 
       // Set up session update listener
-      agent.agentEvents.on("threadUpdate", (threadState) => {
+      agent.agentEvents.on("threadUpdate", async (threadState) => {
         // Update task cost from agent's current total cost
         taskInfo.totalCost = agent.getTotalCostUsd();
         this.updateSession(taskId, threadState);
 
         // Update Knowhow chat task if created
         if (knowhowTaskId && options.messageId && baseUrl) {
-          const client = new KnowhowSimpleClient(baseUrl);
-          client
+          await client
             .updateChatTask(knowhowTaskId, {
               threads: agent.getThreads(),
               totalCostUsd: agent.getTotalCostUsd(),
@@ -629,6 +649,7 @@ ${reason}
             .catch((error) => {
               console.error(`❌ Failed to update Knowhow chat task:`, error);
             });
+          console.log(`✅ Updated Knowhow chat task: ${knowhowTaskId}`);
         }
       });
 
@@ -663,6 +684,7 @@ ${reason}
 
       agent.messageProcessor.setProcessors("post_call", [
         new XmlToolCallProcessor().createProcessor(),
+        new HarmonyToolProcessor().createProcessor(),
       ]);
 
       // Set up event listeners
@@ -672,38 +694,45 @@ ${reason}
         });
       }
 
-      agent.agentEvents.once(agent.eventTypes.done, (doneMsg) => {
-        console.log("Agent has finished.");
-        // Update task info
-        taskInfo = this.taskRegistry.get(taskId);
-        if (taskInfo) {
-          taskInfo.status = "completed";
-          // Update final cost from agent
-          taskInfo.totalCost = agent.getTotalCostUsd();
-          // Update session with final state
-          this.updateSession(taskId, agent.getThreads());
-          taskInfo.endTime = Date.now();
+      const taskCompleted = new Promise<string>((resolve) => {
+        agent.agentEvents.once(agent.eventTypes.done, async (doneMsg) => {
+          console.log("Agent has finished.");
+          done = true;
+          output = doneMsg || "No response from the AI";
+          // Update task info
+          taskInfo = this.taskRegistry.get(taskId);
+          if (taskInfo) {
+            taskInfo.status = "completed";
+            // Update final cost from agent
+            taskInfo.totalCost = agent.getTotalCostUsd();
+            // Update session with final state
+            this.updateSession(taskId, agent.getThreads());
+            taskInfo.endTime = Date.now();
 
-          // Final update to Knowhow chat task
-          if (knowhowTaskId && options.messageId) {
-            const client = new KnowhowSimpleClient(baseUrl);
-            client
-              .updateChatTask(knowhowTaskId, {
-                inProgress: false,
-                threads: agent.getThreads(),
-                totalCostUsd: agent.getTotalCostUsd(),
-              })
-              .catch((error) => {
-                console.error(
-                  `❌ Failed to update Knowhow chat task on completion:`,
-                  error
-                );
-              });
+            // Final update to Knowhow chat task
+            if (knowhowTaskId && options.messageId) {
+              console.log(
+                `Updating Knowhow chat task on completion..., ${knowhowTaskId}, ${options.messageId}`
+              );
+              await client
+                .updateChatTask(knowhowTaskId, {
+                  inProgress: false,
+                  threads: agent.getThreads(),
+                  totalCostUsd: agent.getTotalCostUsd(),
+                  result: output,
+                })
+                .catch((error) => {
+                  console.error(
+                    `❌ Failed to update Knowhow chat task on completion:`,
+                    error
+                  );
+                });
+              console.log(`✅ Completed Knowhow chat task: ${knowhowTaskId}`);
+            }
           }
-        }
-        done = true;
-        output = doneMsg || "No response from the AI";
-        console.log(Marked.parse(output));
+          console.log(Marked.parse(output));
+          resolve(doneMsg);
+        });
       });
 
       // Set up time limit if provided
@@ -722,11 +751,8 @@ ${reason}
       }
       console.log("─".repeat(50));
 
-      await agent.newTask();
-
-      let taskCompleted = Promise.resolve();
       if (options.run) {
-        taskCompleted = agent.call(formattedPrompt);
+        agent.call(formattedPrompt);
       }
 
       return { agent, taskId, formattedPrompt, taskCompleted };
@@ -864,7 +890,7 @@ ${reason}
     }
   }
 
-  async attachedAgentChatLoop(taskId: string, selectedAgent: BaseAgent) {
+  async attachedAgentChatLoop(taskId: string, agent: BaseAgent) {
     try {
       let done = false;
       let output = "Done";
@@ -875,7 +901,7 @@ ${reason}
 
       let input =
         (await this.chatService?.getInput(
-          `Enter command or message for ${selectedAgent.name}: `,
+          `Enter command or message for ${agent.name}: `,
           commands
         )) || "";
 
@@ -883,7 +909,7 @@ ${reason}
 
       let finished = false;
       const donePromise = new Promise<string>((resolve) => {
-        selectedAgent.agentEvents.on(selectedAgent.eventTypes.done, () => {
+        agent.agentEvents.once(agent.eventTypes.done, (doneMsg) => {
           console.log("Agent has completed the task.");
           finished = true;
           resolve("done");
@@ -903,15 +929,15 @@ ${reason}
             done = true;
             break;
           case "pause":
-            await selectedAgent.pause();
+            await agent.pause();
             console.log("Agent paused.");
             break;
           case "unpause":
-            await selectedAgent.unpause();
+            await agent.unpause();
             console.log("Agent unpaused.");
             break;
           case "kill":
-            await selectedAgent.kill();
+            await agent.kill();
             console.log("Agent terminated.");
             done = true;
             break;
@@ -919,7 +945,7 @@ ${reason}
             console.log("Detached from agent");
             return true;
           default:
-            selectedAgent.addPendingUserMessage({
+            agent.addPendingUserMessage({
               role: "user",
               content: input,
             });
@@ -927,7 +953,7 @@ ${reason}
 
         if (!done) {
           input = await this.chatService?.getInput(
-            `Enter command or message for ${selectedAgent.name}: `,
+            `Enter command or message for ${agent.name}: `,
             commands
           );
         }
@@ -939,7 +965,7 @@ ${reason}
         if (finalTaskInfo.status === "running") {
           finalTaskInfo.status = "completed";
           // Ensure final cost is captured
-          finalTaskInfo.totalCost = selectedAgent.getTotalCostUsd();
+          finalTaskInfo.totalCost = agent.getTotalCostUsd();
           finalTaskInfo.endTime = Date.now();
         }
       }

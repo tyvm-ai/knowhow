@@ -23,7 +23,7 @@ import { BaseAgent } from "./agents";
 import { getConfig } from "./config";
 import { TokenCompressor } from "./processors/TokenCompressor";
 import { ToolResponseCache } from "./processors/ToolResponseCache";
-import { CustomVariables, XmlToolCallProcessor } from "./processors";
+import { CustomVariables, XmlToolCallProcessor, HarmonyToolProcessor } from "./processors";
 
 enum ChatFlags {
   agent = "agent",
@@ -361,9 +361,10 @@ export async function startAgent(
       new CustomVariables(activeAgent.tools).createProcessor(),
     ]);
 
-    // Process XML tool calls in assistant responses
+    // Process XML and Harmony tool calls in assistant responses
     activeAgent.messageProcessor.setProcessors("post_call", [
       new XmlToolCallProcessor().createProcessor(),
+      new HarmonyToolProcessor().createProcessor(),
     ]);
 
     if (

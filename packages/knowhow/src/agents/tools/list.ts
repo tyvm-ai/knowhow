@@ -9,7 +9,7 @@ import * as ycmd from "./ycmd/definitions";
 import * as language from "./language/definitions";
 import { googleSearchDefinition } from "./googleSearch";
 import { executeScriptDefinition } from "./executeScript/definition";
-import { startAgentTaskDefinition } from "./startChatTask";
+import { startAgentTaskDefinition } from "./startAgentTask";
 
 export const includedTools = [
   {

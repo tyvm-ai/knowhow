@@ -13,9 +13,13 @@ export class EvaluatorRegistry {
     this.evaluators.push(evaluator);
   }
 
+  evalForExercise(exercisePath: string): ExerciseEvaluator | null {
+    return this.evaluators.find(e => e.canEvaluate(exercisePath)) || null;
+  }
+
   async evaluateExercise(exercisePath: string, exerciseName: string): Promise<TestEvaluationResult | null> {
     // Find the first evaluator that can handle this exercise
-    const evaluator = this.evaluators.find(e => e.canEvaluate(exercisePath));
+    const evaluator = this.evalForExercise(exercisePath);
 
     if (!evaluator) {
       console.warn(`No evaluator found for exercise: ${exerciseName} at ${exercisePath}`);

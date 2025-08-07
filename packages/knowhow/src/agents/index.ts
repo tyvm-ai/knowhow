@@ -3,6 +3,7 @@ import { AgentContext } from "./base/base";
 import { DeveloperAgent } from "./developer/developer";
 import { PatchingAgent } from "./patcher/patcher";
 import { ResearcherAgent } from "./researcher/researcher";
+import { SetupAgent } from "./setup/setup";
 
 export { BaseAgent } from "./base/base";
 export { ConfigAgent } from "./configurable/ConfigAgent";
@@ -19,6 +20,7 @@ let singletons = {} as {
   Developer: DeveloperAgent;
   Patcher: PatchingAgent;
   Researcher: ResearcherAgent;
+  Setup: SetupAgent;
 };
 
 export function agents(agentContext: AgentContext = services()) {
@@ -27,6 +29,7 @@ export function agents(agentContext: AgentContext = services()) {
       Developer: new DeveloperAgent(agentContext),
       Patcher: new PatchingAgent(agentContext),
       Researcher: new ResearcherAgent(agentContext),
+      Setup: new SetupAgent(agentContext),
     };
   }
   return singletons;

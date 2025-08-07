@@ -24,6 +24,7 @@ export interface UpdateOrgTaskRequest {
   threads: Message[][];
   totalCostUsd: number;
   inProgress: boolean;
+  result?: string;
 }
 
 export interface UpdateOrgTaskResponse {
@@ -39,6 +40,9 @@ export function loadKnowhowJwt(): string {
   }
   return fs.readFileSync(jwtFile, "utf-8").trim();
 }
+
+export const KNOWHOW_API_URL =
+  process.env.KNOWHOW_API_URL || "https://api.knowhow.tyvm.ai";
 
 export class KnowhowSimpleClient {
   headers = {};

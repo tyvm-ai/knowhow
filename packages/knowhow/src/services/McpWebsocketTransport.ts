@@ -57,13 +57,18 @@ export class MCPWebSocketTransport implements Transport {
         );
       }
 
-      this._socket.send(json, (error?: Error) => {
-        if (error) {
-          this.onerror?.(error);
-          return reject(error);
-        }
-        resolve();
-      });
+      try {
+        this._socket.send(json, (error?: Error) => {
+          if (error) {
+            this.onerror?.(error);
+            return reject(error);
+          }
+          resolve();
+        });
+      } catch (error) {
+        this.onerror?.(error as Error);
+        reject(error);
+      }
     });
   }
 

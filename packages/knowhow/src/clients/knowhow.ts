@@ -7,10 +7,11 @@ import {
 } from "./types";
 import { KnowhowSimpleClient } from "../services/KnowhowClient";
 
+const envUrl = process.env.KNOWHOW_API_URL;
 export class KnowhowGenericClient implements GenericClient {
   private client: KnowhowSimpleClient;
 
-  constructor(baseUrl: string, jwt?: string) {
+  constructor(baseUrl = envUrl, jwt?: string) {
     this.client = new KnowhowSimpleClient(baseUrl, jwt);
   }
 

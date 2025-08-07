@@ -30,8 +30,8 @@ export class CliChatService implements ChatService {
   constructor(plugins: string[] = []) {
     this.context = {
       debugMode: false,
-      agentMode: false,
-      currentAgent: undefined,
+      agentMode: true,
+      currentAgent: "Patcher",
       searchMode: false,
       voiceMode: false,
       multilineMode: false,

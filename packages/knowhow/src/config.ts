@@ -78,7 +78,7 @@ const defaultConfig = {
     enabled: false,
     installPath: undefined, // Will default to ~/.knowhow/ycmd
     port: 0, // 0 for auto-assign
-    logLevel: 'info',
+    logLevel: "info",
     completionTimeout: 5000,
   },
 } as Config;
@@ -156,6 +156,14 @@ export async function updateLanguageConfig(language: Language) {
 }
 
 export async function updateConfig(config: Config) {
+  if (!config || typeof config !== "object") {
+    throw new Error("Invalid config object");
+  }
+
+  await fs.promises.copyFile(
+    ".knowhow/knowhow.json",
+    ".knowhow/knowhow.json.bak"
+  );
   await writeFile(".knowhow/knowhow.json", JSON.stringify(config, null, 2));
 }
 
@@ -193,15 +201,24 @@ export function getConfigSync() {
   }
 }
 
+let loggedWarning = false;
 export async function getConfig() {
   if (!fs.existsSync(".knowhow/knowhow.json")) {
-    console.warn(
-      "KnowHow config file not found. Please run `knowhow init` to create it."
-    );
+    if (!loggedWarning) {
+      loggedWarning = true;
+      console.warn(
+        "KnowHow config file not found. Please run `knowhow init` to create it."
+      );
+    }
     return {} as Config;
   }
-  const config = JSON.parse(await readFile(".knowhow/knowhow.json", "utf8"));
-  return config as Config;
+  try {
+    const config = await readFile(".knowhow/knowhow.json", "utf8");
+    return JSON.parse(config) as Config;
+  } catch (error) {
+    console.error("Error reading .knowhow/knowhow.json:", error);
+    throw new Error("Failed to load KnowHow configuration.");
+  }
 }
 
 export async function loadPrompt(promptName: string) {

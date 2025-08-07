@@ -502,7 +502,7 @@ export abstract class BaseAgent implements IAgent {
           // We could add all the tool calls, and do this once
           messages = await this.messageProcessor.processMessages(
             messages,
-            "per_tool"
+            "pre_tools"
           );
 
           for (const toolCall of toolCalls) {

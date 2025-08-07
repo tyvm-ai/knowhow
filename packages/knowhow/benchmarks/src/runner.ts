@@ -13,7 +13,7 @@ import {
   Exercise,
 } from "./types";
 import { registerProvider } from "./providers";
-import { XmlToolCallProcessor } from "../../ts_build/src/processors";
+import { XmlToolCallProcessor, HarmonyToolProcessor } from "../../ts_build/src/processors";
 import { EvaluatorRegistry } from "./evaluators";
 
 export class BenchmarkRunner {
@@ -392,7 +392,10 @@ export class BenchmarkRunner {
     prompt += `3. Running tests to ensure correctness\n`;
     prompt += `4. Fixing any issues that arise\n\n`;
     prompt += `5. If tests are skipped you should unskip them after the initial test passes\n\n`;
+    prompt += `You should expect to have to do typical project setup tasks like npm install as a part of this eval`;
     prompt += `Work in the current directory where all the exercise files are located.`;
+    prompt += `Your score will be based on whether the tests run, and how many total passed from the file`;
+    prompt += `You are allowed to run the tests as many times as your want while you work.`;
 
     return prompt;
   }
@@ -468,6 +471,7 @@ export class BenchmarkRunner {
 
       this.selectedAgent.messageProcessor.setProcessors("post_call", [
         new XmlToolCallProcessor().createProcessor(),
+        new HarmonyToolProcessor().createProcessor(),
       ]);
 
       // Change to exercise directory

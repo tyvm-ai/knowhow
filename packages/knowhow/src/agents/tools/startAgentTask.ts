@@ -34,8 +34,10 @@ export async function startAgentTask(params: StartAgentTaskParams) {
     throw new Error("prompt is required to create a chat task");
   }
 
+  const escapedPrompt = prompt.replace(/"/g, '\\"');
+
   // Build the command with all optional parameters
-  let command = `knowhow agent --input "${prompt}" --message-id ${messageId}`;
+  let command = `knowhow agent --input "${escapedPrompt}" --message-id ${messageId}`;
 
   if (provider) {
     command += ` --provider ${provider}`;

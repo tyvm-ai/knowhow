@@ -26,7 +26,6 @@ export class GenericAnthropicClient extends Anthropic implements GenericClient {
 
     if (lastTool) {
       lastTool.cache_control = { type: "ephemeral" };
-      console.log("caching last tool");
     }
   }
 

@@ -6,6 +6,7 @@ import { AskModule } from "./AskModule";
 import { SearchModule } from "./SearchModule";
 import { VoiceModule } from "./VoiceModule";
 import { SystemModule } from "./SystemModule";
+import { SetupModule } from "./SetupModule";
 
 export class InternalChatModule implements ChatModule {
   private chatService?: CliChatService;
@@ -18,32 +19,39 @@ export class InternalChatModule implements ChatModule {
   private searchModule = new SearchModule();
   private voiceModule = new VoiceModule();
   private systemModule = new SystemModule();
+  private setupModule = new SetupModule();
 
   async initialize(chatService: CliChatService): Promise<void> {
     this.chatService = chatService;
-    
+
     // Register this module first so it gets called for input handling
     chatService.registerModule(this);
-    
+
     // Initialize all sub-modules
     await this.agentModule.initialize(chatService);
     await this.askModule.initialize(chatService);
     await this.searchModule.initialize(chatService);
     await this.voiceModule.initialize(chatService);
     await this.systemModule.initialize(chatService);
-    
+    await this.setupModule.initialize(chatService);
+
     // Register our own commands (exit and multi) - not duplicated by BaseChatModule
     chatService.registerCommand({
-      name: 'exit',
-      description: 'Exit the chat',
-      handler: this.handleExitCommand.bind(this)
+      name: "exit",
+      description: "Exit the chat",
+      handler: this.handleExitCommand.bind(this),
     });
-    
+
     chatService.registerCommand({
-      name: 'multi',
-      description: 'Toggle multiline mode',
-      handler: this.handleMultiCommand.bind(this)
+      name: "multi",
+      description: "Toggle multiline mode",
+      handler: this.handleMultiCommand.bind(this),
     });
+
+
+    for (const mode of this.getModes()) {
+      chatService.registerMode(mode);
+    }
   }
 
   getCommands(): ChatCommand[] {
@@ -53,16 +61,17 @@ export class InternalChatModule implements ChatModule {
       ...this.searchModule.getCommands(),
       ...this.voiceModule.getCommands(),
       ...this.systemModule.getCommands(),
+      ...this.setupModule.getCommands(),
       {
-        name: 'exit',
-        description: 'Exit the chat',
-        handler: this.handleExitCommand.bind(this)
+        name: "exit",
+        description: "Exit the chat",
+        handler: this.handleExitCommand.bind(this),
       },
       {
-        name: 'multi',
-        description: 'Toggle multiline mode',
-        handler: this.handleMultiCommand.bind(this)
-      }
+        name: "multi",
+        description: "Toggle multiline mode",
+        handler: this.handleMultiCommand.bind(this),
+      },
     ];
     return commands;
   }
@@ -73,7 +82,8 @@ export class InternalChatModule implements ChatModule {
       ...this.askModule.getModes(),
       ...this.searchModule.getModes(),
       ...this.voiceModule.getModes(),
-      ...this.systemModule.getModes()
+      ...this.systemModule.getModes(),
+      ...this.setupModule.getModes(),
     ];
   }
 
@@ -86,27 +96,74 @@ export class InternalChatModule implements ChatModule {
     const context = this.chatService?.getContext();
     const newMultiMode = !context?.multilineMode;
     this.chatService?.setContext({ multilineMode: newMultiMode });
-    console.log(`Multiline mode: ${newMultiMode ? 'enabled' : 'disabled'}`);
+    console.log(`Multiline mode: ${newMultiMode ? "enabled" : "disabled"}`);
+  }
+
+  /**
+   * Check if input matches a known command without prefix and suggest using the prefix
+   */
+  private checkForFuzzyCommand(input: string): boolean {
+    if (!this.chatService) return false;
+
+    const trimmedInput = input.toLowerCase().trim();
+    const availableCommands = this.chatService.getCommands();
+
+    // Check if the input matches any command name exactly (case-insensitive)
+    const matchingCommand = availableCommands.find(
+      (cmd) =>
+        cmd.name.toLowerCase() === trimmedInput ||
+        trimmedInput.startsWith(cmd.name.toLowerCase() + " ")
+    );
+
+    if (matchingCommand) {
+      console.log(
+        `Did you mean "/${matchingCommand.name}"? Commands must start with "/"`
+      );
+      console.log(
+        `Available commands: ${availableCommands
+          .map((cmd) => `/${cmd.name}`)
+          .join(", ")}`
+      );
+      return true;
+    }
+
+    return false;
   }
 
   async handleInput(input: string, context: ChatContext): Promise<boolean> {
-    // Delegate input to appropriate modules based on context and input
-    
+    // Check for fuzzy command matches first to prevent agent calls
+    // This prevents accidental agent calls when user types commands without "/"
+    if (this.checkForFuzzyCommand(input)) {
+      return true; // Command suggestion shown, input handled
+    }
+
+    // If in agent mode, check if this looks like a command before calling agent
+    if (
+      context.agentMode &&
+      input
+        .toLowerCase()
+        .match(
+          /^(multi|agent|ask|search|voice|system|exit|setup|help|clear)(\s|$)/i
+        )
+    ) {
+      return this.checkForFuzzyCommand(input); // Will show suggestion and return true
+    }
+
     // Try agent module first (handles agent mode)
     if (await this.agentModule.handleInput(input, context)) {
       return true;
     }
-    
+
     // Try search module
     if (await this.searchModule.handleInput(input, context)) {
       return true;
     }
-    
+
     // Try voice module
     if (await this.voiceModule.handleInput(input, context)) {
       return true;
     }
-    
+
     // Default to ask module (handles all non-command input when not in agent mode)
     return await this.askModule.handleInput(input, context);
   }

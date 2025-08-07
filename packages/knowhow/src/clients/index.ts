@@ -12,6 +12,8 @@ import { HttpClient } from "./http";
 import { EmbeddingModels, Models } from "../types";
 import { getConfig } from "../config";
 import { GenericXAIClient } from "./xai";
+import { KnowhowGenericClient } from "./knowhow";
+import { loadKnowhowJwt } from "../services/KnowhowClient";
 
 function envCheck(key: string): boolean {
   const value = process.env[key];
@@ -31,6 +33,7 @@ export class AIClient {
 
     ...(envCheck("GEMINI_API_KEY") && { google: new GenericGeminiClient() }),
     ...(envCheck("XAI_API_KEY") && { xai: new GenericXAIClient() }),
+    ...(loadKnowhowJwt() && { knowhow: new KnowhowGenericClient() }),
   };
 
   completionModels = {

@@ -19,6 +19,21 @@ export const openai = new OpenAI({
   ...(config.openaiBaseUrl && { baseURL: config.openaiBaseUrl }),
 });
 
+export function readPromptFile(promptFile: string, input: string) {
+  if (promptFile) {
+    if (fs.existsSync(promptFile)) {
+      const promptTemplate = fs.readFileSync(promptFile, "utf-8");
+      if (promptTemplate.includes("{text}")) {
+        return promptTemplate.replaceAll("{text}", input);
+      } else {
+        return `${promptTemplate}\n\n${input}`;
+      }
+    }
+  }
+
+  return input;
+}
+
 export async function singlePrompt(userPrompt: string, model = "", agent = "") {
   const { Agents } = services();
   if (agent) {

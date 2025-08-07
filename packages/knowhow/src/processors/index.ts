@@ -3,3 +3,4 @@ export { CustomVariables } from "./CustomVariables";
 export { TokenCompressor } from "./TokenCompressor";
 export { ToolResponseCache } from "./ToolResponseCache";
 export { XmlToolCallProcessor } from "./XmlToolCallProcessor";
+export { HarmonyToolProcessor } from "./HarmonyToolProcessor";

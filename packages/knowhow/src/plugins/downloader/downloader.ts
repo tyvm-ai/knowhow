@@ -364,7 +364,11 @@ export class DownloaderService {
         : JSON.parse(fileContent);
 
       for (const line of lines) {
-        yield { chunkPath: "", text: line, usd_cost: 0 };
+        if (typeof line === "string") {
+          yield { chunkPath: "", text: line, usd_cost: 0 };
+        } else {
+          yield line as TranscriptChunk;
+        }
       }
       return;
     }
