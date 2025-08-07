@@ -23,6 +23,10 @@ export class HttpClient implements GenericClient {
     this.baseUrl = baseUrl;
   }
 
+  setKey(key: string) {
+    this.setJwt(key);
+  }
+
   loadJwtFile(filePath: string) {
     try {
       const jwtFile = path.join(process.cwd(), filePath);

@@ -104,6 +104,12 @@ export class AIClient {
     this.clients[provider] = client;
   }
 
+  setKey(provider: string, apiKey: string) {
+    const { client } = this.getClient(provider); // Ensure provider is registered
+    client.setKey(apiKey);
+    this.clients[provider].setKey(apiKey);
+  }
+
   async registerConfiguredModels() {
     const config = await getConfig();
     const modelProviders = config.modelProviders || [];

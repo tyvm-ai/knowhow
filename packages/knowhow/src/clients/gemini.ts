@@ -32,10 +32,18 @@ function getMimeTypeFromUrl(url: string): string {
   return "image/jpeg";
 }
 
-export class GenericGeminiClient extends GoogleGenAI implements GenericClient {
-  constructor() {
-    super({
-      apiKey: process.env.GEMINI_API_KEY,
+export class GenericGeminiClient implements GenericClient {
+  private client: GoogleGenAI;
+  private apiKey?: string;
+
+  constructor(apiKey?: string) {
+    this.setKey(apiKey || process.env.GEMINI_API_KEY || "");
+  }
+
+  setKey(apiKey: string) {
+    this.apiKey = apiKey;
+    this.client = new GoogleGenAI({
+      apiKey: apiKey || process.env.GEMINI_API_KEY,
     });
   }
 
@@ -250,7 +258,7 @@ export class GenericGeminiClient extends GoogleGenAI implements GenericClient {
 
     try {
       await wait(2000);
-      const response = await this.models.generateContent({
+      const response = await this.client.models.generateContent({
         model: options.model,
         contents,
         config: {
@@ -428,7 +436,7 @@ export class GenericGeminiClient extends GoogleGenAI implements GenericClient {
 
   async getModels() {
     try {
-      const models = await this.models.list();
+      const models = await this.client.models.list();
       return models.page.map((m) => ({
         id: m.name!,
       }));
@@ -446,7 +454,7 @@ export class GenericGeminiClient extends GoogleGenAI implements GenericClient {
     }
 
     try {
-      const googleEmbedding = await this.models.embedContent({
+      const googleEmbedding = await this.client.models.embedContent({
         model: options.model,
         contents: options.input,
       });

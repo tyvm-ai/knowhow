@@ -16,10 +16,22 @@ import { Models } from "../types";
 
 const config = getConfigSync();
 
-export class GenericXAIClient extends OpenAI implements GenericClient {
-  constructor() {
-    super({
-      apiKey: process.env.XAI_API_KEY,
+export class GenericXAIClient implements GenericClient {
+  private client: OpenAI;
+  private apiKey: string;
+
+  constructor(apiKey = process.env.XAI_API_KEY) {
+    this.apiKey = apiKey || "";
+    this.client = new OpenAI({
+      apiKey: apiKey || process.env.XAI_API_KEY,
+      baseURL: "https://api.x.ai/v1",
+    });
+  }
+
+  setKey(apiKey: string) {
+    this.apiKey = apiKey;
+    this.client = new OpenAI({
+      apiKey,
       baseURL: "https://api.x.ai/v1",
     });
   }
@@ -39,7 +51,7 @@ export class GenericXAIClient extends OpenAI implements GenericClient {
       return msg as ChatCompletionMessageParam;
     });
 
-    const response = await this.chat.completions.create({
+    const response = await this.client.chat.completions.create({
       model: options.model,
       messages: xaiMessages,
       max_tokens: options.max_tokens,

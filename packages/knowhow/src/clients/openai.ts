@@ -17,10 +17,18 @@ import { EmbeddingModels, Models, OpenAiReasoningModels } from "../types";
 
 const config = getConfigSync();
 
-export class GenericOpenAiClient extends OpenAI implements GenericClient {
-  constructor() {
-    super({
-      apiKey: process.env.OPENAI_KEY,
+export class GenericOpenAiClient implements GenericClient {
+  client: OpenAI;
+  apiKey?: string;
+
+  constructor(apiKey = process.env.OPENAI_KEY) {
+    this.setKey(apiKey);
+  }
+
+  setKey(apiKey: string) {
+    this.apiKey = apiKey;
+    this.client = new OpenAI({
+      apiKey,
       ...(config.openaiBaseUrl && { baseURL: config.openaiBaseUrl }),
     });
   }
@@ -40,13 +48,14 @@ export class GenericOpenAiClient extends OpenAI implements GenericClient {
       return msg as ChatCompletionMessageParam;
     });
 
-    const response = await this.chat.completions.create({
+    const response = await this.client.chat.completions.create({
       model: options.model,
       messages: openaiMessages,
       max_tokens: options.max_tokens,
       ...(OpenAiReasoningModels.includes(options.model) && {
         max_tokens: undefined,
-        max_completion_tokens: options.max_tokens,
+        max_completion_tokens: Math.max(options.max_tokens, 100),
+        // Health check requires some thoughts
       }),
 
       ...(options.tools && {
@@ -166,6 +175,21 @@ export class GenericOpenAiClient extends OpenAI implements GenericClient {
         cached_input: 0,
         output: 10.0,
       },
+      [Models.openai.GPT_5]: {
+        input: 1.25,
+        cached_input: 0.125,
+        output: 10,
+      },
+      [Models.openai.GPT_5_Mini]: {
+        input: 0.25,
+        cached_input: 0.025,
+        output: 2,
+      },
+      [Models.openai.GPT_5_Nano]: {
+        input: 0.05,
+        cached_input: 0.005,
+        output: 0.4,
+      },
       /*
        *[Models.openai.Computer_Use]: {
        *  input: 3.0,
@@ -226,7 +250,7 @@ export class GenericOpenAiClient extends OpenAI implements GenericClient {
   }
 
   async getModels() {
-    const models = await this.models.list();
+    const models = await this.client.models.list();
     return models.data.map((m) => {
       return {
         id: m.id,
@@ -237,7 +261,7 @@ export class GenericOpenAiClient extends OpenAI implements GenericClient {
   }
 
   async createEmbedding(options: EmbeddingOptions): Promise<EmbeddingResponse> {
-    const openAiEmbedding = await this.embeddings.create({
+    const openAiEmbedding = await this.client.embeddings.create({
       input: options.input,
       model: options.model,
     });

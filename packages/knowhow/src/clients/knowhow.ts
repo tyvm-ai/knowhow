@@ -11,8 +11,12 @@ const envUrl = process.env.KNOWHOW_API_URL;
 export class KnowhowGenericClient implements GenericClient {
   private client: KnowhowSimpleClient;
 
-  constructor(baseUrl = envUrl, jwt?: string) {
-    this.client = new KnowhowSimpleClient(baseUrl, jwt);
+  constructor(private baseUrl = envUrl, jwt?: string) {
+    this.setKey(jwt);
+  }
+
+  setKey(jwt: string): void {
+    this.client = new KnowhowSimpleClient(this.baseUrl, jwt);
   }
 
   async createChatCompletion(

@@ -85,6 +85,7 @@ export interface EmbeddingResponse {
 }
 
 export interface GenericClient {
+  setKey(key: string): void;
   createChatCompletion(options: CompletionOptions): Promise<CompletionResponse>;
   createEmbedding(options: EmbeddingOptions): Promise<EmbeddingResponse>;
   getModels(): Promise<{ id: string }[]>;

@@ -19,6 +19,10 @@ export class KnowhowMcpClient implements GenericClient {
     this.mcpService = mcpService;
   }
 
+  setKey(key: string) {
+    return;
+  }
+
   async connect(): Promise<void> {
     if (this.handlesConnection) {
       await this.mcpService.connectAll();

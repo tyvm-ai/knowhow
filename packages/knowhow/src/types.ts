@@ -154,6 +154,9 @@ export const Models = {
     Grok2Vision1212: "grok-2-vision-1212",
   },
   openai: {
+    GPT_5: "gpt-5",
+    GPT_5_Mini: "gpt-5-mini",
+    GPT_5_Nano: "gpt-5-nano",
     GPT_41: "gpt-4.1-2025-04-14",
     GPT_41_Mini: "gpt-4.1-mini-2025-04-14",
     GPT_41_Nano: "gpt-4.1-nano-2025-04-14",
@@ -167,6 +170,7 @@ export const Models = {
     o1: "o1-2024-12-17",
     o1_Pro: "o1-pro-2025-03-19",
     o3: "o3-2025-04-16",
+    o3_Pro: "o3-pro-2025-01-31",
     o4_Mini: "o4-mini-2025-04-16",
     o3_Mini: "o3-mini-2025-01-31",
     o1_Mini: "o1-mini-2024-09-12",
@@ -212,7 +216,11 @@ export const OpenAiReasoningModels = [
   Models.openai.o1_Mini,
   Models.openai.o3_Mini,
   Models.openai.o3,
+  Models.openai.o3_Pro,
   Models.openai.o4_Mini,
+  Models.openai.GPT_5,
+  Models.openai.GPT_5_Mini,
+  Models.openai.GPT_5_Nano,
 ];
 
 export const OpenAiEmbeddingModels = [

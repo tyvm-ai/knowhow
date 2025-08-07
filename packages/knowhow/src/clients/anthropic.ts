@@ -14,10 +14,18 @@ import {
 type MessageParam = Anthropic.MessageParam;
 type Usage = Anthropic.Usage;
 
-export class GenericAnthropicClient extends Anthropic implements GenericClient {
-  constructor() {
-    super({
-      apiKey: process.env.ANTHROPIC_API_KEY,
+export class GenericAnthropicClient implements GenericClient {
+  private client: Anthropic;
+  private apiKey?: string;
+
+  constructor(apiKey?: string) {
+    this.setKey(apiKey || process.env.ANTHROPIC_API_KEY || "");
+  }
+
+  setKey(apiKey: string) {
+    this.apiKey = apiKey;
+    this.client = new Anthropic({
+      apiKey: apiKey || process.env.ANTHROPIC_API_KEY,
     });
   }
 
@@ -241,7 +249,7 @@ export class GenericAnthropicClient extends Anthropic implements GenericClient {
 
     const tools = this.transformTools(options.tools);
     try {
-      const response = await this.messages.create({
+      const response = await this.client.messages.create({
         model: options.model,
         messages: claudeMessages,
         system: systemMessage
@@ -381,7 +389,7 @@ export class GenericAnthropicClient extends Anthropic implements GenericClient {
   }
 
   async getModels() {
-    const models = await this.models.list();
+    const models = await this.client.models.list();
     return models.data.map((m) => ({
       id: m.id,
     }));
