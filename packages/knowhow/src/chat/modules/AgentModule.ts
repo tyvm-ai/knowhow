@@ -9,7 +9,7 @@ import { formatChatInput } from "../../chat";
 import { BaseChatModule } from "./BaseChatModule";
 import { services } from "../../services/index";
 import { BaseAgent } from "../../agents/index";
-import { ChatCommand, ChatMode, ChatContext } from "../types";
+import { ChatCommand, ChatMode, ChatContext, ChatService } from "../types";
 import { ChatInteraction } from "../../types";
 import { Marked } from "../../utils/index";
 import { TokenCompressor } from "../../processors/TokenCompressor";
@@ -75,9 +75,14 @@ export class AgentModule extends BaseChatModule {
     ];
   }
 
+  async initialize(service: ChatService): Promise<void> {
+    await super.initialize(service);
+    await this.handleAgentCommand(["Patcher"]);
+  }
+
   async handleAgentCommand(args: string[]): Promise<void> {
     const context = this.chatService?.getContext();
-    
+
     // If no args provided, toggle agent mode
     if (args.length === 0) {
       if (context?.agentMode) {

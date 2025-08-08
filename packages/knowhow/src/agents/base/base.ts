@@ -406,6 +406,27 @@ export abstract class BaseAgent implements IAgent {
     });
   }
 
+  async resume(resumeReason: string) {
+    const reason = resumeReason ? `Reason for resuming:  ${resumeReason}` : "";
+
+    // Create resume prompt
+    const resumePrompt = `We are resuming a previously started task. Here's the context:
+ORIGINAL REQUEST:
+${this.taskBreakdown}
+
+LAST Progress State:
+${JSON.stringify(this.threads[this.currentThread], null, 2)}
+
+Please continue from where you left off and complete the original request.
+${reason}
+
+`;
+
+    const lastThread = this.threads[this.currentThread] || [];
+    this.status = "in_progress";
+    this.call(resumePrompt, lastThread);
+  }
+
   async kill() {
     console.log("Killing agent");
     this.agentEvents.emit(this.eventTypes.kill, this);
@@ -439,6 +460,7 @@ export abstract class BaseAgent implements IAgent {
       }, Runtime: ${currentRunTimeMs}ms/${
         this.maxRunTimeMs ? this.maxRunTimeMs + "ms" : "unlimited"
       }`;
+      this.status = this.eventTypes.done;
       this.agentEvents.emit(this.eventTypes.done, limitMsg);
       return limitMsg;
     }
@@ -527,6 +549,7 @@ export abstract class BaseAgent implements IAgent {
             if (finalMessage) {
               const doneMsg = finalMessage.content || "Done";
               this.agentEvents.emit(this.eventTypes.done, doneMsg);
+              this.status = this.eventTypes.done;
               return doneMsg;
             }
           }
@@ -551,6 +574,7 @@ export abstract class BaseAgent implements IAgent {
         firstMessage.content &&
         this.easyFinalAnswer
       ) {
+        this.status = this.eventTypes.done;
         this.agentEvents.emit(this.eventTypes.done, firstMessage.content);
         return firstMessage.content;
       }
@@ -561,14 +585,18 @@ export abstract class BaseAgent implements IAgent {
           this.requiredToolNames
         )} not available, options are ${this.getEnabledToolNames().join(", ")}`;
         console.error(error);
+        this.status = this.eventTypes.done;
         this.agentEvents.emit(this.eventTypes.done, error);
         return error;
       }
 
       // Early exit: killed, agent was requested to wrap up
-      if (this.pendingUserMessages.length === 0 && this.status === "killed") {
+      if (
+        this.pendingUserMessages.length === 0 &&
+        this.status === this.eventTypes.kill
+      ) {
         console.log("Agent killed, stopping execution");
-        this.status = "killed";
+        this.status = this.eventTypes.done;
         this.agentEvents.emit(this.eventTypes.done, firstMessage.content);
         return firstMessage.content;
       }
@@ -648,7 +676,11 @@ export abstract class BaseAgent implements IAgent {
   }
 
   addPendingUserMessage(message: Message) {
-    this.pendingUserMessages.push(message);
+    if (this.status === this.eventTypes.done) {
+      this.resume(JSON.stringify(message.content));
+    } else {
+      this.pendingUserMessages.push(message);
+    }
   }
 
   getMessagesLength(messages: Message[]) {
