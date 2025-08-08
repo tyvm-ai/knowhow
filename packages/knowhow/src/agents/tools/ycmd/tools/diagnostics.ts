@@ -92,6 +92,8 @@ export async function ycmdDiagnostics(params: YcmdDiagnosticsParams): Promise<{
       column_num
     );
 
+    console.log("Diagnostics response:", response);
+
     // Parse diagnostics
     const diagnostics: Diagnostic[] = response.map((diag: any) => ({
       kind: diag.kind,

@@ -65,36 +65,6 @@ export class DownloaderService {
     return info;
   }
 
-  private async acquireLock(
-    lockPath: string,
-    timeoutMs = 30000
-  ): Promise<() => void> {
-    const startTime = Date.now();
-
-    while (Date.now() - startTime < timeoutMs) {
-      try {
-        await fs.promises.writeFile(lockPath, process.pid.toString(), {
-          flag: "wx",
-        });
-        console.log(`Lock acquired: ${lockPath}`);
-        return async () => {
-          try {
-            await fs.promises.unlink(lockPath);
-            console.log(`Lock released: ${lockPath}`);
-          } catch (error) {
-            console.warn(`Failed to release lock ${lockPath}:`, error);
-          }
-        };
-      } catch (error) {
-        if (error.code !== "EEXIST") {
-          throw error;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-    }
-    throw new Error(`Failed to acquire lock ${lockPath} within ${timeoutMs}ms`);
-  }
-
   public async chunk(
     filePath: string,
     outputDir: string,
@@ -107,53 +77,42 @@ export class DownloaderService {
     console.log({ fileName, fileExt });
     console.log("Chunking file", filePath);
 
-    // Create lock to prevent concurrent chunking of the same file
-    const lockPath = path.join(outputDir, `${fileName}.chunking.lock`);
-    const releaseLock = await this.acquireLock(lockPath);
+    // create a temp directory
+    const outputDirPath = path.join(outputDir, `${fileName}/chunks`);
+    await fs.promises.mkdir(outputDirPath, { recursive: true });
+    const doneFilePath = path.join(outputDirPath, ".chunking_done");
 
-    try {
-      // create a temp directory
-      const outputDirPath = path.join(outputDir, `${fileName}/chunks`);
-      await fs.promises.mkdir(outputDirPath, { recursive: true });
-      const existingFolderFiles = await fs.promises.readdir(outputDirPath);
-      const existingChunkNames = existingFolderFiles.filter(
-        (f) => f.includes("chunk") && f.endsWith(".mp3")
-      );
+    const doneFileExists = await fileExists(doneFilePath);
+    const existingFolderFiles = await fs.promises.readdir(outputDirPath);
+    const existingChunkNames = existingFolderFiles.filter(
+      (f) => f.includes("chunk") && f.endsWith(".mp3")
+    );
 
-      if (existingChunkNames.length > 0) {
-        if (reuseExistingChunks) {
-          console.log("Chunks already exist, skipping");
-          await releaseLock();
-          const names = existingChunkNames.map((chunkName) =>
-            path.join(outputDirPath, chunkName)
-          );
-          return names;
-        } else {
-          for (const file of existingFolderFiles) {
-            fs.rmSync(path.join(outputDirPath, file), { recursive: true });
-          }
+    if (existingChunkNames.length > 0 && doneFileExists) {
+      if (reuseExistingChunks) {
+        console.log("Chunks already exist, skipping");
+        const names = existingChunkNames.map((chunkName) =>
+          path.join(outputDirPath, chunkName)
+        );
+        return names;
+      } else {
+        for (const file of existingFolderFiles) {
+          fs.rmSync(path.join(outputDirPath, file), { recursive: true });
         }
       }
-
-      const command = `ffmpeg -i "${filePath}" -f segment -segment_time ${CHUNK_LENGTH_SECONDS} -map 0:a:0 -acodec mp3 -vn "${outputDirPath}/chunk%04d.mp3"`;
-      await execAsync(command);
-
-      const folderFiles = await fs.promises.readdir(outputDirPath);
-      const chunkNames = folderFiles.filter(
-        (f) => f.includes("chunk") && f.endsWith(".mp3")
-      );
-      console.log("Chunked into", chunkNames.length, "chunks");
-      return chunkNames.map((chunkName) => path.join(outputDirPath, chunkName));
-    } catch (error) {
-      console.error("Error during chunking:", error);
-      throw error;
-    } finally {
-      await releaseLock();
     }
-  }
 
-  // Add transcription locking to prevent race conditions
-  private transcriptionLocks = new Map<string, Promise<TranscriptChunk[]>>();
+    const command = `ffmpeg -i "${filePath}" -f segment -segment_time ${CHUNK_LENGTH_SECONDS} -map 0:a:0 -acodec mp3 -vn "${outputDirPath}/chunk%04d.mp3"`;
+    await execAsync(command);
+    await fs.promises.writeFile(doneFilePath, "done");
+
+    const folderFiles = await fs.promises.readdir(outputDirPath);
+    const chunkNames = folderFiles.filter(
+      (f) => f.includes("chunk") && f.endsWith(".mp3")
+    );
+    console.log("Chunked into", chunkNames.length, "chunks");
+    return chunkNames.map((chunkName) => path.join(outputDirPath, chunkName));
+  }
 
   public async *streamTranscription(
     files: string[],
@@ -171,55 +130,6 @@ export class DownloaderService {
       return;
     }
 
-    // Prevent concurrent transcription of the same output file
-    const lockKey = outputPath;
-    if (this.transcriptionLocks.has(lockKey)) {
-      console.log("Waiting for concurrent transcription to complete...");
-      await this.transcriptionLocks.get(lockKey);
-      // After waiting, check again if file exists
-      const existsNow = await fileExists(outputPath);
-      if (existsNow && reusePreviousTranscript) {
-        console.log(
-          "Transcription completed by concurrent process, using cached data"
-        );
-        const contents = await readFile(outputPath);
-        const data = JSON.parse(contents.toString()) as TranscriptChunk[];
-        for (const item of data) {
-          yield item;
-        }
-        return;
-      }
-    }
-
-    // Create a promise for this transcription operation
-    const transcriptionPromise = (async () => {
-      const results: TranscriptChunk[] = [];
-      for await (const chunk of this.performTranscription(
-        files,
-        outputPath,
-        reusePreviousTranscript
-      )) {
-        results.push(chunk);
-      }
-      return results;
-    })();
-    this.transcriptionLocks.set(lockKey, transcriptionPromise);
-
-    try {
-      const results = await transcriptionPromise;
-      for (const chunk of results) {
-        yield chunk;
-      }
-    } finally {
-      this.transcriptionLocks.delete(lockKey);
-    }
-  }
-
-  private async *performTranscription(
-    files: string[],
-    outputPath: string,
-    reusePreviousTranscript: boolean
-  ): AsyncGenerator<TranscriptChunk> {
     const allTranscripts = [];
     for (const file of files) {
       const chunkName = path.parse(file).name;
