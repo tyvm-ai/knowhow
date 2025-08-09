@@ -5,8 +5,9 @@ import { chmod } from "fs/promises";
 import { ask } from "./utils";
 import { getConfig, updateConfig } from "./config";
 import { KNOWHOW_API_URL } from "./services/KnowhowClient";
+import { BrowserLoginService } from "./auth/browserLogin";
 
-export async function login(jwtFlag?: string): Promise<void> {
+export async function login(jwtFlag?: boolean): Promise<void> {
   if (!KNOWHOW_API_URL) {
     throw new Error("Error: KNOWHOW_API_URL environment variable not set.");
   }
@@ -24,6 +25,18 @@ export async function login(jwtFlag?: string): Promise<void> {
     fs.writeFileSync(jwtFile, jwt);
     fs.chmodSync(jwtFile, 0o600);
     console.log("JWT updated successfully.");
+  } else {
+    // Use browser login as default method
+    console.log("Starting browser-based authentication...");
+    try {
+      const browserLoginService = new BrowserLoginService();
+      await browserLoginService.login();
+      console.log("Successfully authenticated via browser!");
+    } catch (error) {
+      console.error("Browser authentication failed:", error.message);
+      console.log("You can try manual JWT login with: knowhow login --jwt");
+      throw error;
+    }
   }
 
   // Get current user/org information

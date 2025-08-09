@@ -1,7 +1,6 @@
 import { ChatCompletionMessageParam } from "openai/resources/chat";
 import Ora from "ora";
 import editor from "@inquirer/editor";
-import { openai } from "./ai";
 import { cosineSimilarity } from "./utils";
 import {
   EmbeddingBase,

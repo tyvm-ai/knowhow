@@ -8,11 +8,12 @@ import { execAsync, fileExists, readFile, mkdir } from "../../utils";
 import OpenAI from "openai";
 import { Clients } from "../../clients";
 import { Models } from "../../types";
+import { openai } from "../../ai";
 
 const logger = Logger();
 
 export class DownloaderService {
-  constructor(private openAi: OpenAI, private clients: typeof Clients) {}
+  constructor(private clients: typeof Clients) {}
 
   async askGptVision(
     imageUrl: string,
@@ -131,6 +132,7 @@ export class DownloaderService {
     }
 
     const allTranscripts = [];
+    const openAi = openai();
     for (const file of files) {
       const chunkName = path.parse(file).name;
       const chunkTranscriptPath = path.join(
@@ -157,7 +159,7 @@ export class DownloaderService {
       }
 
       console.log("Transcribing", file);
-      const transcript = await this.openAi.audio.transcriptions
+      const transcript = await openAi.audio.transcriptions
         .create({
           file: fs.createReadStream(file),
           model: "whisper-1",

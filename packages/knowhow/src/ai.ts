@@ -14,10 +14,11 @@ import { Models } from "./types";
 import { services } from "./services";
 export { Models };
 
-export const openai = new OpenAI({
-  apiKey: OPENAI_KEY,
-  ...(config.openaiBaseUrl && { baseURL: config.openaiBaseUrl }),
-});
+export const openai = () =>
+  new OpenAI({
+    apiKey: OPENAI_KEY,
+    ...(config.openaiBaseUrl && { baseURL: config.openaiBaseUrl }),
+  });
 
 export function readPromptFile(promptFile: string, input: string) {
   if (promptFile) {

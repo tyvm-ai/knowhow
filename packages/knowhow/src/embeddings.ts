@@ -17,7 +17,7 @@ import {
   cosineSimilarity,
   takeFirstNWords,
 } from "./utils";
-import { summarizeTexts, openai, chunkText } from "./ai";
+import { summarizeTexts, chunkText } from "./ai";
 import { Plugins } from "./plugins/plugins";
 import { md5Hash } from "./hashes";
 import { convertToText } from "./conversion";

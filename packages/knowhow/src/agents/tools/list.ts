@@ -467,6 +467,40 @@ export const includedTools = [
   {
     type: "function",
     function: {
+      name: "listAllCompletionModels",
+      description: "List all available completion models using the knowhow ai client",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+      returns: {
+        type: "object",
+        description: "A dictionary of all available completion models for each provider",
+      },
+    },
+  },
+
+  {
+    type: "function",
+    function: {
+      name: "listAllEmbeddingModels",
+      description: "List all available embedding models using the knowhow ai client",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+      returns: {
+        type: "object",
+        description: "A dictionary of all available embedding models for each provider",
+      },
+    },
+  },
+
+  {
+    type: "function",
+    function: {
       name: "listAllModels",
       description: "List all available models using the knowhow ai client",
       parameters: {

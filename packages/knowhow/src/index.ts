@@ -48,7 +48,6 @@ import { Models } from "./types";
 
 export * as clients from "./clients";
 export * as agents from "./agents";
-export * as ai from "./ai";
 export * as services from "./services";
 export * as embeddings from "./embeddings";
 export * as types from "./types";

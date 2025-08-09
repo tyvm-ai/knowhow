@@ -86,7 +86,7 @@ async function main() {
   program
     .command("login")
     .description("Login to knowhow")
-    .option("--jwt", "should use JWT login", "true")
+    .option("--jwt", "Use manual JWT input instead of browser login")
     .action(async (opts) => {
       await login(opts.jwt);
     });

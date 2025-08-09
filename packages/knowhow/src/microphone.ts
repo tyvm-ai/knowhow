@@ -1,7 +1,6 @@
 import { exec } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
-import { openai } from "./ai";
 import { execAsync, ask } from "./utils";
 import { convertToText, convertAudioToText } from "./conversion";
 

@@ -100,3 +100,39 @@ export async function listAllProviders(this: ToolsService): Promise<string[]> {
 
   return contextClients.listAllProviders();
 }
+
+export async function listAllCompletionModels(
+  this: ToolsService
+): Promise<Record<string, string[]>> {
+  // Get context from bound ToolsService
+  const toolService = (
+    this instanceof ToolsService ? this : services().Tools
+  ) as ToolsService;
+
+  const toolContext = toolService.getContext();
+  const { Clients: contextClients } = toolContext;
+
+  if (!contextClients) {
+    throw new Error("Clients not available in tool context");
+  }
+
+  return contextClients.listAllCompletionModels();
+}
+
+export async function listAllEmbeddingModels(
+  this: ToolsService
+): Promise<Record<string, string[]>> {
+  // Get context from bound ToolsService
+  const toolService = (
+    this instanceof ToolsService ? this : services().Tools
+  ) as ToolsService;
+
+  const toolContext = toolService.getContext();
+  const { Clients: contextClients } = toolContext;
+
+  if (!contextClients) {
+    throw new Error("Clients not available in tool context");
+  }
+
+  return contextClients.listAllEmbeddingModels();
+}

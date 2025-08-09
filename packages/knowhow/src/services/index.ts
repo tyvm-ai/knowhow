@@ -1,4 +1,3 @@
-import { openai } from "../ai";
 import { DownloaderService } from "../plugins/downloader/downloader";
 import { Clients } from "../clients";
 import { Plugins } from "../plugins/plugins";
@@ -41,7 +40,7 @@ export const services = (): typeof Singletons => {
     const Tools = new ToolsService();
     const Events = new EventService();
     const Agents = new AgentService(Tools, Events);
-    const Downloader = new DownloaderService(openai, Clients);
+    const Downloader = new DownloaderService(Clients);
     Singletons = {
       Tools,
       Events,
