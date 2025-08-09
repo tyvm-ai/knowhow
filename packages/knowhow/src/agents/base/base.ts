@@ -157,6 +157,14 @@ export abstract class BaseAgent implements IAgent {
     if (!this.client) {
       console.log("Getting client for provider", this.provider);
       this.client = this.clientService.getClient(this.provider)?.client;
+
+      if (!this.client) {
+        console.log("Getting client for model", this.modelName);
+        this.client = this.clientService.getClient(
+          undefined,
+          this.modelName
+        )?.client;
+      }
     }
     return this.client;
   }

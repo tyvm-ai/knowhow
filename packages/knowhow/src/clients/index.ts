@@ -158,9 +158,18 @@ export class AIClient {
       new Set(currentModels.concat(models))
     );
 
+    const embeddingModels = this.embeddingModels[provider] || [];
+    this.embeddingModels[provider] = Array.from<string>(
+      new Set(embeddingModels.concat(models.filter((m) => m.includes("embed"))))
+    );
+
     // We will assume if you register models, it's for completions
     this.completionModels[provider] = Array.from<string>(
-      new Set(currentCompletionModels.concat(models))
+      new Set(
+        currentCompletionModels.concat(
+          models.filter((m) => !m.includes("embed"))
+        )
+      )
     );
   }
 
