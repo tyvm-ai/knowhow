@@ -5,7 +5,6 @@ import { KnowhowSimpleClient } from "../../services/KnowhowClient";
 import * as fs from "fs";
 import * as path from "path";
 
-import { formatChatInput } from "../../chat";
 import { BaseChatModule } from "./BaseChatModule";
 import { services } from "../../services/index";
 import { BaseAgent } from "../../agents/index";
@@ -671,7 +670,7 @@ ${reason}
       const plugins = context?.plugins || [];
 
       // Format the prompt with plugins and chat history
-      const formattedPrompt = await formatChatInput(
+      const formattedPrompt = await this.chatService.formatChatInput(
         input,
         plugins,
         chatHistory

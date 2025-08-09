@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { Command } from "commander";
-import { generate, embed, upload, chat } from "./index";
+import { generate, embed, upload } from "./index";
 import { init } from "./config";
 
 import { download, purge } from ".";
@@ -14,8 +14,8 @@ import { services } from "./services";
 import { login } from "./login";
 import { worker } from "./worker";
 import { agents } from "./agents";
-import { startChat2 } from "./chat2";
-import { askAI } from "./chat";
+import { startChat } from "./chat";
+import { askAI } from "./chat-old";
 import { getConfiguredEmbeddingMap, queryEmbedding } from "./embeddings";
 import { getConfig } from "./config";
 import { marked } from "marked";
@@ -129,16 +129,9 @@ async function main() {
 
   program
     .command("chat")
-    .description("Start chat interface")
-    .action(async () => {
-      await chat();
-    });
-
-  program
-    .command("chat2")
     .description("Start new chat interface")
     .action(async () => {
-      await startChat2();
+      await startChat();
     });
 
   program

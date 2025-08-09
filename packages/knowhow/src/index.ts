@@ -39,7 +39,6 @@ import {
 } from "./embeddings";
 
 import { abort } from "process";
-import { chatLoop } from "./chat";
 import { convertToText } from "./conversion";
 import { Plugins } from "./plugins/plugins";
 import { knowhowMcpClient } from "./services/Mcp";
@@ -312,12 +311,6 @@ export async function handleSingleOutputGeneration(
   await writeFile(outputFile, summary);
 
   await saveAllFileHashes(filesToCheck, promptHash);
-}
-
-export async function chat() {
-  const config = await getConfig();
-  const embeddings = await getConfiguredEmbeddings();
-  await chatLoop("knowhow", embeddings, config.plugins);
 }
 
 export async function download() {

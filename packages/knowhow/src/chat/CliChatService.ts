@@ -8,15 +8,16 @@ import {
   ChatCommand,
   ChatMode,
   InputMethod,
-} from "./types.js";
-import { ChatHistory } from "./types.js";
-import { ask } from "../utils/index.js";
-import { ChatModule } from "./types.js";
-import { ChatInteraction } from "../types.js";
-import { recordAudio, voiceToText } from "../microphone.js";
+} from "./types";
+import { ChatHistory } from "./types";
+import { ask } from "../utils/index";
+import { ChatModule } from "./types";
+import { ChatInteraction } from "../types";
+import { recordAudio, voiceToText } from "../microphone";
 import editor from "@inquirer/editor";
 import fs from "fs";
 import path from "path";
+import { Plugins } from "../plugins/plugins";
 
 export class CliChatService implements ChatService {
   private context: ChatContext;
@@ -231,6 +232,24 @@ export class CliChatService implements ChatService {
   clearInputHistory(): void {
     this.inputHistory = [];
     this.saveInputHistory();
+  }
+
+  async formatChatInput(
+    input: string,
+    plugins: string[] = [],
+    chatHistory: ChatInteraction[] = []
+  ) {
+    const pluginText = await Plugins.callMany(plugins, input);
+    const historyMessage = `<PreviousChats>
+  This information is provided as historical context and is likely not related to the current task:
+  ${JSON.stringify(chatHistory)}
+    </PreviousChats>`;
+    const fullPrompt = `
+    ${historyMessage} \n
+    <PluginContext> ${pluginText} </PluginContext>
+    <CurrentTask>${input}</CurrentTask>
+  `;
+    return fullPrompt;
   }
 
   async startChatLoop(): Promise<void> {

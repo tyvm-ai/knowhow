@@ -9,7 +9,6 @@ import { Models } from "../../ai";
 import { services } from "../../services/index";
 import { Plugins } from "../../plugins/plugins";
 import { Marked } from "../../utils/index";
-import { formatChatInput } from "../../chat";
 
 export class AskModule extends BaseChatModule {
   name = "ask";
@@ -55,7 +54,7 @@ export class AskModule extends BaseChatModule {
       const model = context.currentModel || Models.openai.GPT_4o;
 
       // Format the input with plugin context and chat history like original chat.ts
-      const formattedPrompt = await formatChatInput(
+      const formattedPrompt = await this.chatService.formatChatInput(
         input,
         context.plugins || [],
         context.chatHistory || []
