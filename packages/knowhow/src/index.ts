@@ -51,6 +51,7 @@ export * as services from "./services";
 export * as embeddings from "./embeddings";
 export * as types from "./types";
 export * as processors from "./processors";
+export * as ai from "./ai";
 
 export async function embed() {
   // load config
