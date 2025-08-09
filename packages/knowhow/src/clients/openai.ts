@@ -33,6 +33,41 @@ export class GenericOpenAiClient implements GenericClient {
     });
   }
 
+  reasoningEffort(
+    messages: CompletionOptions["messages"]
+  ): "low" | "medium" | "high" {
+    const effortMap = {
+      ultrathink: "high",
+      "think hard": "high",
+      "reason hard": "high",
+
+      "think carefully": "medium",
+      "reason carefully": "medium",
+      "think medium": "medium",
+      "reason medium": "medium",
+
+      "think low": "low",
+      "reason low": "low",
+      "think simple": "low",
+      "reason simple": "low",
+    };
+
+    for (const key in effortMap) {
+      if (
+        messages.some(
+          (msg) =>
+            typeof msg.content === "string" &&
+            msg.role === "user" &&
+            msg.content?.includes(key)
+        )
+      ) {
+        return effortMap[key];
+      }
+    }
+
+    return "medium"; // Default to medium if no specific effort is mentioned
+  }
+
   async createChatCompletion(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
@@ -55,7 +90,7 @@ export class GenericOpenAiClient implements GenericClient {
       ...(OpenAiReasoningModels.includes(options.model) && {
         max_tokens: undefined,
         max_completion_tokens: Math.max(options.max_tokens, 100),
-        // Health check requires some thoughts
+        reasoning_effort: this.reasoningEffort(options.messages),
       }),
 
       ...(options.tools && {
