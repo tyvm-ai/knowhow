@@ -16,8 +16,8 @@ export interface OutputMessage extends Message {
 }
 
 export interface ToolProp {
-  type: string;
-  description: string;
+  type?: string;
+  description?: string;
   properties?: { [key: string]: ToolProp };
   items?: ToolProp;
 }
@@ -26,14 +26,14 @@ export interface Tool {
   type: "function";
   function: {
     name: string;
-    description: string;
+    description?: string;
     parameters: {
       type: string;
       positional?: boolean;
       properties: {
         [key: string]: ToolProp;
       };
-      required: string[];
+      required?: string[];
     };
   };
 }

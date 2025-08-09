@@ -172,7 +172,10 @@ async function main() {
         }
 
         input = readPromptFile(options.promptFile, input);
-        const { taskCompleted } = await new AgentModule().setupAgent({
+
+        const agentModule = new AgentModule();
+        await agentModule.initialize(chatService);
+        const { taskCompleted } = await agentModule.setupAgent({
           ...options,
           input,
           maxTimeLimit: parseInt(options.maxTimeLimit, 10),
@@ -272,7 +275,9 @@ async function main() {
     .description("Manage agent sessions from CLI")
     .action(async () => {
       try {
-        await new AgentModule().logSessionTable();
+        const agentModule = new AgentModule();
+        await agentModule.initialize(chatService);
+        await agentModule.logSessionTable();
       } catch (error) {
         console.error("Error listing sessions:", error);
         process.exit(1);

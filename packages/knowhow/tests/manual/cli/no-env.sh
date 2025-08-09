@@ -204,6 +204,13 @@ echo "Testing knowhow ask command with specific model - should work without env 
 echo
 run_test "knowhow ask --input 'hello' --model claude-sonnet-4" "knowhow ask --input 'hello' --model claude-sonnet-4" 0
 
+
+# Test 8.1: Agent command with specific model (should work gracefully)
+echo -e "${BLUE}=== Testing Ask Command with Model ===${NC}"
+echo "Testing knowhow ask command with specific model - should work without env variables"
+echo
+run_test "knowhow agent --input 'hello' --model claude-sonnet-4" "knowhow agent --input 'hello' --model claude-sonnet-4" 0
+
 # Test 9: Check if there are any other subcommands
 echo -e "${YELLOW}Testing additional subcommands...${NC}"
 subcommands=("agents" "tasks" "models" "providers")
