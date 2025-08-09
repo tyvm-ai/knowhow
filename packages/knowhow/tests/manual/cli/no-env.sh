@@ -5,13 +5,14 @@
 # This script ensures the CLI gracefully handles missing API keys and environment variables
 #
 # DISCOVERED ISSUES:
+# - Tests knowhow ask command with specific model to ensure it works without env vars
 # - The CLI currently crashes on startup (even for --help) when OPENAI_KEY is missing
 # - This is caused by src/ai.ts:17 where OpenAI client is instantiated at module load time
 # - The architecture needs to be fixed to lazy-load API clients only when needed
 #
 # ENVIRONMENT VARIABLES TESTED:
 # - OPENAI_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, XAI_API_KEY (AI providers)
-# - KNOWHOW_API_URL, GITHUB_TOKEN (service integrations)
+# - GITHUB_TOKEN (service integrations)
 # - AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (S3 service)
 # - Alternative names: OPENAI_API_KEY, ANTHROPIC_KEY, GOOGLE_API_KEY
 
@@ -57,19 +58,21 @@ run_test() {
     local expected_exit_code="${3:-0}"
 
     echo -e "${YELLOW}Running:${NC} $command"
+    echo -e "${BLUE}--- Command Output ---${NC}"
 
     # Capture both stdout and stderr, and the exit code
-    if output=$(eval "$command" 2>&1); then
+    # Show output in real-time while also capturing it
+    if output=$(eval "$command" 2>&1 | tee /dev/stderr); then
         exit_code=0
     else
         exit_code=$?
     fi
 
+    echo -e "${BLUE}--- End Output ---${NC}"
     print_test_result "$test_name" "$exit_code" "$expected_exit_code"
 
-    # Show output if there was an unexpected failure
+    # Show additional output details if there was an unexpected failure
     if [ "$exit_code" -ne "$expected_exit_code" ]; then
-        echo -e "${RED}Output:${NC}"
         echo "$output" | head -10  # Show first 10 lines to avoid spam
         if [ $(echo "$output" | wc -l) -gt 10 ]; then
             echo "... (output truncated)"
@@ -84,7 +87,6 @@ BACKUP_OPENAI_KEY="${OPENAI_KEY:-}"
 BACKUP_ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-}"
 BACKUP_GEMINI_API_KEY="${GEMINI_API_KEY:-}"
 BACKUP_XAI_API_KEY="${XAI_API_KEY:-}"
-BACKUP_KNOWHOW_API_URL="${KNOWHOW_API_URL:-}"
 BACKUP_GITHUB_TOKEN="${GITHUB_TOKEN:-}"
 
 # Additional backup variables found in codebase analysis
@@ -103,7 +105,6 @@ unset OPENAI_KEY
 unset ANTHROPIC_API_KEY
 unset GEMINI_API_KEY
 unset XAI_API_KEY
-unset KNOWHOW_API_URL
 unset GITHUB_TOKEN
 
 # Additional environment variables that might affect the CLI
@@ -122,7 +123,6 @@ echo "- OPENAI_KEY"
 echo "- ANTHROPIC_API_KEY"
 echo "- GEMINI_API_KEY"
 echo "- XAI_API_KEY"
-echo "- KNOWHOW_API_URL"
 echo "- OPENAI_API_KEY (alternative)"
 echo "- ANTHROPIC_KEY (alternative)"
 echo "- GOOGLE_API_KEY (alternative)"
@@ -168,7 +168,9 @@ echo "Testing login specifically (this might work differently):"
 echo
 
 echo -e "${YELLOW}Running:${NC} knowhow login (expecting graceful handling)"
-if output=$(knowhow login 2>&1); then
+echo -e "${BLUE}--- Command Output ---${NC}"
+# Show output in real-time while also capturing it
+if output=$(knowhow login 2>&1 | tee /dev/stderr); then
     login_exit_code=0
 else
     login_exit_code=$?
@@ -176,23 +178,33 @@ fi
 
 # For login, we expect it might fail, but it should fail gracefully
 if [ "$login_exit_code" -eq 0 ]; then
+    echo -e "${BLUE}--- End Output ---${NC}"
     print_test_result "knowhow login (graceful handling)" "$login_exit_code" 0
     echo -e "${GREEN}Login succeeded without API keys${NC}"
 elif [ "$login_exit_code" -eq 1 ] || [ "$login_exit_code" -eq 2 ]; then
+    echo -e "${BLUE}--- End Output ---${NC}"
     print_test_result "knowhow login (graceful error handling)" 0 0
     echo -e "${GREEN}Login failed gracefully with appropriate error${NC}"
 else
+    echo -e "${BLUE}--- End Output ---${NC}"
     print_test_result "knowhow login (unexpected crash)" 1 0
     echo -e "${RED}Login crashed unexpectedly (exit code: $login_exit_code)${NC}"
-    echo "Output:"
-    echo "$output"
 fi
 echo
 
 # Test 6: Other common commands that should work without API keys
 run_test "knowhow config --help" "knowhow config --help" 0
 
-# Test 7: Check if there are any other subcommands
+# Test 7: Ask command help (should work without API keys)
+run_test "knowhow ask --help" "knowhow ask --help" 0
+
+# Test 8: Ask command with specific model (should work gracefully)
+echo -e "${BLUE}=== Testing Ask Command with Model ===${NC}"
+echo "Testing knowhow ask command with specific model - should work without env variables"
+echo
+run_test "knowhow ask --input 'hello' --model claude-sonnet-4" "knowhow ask --input 'hello' --model claude-sonnet-4" 0
+
+# Test 9: Check if there are any other subcommands
 echo -e "${YELLOW}Testing additional subcommands...${NC}"
 subcommands=("agents" "tasks" "models" "providers")
 for cmd in "${subcommands[@]}"; do
@@ -211,7 +223,6 @@ export OPENAI_KEY="${BACKUP_OPENAI_KEY}"
 export ANTHROPIC_API_KEY="${BACKUP_ANTHROPIC_API_KEY}"
 export GEMINI_API_KEY="${BACKUP_GEMINI_API_KEY}"
 export XAI_API_KEY="${BACKUP_XAI_API_KEY}"
-export KNOWHOW_API_URL="${BACKUP_KNOWHOW_API_URL}"
 export OPENAI_API_KEY="${BACKUP_OPENAI_API_KEY}"
 export ANTHROPIC_KEY="${BACKUP_ANTHROPIC_KEY}"
 export GOOGLE_API_KEY="${BACKUP_GOOGLE_API_KEY}"

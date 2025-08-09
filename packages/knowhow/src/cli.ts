@@ -67,6 +67,7 @@ async function readStdin(): Promise<string> {
 async function main() {
   const program = new Command();
   const config = await getConfig();
+  const chatService = new CliChatService(config.plugins);
 
   program
     .name("knowhow")
@@ -207,7 +208,9 @@ async function main() {
 
         input = readPromptFile(options.promptFile, input);
 
-        await new AskModule().processAIQuery(input, {
+        const askModule = new AskModule();
+        await askModule.initialize(chatService);
+        await askModule.processAIQuery(input, {
           plugins: config.plugins,
           currentModel: options.model,
           currentProvider: options.provider,
@@ -223,7 +226,6 @@ async function main() {
     .description("Ask the agent to configure knowhow")
     .action(async (options) => {
       try {
-        const chatService = new CliChatService(config.plugins);
         const setupModule = new SetupModule();
         await setupModule.initialize(chatService);
         await setupModule.handleSetupCommand([]);

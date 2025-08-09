@@ -209,15 +209,37 @@ export class AIClient {
 
   findModel(modelPrefix: string) {
     for (const provider of Object.keys(this.clientModels)) {
-      const models = this.clientModels[provider];
+      const models = this.clientModels[provider] as string[];
       const foundModel = models.find((m) => m.startsWith(modelPrefix));
       if (foundModel) {
         return { provider, model: foundModel };
+      }
+
+      // Handle the case when model prefix is gpt-5 and the provider is knowhow, and the actual model is openai/gpt-5
+      const inferredFound = models.find((m) => {
+        const split = m.split("/");
+        if (split.length < 2) return false;
+        const inferredModel = split.slice(1).join("/");
+        return (
+          m === modelPrefix ||
+          inferredModel === modelPrefix ||
+          inferredModel.startsWith(modelPrefix)
+        );
+      });
+      if (inferredFound) {
+        return { provider, model: inferredFound };
       }
     }
     return undefined;
   }
 
+  // detects these formats
+  // "openai", "gpt-5"
+  // "knowhow", "openai/gpt-5"
+  // "", "openai/gpt-5"
+  // "", openai/gpt-5
+  // "", "knowhow/openai/gpt-5"
+  //
   detectProviderModel(provider: string, model?: string) {
     if (this.providerHasModel(provider, model)) {
       return { provider, model };
@@ -245,6 +267,8 @@ export class AIClient {
     if (foundByModel) {
       return foundByModel;
     }
+
+    console.log({ provider, model, all: this.listAllModels() });
 
     return { provider, model };
   }

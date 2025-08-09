@@ -127,10 +127,7 @@ export class KnowhowSimpleClient {
 
   getModels() {
     this.checkJwt();
-    return axios.get(`${this.baseUrl}/api/proxy/v1/models`, {
-      params: {
-        type: 'all'
-      },
+    return axios.get(`${this.baseUrl}/api/proxy/v1/models?type=all`, {
       headers: this.headers,
     });
   }
