@@ -230,6 +230,13 @@ export class AIClient {
         return { provider, model: inferredFound };
       }
     }
+
+    // We didn't find the model, but it contains a slash, maybe it's prefixed with a provider
+    if (modelPrefix.includes("/")) {
+      const split = modelPrefix.split("/");
+      return this.findModel(split.slice(1).join("/"));
+    }
+
     return undefined;
   }
 
@@ -268,7 +275,11 @@ export class AIClient {
       return foundByModel;
     }
 
-    console.log({ provider, model, all: this.listAllModels() });
+    console.log("unable to find", {
+      provider,
+      model,
+      all: this.listAllModels(),
+    });
 
     return { provider, model };
   }

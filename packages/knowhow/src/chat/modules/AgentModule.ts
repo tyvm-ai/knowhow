@@ -666,10 +666,11 @@ ${reason}
       await agent.newTask();
 
       if (options.model) {
+        console.log("Setting model:", options.model);
         agent.setModel(options.model);
-      }
-      if (options.provider) {
-        agent.setProvider(options.provider as any);
+        agent.setModelPreferences([
+          { model: options.model, provider: options.provider as any },
+        ]);
       }
 
       // Get context for plugins
