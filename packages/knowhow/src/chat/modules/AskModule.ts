@@ -50,7 +50,7 @@ export class AskModule extends BaseChatModule {
   ): Promise<boolean> {
     try {
       const { Clients } = services();
-      const provider = context.currentProvider || "openai";
+      const provider = context.currentProvider;
       const model = context.currentModel || Models.openai.GPT_4o;
 
       // Format the input with plugin context and chat history like original chat.ts

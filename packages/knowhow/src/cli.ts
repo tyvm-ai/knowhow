@@ -140,8 +140,7 @@ async function main() {
     .description("Spin up agents directly from CLI")
     .option(
       "--provider <provider>",
-      "AI provider (openai, anthropic, google, xai)",
-      "openai"
+      "AI provider (openai, anthropic, google, xai)"
     )
     .option("--model <model>", "Specific model for the provider")
     .option("--agent-name <name>", "Which agent to use", "Patcher")
@@ -192,7 +191,7 @@ async function main() {
   program
     .command("ask")
     .description("Direct AI questioning without agent overhead")
-    .option("--provider <provider>", "AI provider to use", "openai")
+    .option("--provider <provider>", "AI provider to use")
     .option("--model <model>", "Specific model")
     .option("--input <text>", "Question (fallback to stdin if not provided)")
     .option("--prompt-file <path>", "Custom prompt template file")
