@@ -4,6 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { Command } from "commander";
+import { version } from "../package.json";
 import { generate, embed, upload } from "./index";
 import { init } from "./config";
 
@@ -72,7 +73,7 @@ async function main() {
   program
     .name("knowhow")
     .description("AI CLI with plugins and agents")
-    .version("0.0.33");
+    .version(version);
 
   // Initialize services for all commands
   await setupServices();
