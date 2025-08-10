@@ -665,6 +665,13 @@ ${reason}
       // Initialize new task
       await agent.newTask();
 
+      if (options.model) {
+        agent.setModel(options.model);
+      }
+      if (options.provider) {
+        agent.setProvider(options.provider as any);
+      }
+
       // Get context for plugins
       const context = this.chatService?.getContext();
       const plugins = context?.plugins || [];
