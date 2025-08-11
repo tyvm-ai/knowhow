@@ -686,7 +686,15 @@ ${reason}
         return this.call(userInput, _messages);
       }
 
-      console.error(e);
+      console.error("Agent failed", e);
+
+      if ("response" in e && "data" in e.response) {
+        console.error(
+          "Error response data:",
+          JSON.stringify(e.response.data, null, 2)
+        );
+      }
+
       this.agentEvents.emit(this.eventTypes.done, e.message);
       return e.message;
     }
