@@ -4,7 +4,7 @@ export type MessageContent =
 
 export interface Message {
   role: "system" | "user" | "assistant" | "tool";
-  content: string | MessageContent[];
+  content?: string | MessageContent[];
 
   name?: string;
   tool_call_id?: string;
