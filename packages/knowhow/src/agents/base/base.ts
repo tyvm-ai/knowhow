@@ -518,6 +518,13 @@ ${reason}
           "Response cost is undefined",
           JSON.stringify(response, null, 2)
         );
+        const error = response as any;
+        if ("response" in error && "data" in error.response) {
+          console.warn(
+            "Response data",
+            JSON.stringify(error.response.data, null, 2)
+          );
+        }
       }
 
       this.adjustTotalCostUsd(response?.usd_cost);
