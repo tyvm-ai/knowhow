@@ -102,6 +102,21 @@ export class PatchingAgent extends BaseAgent {
         This helps ensure accurate modifications and can suggest fixes for compilation errors.
 
         IF you fail twice to patch a file, you may switch using writeFileChunk to rewrite the whole file.
+
+        # Debugging Workflow
+        If a build or test command fails due to compilation errors:
+
+        ALWAYS start by running ycmdDiagnostics on the file with errors to get a structured list of issues.
+
+        Address the errors one at a time, from top to bottom.
+
+        For each error, use ycmdGoTo to find the correct definition or readFile on the relevant source file to understand the correct implementation.
+
+        If an error is related to properties not being named correctly, you can use ycmdCompletion to get suggestions for the correct property or method names.
+
+        Apply a small, targeted patch to fix only that single error.
+
+After every 2-3 fixes, run ycmdDiagnostics again to confirm progress.
         `,
       },
       { role: "user", content: userInput },

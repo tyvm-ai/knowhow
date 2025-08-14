@@ -60,6 +60,12 @@ export async function embed() {
 
   const defaultModel =
     config.embeddingModel || EmbeddingModels.openai.EmbeddingAda2;
+
+  if (!config.embedSources) {
+    // No embeddings configured
+    return;
+  }
+
   for (const source of config.embedSources) {
     await embedSource(defaultModel, source, ignorePattern);
   }

@@ -908,7 +908,7 @@ ${reason}
       let output = "Done";
 
       // Define available commands
-      const commands = ["pause", "unpause", "kill", "detach"];
+      const commands = ["/pause", "/unpause", "/kill", "/detach"];
       const history: string[] = [];
 
       let input =
@@ -936,24 +936,24 @@ ${reason}
               done = true;
             }
             break;
-          case "done":
+          case "/done":
             output = "Exited agent interaction.";
             done = true;
             break;
-          case "pause":
+          case "/pause":
             await agent.pause();
             console.log("Agent paused.");
             break;
-          case "unpause":
+          case "/unpause":
             await agent.unpause();
             console.log("Agent unpaused.");
             break;
-          case "kill":
+          case "/kill":
             await agent.kill();
             console.log("Agent terminated.");
             done = true;
             break;
-          case "detach":
+          case "/detach":
             console.log("Detached from agent");
             return true;
           default:

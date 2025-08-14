@@ -1,4 +1,6 @@
 import * as fs from "fs";
+import { embed } from "../../";
+import { lintFile } from ".";
 
 // Tool to write the full contents of a file
 export function writeFile(filePath: string, content: string): string {
@@ -42,6 +44,19 @@ export async function writeFileChunk(
 
   if (isDone) {
     message = " File write complete. Use readFile to verify";
+
+    let lintResult = "";
+    try {
+      lintResult = await lintFile(filePath);
+      message += `${
+        lintResult ? "\nLinting Result:\n" + lintResult : ""
+      }`.trim();
+    } catch (lintError: any) {
+      console.warn("Linting failed after patching:", lintError);
+      lintResult = `Linting after patch failed: ${lintError.message}`;
+    }
+
+    await embed();
   }
 
   return message;

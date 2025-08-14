@@ -1,4 +1,6 @@
 import * as fs from "fs";
+import { embed } from "../../";
+import { lintFile } from ".";
 import { fileExists } from "../../utils";
 
 export async function stringReplace(
@@ -6,8 +8,15 @@ export async function stringReplace(
   replaceString: string,
   filePaths: string[]
 ): Promise<string> {
-  if (!findString || replaceString === undefined || !filePaths || filePaths.length === 0) {
-    throw new Error("findString, replaceString, and filePaths are all required parameters");
+  if (
+    !findString ||
+    replaceString === undefined ||
+    !filePaths ||
+    filePaths.length === 0
+  ) {
+    throw new Error(
+      "findString, replaceString, and filePaths are all required parameters"
+    );
   }
 
   const results: string[] = [];
@@ -23,24 +32,39 @@ export async function stringReplace(
 
       const content = fs.readFileSync(filePath, "utf8");
       const originalContent = content;
-      
+
       // Count occurrences before replacement
       const matches = content.split(findString).length - 1;
-      
+
       if (matches === 0) {
         results.push(`ℹ️  No matches found in: ${filePath}`);
         continue;
       }
 
       // Perform the replacement
-      const newContent = content.replace(new RegExp(findString.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), replaceString);
-      
+      const newContent = content.replace(
+        new RegExp(findString.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
+        replaceString
+      );
+
       // Write the modified content back to the file
       fs.writeFileSync(filePath, newContent);
-      
+
       totalReplacements += matches;
       results.push(`✅ Replaced ${matches} occurrence(s) in: ${filePath}`);
-      
+
+      let lintResult = "";
+      try {
+        lintResult = await lintFile(filePath);
+        if (lintResult) {
+          results.push(`$Linting Result:\n" + ${lintResult}`);
+        }
+      } catch (lintError: any) {
+        console.warn("Linting failed after patching:", lintError);
+        lintResult = `Linting after patch failed: ${lintError.message}`;
+      }
+
+      await embed();
     } catch (error) {
       results.push(`❌ Error processing ${filePath}: ${error.message}`);
     }

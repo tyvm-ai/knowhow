@@ -68,12 +68,25 @@ export async function worker() {
     });
 
     mcpServer.runWsServer(ws);
+
+    return { ws, mcpServer };
   }
 
   while (true) {
+    let connection: { ws: WebSocket; mcpServer: McpServerService } | null =
+      null;
+
     if (!connected) {
       console.log("Attempting to connect...");
-      connectWebSocket();
+      connection = await connectWebSocket();
+    }
+    if (connection && connected) {
+      try {
+        await connection.ws.ping();
+      } catch (error) {
+        console.error("WebSocket ping failed:", error);
+        connected = false;
+      }
     }
     await wait(5000);
   }

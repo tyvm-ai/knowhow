@@ -10,6 +10,7 @@ import {
   splitByNewLines,
 } from "../../utils"; // Assuming these utils exist
 import { lintFile } from "./lintFile"; // Assuming this exists
+import { embed } from "../../index";
 
 // --- Utility Functions (Keep or Simplify) ---
 
@@ -127,10 +128,10 @@ export function parseHunks(patch: string): Hunk[] {
   const hunks: Hunk[] = [];
   let currentHunkLines: string[] = [];
   let currentHeader = "";
-  let originalStart = 0,
-    originalCount = 0,
-    newStart = 0,
-    newCount = 0;
+  let originalStart = 0;
+  let originalCount = 0;
+  let newStart = 0;
+  let newCount = 0;
 
   for (const line of patchLines) {
     if (line.startsWith("@@")) {
@@ -636,6 +637,8 @@ export async function patchFile(
       console.warn("Linting failed after patching:", lintError);
       lintResult = `Linting after patch failed: ${lintError.message}`;
     }
+
+    await embed();
 
     return `Patch applied successfully.${
       filePath ? ` Use readFile on ${filePath} to verify changes.` : ""
