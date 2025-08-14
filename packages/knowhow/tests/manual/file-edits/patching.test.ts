@@ -1,11 +1,11 @@
-import { readFile, writeFile } from "../../src/utils";
+import { readFile, writeFile } from "../../../src/utils";
 import { createPatch, applyPatch } from "diff";
-import { scanFile } from "../../src/agents/tools";
-import { patchFile } from "../../src/agents/tools/patch";
-import { agents } from "../../src/agents";
-import { services } from "../../src/services";
-import { includedTools } from "../../src/agents/tools/list";
-import * as allTools from "../../src/agents/tools";
+import { scanFile } from "../../../src/agents/tools";
+import { patchFile } from "../../../src/agents/tools/patch";
+import { agents } from "../../../src/agents";
+import { services } from "../../../src/services";
+import { includedTools } from "../../../src/agents/tools/list";
+import * as allTools from "../../../src/agents/tools";
 
 const inputPath = "tests/integration/patching/input.txt";
 const outputPath = "tests/integration/patching/output.txt";
@@ -28,8 +28,11 @@ const brokenPatch = `Index: tests/integration/patching/input.txt
        }\n`;
 
 describe("Patcher", () => {
-  const { Agents, Tools } = beforeAll(async () => {
+  let Agents: any, Tools: any;
+  
+  beforeAll(async () => {
     const { Patcher } = agents();
+    ({ Agents, Tools } = services());
     Agents.registerAgent(Patcher);
     Tools.addTools(includedTools);
     const toolFunctions = Object.entries(allTools)

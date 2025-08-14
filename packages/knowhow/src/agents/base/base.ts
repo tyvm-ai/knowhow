@@ -416,27 +416,6 @@ export abstract class BaseAgent implements IAgent {
     });
   }
 
-  async resume(resumeReason: string) {
-    const reason = resumeReason ? `Reason for resuming:  ${resumeReason}` : "";
-
-    // Create resume prompt
-    const resumePrompt = `We are resuming a previously started task. Here's the context:
-ORIGINAL REQUEST:
-${this.taskBreakdown}
-
-LAST Progress State:
-${JSON.stringify(this.threads[this.currentThread], null, 2)}
-
-Please continue from where you left off and complete the original request.
-${reason}
-
-`;
-
-    const lastThread = this.threads[this.currentThread] || [];
-    this.status = "in_progress";
-    this.call(resumePrompt, lastThread);
-  }
-
   async kill() {
     console.log("Killing agent");
     this.agentEvents.emit(this.eventTypes.kill, this);
@@ -702,7 +681,7 @@ ${reason}
 
   addPendingUserMessage(message: Message) {
     if (this.status === this.eventTypes.done) {
-      this.resume(JSON.stringify(message.content));
+      console.warn("Agent is done, cannot take more messages");
     } else {
       this.pendingUserMessages.push(message);
     }

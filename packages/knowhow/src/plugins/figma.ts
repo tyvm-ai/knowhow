@@ -3,7 +3,6 @@ import qs from "qs"; // Assumed to be installed
 import { PluginBase, PluginMeta } from "./PluginBase";
 import { Plugin } from "./types";
 import { MinimalEmbedding } from "../types";
-import { askGptVision } from "../ai";
 
 interface Node {}
 
@@ -138,6 +137,8 @@ export class FigmaPlugin extends PluginBase implements Plugin {
         if (!data.images.hasOwnProperty(nodeId)) continue;
 
         const imageUrl = data.images[nodeId];
+        // Lazy import to break circular dependency
+        const { askGptVision } = await import("../ai");
         const imageDescription = await askGptVision(
           imageUrl,
           `Describe the image with relavant information for this user question: ${userPrompt}`

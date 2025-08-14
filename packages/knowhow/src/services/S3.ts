@@ -8,7 +8,8 @@ import {
   PutObjectCommandInput,
 } from "@aws-sdk/client-s3";
 
-import fs from "fs/promises";
+import * as fs from "fs";
+const fsPromises = fs.promises;
 import { createWriteStream } from "fs";
 import * as path from "path";
 import { pipeline } from "stream";
@@ -30,7 +31,7 @@ export class S3Service {
     bucketName: string,
     key: string
   ): Promise<void> {
-    const fileContent = await fs.readFile(filePath);
+    const fileContent = await fsPromises.readFile(filePath);
 
     const params = {
       Bucket: bucketName,
@@ -80,7 +81,7 @@ export class S3Service {
   ): Promise<void> {
     try {
       const fileStream = createReadStream(filePath);
-      const fileStats = await fs.stat(filePath);
+      const fileStats = await fsPromises.stat(filePath);
 
       const response = await axios.put(presignedUrl, fileStream, {
         headers: {

@@ -58,7 +58,7 @@ describe("LanguagePlugin", () => {
       expect.any(String)
     );
     expect(pluginResponse).toContain(
-      "LANGUAGE PLUGIN: The following terms triggered expansions"
+      "LANGUAGE PLUGIN: The user mentioned these terms triggering contextual expansions"
     );
   });
 

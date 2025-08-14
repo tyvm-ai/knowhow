@@ -1,8 +1,7 @@
 import { Tool } from "../../clients/types";
 import { ChatCompletionTool } from "openai/resources/chat";
-import { Plugins } from "../../plugins/plugins";
 
-const pluginNames = Plugins.listPlugins().join(", ");
+import { services } from "../../services";
 import * as github from "./github/definitions";
 import * as asana from "./asana/definitions";
 import * as ycmd from "./ycmd/definitions";
@@ -10,6 +9,15 @@ import * as language from "./language/definitions";
 import { googleSearchDefinition } from "./googleSearch";
 import { executeScriptDefinition } from "./executeScript/definition";
 import { startAgentTaskDefinition } from "./startAgentTask";
+
+function getPluginNames(): string {
+  try {
+    const { Plugins } = services();
+    return Plugins.listPlugins().join(", ");
+  } catch {
+    return "";
+  }
+}
 
 export const includedTools = [
   {
@@ -104,7 +112,7 @@ export const includedTools = [
     type: "function",
     function: {
       name: "callPlugin",
-      description: `Call a specified plugin with given input. Plugins provide additional context from supported URLs or words. This is a read-only operation. Currently available plugins: ${pluginNames}`,
+      description: `Call a specified plugin with given input. Plugins provide additional context from supported URLs or words. This is a read-only operation. Currently available plugins: ${getPluginNames()}`,
       parameters: {
         type: "object",
         positional: true,
@@ -468,7 +476,8 @@ export const includedTools = [
     type: "function",
     function: {
       name: "listAllCompletionModels",
-      description: "List all available completion models using the knowhow ai client",
+      description:
+        "List all available completion models using the knowhow ai client",
       parameters: {
         type: "object",
         properties: {},
@@ -476,7 +485,8 @@ export const includedTools = [
       },
       returns: {
         type: "object",
-        description: "A dictionary of all available completion models for each provider",
+        description:
+          "A dictionary of all available completion models for each provider",
       },
     },
   },
@@ -485,7 +495,8 @@ export const includedTools = [
     type: "function",
     function: {
       name: "listAllEmbeddingModels",
-      description: "List all available embedding models using the knowhow ai client",
+      description:
+        "List all available embedding models using the knowhow ai client",
       parameters: {
         type: "object",
         properties: {},
@@ -493,7 +504,8 @@ export const includedTools = [
       },
       returns: {
         type: "object",
-        description: "A dictionary of all available embedding models for each provider",
+        description:
+          "A dictionary of all available embedding models for each provider",
       },
     },
   },

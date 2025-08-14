@@ -1,4 +1,4 @@
-import { FigmaPlugin } from "../../src/plugins/figma";
+import { FigmaPlugin } from "../../../src/plugins/figma";
 
 const figmaToken = "test_token"; // This should be the actual testing token
 const figmaPlugin = new FigmaPlugin();

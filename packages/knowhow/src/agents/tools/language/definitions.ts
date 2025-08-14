@@ -1,4 +1,12 @@
-import { Plugins } from "../../../plugins/plugins";
+import { services } from "../../../services";
+function getPluginNames(): string {
+  try {
+    const { Plugins } = services();
+    return Plugins.listPlugins().join(", ");
+  } catch {
+    return "";
+  }
+}
 export const definitions = [
   {
     type: "function",
@@ -22,7 +30,7 @@ export const definitions = [
               properties: {
                 kind: {
                   type: "string",
-                  description: `The type of datasource, options are "file", "url", "text" or the name of a plugin: ${Plugins.listPlugins()}
+                  description: `The type of datasource, options are "file", "url", "text" or the name of a plugin: ${getPluginNames()}
                   For files you must use the full relative path. For plugins you must use the name of the plugin associated with the data.
                   Always use a plugin as the kind, if a plugin name is in the url.
                   `,

@@ -1,11 +1,15 @@
 import * as fs from "fs";
-import { readFile, writeFile } from "../../../src/utils";
-import { agents } from "../../../src/agents";
-import { FlagsService } from "../../../src/services/flags";
+import { readFile, writeFile } from "../../../../src/utils";
+import { agents } from "../../../../src/agents";
+import { services } from "../../../../src/services";
+import { includedTools } from "../../../../src/agents/tools/list";
+import { FlagsService } from "../../../../src/services/flags";
 
 describe("Developer", () => {
   const { Patcher } = agents();
   beforeAll(() => {
+    const { Tools } = services();
+    Tools.addTools(includedTools);
     Patcher.disableTool("searchFiles");
     Patcher.disableTool("execCommand");
     Patcher.enableTool("modifyFile");
