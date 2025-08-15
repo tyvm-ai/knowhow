@@ -677,7 +677,8 @@ describe("ToolsService", () => {
 
       const result = await toolsService.callTool(toolCall);
 
-      expect(result.functionResp).toContain("wrapper");
+      expect(result.functionResp).toContain("wrapper1");
+      expect(result.functionResp).toContain("wrapper2");
       expect(originalFunction).toHaveBeenCalled();
     });
 
