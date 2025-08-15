@@ -54,10 +54,6 @@ export class TokenCompressor {
    * Compresses a string into chunks from the end, creating a chain of references
    */
   public compressStringInChunks(content: string, path: string = ""): string {
-    if (path === "" && this.estimateTokens(content) <= this.maxTokens) {
-      return content;
-    }
-
     if (content.length <= this.characterLimit) {
       return content;
     }
@@ -80,10 +76,14 @@ export class TokenCompressor {
     }
 
     // Store chunks and create chain of references
-    for (let i = chunks.length - 1; i >= 0; i--) {
+    // First, generate all keys
+    for (let i = 0; i < chunks.length; i++) {
       const key = this.generateKey();
-      chunkKeys.unshift(key);
+      chunkKeys.push(key);
+    }
 
+    // Then store chunks with proper linking
+    for (let i = 0; i < chunks.length; i++) {
       let chunkContent = chunks[i];
 
       // Add reference to next chunk if it exists
@@ -92,7 +92,7 @@ export class TokenCompressor {
         chunkContent += `\n\n[NEXT_CHUNK_KEY: ${nextKey}]`;
       }
 
-      this.storeString(key, chunkContent);
+      this.storeString(chunkKeys[i], chunkContent);
     }
 
     // Return reference to the first chunk
@@ -114,11 +114,11 @@ export class TokenCompressor {
   public compressContent(content: string, path: string = ""): string {
     const tokens = this.estimateTokens(content);
 
-    if (path === "" && tokens <= this.maxTokens) {
-      return content;
-    }
-
-    if (tokens <= this.compressionThreshold) {
+    // For nested properties (path !== ""), use maxTokens to avoid recompressing stored data
+    // For top-level content (path === ""), use compressionThreshold to determine compression
+    const thresholdToUse = path === "" ? this.compressionThreshold : this.maxTokens;
+    
+    if (tokens <= thresholdToUse) {
       return content;
     }
 
@@ -239,7 +239,7 @@ export class TokenCompressor {
 
       // If not JSON or compression wasn't effective, handle as regular string
       const tokens = this.estimateTokens(obj);
-      if (tokens > this.characterLimit * 4) {
+      if (tokens > this.compressionThreshold) {
         const key = this.generateKey();
         this.storeString(key, obj);
 

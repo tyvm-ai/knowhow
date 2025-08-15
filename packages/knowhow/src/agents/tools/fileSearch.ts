@@ -9,7 +9,7 @@ export async function fileSearch(searchTerm) {
   const pattern = `./**/*${searchTermLower}*`;
   const ignore = await getIgnorePattern();
   console.log({ pattern, ignore });
-  const globFiles = await glob(pattern, {
+  const globFiles = await glob.sync(pattern, {
     ignore,
     nocase: true,
   });

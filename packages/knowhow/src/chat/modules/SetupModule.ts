@@ -167,13 +167,13 @@ export class SetupModule extends BaseChatModule {
       ) {
         // Launch Setup agent to guide user through configuration
         if (this.agentModule) {
+          const initialInput = "Help me set up my Knowhow configuration with the missing features and optimize my setup.";
           const { taskId, agent } = await this.agentModule.setupAgent({
             agentName: "Setup",
-            run: true,
-            input:
-              "Help me set up my Knowhow configuration with the missing features and optimize my setup.",
+            run: false,
+            input: initialInput,
           });
-          await this.agentModule.attachedAgentChatLoop(taskId, agent);
+          await this.agentModule.attachedAgentChatLoop(taskId, agent, initialInput);
         }
       }
     } else {

@@ -136,14 +136,28 @@ export class CustomVariables {
   }
 
   /**
-   * Recursively processes a value to substitute {{variable}} patterns
+   * Processes a value to substitute {{variableName}} patterns
    */
   private substituteVariables(
     value: any,
     processedVars: Set<string> = new Set()
   ): any {
     if (typeof value === "string") {
-      // Find all {{variable}} patterns
+      // Check if ALL variables are undefined - if so, return just the error message for the first one
+      const variableMatches = value.match(/\{\{([a-zA-Z0-9_]+)\}\}/g);
+      if (variableMatches) {
+        const allUndefined = variableMatches.every(match => {
+          const varName = match.replace(/[{}]/g, '');
+          return !(varName in this.variables);
+        });
+        
+        if (allUndefined && variableMatches.length > 0) {
+          const firstUndefinedVar = variableMatches[0].replace(/[{}]/g, '');
+          return `{{ERROR: Variable "${firstUndefinedVar}" is not defined}}`;
+        }
+      }
+      
+      // Otherwise, proceed with partial substitution
       return value.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (match, varName) => {
         // Prevent infinite recursion
         if (processedVars.has(varName)) {
@@ -156,11 +170,9 @@ export class CustomVariables {
 
         const varValue = this.variables[varName];
 
-        // If the variable value is a string, recursively process it
+        // For nested variables, return the raw value without further processing
         if (typeof varValue === "string") {
-          const newProcessedVars = new Set(processedVars);
-          newProcessedVars.add(varName);
-          return this.substituteVariables(varValue, newProcessedVars);
+          return varValue;
         }
 
         // For non-string values, convert to JSON

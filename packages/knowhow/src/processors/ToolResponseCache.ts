@@ -41,7 +41,7 @@ export class ToolResponseCache {
   /**
    * Recursively searches for JSON strings within an object and parses them
    */
-  private parseNestedJsonStrings(obj: any): any {
+  public parseNestedJsonStrings(obj: any): any {
     if (typeof obj === "string") {
       const parsed = this.tryParseJson(obj);
       if (parsed) {
@@ -68,7 +68,7 @@ export class ToolResponseCache {
   /**
    * Stores a tool response for later manipulation
    */
-  private storeToolResponse(content: string, toolCallId: string): void {
+  public storeToolResponse(content: string, toolCallId: string): void {
     // Always store the original content for later JQ manipulation
     this.storage[toolCallId] = content;
 
@@ -130,17 +130,26 @@ export class ToolResponseCache {
     }
 
     try {
-      // Parse the data as JSON (handles nested JSON strings)
-      const parsedData = this.parseNestedJsonStrings(data);
+      
+      // First parse the stored string as JSON, then handle nested JSON strings
+      const jsonData = this.tryParseJson(data);
+      if (!jsonData) {
+        return `Error: Tool response data is not valid JSON for toolCallId "${toolCallId}"`;
+      }
+      const parsedData = this.parseNestedJsonStrings(jsonData);
 
       // Execute JQ query
       const result = await jq.run(jqQuery, parsedData, { input: "json" });
 
-      // Return the result as a string
+      // Handle the result based on its type
       if (typeof result === "string") {
         return result;
+      } else if (typeof result === "number" || typeof result === "boolean") {
+        return String(result);
+      } else if (result === null) {
+        return "null";
       } else {
-        return JSON.stringify(result, null, 2);
+        return JSON.stringify(result);
       }
     } catch (error: any) {
       // If JQ fails, try to provide helpful error message

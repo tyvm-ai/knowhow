@@ -116,7 +116,13 @@ export class PatchingAgent extends BaseAgent {
 
         Apply a small, targeted patch to fix only that single error.
 
-After every 2-3 fixes, run ycmdDiagnostics again to confirm progress.
+        After every 2-3 fixes, run ycmdDiagnostics again to confirm progress.
+
+        # Test Writing Workflow
+        When writing tests, you proceed incrementally, writing one test, verifying it compiles and works before moving on to the next test.
+        You ALWAYS get to a stable state with tests compiling / running before adding the next test.
+        When writing tests, you never change the source code to pass the test, you always change the test to match the existing source code.
+
         `,
       },
       { role: "user", content: userInput },

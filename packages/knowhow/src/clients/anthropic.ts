@@ -151,6 +151,15 @@ export class GenericAnthropicClient implements GenericClient {
     }
   }
 
+  tryParse(str: string): any {
+    try {
+      return JSON.parse(str);
+    } catch (e) {
+      console.error("Invalid JSON from tool call", str);
+      return {};
+    }
+  }
+
   transformMessages(messages: Message[]): MessageParam[] {
     const toolCalls = messages.flatMap((msg) => msg.tool_calls || []);
     const claudeMessages: MessageParam[] = messages
@@ -173,7 +182,7 @@ export class GenericAnthropicClient implements GenericClient {
                   type: "tool_use",
                   id: msg.tool_call_id,
                   name: toolCall.function.name,
-                  input: JSON.parse(toolCall.function.arguments),
+                  input: this.tryParse(toolCall.function.arguments),
                 },
               ],
             });

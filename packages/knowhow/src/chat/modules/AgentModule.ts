@@ -535,9 +535,9 @@ ${reason}
         messageId: session.knowhowMessageId,
         existingKnowhowTaskId: session.knowhowTaskId,
         chatHistory: [],
-        run: true,
+        run: false, // Don't run yet, we need to set up event listeners first
       });
-      await this.attachedAgentChatLoop(taskId, agent);
+      await this.attachedAgentChatLoop(taskId, agent, resumePrompt);
     } catch (error) {
       console.error(
         `Failed to resume session ${sessionId}:`,
@@ -708,7 +708,7 @@ ${reason}
 
       const taskCompleted = new Promise<string>((resolve) => {
         agent.agentEvents.once(agent.eventTypes.done, async (doneMsg) => {
-          console.log("Agent has finished.");
+          console.log("Agent has completed the task.");
           done = true;
           output = doneMsg || "No response from the AI";
           // Update task info
@@ -893,23 +893,38 @@ ${reason}
         agentName: selectedAgent.name,
         input: initialInput,
         chatHistory,
-        run: true,
+        run: false, // Don't run yet, we need to set up event listeners first
       });
-      return await this.attachedAgentChatLoop(taskId, agent);
+      return await this.attachedAgentChatLoop(taskId, agent, initialInput);
     } catch (error) {
       console.error("Error starting agent:", error);
       return false;
     }
   }
 
-  async attachedAgentChatLoop(taskId: string, agent: BaseAgent) {
+  async attachedAgentChatLoop(taskId: string, agent: BaseAgent, initialInput?: string) {
     try {
       let done = false;
       let output = "Done";
 
       // Define available commands
-      const commands = ["/pause", "/unpause", "/kill", "/detach"];
+      const commands = ["/pause", "/unpause", "/kill", "/detach", "/done"];
       const history: string[] = [];
+
+      // Set up the event listener BEFORE starting the agent to avoid race condition
+      let finished = false;
+      const donePromise = new Promise<string>((resolve) => {
+        agent.agentEvents.once(agent.eventTypes.done, (doneMsg) => {
+          finished = true;
+          resolve("done");
+        });
+      });
+
+      // Now start the agent if we have an initial input (this means we're starting, not just attaching)
+      if (initialInput) {
+        const taskInfo = this.taskRegistry.get(taskId);
+        agent.call(taskInfo?.initialInput || initialInput);
+      }
 
       let input =
         (await this.chatService?.getInput(
@@ -918,15 +933,6 @@ ${reason}
         )) || "";
 
       history.push(input);
-
-      let finished = false;
-      const donePromise = new Promise<string>((resolve) => {
-        agent.agentEvents.once(agent.eventTypes.done, (doneMsg) => {
-          console.log("Agent has completed the task.");
-          finished = true;
-          resolve("done");
-        });
-      });
 
       while (!done) {
         switch (input) {

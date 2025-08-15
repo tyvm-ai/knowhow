@@ -46,6 +46,7 @@
     "@modelcontextprotocol/sdk": "^1.13.3",
     "@notionhq/client": "^2.2.14",
     "@octokit/rest": "^20.0.2",
+    "@types/glob": "^8.1.0",
     "@types/react": "^19.1.8",
     "asana": "^3.0.16",
     "axios": "^1.5.0",
