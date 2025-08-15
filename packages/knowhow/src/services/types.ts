@@ -34,9 +34,9 @@ export class StringPatternMatcher implements PatternMatcher {
   matches(toolName: string): boolean {
     // Convert glob pattern to regex
     const regexPattern = this.pattern
-      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&") // Escape special regex chars
-      .replace(/\\\*/g, ".*") // Convert * to .*
-      .replace(/\\\?/g, "."); // Convert ? to .
+      .replace(/[.+^${}()|[\]\\]/g, "\\$&") // Escape special regex chars except * and ?
+      .replace(/\*/g, ".*") // Convert * to .*
+      .replace(/\?/g, "."); // Convert ? to .
 
     const regex = new RegExp(`^${regexPattern}$`);
     return regex.test(toolName);

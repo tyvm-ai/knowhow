@@ -492,12 +492,15 @@ describe("ToolsService", () => {
 
       const result = await toolsService.callTool(toolCall);
 
-      expect(overrideFunction).toHaveBeenCalledWith({ input: "test" });
+      expect(overrideFunction).toHaveBeenCalledWith(
+        [{ input: "test" }],
+        expect.any(Object)
+      );
       expect(originalFunction).not.toHaveBeenCalled();
       expect(result.functionResp).toBe("override result");
     });
 
-    it("should handle override priority ordering", () => {
+    it("should handle override priority ordering", async () => {
       const override1 = jest.fn().mockResolvedValue("override1");
       const override2 = jest.fn().mockResolvedValue("override2");
 
@@ -507,19 +510,21 @@ describe("ToolsService", () => {
 
       // Higher priority should be used
       const func = toolsService.getFunction("overridableTool");
-      expect(func).toBe(override2);
+      // Function should be bound version of override2, test by calling it
+      expect(await func({})).toBe("override2");
     });
 
-    it("should handle pattern matching with wildcards", () => {
+    it("should handle pattern matching with wildcards", async () => {
       const overrideFunction = jest.fn().mockResolvedValue("wildcard override");
 
       toolsService.registerOverride("overrid*Tool", overrideFunction);
 
       const func = toolsService.getFunction("overridableTool");
-      expect(func).toBe(overrideFunction);
+      // Function should be bound version of override, test by calling it
+      expect(await func({})).toBe("wildcard override");
     });
 
-    it("should remove overrides", () => {
+    it("should remove overrides", async () => {
       const originalFunction = jest.fn().mockResolvedValue("original");
       const overrideFunction = jest.fn().mockResolvedValue("override");
 
@@ -527,19 +532,17 @@ describe("ToolsService", () => {
       toolsService.registerOverride("overridableTool", overrideFunction);
 
       // Override should be active
-      expect(toolsService.getFunction("overridableTool")).toBe(
-        overrideFunction
-      );
+      const overriddenFunc = toolsService.getFunction("overridableTool");
+      expect(await overriddenFunc({})).toBe("override");
 
       toolsService.removeOverride("overridableTool");
 
       // Should return to original
-      expect(toolsService.getFunction("overridableTool")).toBe(
-        originalFunction
-      );
+      const restoredFunc = toolsService.getFunction("overridableTool");
+      expect(await restoredFunc({})).toBe("original");
     });
 
-    it("should preserve original functions when override is registered", () => {
+    it("should preserve original functions when override is registered", async () => {
       const originalFunction = jest.fn().mockResolvedValue("original");
       const overrideFunction = jest.fn().mockResolvedValue("override");
 
@@ -548,7 +551,8 @@ describe("ToolsService", () => {
 
       const originalStored =
         toolsService.getOriginalFunction("overridableTool");
-      expect(originalStored).toBe(originalFunction);
+      // Original function should still be the same function (not bound)
+      expect(await originalStored!({})).toBe("original");
     });
   });
 
@@ -677,7 +681,7 @@ describe("ToolsService", () => {
       expect(originalFunction).toHaveBeenCalled();
     });
 
-    it("should remove wrappers", () => {
+    it("should remove wrappers", async () => {
       const originalFunction = jest.fn().mockResolvedValue("original");
       const wrapperFunction = jest
         .fn()
@@ -694,13 +698,14 @@ describe("ToolsService", () => {
       toolsService.removeWrapper("wrappableTool");
 
       // Should return to original
-      expect(toolsService.getFunction("wrappableTool")).toBe(originalFunction);
+      const restoredFunc = toolsService.getFunction("wrappableTool");
+      expect(await restoredFunc!({})).toBe("original");
     });
   });
   describe("Pattern Matching", () => {
-    it("should match glob patterns with wildcards", () => {
-      const originalFunction = jest.fn();
-      const overrideFunction = jest.fn();
+    it("should match glob patterns with wildcards", async () => {
+      const originalFunction = jest.fn().mockResolvedValue("original");
+      const overrideFunction = jest.fn().mockResolvedValue("override");
 
       toolsService.setFunction("testTool", originalFunction);
       toolsService.setFunction("testHelper", originalFunction);
@@ -710,14 +715,17 @@ describe("ToolsService", () => {
       toolsService.registerOverride("test*", overrideFunction);
 
       // Should match tools starting with "test"
-      expect(toolsService.getFunction("testTool")).toBe(overrideFunction);
-      expect(toolsService.getFunction("testHelper")).toBe(overrideFunction);
-      expect(toolsService.getFunction("otherTool")).toBe(originalFunction);
+      const testFunc = toolsService.getFunction("testTool");
+      const testHelperFunc = toolsService.getFunction("testHelper");
+      const otherFunc = toolsService.getFunction("otherTool");
+      expect(await testFunc!({})).toBe("override");
+      expect(await testHelperFunc!({})).toBe("override");
+      expect(await otherFunc!({})).toBe("original");
     });
 
-    it("should match regex patterns", () => {
-      const originalFunction = jest.fn();
-      const overrideFunction = jest.fn();
+    it("should match regex patterns", async () => {
+      const originalFunction = jest.fn().mockResolvedValue("original");
+      const overrideFunction = jest.fn().mockResolvedValue("override");
 
       toolsService.setFunction("tool123", originalFunction);
       toolsService.setFunction("tool456", originalFunction);
@@ -726,14 +734,17 @@ describe("ToolsService", () => {
       // Register override with regex pattern for tools ending with numbers
       toolsService.registerOverride(/tool\d+$/, overrideFunction);
 
-      expect(toolsService.getFunction("tool123")).toBe(overrideFunction);
-      expect(toolsService.getFunction("tool456")).toBe(overrideFunction);
-      expect(toolsService.getFunction("toolABC")).toBe(originalFunction);
+      const tool123Func = toolsService.getFunction("tool123");
+      const tool456Func = toolsService.getFunction("tool456");
+      const toolABCFunc = toolsService.getFunction("toolABC");
+      expect(await tool123Func!({})).toBe("override");
+      expect(await tool456Func!({})).toBe("override");
+      expect(await toolABCFunc!({})).toBe("original");
     });
 
-    it("should handle complex glob patterns", () => {
-      const originalFunction = jest.fn();
-      const overrideFunction = jest.fn();
+    it("should handle complex glob patterns", async () => {
+      const originalFunction = jest.fn().mockResolvedValue("original");
+      const overrideFunction = jest.fn().mockResolvedValue("override");
 
       toolsService.setFunction("api_get_user", originalFunction);
       toolsService.setFunction("api_post_user", originalFunction);
@@ -743,12 +754,15 @@ describe("ToolsService", () => {
       // Match API tools with user operations
       toolsService.registerOverride("api_*_user", overrideFunction);
 
-      expect(toolsService.getFunction("api_get_user")).toBe(overrideFunction);
-      expect(toolsService.getFunction("api_post_user")).toBe(overrideFunction);
-      expect(toolsService.getFunction("api_delete_user")).toBe(
-        overrideFunction
-      );
-      expect(toolsService.getFunction("util_format")).toBe(originalFunction);
+      const apiGetFunc = toolsService.getFunction("api_get_user");
+      const apiPostFunc = toolsService.getFunction("api_post_user");
+      const apiDeleteFunc = toolsService.getFunction("api_delete_user");
+
+      expect(await apiGetFunc!({})).toBe("override");
+      expect(await apiPostFunc!({})).toBe("override");
+      expect(await apiDeleteFunc!({})).toBe("override");
+      const utilFormatFunc = toolsService.getFunction("util_format");
+      expect(await utilFormatFunc!({})).toBe("original");
     });
 
     it("should test pattern matcher factory function directly", () => {
@@ -1075,6 +1089,250 @@ describe("ToolsService", () => {
       newService.copyToolsFrom(["tool1", "tool2"], toolsService);
 
       expect(newService.getToolsByNames(["tool1", "tool2"])).toHaveLength(2);
+    });
+
+    describe("Function Binding", () => {
+      let toolsService: ToolsService;
+      let mockContext: ToolContext;
+
+      beforeEach(() => {
+        mockContext = {
+          metadata: { testKey: "testValue" },
+        };
+        toolsService = new ToolsService(mockContext);
+      });
+
+      describe("this binding in tool functions", () => {
+        it("should bind functions so 'this' refers to ToolsService instance", async () => {
+          const testTool: Tool = {
+            type: "function",
+            function: {
+              name: "testThisBinding",
+              description: "Test function that accesses this",
+              parameters: {
+                type: "object",
+                properties: {
+                  message: { type: "string" },
+                },
+              },
+            },
+          };
+
+          function testFunction(this: ToolsService, args: { message: string }) {
+            // This function should have 'this' bound to the ToolsService instance
+            if (!this || typeof this.getContext !== "function") {
+              throw new Error("'this' is not bound to ToolsService instance");
+            }
+            const context = this.getContext();
+            return {
+              message: args.message,
+              contextMetadata: context.metadata,
+              hasThisBinding: true,
+            };
+          }
+
+          toolsService.addTool(testTool);
+          toolsService.setFunction("testThisBinding", testFunction);
+
+          const toolCall: ToolCall = {
+            id: "test-call-1",
+            type: "function",
+            function: {
+              name: "testThisBinding",
+              arguments: JSON.stringify({ message: "test" }),
+            },
+          };
+
+          const result = await toolsService.callTool(toolCall);
+
+          expect(result.functionResp.hasThisBinding).toBe(true);
+          expect(result.functionResp.contextMetadata).toEqual({
+            testKey: "testValue",
+          });
+          expect(result.functionResp.message).toBe("test");
+        });
+
+        it("should allow tool functions to call other tools via this.callTool", async () => {
+          const helperTool: Tool = {
+            type: "function",
+            function: {
+              name: "helperTool",
+              description: "Helper tool",
+              parameters: {
+                type: "object",
+                properties: {
+                  value: { type: "string" },
+                },
+              },
+            },
+          };
+
+          const mainTool: Tool = {
+            type: "function",
+            function: {
+              name: "mainTool",
+              description: "Main tool that calls helper",
+              parameters: {
+                type: "object",
+                properties: {
+                  input: { type: "string" },
+                },
+              },
+            },
+          };
+
+          function helperFunction(args: { value: string }) {
+            return `Helper processed: ${args.value}`;
+          }
+
+          async function mainFunction(
+            this: ToolsService,
+            args: { input: string }
+          ) {
+            if (!this || typeof this.callTool !== "function") {
+              throw new Error("'this' is not bound to ToolsService instance");
+            }
+
+            const helperCall: ToolCall = {
+              id: "helper-call",
+              type: "function",
+              function: {
+                name: "helperTool",
+                arguments: JSON.stringify({ value: args.input }),
+              },
+            };
+
+            const helperResult = await this.callTool(helperCall);
+            return `Main tool result: ${helperResult.functionResp}`;
+          }
+
+          toolsService.addTool(helperTool);
+          toolsService.addTool(mainTool);
+          toolsService.setFunction("helperTool", helperFunction);
+          toolsService.setFunction("mainTool", mainFunction);
+
+          const toolCall: ToolCall = {
+            id: "test-call-2",
+            type: "function",
+            function: {
+              name: "mainTool",
+              arguments: JSON.stringify({ input: "test data" }),
+            },
+          };
+
+          const result = await toolsService.callTool(toolCall);
+
+          expect(result.functionResp).toBe(
+            "Main tool result: Helper processed: test data"
+          );
+        });
+
+        it("should maintain binding through overrides", async () => {
+          const testTool: Tool = {
+            type: "function",
+            function: {
+              name: "bindingTestTool",
+              description: "Test tool for binding with overrides",
+              parameters: {
+                type: "object",
+                properties: {
+                  data: { type: "string" },
+                },
+              },
+            },
+          };
+
+          function originalFunction(
+            this: ToolsService,
+            args: { data: string }
+          ) {
+            if (!this || typeof this.getContext !== "function") {
+              throw new Error(
+                "'this' is not bound to ToolsService instance in original"
+              );
+            }
+            return `Original: ${args.data}`;
+          }
+
+          const overrideFunction = function (
+            this: ToolsService,
+            originalArgs: any[],
+            originalTool: Tool
+          ) {
+            if (!this || typeof this.getContext !== "function") {
+              throw new Error(
+                "'this' is not bound to ToolsService instance in override"
+              );
+            }
+            return `Override: ${originalArgs[0].data}`;
+          };
+
+          toolsService.addTool(testTool);
+          toolsService.setFunction("bindingTestTool", originalFunction);
+          toolsService.registerOverride("bindingTestTool", overrideFunction);
+
+          const toolCall: ToolCall = {
+            id: "test-call-3",
+            type: "function",
+            function: {
+              name: "bindingTestTool",
+              arguments: JSON.stringify({ data: "test" }),
+            },
+          };
+
+          const result = await toolsService.callTool(toolCall);
+
+          expect(result.functionResp).toBe("Override: test");
+        });
+
+        it("should maintain binding through wrappers", async () => {
+          const testTool: Tool = {
+            type: "function",
+            function: {
+              name: "wrapperBindingTest",
+              description: "Test tool for binding with wrappers",
+              parameters: {
+                type: "object",
+                properties: {
+                  value: { type: "string" },
+                },
+              },
+            },
+          };
+
+          function baseFunction(this: ToolsService, args: { value: string }) {
+            if (!this || typeof this.getContext !== "function") {
+              throw new Error(
+                "'this' is not bound to ToolsService instance in base function"
+              );
+            }
+            return `Base: ${args.value}`;
+          }
+
+          const wrapper = (originalFunc: Function, args: any, tool: Tool) => {
+            // The wrapper should preserve the binding
+            const result = originalFunc.call(toolsService, args);
+            return `Wrapped: ${result}`;
+          };
+
+          toolsService.addTool(testTool);
+          toolsService.setFunction("wrapperBindingTest", baseFunction);
+          toolsService.registerWrapper("wrapperBindingTest", wrapper);
+
+          const toolCall: ToolCall = {
+            id: "test-call-4",
+            type: "function",
+            function: {
+              name: "wrapperBindingTest",
+              arguments: JSON.stringify({ value: "test" }),
+            },
+          };
+
+          const result = await toolsService.callTool(toolCall);
+
+          expect(result.functionResp).toBe("Wrapped: Base: test");
+        });
+      });
     });
   });
 });

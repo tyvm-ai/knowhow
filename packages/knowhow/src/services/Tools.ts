@@ -82,52 +82,30 @@ export class ToolsService {
   }
 
   getFunction(name: string) {
-    // return this.functions[name] || allTools.addInternalTools(allTools)[name];
+    // Apply overrides and wrappers before returning (even if no base function exists)
+    if (this.functions[name] || this.originalFunctions[name]) {
+      this.applyOverridesAndWrappers(name);
+    } else {
+      // Check if there are overrides for this name even without a base function
+      const matchingOverride = this.findMatchingOverride(name);
+      if (matchingOverride) {
+        this.functions[name] = matchingOverride.override;
+      } else {
+        return undefined;
+      }
+    }
     return this.functions[name];
   }
 
   setFunction(name: string, func: (...args: any) => any) {
     // Store original function if not already stored
     if (!this.originalFunctions[name]) {
-      this.originalFunctions[name] = func;
+      this.originalFunctions[name] = func.bind(this);
     }
 
-    // Auto-bind function to this ToolsService instance
-    const boundFunc = func.bind(this);
-
-    // Check for overrides first
-    const override = this.findMatchingOverride(name);
-    if (override) {
-      const overrideFunction = async (...args: any[]) => {
-        const tool = this.getTool(name);
-        return await override.override.apply(null, [...args, tool]);
-      };
-      // Store the override function itself so getFunction can return it
-      this.functions[name] = overrideFunction;
-      return;
-    }
-
-    // Check for wrappers
-    const wrappers = this.findMatchingWrappers(name);
-    if (wrappers.length > 0) {
-      let wrappedFunction = boundFunc;
-
-      // Apply wrappers in priority order
-      for (const wrapperReg of wrappers) {
-        const currentFunc = wrappedFunction;
-        wrappedFunction = async (...args: any[]) => {
-          const tool = this.getTool(name);
-          return await wrapperReg.wrapper.apply(null, [currentFunc, ...args, tool]);
-        };
-
-        this.functions[name] = wrappedFunction;
-      }
-
-      this.functions[name] = wrappedFunction;
-    } else {
-      // No overrides or wrappers, use bound function
-      this.functions[name] = boundFunc;
-    }
+    // Set the function (bound) and apply any overrides/wrappers  
+    this.functions[name] = func.bind(this);
+    this.applyOverridesAndWrappers(name);
   }
 
   setFunctions(names: string[], funcs: ((...args: any) => any)[]) {
@@ -170,18 +148,18 @@ export class ToolsService {
 
   async callTool(toolCall: ToolCall, enabledTools = this.getToolNames()) {
     const functionName = toolCall.function.name;
-
-    let functionArgs;
-    try {
-      functionArgs =
-        typeof toolCall.function.arguments === "string"
-          ? JSON.parse(restoreEscapedNewLines(toolCall.function.arguments))
-          : toolCall.function.arguments;
-    } catch (error) {
-      throw new Error(`Invalid JSON in tool call arguments: ${error.message}`);
-    }
+    let functionArgs: any;
 
     try {
+      try {
+        functionArgs =
+          typeof toolCall.function.arguments === "string"
+            ? JSON.parse(restoreEscapedNewLines(toolCall.function.arguments))
+            : toolCall.function.arguments;
+      } catch (error) {
+        throw new Error(`Invalid JSON in tool call arguments: ${error.message}`);
+      }
+
       // Check if tool is enabled
       if (!enabledTools.includes(functionName)) {
         const options = enabledTools.join(", ");
@@ -213,28 +191,24 @@ export class ToolsService {
         ? Object.keys(properties).map((p) => functionArgs[p])
         : functionArgs;
 
-      console.log(
-        `Calling function ${functionName} with args:`,
-        JSON.stringify(fnArgs, null, 2)
-      );
-
       // Execute the function
+      const rawResponse = isPositional ? functionToCall.call(this, ...fnArgs) : functionToCall.call(this, fnArgs);
       const functionResponse = await Promise.resolve(
-        isPositional ? functionToCall(...fnArgs) : functionToCall(fnArgs)
+        rawResponse
       ).catch((e) => {
         throw new Error("ERROR: " + e.message);
       });
 
       // Helper function to convert objects to JSON
       const toJsonIfObject = (arg: any) => {
-        if (typeof arg === "object" && arg !== null) {
-          return JSON.stringify(arg, null, 2);
+        if (arg === null) {
+          return "null";
         }
         if (arg === undefined) {
           return "undefined";
         }
-        if (arg === null) {
-          return "null";
+        if (typeof arg === "object") {
+          return JSON.stringify(arg, null, 2);
         }
         return arg;
       };
@@ -266,7 +240,7 @@ export class ToolsService {
             tool_call_id: toolCall.id,
             role: "tool",
             name: functionName,
-            content: toJsonIfObject(functionResponse) || "Done",
+            content: toJsonIfObject(functionResponse),
           },
         ];
       }
@@ -310,8 +284,8 @@ export class ToolsService {
 
     // Re-apply overrides to existing functions
     for (const toolName of this.getToolNames()) {
-      if (this.originalFunctions[toolName]) {
-        this.setFunction(toolName, this.originalFunctions[toolName]);
+      if (this.functions[toolName]) {
+        this.applyOverridesAndWrappers(toolName);
       }
     }
   }
@@ -328,8 +302,8 @@ export class ToolsService {
 
     // Re-apply wrappers to existing functions
     for (const toolName of this.getToolNames()) {
-      if (this.originalFunctions[toolName]) {
-        this.setFunction(toolName, this.originalFunctions[toolName]);
+      if (this.functions[toolName]) {
+        this.applyOverridesAndWrappers(toolName);
       }
     }
   }
@@ -354,16 +328,65 @@ export class ToolsService {
     }
   }
 
+  private applyOverridesAndWrappers(name: string): void {
+    if (!this.originalFunctions[name]) {
+      // Store original function if not already stored
+      this.originalFunctions[name] = this.functions[name];
+    }
+
+    const originalFunc = this.originalFunctions[name];
+
+    // Check for overrides first
+    const matchingOverride = this.findMatchingOverride(name);
+    if (matchingOverride) {
+      // Create a wrapper function that calls the override with correct arguments
+      this.functions[name] = ((...args: any[]) => {
+        // Call the override function with originalArgs array and tool definition
+        const toolDefinition = this.getTool(name);
+        // Override functions expect (originalArgs: any[], originalTool: Tool)
+        return matchingOverride.override.call(this, args, toolDefinition);
+      }).bind(this);
+      return;
+    }
+
+    // Check for wrappers
+    const wrappers = this.findMatchingWrappers(name);
+    if (wrappers.length > 0) {
+      let wrappedFunction = originalFunc;
+
+      // Apply wrappers in priority order
+      for (const wrapperReg of wrappers) {
+        const innerFunc = wrappedFunction;
+        wrappedFunction = ((args: any) => {
+          const toolDefinition = this.getTool(name);
+          return wrapperReg.wrapper(innerFunc, args, toolDefinition);
+        }).bind(this);
+      }
+
+      this.functions[name] = wrappedFunction.bind(this);
+    } else {
+      // No wrappers, use current function (might be override or original)
+      this.functions[name] = originalFunc;
+    }
+  }
+
   private findMatchingOverride(
     toolName: string
   ): ToolOverrideRegistration | null {
+    let bestMatch: ToolOverrideRegistration | null = null;
+    let highestPriority = -1;
+    
     for (const registration of this.overrides) {
       const matcher = createPatternMatcher(registration.pattern);
       if (matcher.matches(toolName)) {
-        return registration;
+        if (registration.priority > highestPriority) {
+          highestPriority = registration.priority;
+          bestMatch = registration;
+        }
       }
     }
-    return null;
+    
+    return bestMatch;
   }
 
   private findMatchingWrappers(toolName: string): ToolWrapperRegistration[] {
