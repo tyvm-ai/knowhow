@@ -165,7 +165,7 @@ describe("ToolsService", () => {
     it("should add multiple functions", () => {
       const functions = {
         func1: jest.fn(),
-        func2: jest.fn()
+        func2: jest.fn(),
       };
 
       toolsService.addFunctions(functions);
@@ -513,7 +513,7 @@ describe("ToolsService", () => {
     it("should handle pattern matching with wildcards", () => {
       const overrideFunction = jest.fn().mockResolvedValue("wildcard override");
 
-      toolsService.registerOverride("override*Tool", overrideFunction);
+      toolsService.registerOverride("overrid*Tool", overrideFunction);
 
       const func = toolsService.getFunction("overridableTool");
       expect(func).toBe(overrideFunction);
@@ -944,7 +944,8 @@ describe("ToolsService", () => {
     });
 
     it("should handle undefined and null function responses", async () => {
-      const mockTool: Tool = {
+      // Test undefined response with separate tool
+      const undefinedTool: Tool = {
         type: "function",
         function: {
           name: "undefinedTool",
@@ -952,7 +953,7 @@ describe("ToolsService", () => {
         },
       };
 
-      const toolCall: ToolCall = {
+      const undefinedCall: ToolCall = {
         id: "call_undefined",
         type: "function",
         function: {
@@ -961,22 +962,35 @@ describe("ToolsService", () => {
         },
       };
 
-      toolsService.addTool(mockTool);
-
-      // Test undefined response
+      toolsService.addTool(undefinedTool);
       toolsService.setFunction(
         "undefinedTool",
         jest.fn().mockResolvedValue(undefined)
       );
-      let result = await toolsService.callTool(toolCall);
+      let result = await toolsService.callTool(undefinedCall);
       expect(result.toolMessages[0].content).toBe("undefined");
 
-      // Test null response
-      toolsService.setFunction(
-        "undefinedTool",
-        jest.fn().mockResolvedValue(null)
-      );
-      result = await toolsService.callTool(toolCall);
+      // Test null response with separate tool
+      const nullTool: Tool = {
+        type: "function",
+        function: {
+          name: "nullTool",
+          parameters: { type: "object", properties: {}, required: [] },
+        },
+      };
+
+      const nullCall: ToolCall = {
+        id: "call_null",
+        type: "function",
+        function: {
+          name: "nullTool",
+          arguments: "{}",
+        },
+      };
+
+      toolsService.addTool(nullTool);
+      toolsService.setFunction("nullTool", jest.fn().mockResolvedValue(null));
+      result = await toolsService.callTool(nullCall);
       expect(result.toolMessages[0].content).toBe("null");
     });
   });
