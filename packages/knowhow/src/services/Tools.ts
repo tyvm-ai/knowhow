@@ -103,7 +103,7 @@ export class ToolsService {
       this.originalFunctions[name] = func.bind(this);
     }
 
-    // Set the function (bound) and apply any overrides/wrappers  
+    // Set the function (bound) and apply any overrides/wrappers
     this.functions[name] = func.bind(this);
     this.applyOverridesAndWrappers(name);
   }
@@ -375,7 +375,7 @@ export class ToolsService {
   ): ToolOverrideRegistration | null {
     let bestMatch: ToolOverrideRegistration | null = null;
     let highestPriority = -1;
-    
+
     for (const registration of this.overrides) {
       const matcher = createPatternMatcher(registration.pattern);
       if (matcher.matches(toolName)) {
@@ -385,7 +385,7 @@ export class ToolsService {
         }
       }
     }
-    
+
     return bestMatch;
   }
 

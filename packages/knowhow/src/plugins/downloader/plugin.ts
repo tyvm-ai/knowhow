@@ -1,6 +1,7 @@
 import fs from "fs";
 import { PluginBase, PluginMeta } from "../PluginBase";
 import { MinimalEmbedding } from "../../types";
+import { PluginContext } from "../types";
 import { convertToText, processVideo } from "../../conversion";
 import { services } from "../../services";
 
@@ -11,8 +12,10 @@ export class DownloaderPlugin extends PluginBase {
     requires: [],
   };
 
-  constructor() {
-    super(DownloaderPlugin.meta);
+  meta = DownloaderPlugin.meta;
+
+  constructor(context: PluginContext) {
+    super(context);
   }
 
   skipExt = ["jpg", "jpeg", "png", "gif"];

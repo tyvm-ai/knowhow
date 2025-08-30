@@ -1,6 +1,7 @@
 import glob from "glob";
 import { readFile, fileExists, fileStat } from "../utils";
 import { PluginBase, PluginMeta } from "./PluginBase";
+import { PluginContext } from "./types";
 
 export class VimPlugin extends PluginBase {
   static readonly meta: PluginMeta = {
@@ -9,8 +10,10 @@ export class VimPlugin extends PluginBase {
     requires: []
   };
 
-  constructor() {
-    super(VimPlugin.meta);
+  meta = VimPlugin.meta;
+
+  constructor(context: PluginContext) {
+    super(context);
   }
 
   async embed(userPrompt: string) {

@@ -1,6 +1,7 @@
 import { Client } from "figma-js";
 import qs from "qs"; // Assumed to be installed
 import { PluginBase, PluginMeta } from "./PluginBase";
+import { PluginContext } from "./types";
 import { Plugin } from "./types";
 import { MinimalEmbedding } from "../types";
 
@@ -40,8 +41,10 @@ export class FigmaPlugin extends PluginBase implements Plugin {
     requires: ["FIGMA_API_KEY"],
   };
 
-  constructor() {
-    super(FigmaPlugin.meta);
+  meta = FigmaPlugin.meta;
+
+  constructor(context: PluginContext = {}) {
+    super(context);
     if (!this.isEnabled()) return;
 
     this.figmaToken = process.env.FIGMA_API_KEY;

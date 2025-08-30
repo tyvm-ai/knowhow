@@ -1,5 +1,6 @@
 import { LinearClient } from "@linear/sdk";
 import { PluginBase, PluginMeta } from "./PluginBase";
+import { PluginContext } from "./types";
 import { MinimalEmbedding } from "../types";
 
 export class LinearPlugin extends PluginBase {
@@ -9,10 +10,11 @@ export class LinearPlugin extends PluginBase {
     requires: ["LINEAR_API_KEY"],
   };
 
+  meta = LinearPlugin.meta;
   linearClient: LinearClient;
 
-  constructor() {
-    super(LinearPlugin.meta);
+  constructor(context: PluginContext) {
+    super(context);
 
     if (!this.isEnabled()) return;
     this.linearClient = new LinearClient({

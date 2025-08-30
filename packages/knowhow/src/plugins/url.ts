@@ -1,5 +1,5 @@
 import { PluginBase, PluginMeta } from "./PluginBase";
-import { Plugin } from "./types";
+import { Plugin, PluginContext } from "./types";
 import { MinimalEmbedding } from "../types";
 import axios from "axios";
 import * as cheerio from "cheerio";
@@ -12,8 +12,10 @@ export class UrlPlugin extends PluginBase implements Plugin {
     requires: [],
   };
 
-  constructor() {
-    super(UrlPlugin.meta);
+  meta = UrlPlugin.meta;
+
+  constructor(context: PluginContext) {
+    super(context);
   }
 
   async embed(userPrompt: string): Promise<MinimalEmbedding[]> {

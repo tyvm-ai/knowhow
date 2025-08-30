@@ -24,7 +24,7 @@ import {
   execCommand,
   writeFile,
 } from "../src/agents/tools";
-import { Plugins } from "../src/plugins/plugins";
+import { services } from "../src/services";
 import { patchFile } from "../src/agents/tools/patch";
 import { fileExists } from "../src/utils";
 import * as utils from "../src/utils";
@@ -38,6 +38,7 @@ const mockLintFile = jest.mocked(lintFile);
 const mockEmbed = jest.mocked(embed);
 
 test("searchFiles should call the embeddings plugin with the correct keyword", async () => {
+  const { Plugins } = services();
   const expectedResult = JSON.stringify({ files: ["test1.js", "test2.js"] });
   const mocked = Plugins as jest.Mocked<typeof Plugins>;
   const keyword = "test";
@@ -56,7 +57,7 @@ test("searchFiles should call the embeddings plugin with the correct keyword", a
 test("readFile should return the content of a file", async () => {
   const filePath = "test.txt";
   const fileContent = "Hello World";
-  
+
   mockUtils.fileExists.mockResolvedValue(true);
 
   // Mock readFile to return the fileContent
@@ -117,16 +118,18 @@ test("applyPatchFile should apply a patch to a file", async () => {
 
   // Mock fs.existsSync to return true (file exists)
   mockFs.existsSync.mockReturnValue(true);
-  
+
   // Mock the utilities that patchFile uses
   mockUtils.readFile.mockResolvedValue(originalContent);
   mockUtils.writeFile.mockResolvedValue(undefined);
   mockUtils.fileExists.mockResolvedValue(true);
   mockUtils.mkdir.mockResolvedValue(undefined);
-  mockUtils.splitByNewLines.mockImplementation((text: string) => text.split(/\r?\n/));
+  mockUtils.splitByNewLines.mockImplementation((text: string) =>
+    text.split(/\r?\n/)
+  );
   mockLintFile.mockResolvedValue("");
   mockEmbed.mockResolvedValue(undefined);
-  
+
   const result = await patchFile(filePath, patch);
 
   // Verify the function returns a success message

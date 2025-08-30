@@ -1,5 +1,6 @@
 import { Octokit } from "@octokit/rest";
 import { PluginBase, PluginMeta } from "./PluginBase";
+import { PluginContext } from "./types";
 import { parseHunks, hunksToPatch } from "../agents/tools/patch";
 import { MinimalEmbedding } from "../types";
 
@@ -10,10 +11,11 @@ export class GitHubPlugin extends PluginBase {
     requires: ["GITHUB_TOKEN"],
   };
 
+  meta = GitHubPlugin.meta;
   octokit: Octokit;
 
-  constructor() {
-    super(GitHubPlugin.meta);
+  constructor(context: PluginContext) {
+    super(context);
 
     const key = process.env.GITHUB_TOKEN;
     if (key && this.isEnabled()) {

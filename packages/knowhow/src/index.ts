@@ -40,7 +40,6 @@ import {
 
 import { abort } from "process";
 import { convertToText } from "./conversion";
-import { Plugins } from "./plugins/plugins";
 import { knowhowMcpClient } from "./services/Mcp";
 import { services } from "./services/";
 import { Models } from "./types";
@@ -184,6 +183,7 @@ export async function generate(): Promise<void> {
 }
 
 async function handleAllKindsGeneration(source: GenerationSource) {
+  const { Plugins } = services();
   const { kind, input } = source;
   if (Plugins.isPlugin(kind)) {
     const data = await Plugins.call(kind, input);

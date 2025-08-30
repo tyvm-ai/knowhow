@@ -1,5 +1,6 @@
 import { Client } from "@notionhq/client";
 import { PluginBase, PluginMeta } from "./PluginBase";
+import { PluginContext } from "./types";
 import { PageObjectResponse } from "@notionhq/client/build/src/api-endpoints";
 import { Embeddable, MinimalEmbedding } from "../types";
 
@@ -10,10 +11,11 @@ export class NotionPlugin extends PluginBase {
     requires: ["NOTION_TOKEN"]
   };
 
+  meta = NotionPlugin.meta;
   notionClient: Client;
 
-  constructor() {
-    super(NotionPlugin.meta);
+  constructor(context: PluginContext) {
+    super(context);
     
     if (!this.isEnabled()) return;
     this.notionClient = new Client({

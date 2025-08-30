@@ -7,7 +7,7 @@ export abstract class PluginBase implements Plugin {
 
   abstract readonly meta: PluginMeta;
 
-  constructor(protected context: PluginContext) {}
+  constructor(protected context: PluginContext = {}) {}
 
   /* ------------------------------------------------------------------ */
   /** Public helpers called by PluginService -------------------------- */

@@ -1,5 +1,6 @@
 import JiraClient from "jira-client";
 import { PluginBase, PluginMeta } from "./PluginBase";
+import { PluginContext } from "./types";
 import { MinimalEmbedding } from "../types";
 
 export class JiraPlugin extends PluginBase {
@@ -9,10 +10,11 @@ export class JiraPlugin extends PluginBase {
     requires: ["JIRA_HOST", "JIRA_USER", "JIRA_PASSWORD"]
   };
 
+  meta = JiraPlugin.meta;
   jiraClient: JiraClient;
 
-  constructor() {
-    super(JiraPlugin.meta);
+  constructor(context: PluginContext) {
+    super(context);
     
     if (!this.isEnabled()) return;
     this.jiraClient = new JiraClient({

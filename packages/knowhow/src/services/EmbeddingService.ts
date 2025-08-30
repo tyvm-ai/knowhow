@@ -1,3 +1,6 @@
+import * as path from "path";
+import glob from "glob";
+
 import {
   Config,
   Embeddable,
@@ -13,10 +16,8 @@ import {
   cosineSimilarity,
 } from "../utils";
 import { summarizeTexts, chunkText } from "../ai";
-import { Plugins } from "../plugins/plugins";
 import { Clients, GenericClient } from "../clients";
-import * as path from "path";
-import glob from "glob";
+import { PluginService } from "..//plugins/plugins";
 
 export type CreateEmbeddingOptions = {
   provider?: string;
@@ -31,13 +32,21 @@ export type EmbedOptions = {
   minLength?: number;
 };
 
+interface EmbeddingServiceContext {
+  config: Config;
+  embeddingClient?: GenericClient;
+  plugins: PluginService;
+}
+
 export class EmbeddingService {
   private config: Config;
   private embeddingClient: GenericClient;
+  private plugins: PluginService;
 
-  constructor(config: Config, embeddingClient: GenericClient) {
-    this.config = config;
-    this.embeddingClient = embeddingClient;
+  constructor(protected context: EmbeddingServiceContext) {
+    this.config = context.config;
+    this.embeddingClient = context.embeddingClient;
+    this.plugins = context.plugins;
   }
 
   setEmbeddingClient(client: GenericClient) {
@@ -193,9 +202,9 @@ export class EmbeddingService {
     const contents = "";
     const ids = [];
 
-    if (Plugins.isPlugin(kind)) {
+    if (this.plugins.isPlugin(kind)) {
       console.log("Embedding with plugin", kind);
-      return Plugins.embed(kind, input);
+      return this.plugins.embed(kind, input);
     }
     switch (kind) {
       case "text":

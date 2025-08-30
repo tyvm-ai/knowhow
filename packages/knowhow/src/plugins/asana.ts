@@ -1,5 +1,6 @@
 import { PluginBase, PluginMeta } from "./PluginBase";
 import { Embeddable, MinimalEmbedding } from "../types";
+import { PluginContext } from "./types";
 
 export class AsanaPlugin extends PluginBase {
   static readonly meta: PluginMeta = {
@@ -8,10 +9,11 @@ export class AsanaPlugin extends PluginBase {
     requires: ["ASANA_TOKEN"]
   };
 
+  meta = AsanaPlugin.meta;
   private asanaClient = require("asana").ApiClient.instance;
 
-  constructor() {
-    super(AsanaPlugin.meta);
+  constructor(context: PluginContext) {
+    super(context);
     
     if (!this.isEnabled()) return;
     
