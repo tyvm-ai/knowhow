@@ -10,9 +10,8 @@ import {
 } from "./types";
 import { Marked } from "./utils";
 import { ask } from "./utils";
-import { Plugins } from "./plugins/plugins";
+import { services } from "./services";
 import { queryEmbedding, getConfiguredEmbeddingMap } from "./embeddings";
-import { services } from "./services/";
 import { FlagsService } from "./services/flags";
 import { IAgent } from "./agents/interface";
 import { Message } from "./clients";
@@ -165,6 +164,7 @@ export async function formatChatInput(
   plugins: string[] = [],
   chatHistory: ChatInteraction[] = []
 ) {
+  const { Plugins } = services();
   const pluginText = await Plugins.callMany(plugins, input);
   const historyMessage = `<PreviousChats>
   This information is provided as historical context and is likely not related to the current task:

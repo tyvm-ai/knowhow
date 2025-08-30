@@ -7,7 +7,6 @@ import { ChatCommand, ChatMode, ChatContext } from "../types";
 import { ChatInteraction } from "../../types";
 import { Models } from "../../ai";
 import { services } from "../../services/index";
-import { Plugins } from "../../plugins/plugins";
 import { Marked } from "../../utils/index";
 
 export class AskModule extends BaseChatModule {

@@ -18,7 +18,7 @@ import {
   takeFirstNWords,
 } from "./utils";
 import { summarizeTexts, chunkText } from "./ai";
-import { Plugins } from "./plugins/plugins";
+import { services } from "./services";
 import { md5Hash } from "./hashes";
 import { convertToText } from "./conversion";
 import { Clients } from "./clients";
@@ -402,6 +402,8 @@ export async function handleAllKinds(
   const { input, kind } = source;
   const contents = "";
   const ids = [];
+
+  const { Plugins } = services();
 
   if (Plugins.isPlugin(kind)) {
     console.log("Embedding with plugin", kind);

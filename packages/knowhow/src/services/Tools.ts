@@ -157,7 +157,9 @@ export class ToolsService {
             ? JSON.parse(restoreEscapedNewLines(toolCall.function.arguments))
             : toolCall.function.arguments;
       } catch (error) {
-        throw new Error(`Invalid JSON in tool call arguments: ${error.message}`);
+        throw new Error(
+          `Invalid JSON in tool call arguments: ${error.message}`
+        );
       }
 
       // Check if tool is enabled
@@ -192,10 +194,10 @@ export class ToolsService {
         : functionArgs;
 
       // Execute the function
-      const rawResponse = isPositional ? functionToCall.call(this, ...fnArgs) : functionToCall.call(this, fnArgs);
-      const functionResponse = await Promise.resolve(
-        rawResponse
-      ).catch((e) => {
+      const rawResponse = isPositional
+        ? functionToCall.call(this, ...fnArgs)
+        : functionToCall.call(this, fnArgs);
+      const functionResponse = await Promise.resolve(rawResponse).catch((e) => {
         throw new Error("ERROR: " + e.message);
       });
 
@@ -240,7 +242,7 @@ export class ToolsService {
             tool_call_id: toolCall.id,
             role: "tool",
             name: functionName,
-            content: toJsonIfObject(functionResponse),
+            content: toJsonIfObject(functionResponse) || "Done",
           },
         ];
       }
@@ -250,7 +252,7 @@ export class ToolsService {
         toolCallId: toolCall.id,
         functionName,
         functionArgs,
-        functionResp: functionResponse,
+        functionResp: functionResponse || "Done",
       };
     } catch (error) {
       console.log(error.message);

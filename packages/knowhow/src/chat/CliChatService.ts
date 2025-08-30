@@ -17,7 +17,7 @@ import { recordAudio, voiceToText } from "../microphone";
 import editor from "@inquirer/editor";
 import fs from "fs";
 import path from "path";
-import { Plugins } from "../plugins/plugins";
+import { services } from "../services";
 
 export class CliChatService implements ChatService {
   private context: ChatContext;
@@ -239,6 +239,7 @@ export class CliChatService implements ChatService {
     plugins: string[] = [],
     chatHistory: ChatInteraction[] = []
   ) {
+    const { Plugins } = services();
     const pluginText = await Plugins.callMany(plugins, input);
     const historyMessage = `<PreviousChats>
   This information is provided as historical context and is likely not related to the current task:
