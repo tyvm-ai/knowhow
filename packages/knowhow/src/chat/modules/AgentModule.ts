@@ -549,11 +549,26 @@ ${reason}
   async handleInput(input: string, context: ChatContext): Promise<boolean> {
     // If in agent mode, start agent with the input as initial task (like original chat.ts)
     if (context.agentMode && context.selectedAgent) {
-      const result = await this.startAgent(
+      // Create initial interaction for the chatHistory
+      const initialInteraction: ChatInteraction = {
+        input,
+        output: "", // Will be filled after agent completion
+        summaries: [],
+        lastThread: [],
+      };
+
+      const { result, finalOutput } = await this.startAgent(
         context.selectedAgent,
         input,
         context.chatHistory || []
       );
+
+      // Update the chatHistory with the completed interaction
+      if (result && finalOutput) {
+        initialInteraction.output = finalOutput;
+        context.chatHistory.push(initialInteraction);
+      }
+
       return result;
     }
     return false;
@@ -887,7 +902,7 @@ ${reason}
     selectedAgent: BaseAgent,
     initialInput: string,
     chatHistory: ChatInteraction[] = []
-  ): Promise<boolean> {
+  ): Promise<{ result: boolean; finalOutput?: string }> {
     try {
       const { agent, taskId } = await this.setupAgent({
         agentName: selectedAgent.name,
@@ -895,17 +910,27 @@ ${reason}
         chatHistory,
         run: false, // Don't run yet, we need to set up event listeners first
       });
-      return await this.attachedAgentChatLoop(taskId, agent, initialInput);
+      const result = await this.attachedAgentChatLoop(
+        taskId,
+        agent,
+        initialInput
+      );
+      return result;
     } catch (error) {
       console.error("Error starting agent:", error);
-      return false;
+      return { result: false, finalOutput: "Error starting agent" };
     }
   }
 
-  async attachedAgentChatLoop(taskId: string, agent: BaseAgent, initialInput?: string) {
+  async attachedAgentChatLoop(
+    taskId: string,
+    agent: BaseAgent,
+    initialInput?: string
+  ): Promise<{ result: boolean; finalOutput?: string }> {
     try {
       let done = false;
       let output = "Done";
+      let agentFinalOutput: string | undefined;
 
       // Define available commands
       const commands = ["/pause", "/unpause", "/kill", "/detach", "/done"];
@@ -915,6 +940,8 @@ ${reason}
       let finished = false;
       const donePromise = new Promise<string>((resolve) => {
         agent.agentEvents.once(agent.eventTypes.done, (doneMsg) => {
+          // Capture the agent's final output
+          agentFinalOutput = doneMsg || "No response from the AI";
           finished = true;
           resolve("done");
         });
@@ -961,7 +988,7 @@ ${reason}
             break;
           case "/detach":
             console.log("Detached from agent");
-            return true;
+            return { result: true, finalOutput: agentFinalOutput };
           default:
             agent.addPendingUserMessage({
               role: "user",
@@ -987,12 +1014,10 @@ ${reason}
           finalTaskInfo.endTime = Date.now();
         }
       }
-
-      return true;
+      return { result: true, finalOutput: agentFinalOutput };
     } catch (error) {
       console.error("Agent execution failed:", error);
-      this.taskRegistry.delete(taskId);
-      return false;
+      return { result: false, finalOutput: "Error during agent execution" };
     }
   }
 }
