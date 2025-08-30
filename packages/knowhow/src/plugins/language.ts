@@ -2,7 +2,7 @@ import { readFile, fileExists, fileStat } from "../utils";
 import { Language } from "../types";
 import { getConfig, getLanguageConfig } from "../config";
 import { PluginBase, PluginMeta } from "./PluginBase";
-import { Plugin } from "./types";
+import { Plugin, PluginContext } from "./types";
 import { GitHubPlugin } from "./github";
 import { AsanaPlugin } from "./asana";
 import { JiraPlugin } from "./jira";
@@ -16,8 +16,11 @@ export class LanguagePlugin extends PluginBase implements Plugin {
     requires: []
   };
 
-  constructor(private pluginService: PluginService) {
-    super(LanguagePlugin.meta);
+  meta = LanguagePlugin.meta;
+
+  constructor(context: PluginContext) {
+    super(context);
+
   }
 
   async embed(userPrompt: string) {
@@ -73,7 +76,7 @@ export class LanguagePlugin extends PluginBase implements Plugin {
       .map((s) => s.data);
     contexts.push(...textContexts);
 
-    const plugins = this.pluginService.listPlugins();
+    const plugins = this.context.Plugins.listPlugins();
     for (const plugin of plugins) {
       if (config.plugins.includes(plugin)) {
         const matchingSources = sources.filter((s) => s.kind === plugin);
@@ -86,7 +89,7 @@ export class LanguagePlugin extends PluginBase implements Plugin {
           .flat()
           .join("\n");
         console.log("LANGUAGE PLUGIN: Calling plugin", plugin, data);
-        const pluginContext = await this.pluginService.call(plugin, data);
+        const pluginContext = await this.context.Plugins.call(plugin, data);
 
         contexts.push(...pluginContext);
       }

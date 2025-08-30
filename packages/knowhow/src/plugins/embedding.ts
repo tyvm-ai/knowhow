@@ -12,11 +12,13 @@ export class EmbeddingPlugin extends PluginBase {
   static readonly meta: PluginMeta = {
     key: "embeddings",
     name: "Embedding Plugin",
-    requires: []
+    requires: [],
   };
 
-  constructor() {
-    super(EmbeddingPlugin.meta);
+  meta = EmbeddingPlugin.meta;
+
+  constructor(context) {
+    super(context);
   }
 
   async embed() {

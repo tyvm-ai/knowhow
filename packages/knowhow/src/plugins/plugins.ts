@@ -1,5 +1,5 @@
 import glob from "glob";
-import { Plugin } from "./types";
+import { Plugin, PluginContext } from "./types";
 import { VimPlugin } from "./vim";
 import { LanguagePlugin } from "./language";
 import { EmbeddingPlugin } from "./embedding";
@@ -15,19 +15,21 @@ import { UrlPlugin } from "./url";
 export class PluginService {
   private pluginMap = new Map<string, Plugin>();
 
-  constructor() {
+  constructor(context: PluginContext) {
+    context.Plugins = this;
+
     // Register migrated PluginBase plugins
-    this.pluginMap.set("embeddings", new EmbeddingPlugin());
-    this.pluginMap.set("vim", new VimPlugin());
-    this.pluginMap.set("github", new GitHubPlugin());
-    this.pluginMap.set("asana", new AsanaPlugin());
-    this.pluginMap.set("linear", new LinearPlugin());
-    this.pluginMap.set("jira", new JiraPlugin());
-    this.pluginMap.set("notion", new NotionPlugin());
-    this.pluginMap.set("download", new DownloaderPlugin());
-    this.pluginMap.set("figma", new FigmaPlugin());
-    this.pluginMap.set("language", new LanguagePlugin(this));
-    this.pluginMap.set("url", new UrlPlugin());
+    this.pluginMap.set("embeddings", new EmbeddingPlugin(context));
+    this.pluginMap.set("vim", new VimPlugin(context));
+    this.pluginMap.set("github", new GitHubPlugin(context));
+    this.pluginMap.set("asana", new AsanaPlugin(context));
+    this.pluginMap.set("linear", new LinearPlugin(context));
+    this.pluginMap.set("jira", new JiraPlugin(context));
+    this.pluginMap.set("notion", new NotionPlugin(context));
+    this.pluginMap.set("download", new DownloaderPlugin(context));
+    this.pluginMap.set("figma", new FigmaPlugin(context));
+    this.pluginMap.set("language", new LanguagePlugin(context));
+    this.pluginMap.set("url", new UrlPlugin(context));
 
     // Keep legacy plugins for backward compatibility
     // These will be removed once all consumers are updated
@@ -121,5 +123,3 @@ export class PluginService {
     return newPlugin.embed ? newPlugin.embed(userInput) : [];
   }
 }
-
-export const Plugins = new PluginService();

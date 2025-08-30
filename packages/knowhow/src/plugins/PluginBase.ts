@@ -1,11 +1,13 @@
 import { MinimalEmbedding } from "../types";
-import { Plugin, PluginMeta } from "./types";
+import { Plugin, PluginContext, PluginMeta } from "./types";
 
 export abstract class PluginBase implements Plugin {
   /** Manual on/off toggle (default ON) */
   private active = true;
 
-  constructor(public readonly meta: PluginMeta) {}
+  abstract readonly meta: PluginMeta;
+
+  constructor(protected context: PluginContext) {}
 
   /* ------------------------------------------------------------------ */
   /** Public helpers called by PluginService -------------------------- */

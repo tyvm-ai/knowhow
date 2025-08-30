@@ -1,4 +1,7 @@
 import { Embeddable, MinimalEmbedding } from "../types";
+import { AgentService, EventService, ToolsService } from "../services";
+import { AIClient } from "../clients";
+import { PluginService } from "./plugins";
 
 export interface PluginMeta {
   key: string;
@@ -15,4 +18,12 @@ export interface Plugin {
   isEnabled(): boolean;
 
   meta: PluginMeta;
+}
+
+export interface PluginContext {
+  Agents?: AgentService;
+  Events?: EventService;
+  Clients?: AIClient;
+  Tools?: ToolsService;
+  Plugins?: PluginService;
 }
