@@ -1,10 +1,12 @@
 import { getConfig } from "../../config";
-import { ToolsService } from "../../services";
+import { services, ToolsService } from "../../services";
 
 export async function agentCall(agentName: string, userInput: string) {
   return new Promise(async (resolve, reject) => {
     const config = await getConfig();
-    const toolService = this as ToolsService;
+    const toolService = (
+      this instanceof ToolsService ? this : services().Tools
+    ) as ToolsService;
 
     const { Events, Plugins } = toolService.getContext();
 
