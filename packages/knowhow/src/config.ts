@@ -85,6 +85,7 @@ const defaultConfig = {
 
 const defaultLanguage = {
   "knowhow config": {
+    events: [],
     sources: [
       {
         kind: "file",

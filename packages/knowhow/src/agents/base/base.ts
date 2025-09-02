@@ -87,6 +87,12 @@ export abstract class BaseAgent implements IAgent {
     if (!this.events) {
       throw new Error("EventService is required for BaseAgent");
     }
+
+    // Subscribe to "agent:msg" events for dynamic context loading
+    this.events.on("agent:msg", (eventData: any) => {
+      const message = { role: "user", content: JSON.stringify(eventData) } as Message;
+      this.addPendingUserMessage(message);
+    });
   }
 
   setMaxTurns(maxTurns: number | null) {

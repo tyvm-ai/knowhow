@@ -24,9 +24,6 @@ export class EventService extends EventEmitter {
     }
 
     this.blockingHandlers.get(event)!.push({ handler });
-
-    // Also register with the regular EventEmitter for compatibility
-    this.on(event, handler);
   }
 
   /**
@@ -85,7 +82,6 @@ export class EventService extends EventEmitter {
       }
     }
 
-    // Wait for all handlers to complete
     this.emit(event, ...args);
     return results.filter((r) => Boolean(r));
   }

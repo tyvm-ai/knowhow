@@ -57,7 +57,7 @@ export type Config = {
     enabled?: boolean;
     installPath?: string;
     port?: number;
-    logLevel?: 'debug' | 'info' | 'warning' | 'error';
+    logLevel?: "debug" | "info" | "warning" | "error";
     completionTimeout?: number;
   };
 
@@ -122,6 +122,7 @@ export interface IDatasource {
 
 export type Language = {
   [term: string]: {
+    events: string[];
     sources: IDatasource[];
     context?: string;
   };
@@ -248,4 +249,3 @@ export const GoogleImageModels = [
 export const GoogleVideoModels = [Models.google.Veo_2];
 
 export const GoogleEmbeddingModels = [EmbeddingModels.google.Gemini_Embedding];
-

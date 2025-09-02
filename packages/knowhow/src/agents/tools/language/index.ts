@@ -4,7 +4,7 @@ import { IDatasource } from "../../../types";
 
 export async function addLanguageTerm(term: string, sources: IDatasource[]) {
   const language = await getLanguageConfig();
-  language[term] = { sources };
+  language[term] = { events: [], sources };
   await updateLanguageConfig(language);
 }
 
