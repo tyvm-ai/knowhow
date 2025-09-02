@@ -28,13 +28,9 @@ export async function readFile(filePath: string): Promise<string> {
 
   // Emit pre-read blocking event
   if (context.Events) {
-    try {
-      await context.Events.emitBlocking('file:pre-read', {
-        filePath
-      });
-    } catch (error) {
-      throw new Error(`File read blocked by pre-read event handler: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    await context.Events.emitBlocking("file:pre-read", {
+      filePath,
+    });
   }
 
   const exists = await fileExists(filePath);
@@ -54,18 +50,13 @@ export async function readFile(filePath: string): Promise<string> {
   const text = fs.readFileSync(filePath, "utf8");
   const patch = createPatch(filePath, "", text);
 
-  return patch;
-}
   // Emit post-read non-blocking event
   if (context.Events) {
-    try {
-      await context.Events.emitNonBlocking('file:post-read', {
-        filePath,
-        content: text
-      });
-    } catch (error) {
-      // Non-blocking events log errors but continue
-      console.warn(`Post-read event handler error: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    await context.Events.emitNonBlocking("file:post-read", {
+      filePath,
+      content: text,
+    });
   }
 
+  return patch;
+}

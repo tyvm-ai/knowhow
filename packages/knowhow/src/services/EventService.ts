@@ -33,16 +33,21 @@ export class EventService extends EventEmitter {
    * Emit a blocking event - if any blocking handler throws, execution stops
    * @param event The event name
    * @param args Arguments to pass to handlers
-   * @returns Promise that resolves when all handlers complete, or rejects if any blocking handler throws
+   * @returns Promise that resolves with array of handler results when all handlers complete, or rejects if any blocking handler throws
    */
-  async emitBlocking(event: string, ...args: any[]): Promise<void> {
+  async emitBlocking(event: string, ...args: any[]): Promise<any[]> {
+    const results: any[] = [];
+
     const handlers = this.blockingHandlers.get(event) || [];
 
     for (const { handler } of handlers) {
       try {
         const result = handler(...args);
         if (result instanceof Promise) {
-          await result;
+          const awaitedResult = await result;
+          results.push(awaitedResult);
+        } else {
+          results.push(result);
         }
       } catch (error) {
         // If this is a blocking handler and it throws, stop execution
@@ -51,28 +56,38 @@ export class EventService extends EventEmitter {
     }
 
     this.emit(event, ...args);
+    return results.filter((r) => Boolean(r));
   }
 
   /**
    * Emit a non-blocking event - all handlers run, errors are logged but don't stop execution
    * @param event The event name
    * @param args Arguments to pass to handlers
+   * @returns Promise that resolves with array of handler results when all handlers complete
    */
-  emitNonBlocking(event: string, ...args: any[]): void {
+  async emitNonBlocking(event: string, ...args: any[]): Promise<any[]> {
     const handlers = this.blockingHandlers.get(event) || [];
-
-    handlers.forEach(async ({ handler }) => {
+    const results: any[] = [];
+    for (const { handler } of handlers) {
       try {
         const result = handler(...args);
         if (result instanceof Promise) {
-          await result;
+          const awaitedResult = await result;
+          results.push(awaitedResult);
+        } else {
+          results.push(result);
         }
       } catch (error) {
-        console.warn(`Event handler for '${event}' threw an error:`, error);
+        console.error(
+          `Non-blocking handler error for event '${event}':`,
+          error
+        );
       }
-    });
+    }
 
+    // Wait for all handlers to complete
     this.emit(event, ...args);
+    return results.filter((r) => Boolean(r));
   }
 
   registerAgent(agent: IAgent): void {

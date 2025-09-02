@@ -1,8 +1,5 @@
 import * as fs from "fs";
-import { embed } from "../../";
-import { lintFile } from ".";
-import { ToolsService } from "../..";
-import { services } from "../../services";
+import { services, ToolsService } from "../../services";
 
 // Tool to write the full contents of a file
 export function writeFile(filePath: string, content: string): string {
@@ -21,7 +18,9 @@ export async function writeFileChunk(
   isDone: boolean
 ) {
   // Get context from bound ToolsService
-  const toolService = (this instanceof ToolsService ? this : services().Tools) as ToolsService;
+  const toolService = (
+    this instanceof ToolsService ? this : services().Tools
+  ) as ToolsService;
   const context = toolService.getContext();
 
   if (!filePath || content === undefined) {
@@ -34,7 +33,7 @@ export async function writeFileChunk(
   let originalContent = "";
   try {
     if (fs.existsSync(filePath)) {
-      originalContent = fs.readFileSync(filePath, 'utf8');
+      originalContent = fs.readFileSync(filePath, "utf8");
     }
   } catch (error) {
     // If we can't read the original file, continue with empty string
@@ -43,60 +42,16 @@ export async function writeFileChunk(
 
   // Emit pre-edit blocking event
   if (context.Events) {
-      await context.Events.emitBlocking('file:pre-edit', {
-        filePath,
-        operation: isContinuing ? 'append' : 'write',
-        content,
-        originalContent
-      });
-    } catch (error) {
-      throw new Error(`File operation blocked by pre-edit event handler: ${error instanceof Error ? error.message : String(error)}`);
-    }
+    await context.Events.emitBlocking("file:pre-edit", {
+      filePath,
+      operation: isContinuing ? "append" : "write",
+      content,
+      originalContent,
+    });
   }
 
   if (!isContinuing) {
     fs.writeFileSync(filePath, content);
-    
-    // Emit post-edit non-blocking event
-    if (context.Events) {
-      try {
-        await context.Events.emitNonBlocking('file:post-edit', {
-          filePath,
-          operation: 'write',
-          content,
-          originalContent,
-          updatedContent: content
-        });
-      } catch (error) {
-        // Non-blocking events log errors but continue
-        console.warn(`Post-edit event handler error: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-    
-    // Read updated content for event emission
-    let updatedContent = "";
-    try {
-      updatedContent = fs.readFileSync(filePath, 'utf8');
-    } catch (error) {
-      // If we can't read the updated file, use original + appended content as fallback
-      updatedContent = originalContent + content;
-    }
-    
-    // Emit post-edit non-blocking event
-    if (context.Events) {
-      try {
-        await context.Events.emitNonBlocking('file:post-edit', {
-          filePath,
-          operation: 'append',
-          content,
-          originalContent,
-          updatedContent
-        });
-      } catch (error) {
-        // Non-blocking events log errors but continue
-        console.warn(`Post-edit event handler error: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
   }
 
   if (isContinuing) {
@@ -116,18 +71,32 @@ export async function writeFileChunk(
   if (isDone) {
     message = " File write complete. Use readFile to verify";
 
-    let lintResult = "";
-    try {
-      lintResult = await lintFile(filePath);
-      message += `${
-        lintResult ? "\nLinting Result:\n" + lintResult : ""
-      }`.trim();
-    } catch (lintError: any) {
-      console.warn("Linting failed after patching:", lintError);
-      lintResult = `Linting after patch failed: ${lintError.message}`;
+    // Emit post-edit blocking event to get event results
+    let eventResults: any[] = [];
+    if (context.Events) {
+      // Read updated content for event emission
+      const updatedContent = fs.readFileSync(filePath, "utf8");
+
+      eventResults = await context.Events.emitBlocking("file:post-edit", {
+        filePath,
+        operation: "write",
+        content,
+        originalContent,
+        updatedContent,
+      });
     }
 
-    await embed();
+    // Format event results
+    let eventResultsText = "";
+    if (eventResults && eventResults.length > 0) {
+      if (eventResults.length > 0) {
+        eventResultsText =
+          "\n\nAdditional Information:\n" +
+          JSON.stringify(eventResults, null, 2);
+      }
+    }
+
+    message += eventResultsText;
   }
 
   return message;

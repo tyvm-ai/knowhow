@@ -9,10 +9,7 @@ import {
   mkdir,
   splitByNewLines,
 } from "../../utils"; // Assuming these utils exist
-import { lintFile } from "./lintFile"; // Assuming this exists
-import { embed } from "../../index";
-import { ToolsService } from "../base/ToolsService";
-import { services } from "../../services";
+import { services, ToolsService } from "../../services";
 
 // --- Utility Functions (Keep or Simplify) ---
 
@@ -567,17 +564,12 @@ export async function patchFile(
 
     // Emit pre-edit blocking event
     if (context.Events) {
-      try {
-        await context.Events.emitBlocking('file:pre-edit', {
-          filePath,
-          operation: 'patch',
-          patch,
-          originalContent
-        });
-      } catch (error) {
-        console.error('Pre-edit event handler blocked file operation:', error);
-        return `File operation blocked by pre-edit event handler: ${error instanceof Error ? error.message : String(error)}`;
-      }
+      await context.Events.emitBlocking("file:pre-edit", {
+        filePath,
+        operation: "patch",
+        patch,
+        originalContent,
+      });
     }
 
     let updatedContent = applyPatch(originalContent, patch);
@@ -653,37 +645,31 @@ export async function patchFile(
     // Write the updated content
     await writeFile(filePath, updatedContent as string); // Type assertion needed as applyPatch might return boolean
 
-    // Emit post-edit non-blocking event
+    // Emit post-edit blocking event to get event results
+    let eventResults: any[] = [];
     if (context.Events) {
-      try {
-        await context.Events.emitNonBlocking('file:post-edit', {
-          filePath,
-          operation: 'patch',
-          patch: appliedPatch,
-          originalContent,
-          updatedContent: updatedContent as string
-        });
-      } catch (error) {
-        // Non-blocking events just log errors and continue
-        console.warn('Post-edit event handler error (non-blocking):', error);
+      eventResults = await context.Events.emitBlocking("file:post-edit", {
+        filePath,
+        operation: "patch",
+        patch: appliedPatch,
+        originalContent,
+        updatedContent: updatedContent as string,
+      });
+    }
+
+    // Format event results
+    let eventResultsText = "";
+    if (eventResults && eventResults.length > 0) {
+      if (eventResults.length > 0) {
+        eventResultsText =
+          "\n\nAdditional Information:\n" +
+          JSON.stringify(eventResults, null, 2);
       }
     }
 
-    // Optional: Lint the result
-    let lintResult = "";
-    try {
-      lintResult = await lintFile(filePath);
-    } catch (lintError: any) {
-      console.warn("Linting failed after patching:", lintError);
-      lintResult = `Linting after patch failed: ${lintError.message}`;
-    }
-
-    await embed();
-
     return `Patch applied successfully.${
       filePath ? ` Use readFile on ${filePath} to verify changes.` : ""
-    }
-${lintResult ? "\nLinting Result:\n" + lintResult : ""}`.trim();
+    }${eventResultsText}`.trim();
   } catch (e: any) {
     console.error(`Error in patchFile function for ${filePath}:`, e);
     // Save error only if it's not a controlled failure path that already saved

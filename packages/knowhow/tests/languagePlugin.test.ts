@@ -6,14 +6,8 @@ jest.mock("../src/utils", () => ({
 
 jest.mock("../src/config", () => ({
   getConfig: jest.fn(),
+  getConfigSync: jest.fn(),
   getLanguageConfig: jest.fn(),
-}));
-
-jest.mock("../src/plugins/plugins", () => ({
-  Plugins: {
-    call: jest.fn().mockReturnValue("test"),
-    listPlugins: jest.fn().mockReturnValue(["github", "asana"]),
-  },
 }));
 
 import { LanguagePlugin } from "../src/plugins/language";

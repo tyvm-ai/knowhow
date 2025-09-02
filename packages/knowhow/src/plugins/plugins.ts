@@ -1,6 +1,7 @@
 import glob from "glob";
 import { Plugin, PluginContext } from "./types";
 import { VimPlugin } from "./vim";
+import { LinterPlugin } from "./LinterPlugin";
 import { LanguagePlugin } from "./language";
 import { EmbeddingPlugin } from "./embedding";
 import { GitHubPlugin } from "./github";
@@ -21,6 +22,7 @@ export class PluginService {
     // Register migrated PluginBase plugins
     this.pluginMap.set("embeddings", new EmbeddingPlugin(context));
     this.pluginMap.set("vim", new VimPlugin(context));
+    this.pluginMap.set("linter", new LinterPlugin(context));
     this.pluginMap.set("github", new GitHubPlugin(context));
     this.pluginMap.set("asana", new AsanaPlugin(context));
     this.pluginMap.set("linear", new LinearPlugin(context));

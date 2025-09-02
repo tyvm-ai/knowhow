@@ -7,6 +7,7 @@ import {
 } from "../embeddings";
 
 import { PluginBase, PluginMeta } from "./PluginBase";
+import { embed as embedFunction } from "../index";
 
 export class EmbeddingPlugin extends PluginBase {
   static readonly meta: PluginMeta = {
@@ -19,10 +20,27 @@ export class EmbeddingPlugin extends PluginBase {
 
   constructor(context) {
     super(context);
+    
+    // Subscribe to file:post-edit events
+    this.context.Events.on("file:post-edit", this.handleFilePostEdit.bind(this));
   }
 
   async embed() {
     return [];
+  }
+
+  /**
+   * Handle file:post-edit events by triggering embedding
+   * @param payload The event payload containing filePath
+   * @returns Status message about embedding operation
+   */
+  async handleFilePostEdit(payload: { filePath: string }): Promise<string> {
+    try {
+      await embedFunction();
+      return "Embedding completed successfully";
+    } catch (error) {
+      return `Embedding failed: ${error.message}`;
+    }
   }
 
   async call(userPrompt: string): Promise<string> {

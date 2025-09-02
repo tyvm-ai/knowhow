@@ -29,7 +29,7 @@ export class GenericOpenAiClient implements GenericClient {
     this.apiKey = apiKey;
     this.client = new OpenAI({
       apiKey,
-      ...(config.openaiBaseUrl && { baseURL: config.openaiBaseUrl }),
+      ...(config?.openaiBaseUrl && { baseURL: config.openaiBaseUrl }),
     });
   }
 
