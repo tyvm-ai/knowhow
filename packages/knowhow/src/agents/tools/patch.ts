@@ -11,6 +11,8 @@ import {
 } from "../../utils"; // Assuming these utils exist
 import { lintFile } from "./lintFile"; // Assuming this exists
 import { embed } from "../../index";
+import { ToolsService } from "../base/ToolsService";
+import { services } from "../../services";
 
 // --- Utility Functions (Keep or Simplify) ---
 
@@ -541,6 +543,13 @@ export async function patchFile(
   filePath: string,
   patch: string
 ): Promise<string> {
+  // Get context from bound ToolsService
+  const toolService = (
+    this instanceof ToolsService ? this : services().Tools
+  ) as ToolsService;
+
+  const context = toolService.getContext();
+
   let originalContent = "";
   try {
     if (!fs.existsSync(filePath)) {
@@ -554,6 +563,21 @@ export async function patchFile(
       // fs.writeFileSync(filePath, ""); // Don't create it yet, let applyPatch handle it from /dev/null
     } else {
       originalContent = await readFile(filePath, "utf8"); // Use async read
+    }
+
+    // Emit pre-edit blocking event
+    if (context.Events) {
+      try {
+        await context.Events.emitBlocking('file:pre-edit', {
+          filePath,
+          operation: 'patch',
+          patch,
+          originalContent
+        });
+      } catch (error) {
+        console.error('Pre-edit event handler blocked file operation:', error);
+        return `File operation blocked by pre-edit event handler: ${error instanceof Error ? error.message : String(error)}`;
+      }
     }
 
     let updatedContent = applyPatch(originalContent, patch);
@@ -628,6 +652,22 @@ export async function patchFile(
 
     // Write the updated content
     await writeFile(filePath, updatedContent as string); // Type assertion needed as applyPatch might return boolean
+
+    // Emit post-edit non-blocking event
+    if (context.Events) {
+      try {
+        await context.Events.emitNonBlocking('file:post-edit', {
+          filePath,
+          operation: 'patch',
+          patch: appliedPatch,
+          originalContent,
+          updatedContent: updatedContent as string
+        });
+      } catch (error) {
+        // Non-blocking events just log errors and continue
+        console.warn('Post-edit event handler error (non-blocking):', error);
+      }
+    }
 
     // Optional: Lint the result
     let lintResult = "";

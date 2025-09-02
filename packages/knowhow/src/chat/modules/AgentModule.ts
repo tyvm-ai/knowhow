@@ -827,8 +827,8 @@ ${reason}
       .slice(0, 3);
 
     const wordPart = words.join("-") || "task";
-    const timestamp = Date.now().toString().slice(-6);
-    return `${wordPart}-${timestamp}`;
+    const epochSeconds = Math.floor(Date.now() / 1000);
+    return `${epochSeconds}-${wordPart}`;
   }
 
   /**

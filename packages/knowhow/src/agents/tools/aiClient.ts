@@ -9,7 +9,6 @@ import {
 import { services } from "../../services";
 
 export function createAiCompletion(
-  this: ToolsService,
   provider: string,
   options: CompletionOptions
 ): Promise<CompletionResponse> {
@@ -29,7 +28,6 @@ export function createAiCompletion(
 }
 
 export function createEmbedding(
-  this: ToolsService,
   provider: string,
   options: EmbeddingOptions
 ): Promise<EmbeddingResponse> {
@@ -49,7 +47,6 @@ export function createEmbedding(
 }
 
 export async function listModelsForProvider(
-  this: ToolsService,
   provider: string
 ): Promise<string[]> {
   // Get context from bound ToolsService
@@ -68,7 +65,6 @@ export async function listModelsForProvider(
 }
 
 export async function listAllModels(
-  this: ToolsService
 ): Promise<Record<string, string[]>> {
   // Get context from bound ToolsService
   const toolService = (
@@ -85,7 +81,7 @@ export async function listAllModels(
   return contextClients.listAllModels();
 }
 
-export async function listAllProviders(this: ToolsService): Promise<string[]> {
+export async function listAllProviders(): Promise<string[]> {
   // Get context from bound ToolsService
   const toolService = (
     this instanceof ToolsService ? this : services().Tools
@@ -101,9 +97,7 @@ export async function listAllProviders(this: ToolsService): Promise<string[]> {
   return contextClients.listAllProviders();
 }
 
-export async function listAllCompletionModels(
-  this: ToolsService
-): Promise<Record<string, string[]>> {
+export async function listAllCompletionModels(): Promise<Record<string, string[]>> {
   // Get context from bound ToolsService
   const toolService = (
     this instanceof ToolsService ? this : services().Tools
@@ -119,9 +113,7 @@ export async function listAllCompletionModels(
   return contextClients.listAllCompletionModels();
 }
 
-export async function listAllEmbeddingModels(
-  this: ToolsService
-): Promise<Record<string, string[]>> {
+export async function listAllEmbeddingModels(): Promise<Record<string, string[]>> {
   // Get context from bound ToolsService
   const toolService = (
     this instanceof ToolsService ? this : services().Tools

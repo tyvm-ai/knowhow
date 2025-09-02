@@ -1,5 +1,5 @@
 import { services } from "../../services";
-import { ToolsService } from "src/services";
+import { ToolsService } from "../../services";
 export async function callPlugin(pluginName: string, userInput: string) {
   // Get context from bound ToolsService
   const toolService = (

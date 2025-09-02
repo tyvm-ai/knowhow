@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import { fileExists } from "../../utils";
+import { services, ToolsService } from "../../services";
 import { getConfiguredEmbeddings } from "../../embeddings";
 import { fileSearch } from "./fileSearch";
 import { createPatch } from "diff";
@@ -18,6 +19,24 @@ import { createPatch } from "diff";
  */
 
 export async function readFile(filePath: string): Promise<string> {
+  // Get context from bound ToolsService
+  const toolService = (
+    this instanceof ToolsService ? this : services().Tools
+  ) as ToolsService;
+
+  const context = toolService.getContext();
+
+  // Emit pre-read blocking event
+  if (context.Events) {
+    try {
+      await context.Events.emitBlocking('file:pre-read', {
+        filePath
+      });
+    } catch (error) {
+      throw new Error(`File read blocked by pre-read event handler: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
   const exists = await fileExists(filePath);
 
   if (!exists) {
@@ -37,3 +56,16 @@ export async function readFile(filePath: string): Promise<string> {
 
   return patch;
 }
+  // Emit post-read non-blocking event
+  if (context.Events) {
+    try {
+      await context.Events.emitNonBlocking('file:post-read', {
+        filePath,
+        content: text
+      });
+    } catch (error) {
+      // Non-blocking events log errors but continue
+      console.warn(`Post-read event handler error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+

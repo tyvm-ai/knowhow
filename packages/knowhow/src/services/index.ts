@@ -8,7 +8,7 @@ import { KnowhowSimpleClient } from "./KnowhowClient";
 import { McpService } from "./Mcp";
 import { S3Service } from "./S3";
 import { ToolsService } from "./Tools";
-import { PluginService } from "src/plugins/plugins";
+import { PluginService } from "../plugins/plugins";
 
 export * from "./AgentService";
 export * from "./EventService";
