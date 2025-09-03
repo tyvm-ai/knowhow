@@ -66,7 +66,7 @@ export class GitPlugin extends PluginBase {
         );
 
         try {
-          this.gitCommand("add .knowhow-tracking");
+          this.gitCommand("add -A");
           this.gitCommand('commit -m "Initial commit for agent tracking"');
         } catch (error) {
           // If we can't commit the tracking file, create an empty commit
