@@ -12,6 +12,7 @@ import { NotionPlugin } from "./notion";
 import { DownloaderPlugin } from "./downloader/plugin";
 import { FigmaPlugin } from "./figma";
 import { UrlPlugin } from "./url";
+import { GitPlugin } from "./GitPlugin";
 
 export class PluginService {
   private pluginMap = new Map<string, Plugin>();
@@ -32,6 +33,7 @@ export class PluginService {
     this.pluginMap.set("figma", new FigmaPlugin(context));
     this.pluginMap.set("language", new LanguagePlugin(context));
     this.pluginMap.set("url", new UrlPlugin(context));
+    this.pluginMap.set("git", new GitPlugin(context));
 
     // Keep legacy plugins for backward compatibility
     // These will be removed once all consumers are updated
@@ -80,6 +82,14 @@ export class PluginService {
 
   registerPlugin(name: string, plugin: Plugin) {
     this.pluginMap.set(name, plugin);
+  }
+
+  getPlugin(name: string): Plugin | undefined {
+    return this.pluginMap.get(name);
+  }
+
+  getPlugins(): Plugin[] {
+    return Array.from(this.pluginMap.values());
   }
 
   async callMany(plugins: string[], userInput?: string) {

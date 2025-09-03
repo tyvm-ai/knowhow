@@ -90,7 +90,10 @@ export abstract class BaseAgent implements IAgent {
 
     // Subscribe to "agent:msg" events for dynamic context loading
     this.events.on("agent:msg", (eventData: any) => {
-      const message = { role: "user", content: JSON.stringify(eventData) } as Message;
+      const message = {
+        role: "user",
+        content: JSON.stringify(eventData),
+      } as Message;
       this.addPendingUserMessage(message);
     });
   }
@@ -107,7 +110,7 @@ export abstract class BaseAgent implements IAgent {
     this.maxRunTimeMs = maxRunTimeMs;
   }
 
-  newTask() {
+  newTask(taskId?: string) {
     this.currentThread = 0;
     this.threads = [];
     this.taskBreakdown = "";
@@ -116,6 +119,12 @@ export abstract class BaseAgent implements IAgent {
     this.status = "in_progress";
     this.turnCount = 0;
     this.startTimeMs = Date.now();
+
+    // Emit event for plugin integration
+    const id = taskId || this.startTimeMs.toString();
+    this.events.emit("agent:newTask", {
+      taskId: id,
+    });
   }
 
   register() {

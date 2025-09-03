@@ -678,7 +678,7 @@ ${reason}
       console.log(Marked.parse(`**Task:** ${input}`));
 
       // Initialize new task
-      await agent.newTask();
+      await agent.newTask(taskId);
 
       if (options.model) {
         console.log("Setting model:", options.model);
