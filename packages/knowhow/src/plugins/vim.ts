@@ -1,4 +1,4 @@
-import glob from "glob";
+import { globSync } from "glob";
 import { readFile, fileExists, fileStat } from "../utils";
 import { PluginBase, PluginMeta } from "./PluginBase";
 import { PluginContext } from "./types";
@@ -21,7 +21,7 @@ export class VimPlugin extends PluginBase {
   }
 
   async getVimFiles() {
-    const vimFiles = await glob.sync("./**/*.swp", { dot: true });
+    const vimFiles = globSync("./**/*.swp", { dot: true });
     return vimFiles;
   }
 

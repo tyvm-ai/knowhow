@@ -135,6 +135,7 @@ export class GitPlugin extends PluginBase {
     // Listen for agent newTask events to create new branches
     this.eventService.on("agent:newTask", async (data: any) => {
       if (this.isEnabled()) {
+        await this.ensureCleanState();
         await this.initializeKnowhowRepo();
         await this.handleNewTask(data);
       }
@@ -146,6 +147,70 @@ export class GitPlugin extends PluginBase {
         await this.handleTaskComplete(data);
       }
     });
+  }
+
+  /**
+   * Ensures the .knowhow/.git repository is in a clean state before starting new tasks.
+   * This method commits any uncommitted changes and syncs the main branch with the current codebase state.
+   */
+  private async ensureCleanState(): Promise<void> {
+    try {
+      // Initialize the repo if it doesn't exist
+      if (!fs.existsSync(this.knowhowGitPath)) {
+        this.initializeKnowhowRepo();
+        return;
+      }
+
+      // Get the current HEAD commit hash from the actual repo (if it exists)
+      let actualRepoHash: string | null = null;
+      try {
+        actualRepoHash = execSync("git rev-parse --short HEAD", {
+          cwd: this.projectRoot,
+          stdio: "pipe"
+        }).toString().trim();
+      } catch {
+        // No actual git repo or no commits
+        actualRepoHash = null;
+      }
+
+      // Switch to main branch or create it
+      try {
+        this.gitCommand("checkout main");
+      } catch {
+        try {
+          this.gitCommand("checkout -b main");
+        } catch (error) {
+          console.error("Failed to create or switch to main branch:", error);
+          return;
+        }
+      }
+      this.currentBranch = "main";
+
+      // Check if there are uncommitted changes in the .knowhow repo
+      let hasChanges = false;
+      try {
+        this.gitCommand("diff-index --quiet HEAD --");
+      } catch {
+        hasChanges = true;
+      }
+
+      // If there are uncommitted changes, commit them
+      if (hasChanges) {
+        try {
+          this.gitCommand("add -A");
+          const syncMessage = actualRepoHash 
+            ? `sync ${actualRepoHash}`
+            : `sync ${new Date().toISOString()}`;
+          this.gitCommand(`commit -m "${syncMessage}"`);
+          console.log(`Committed uncommitted changes to main: ${syncMessage}`);
+        } catch (error) {
+          console.error("Failed to commit uncommitted changes:", error);
+        }
+      }
+
+    } catch (error) {
+      console.error("Failed to ensure clean state:", error);
+    }
   }
 
   async setBranch(branchName: string): Promise<void> {

@@ -1,5 +1,4 @@
 import "source-map-support/register";
-import * as glob from "glob";
 import { createPatch } from "diff";
 import * as fs from "fs";
 import { execAsync, readFile, writeFile } from "../../utils";

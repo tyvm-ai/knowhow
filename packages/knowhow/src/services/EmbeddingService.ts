@@ -1,5 +1,5 @@
 import * as path from "path";
-import glob from "glob";
+import { globSync } from "glob";
 
 import {
   Config,
@@ -111,7 +111,7 @@ export class EmbeddingService {
     }
 
     console.log("Embedding", source.input, "to", source.output);
-    let files = await glob.sync(source.input, { ignore: ignorePattern });
+    let files = await globSync(source.input, { ignore: ignorePattern });
 
     if (source.kind && files.length === 0) {
       files = [source.input];

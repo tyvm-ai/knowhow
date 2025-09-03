@@ -10,7 +10,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 import { promisify } from "util";
-import glob from "glob";
+import { globSync } from "glob";
 
 import { Prompts } from "./prompts";
 import {
@@ -71,7 +71,7 @@ export async function embed() {
 }
 
 export async function purge(globPath: string) {
-  const files = glob.sync(globPath);
+  const files = globSync(globPath);
   const embeddings = await getConfiguredEmbeddingMap();
   const config = await getConfig();
   const chunkSizes = config.embedSources.reduce((acc, source) => {
@@ -151,7 +151,7 @@ export async function generate(): Promise<void> {
   for (const source of config.sources) {
     console.log("Generating", source.input, "to", source.output);
     if (source.kind === "file" || !source.kind) {
-      const files = glob.sync(source.input);
+      const files = globSync(source.input);
       const prompt = await loadPrompt(source.prompt);
 
       if (source.output.endsWith("/")) {
@@ -197,7 +197,7 @@ async function handleAllKindsGeneration(source: GenerationSource) {
 
 async function handleFileKindGeneration(source: GenerationSource) {
   const prompt = await loadPrompt(source.prompt);
-  const files = glob.sync(source.input);
+  const files = globSync(source.input);
   console.log("Analyzing files: ", files);
 
   if (source.output.endsWith("/")) {

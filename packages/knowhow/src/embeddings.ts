@@ -1,4 +1,4 @@
-import glob from "glob";
+import { globSync } from "glob";
 import * as path from "path";
 import { getConfig, loadPrompt } from "./config";
 import {
@@ -91,7 +91,7 @@ export async function detectDeletedEmbeddingFiles(
   if (source.kind !== "file") {
     return;
   }
-  const inputs = (await glob.sync(source.input, {
+  const inputs = (await globSync(source.input, {
     ignore: ignorePattern,
   })) as string[];
 
@@ -128,7 +128,7 @@ export async function embedSource(
 
   // Don't glob a paragraph or some other kind of input
   if (kind === "file") {
-    inputs = await glob.sync(source.input, { ignore: ignorePattern });
+    inputs = await globSync(source.input, { ignore: ignorePattern });
   }
 
   // It wasn't a file glob, so we need to loop through input

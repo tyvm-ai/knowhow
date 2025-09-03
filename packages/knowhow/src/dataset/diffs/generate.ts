@@ -1,5 +1,5 @@
 import "source-map-support/register";
-import * as glob from "glob";
+import { globSync } from "glob";
 import { createPatch } from "diff";
 import * as fs from "fs";
 import { execAsync } from "../../utils";
@@ -7,7 +7,7 @@ import { summarizeTexts } from "../../ai";
 
 async function generateDataset() {
   // Define the path pattern for files to include in the embeddings
-  const files = glob.sync("./**/*.ts", {
+  const files = globSync("./**/*.ts", {
     ignore: ["./node_modules/**", "./dist/**", "./.git/**"],
   });
 
