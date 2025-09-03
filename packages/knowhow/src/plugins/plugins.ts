@@ -1,4 +1,3 @@
-import glob from "glob";
 import { Plugin, PluginContext } from "./types";
 import { VimPlugin } from "./vim";
 import { LinterPlugin } from "./LinterPlugin";
