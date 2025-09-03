@@ -30,27 +30,14 @@ import * as utils from "../src/utils";
 import { getConfig, getLanguageConfig } from "../src/config";
 import { PluginService } from "../src/plugins/plugins";
 
+import { minimatch } from "minimatch";
 const mockedConfig = getConfig as jest.MockedFunction<typeof getConfig>;
 const mockedLanguageConfig = getLanguageConfig as jest.MockedFunction<
   typeof getLanguageConfig
 >;
-// Test the glob pattern matching function
-function matchGlobPattern(pattern: string, text: string): boolean {
-  // If no wildcards, use string contains matching for backward compatibility
-  if (!pattern.includes("*") && !pattern.includes("?")) {
-    return text.toLowerCase().includes(pattern.toLowerCase());
-  }
 
-  // Convert glob pattern to regex
-  const regexPattern = pattern
-    .replace(/\*\*/g, ".*") // ** matches any characters including /
-    .replace(/\*/g, "[^/]*") // * matches any characters except /
-    .replace(/\?/g, ".") // ? matches single character
-    .replace(/\./g, "\\."); // Escape literal dots
-
-  const regex = new RegExp(`^${regexPattern}$`, "i");
-  return regex.test(text);
-}
+// Use minimatch for consistent pattern matching with the plugin
+const matchGlobPattern = (pattern: string, text: string) => minimatch(text, pattern);
 
 describe("matchGlobPattern", () => {
   it("should match exact patterns", () => {
@@ -58,9 +45,9 @@ describe("matchGlobPattern", () => {
   });
   
   it("should match wildcard patterns", () => {
-    expect(matchGlobPattern("*.ts", "Button.ts")).toBe(true);
-    expect(matchGlobPattern("src/**/*.ts", "src/components/Button.ts")).toBe(true);
-    expect(matchGlobPattern("src/*", "src/components")).toBe(true);
+    expect(matchGlobPattern("**/*.ts", "Button.ts")).toBe(true);
+    expect(matchGlobPattern("**/*.ts", "src/components/Button.ts")).toBe(true);
+    expect(matchGlobPattern("src/**", "src/components")).toBe(true);
   });
 });
 
@@ -126,10 +113,8 @@ describe("LanguagePlugin", () => {
       mockEventService = {
         on: jest.fn((event: string, handler: Function) => {
           eventHandlers.set(event, handler);
-          console.log(`DEBUG: Registered handler for ${event}`);
         }),
         emit: jest.fn((event: string, data: any) => {
-          console.log(`DEBUG: mockEventService.emit called with ${event}`);
           return true;
         }),
       };
@@ -159,20 +144,14 @@ describe("LanguagePlugin", () => {
       // Wait for async setupEventHandlers to complete
       await new Promise(resolve => setTimeout(resolve, 0));
 
-      console.log("DEBUG: About to trigger file:post-edit event");
-      console.log("DEBUG: Event handler exists:", eventHandlers.has("file:post-edit"));
-      console.log("DEBUG: Handler type:", typeof eventHandlers.get("file:post-edit"));
-      console.log("DEBUG: About to trigger file:post-edit event for multiple patterns");
-      console.log("DEBUG: Event handler exists:", eventHandlers.has("file:post-edit"));
-      console.log("DEBUG: Handler type:", typeof eventHandlers.get("file:post-edit"));
       expect(mockEventService.on).toHaveBeenCalledWith("file:post-edit", expect.any(Function));
       expect(mockEventService.on).toHaveBeenCalledWith("file:create", expect.any(Function));
     });
 
-    test.only("should handle file:post-edit event and emit agent:msg when file pattern matches", async () => {
+    test("should handle file:post-edit event and emit agent:msg when file pattern matches", async () => {
       mockedConfig.mockResolvedValue({ plugins: ["github"] } as Config);
       mockedLanguageConfig.mockResolvedValue({
-        "*.ts": {
+        "**/*.ts": {
           events: ["file:post-edit"],
           sources: [
             { kind: "file", data: ["src/types.ts"] },
@@ -186,16 +165,10 @@ describe("LanguagePlugin", () => {
         Plugins: mockPluginService,
       } as any);
 
-      console.log("DEBUG: Plugin initialized successfully");
       // Wait for async setupEventHandlers to complete
       await new Promise(resolve => setTimeout(resolve, 0));
 
       // Simulate file:post-edit event
-      console.log("DEBUG: About to get event handler");
-      console.log("DEBUG: About to call event handler");
-      console.log("DEBUG: Available event handlers:", Array.from(eventHandlers.keys()));
-      console.log("DEBUG: mockEventService.on call count:", mockEventService.on.mock.calls.length);
-
       const fileEditHandler = eventHandlers.get("file:post-edit");
       expect(fileEditHandler).toBeDefined();
 
@@ -220,7 +193,7 @@ describe("LanguagePlugin", () => {
       const eventData = JSON.parse(emitCall[1]);
       expect(eventData.type).toBe("language_context_trigger");
       expect(eventData.filePath).toBe("src/components/Button.ts");
-      expect(eventData.matchingTerms).toEqual(["*.ts"]);
+      expect(eventData.matchingTerms).toEqual(["**/*.ts"]);
       expect(eventData.eventType).toBe("file:post-edit");
       expect(eventData.resolvedSources).toBeDefined();
     });
@@ -281,7 +254,8 @@ describe("LanguagePlugin", () => {
         call => call[0] === "agent:msg"
       );
       const eventData = JSON.parse(emitCall![1]);
-      expect(eventData.matchingTerms).toContain("*.ts");
+      // With minimatch, *.ts doesn't match src/components/Button.ts (needs **/*.ts)
+      // Only src/** pattern matches src/components/Button.ts
       expect(eventData.matchingTerms).toContain("src/**");
     });
 

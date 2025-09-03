@@ -1,4 +1,5 @@
 import { readFile, fileExists, fileStat } from "../utils";
+import { minimatch } from "minimatch";
 import { EventService } from "../services/EventService";
 import { Language } from "../types";
 import { getConfig, getLanguageConfig } from "../config";
@@ -9,26 +10,6 @@ import { AsanaPlugin } from "./asana";
 import { JiraPlugin } from "./jira";
 import { LinearPlugin } from "./linear";
 import { PluginService } from "./plugins";
-
-/**
- * Simple glob pattern matcher supporting * and ** wildcards
- */
-function matchGlobPattern(pattern: string, text: string): boolean {
-  // If no wildcards, use string contains matching for backward compatibility
-  if (!pattern.includes("*") && !pattern.includes("?")) {
-    return text.toLowerCase().includes(pattern.toLowerCase());
-  }
-
-  // Convert glob pattern to regex
-  const regexPattern = pattern
-    .replace(/\*\*/g, ".*") // ** matches any characters including /
-    .replace(/\*/g, "[^/]*") // * matches any characters except /
-    .replace(/\?/g, ".") // ? matches single character
-    .replace(/\./g, "\\."); // Escape literal dots
-
-  const regex = new RegExp(`^${regexPattern}$`, "i");
-  return regex.test(text);
-}
 
 /**
  * Language Plugin with event-driven context loading
@@ -65,18 +46,11 @@ export class LanguagePlugin extends PluginBase implements Plugin {
       });
 
       // Register handlers for each event
-      console.log("LANGUAGE PLUGIN: Handler function executing");
       allEvents.forEach((eventType) => {
         this.eventService.on(eventType, async (eventData) => {
           await this.handleFileEvent(eventType, eventData);
         });
       });
-
-      console.log(
-        `LANGUAGE PLUGIN: Registered handlers for events: ${Array.from(
-          allEvents
-        ).join(", ")}`
-      );
     } catch (error) {
       console.error("LANGUAGE PLUGIN: Error setting up event handlers:", error);
     }
@@ -109,7 +83,6 @@ export class LanguagePlugin extends PluginBase implements Plugin {
           return { filePath, content: `File ${filePath} does not exist` };
         }
         const content = (await readFile(filePath, "utf8")).toString();
-        console.log("LANGUAGE PLUGIN: Read file", filePath);
         return { filePath, content };
       })
     );
@@ -134,7 +107,6 @@ export class LanguagePlugin extends PluginBase implements Plugin {
           .map((s) => s.data)
           .flat()
           .join("\n");
-        console.log("LANGUAGE PLUGIN: Calling plugin", plugin, data);
         const pluginContext = await this.context.Plugins.call(plugin, data);
 
         contexts.push(...pluginContext);
@@ -149,14 +121,9 @@ export class LanguagePlugin extends PluginBase implements Plugin {
    */
   private async handleFileEvent(eventType: string, eventData: any) {
     try {
-      console.log("LANGUAGE PLUGIN: handleFileEvent called with:", {
-        eventType,
-        eventData,
-      });
       const languageConfig = await getLanguageConfig();
       const filePath = eventData?.filePath || eventData?.path;
 
-      console.log({ languageConfig, filePath });
 
       if (!filePath) {
         return;
@@ -169,31 +136,21 @@ export class LanguagePlugin extends PluginBase implements Plugin {
           if (!config.events || !config.events.includes(eventType)) {
             return false;
           }
-
+          
           // Check if file path matches any of the term patterns
-          return term
+          const patterns = term
             .split(",")
-            .some((pattern) => matchGlobPattern(pattern.trim(), filePath));
+            .map(p => p.trim());
+          const matches = patterns.some((pattern) => minimatch(filePath, pattern));
+          return matches;
         })
         .map(([term]) => term);
 
       if (matchingFileTerms.length > 0) {
-        console.log(
-          `LANGUAGE PLUGIN: File event ${eventType} on ${filePath} matches terms: ${matchingFileTerms.join(
-            ", "
-          )}`
-        );
-
         // Resolve sources for matching terms
-        console.log("LANGUAGE PLUGIN: About to emit agent:msg event");
-        console.log("LANGUAGE PLUGIN: this.eventService:", !!this.eventService);
         const resolvedSources = await this.resolveSources(matchingFileTerms);
 
         // Emit agent message event with resolved context
-        console.log(
-          `LANGUAGE PLUGIN: Emitting agent:msg event for file ${filePath}`
-        );
-
         this.eventService.emit(
           "agent:msg",
           JSON.stringify({
@@ -209,7 +166,6 @@ export class LanguagePlugin extends PluginBase implements Plugin {
             These terms are directly related to the file operation so be sure to contextualize your response to this information.`,
           })
         );
-        console.log("LANGUAGE PLUGIN: agent:msg event emitted successfully");
       }
     } catch (error) {
       console.error("LANGUAGE PLUGIN: Error handling file event:", error);
@@ -229,14 +185,12 @@ export class LanguagePlugin extends PluginBase implements Plugin {
     const matchingTerms = terms.filter((term) =>
       term.split(",").some((pattern) => {
         const trimmedPattern = pattern.trim();
-        // Use glob pattern matching for file-like patterns, fallback to string contains
-        return matchGlobPattern(trimmedPattern, userPrompt);
+        // Use minimatch for file patterns, fallback to string contains for non-glob patterns
+        return trimmedPattern.includes("*") ? minimatch(userPrompt, trimmedPattern) : userPrompt.toLowerCase().includes(trimmedPattern.toLowerCase());
       })
     );
 
-    if (matchingTerms.length > 0) {
-      console.log("LANGUAGE PLUGIN: Found matching terms", matchingTerms);
-    } else {
+    if (matchingTerms.length === 0) {
       return "LANGUAGE PLUGIN: No matching terms found";
     }
 
