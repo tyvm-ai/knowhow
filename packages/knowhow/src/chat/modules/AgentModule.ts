@@ -824,7 +824,7 @@ ${reason}
       .replace(/[^\w\s]/g, "")
       .split(/\s+/)
       .filter((word) => word.length > 2)
-      .slice(0, 3);
+      .slice(0, 9);
 
     const wordPart = words.join("-") || "task";
     const epochSeconds = Math.floor(Date.now() / 1000);

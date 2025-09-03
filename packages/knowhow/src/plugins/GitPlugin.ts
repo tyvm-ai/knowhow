@@ -31,9 +31,45 @@ export class GitPlugin extends PluginBase {
   }
 
   async call(input: string): Promise<string> {
-    return `Git Plugin Status: Branch=${this.currentBranch}, Knowhow Git=${
+    // Get current project git status
+    const projectGitStatus = this.getProjectGitStatus();
+    
+    return `Git Plugin Status:
+
+AGENT TRACKING (via --git-dir ${this.knowhowGitPath}):
+- Current branch: ${this.currentBranch}
+- Knowhow Git: ${
       fs.existsSync(this.knowhowGitPath) ? "initialized" : "not initialized"
-    }, Tasks in progress: ${this.taskStack.length}`;
+    }
+- Tasks in progress: ${this.taskStack.length}
+- Agent edit history is tracked separately in .knowhow/.git
+- Use git commands with --git-dir="${this.knowhowGitPath}" to view/revert agent changes
+
+PROJECT REPOSITORY STATUS:
+${projectGitStatus}
+
+Note: The files shown above are what you're currently working on in the project repo.
+Your agent modifications are tracked separately and won't affect the main project git history.`;
+  }
+
+  private getProjectGitStatus(): string {
+    try {
+      // Check if project has git repository
+      const hasGit = fs.existsSync(path.join(this.projectRoot, '.git'));
+      if (!hasGit) {
+        return "- No git repository found in project root";
+      }
+
+      // Get project git status
+      const status = execSync("git status --porcelain", { 
+        cwd: this.projectRoot, 
+        stdio: "pipe" 
+      }).toString().trim();
+      
+      return status ? `Modified files:\n${status}` : "- No modified files (working tree clean)";
+    } catch (error) {
+      return `- Error reading project git status: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    }
   }
 
   async embed(input: string): Promise<MinimalEmbedding[]> {
