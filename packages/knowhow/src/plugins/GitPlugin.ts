@@ -40,13 +40,6 @@ export class GitPlugin extends PluginBase {
     return [];
   }
 
-  customEnableCheck(): boolean {
-    // Always enable if we have a project directory
-    this.projectHasGit = fs.existsSync(path.join(this.projectRoot, ".git"));
-    this.initializeKnowhowRepo();
-    return true;
-  }
-
   private initializeKnowhowRepo(): void {
     try {
       // Create .knowhow directory if it doesn't exist
@@ -142,6 +135,7 @@ export class GitPlugin extends PluginBase {
     // Listen for agent newTask events to create new branches
     this.eventService.on("agent:newTask", async (data: any) => {
       if (this.isEnabled()) {
+        await this.initializeKnowhowRepo();
         await this.handleNewTask(data);
       }
     });
