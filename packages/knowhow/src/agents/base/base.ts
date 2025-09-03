@@ -55,6 +55,7 @@ export abstract class BaseAgent implements IAgent {
   protected pendingUserMessages = [] as Message[];
   protected taskBreakdown = "";
   protected summaries = [] as string[];
+  protected currentTaskId: string | null = null;
 
   public agentEvents = new EventEmitter();
   public eventTypes = {
@@ -119,6 +120,7 @@ export abstract class BaseAgent implements IAgent {
     this.status = "in_progress";
     this.turnCount = 0;
     this.startTimeMs = Date.now();
+    this.currentTaskId = taskId || this.startTimeMs.toString();
 
     // Emit event for plugin integration
     const id = taskId || this.startTimeMs.toString();
@@ -558,6 +560,11 @@ export abstract class BaseAgent implements IAgent {
             );
 
             if (finalMessage) {
+              // Emit task completion event for plugins (like GitPlugin)
+              this.events.emit("agent:taskComplete", {
+                taskId: this.currentTaskId || this.startTimeMs?.toString() || Date.now().toString(),
+                result: finalMessage.content || "Done"
+              });
               const doneMsg = finalMessage.content || "Done";
               this.agentEvents.emit(this.eventTypes.done, doneMsg);
               this.status = this.eventTypes.done;
