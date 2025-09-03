@@ -7,7 +7,7 @@ export class VimPlugin extends PluginBase {
   static readonly meta: PluginMeta = {
     key: "vim",
     name: "Vim Plugin",
-    requires: []
+    requires: [],
   };
 
   meta = VimPlugin.meta;

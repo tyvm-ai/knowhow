@@ -57,7 +57,7 @@
     "express": "^4.19.2",
     "figma-js": "^1.16.1-0",
     "gitignore-to-glob": "^0.3.0",
-    "glob": "^11.0.3",
+    "glob": "^8.1.0",
     "ink": "^6.0.1",
     "isolated-vm": "^5.0.4",
     "jira-client": "^8.2.2",
