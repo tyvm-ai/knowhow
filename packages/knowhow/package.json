@@ -7,7 +7,7 @@
     "knowhow": "ts_build/src/cli.js"
   },
   "scripts": {
-    "test": "jest --detectOpenHandles --forceExit --testTimeout 300000",
+    "test": "jest --testTimeout 300000",
     "test:debug": "node --inspect-brk ../../node_modules/jest/bin/jest.js --detectOpenHandles --forceExit --testTimeout 300000",
     "compile": "tsc",
     "start": "npm run compile && node ts_build/src/server/index.js",

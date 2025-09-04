@@ -15,5 +15,5 @@ module.exports = {
   testRegex: '/tests/.*\.(test|spec)\.(ts|tsx|js)$',
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   modulePathIgnorePatterns: ["ts_build", "benchmarks"],
-  testPathIgnorePatterns: ["<rootDir>/benchmarks/", "<rootDir>/tests/manual/"]
+  testPathIgnorePatterns: ["<rootDir>/benchmarks/", "<rootDir>/tests/manual/"],
 };

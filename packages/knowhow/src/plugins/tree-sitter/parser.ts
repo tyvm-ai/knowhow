@@ -1,7 +1,10 @@
-import Parser = require('tree-sitter');
-import TypeScript = require('tree-sitter-typescript');
-import JavaScript = require('tree-sitter-javascript');
-import { readFileSync } from 'fs';
+import  Parser from "tree-sitter";
+import TypeScript = require("tree-sitter-typescript");
+import JavaScript = require("tree-sitter-javascript");
+import { readFileSync } from "fs";
+
+export type Tree = Parser.Tree;
+export type SyntaxNode = Parser.SyntaxNode;
 
 export interface TreeNode {
   type: string;
@@ -25,7 +28,7 @@ export interface PathLocation {
 }
 
 export interface TreeEdit {
-  type: 'add' | 'remove' | 'update';
+  type: "add" | "remove" | "update";
   path: string;
   content?: string;
   lineNumber?: number;
@@ -37,11 +40,7 @@ export class LanguageAgnosticParser {
 
   constructor(config?: LanguageConfig) {
     this.parser = new Parser();
-    this.config = config || {
-      language: TypeScript.typescript,
-      methodDeclarationTypes: ['method_definition', 'function_declaration'],
-      classDeclarationTypes: ['class_declaration']
-    };
+    this.config = config;
     this.parser.setLanguage(this.config.language);
   }
 
@@ -53,8 +52,8 @@ export class LanguageAgnosticParser {
   static createTypeScriptParser(): LanguageAgnosticParser {
     const config: LanguageConfig = {
       language: TypeScript.typescript,
-      methodDeclarationTypes: ['method_definition', 'function_declaration'],
-      classDeclarationTypes: ['class_declaration']
+      methodDeclarationTypes: ["method_definition", "function_declaration"],
+      classDeclarationTypes: ["class_declaration"],
     };
     return new LanguageAgnosticParser(config);
   }
@@ -62,14 +61,14 @@ export class LanguageAgnosticParser {
   static createJavaScriptParser(): LanguageAgnosticParser {
     const config: LanguageConfig = {
       language: JavaScript,
-      methodDeclarationTypes: ['method_definition', 'function_declaration'],
-      classDeclarationTypes: ['class_declaration']
+      methodDeclarationTypes: ["method_definition", "function_declaration"],
+      classDeclarationTypes: ["class_declaration"],
     };
     return new LanguageAgnosticParser(config);
   }
 
   parseFile(filePath: string): Parser.Tree {
-    const sourceCode = readFileSync(filePath, 'utf8');
+    const sourceCode = readFileSync(filePath, "utf8");
     return this.parser.parse(sourceCode);
   }
 
@@ -84,7 +83,7 @@ export class LanguageAgnosticParser {
   findPathsForLine(tree: Parser.Tree, searchText: string): PathLocation[] {
     const results: PathLocation[] = [];
     const sourceText = tree.rootNode.text;
-    const lines = sourceText.split('\n');
+    const lines = sourceText.split("\n");
 
     lines.forEach((line, lineIndex) => {
       let columnIndex = line.indexOf(searchText);
@@ -101,7 +100,7 @@ export class LanguageAgnosticParser {
             path,
             row: lineIndex,
             column: columnIndex,
-            text: searchText
+            text: searchText,
           });
         }
 
@@ -112,7 +111,10 @@ export class LanguageAgnosticParser {
     return results;
   }
 
-  private getNodePath(rootNode: Parser.SyntaxNode, targetNode: Parser.SyntaxNode): string {
+  private getNodePath(
+    rootNode: Parser.SyntaxNode,
+    targetNode: Parser.SyntaxNode
+  ): string {
     const path: string[] = [];
     let current: Parser.SyntaxNode | null = targetNode;
 
@@ -127,7 +129,7 @@ export class LanguageAgnosticParser {
       }
     }
 
-    return path.join('/');
+    return path.join("/");
   }
   nodeToObject(node: Parser.SyntaxNode): TreeNode {
     return {
@@ -135,13 +137,13 @@ export class LanguageAgnosticParser {
       text: node.text,
       startPosition: {
         row: node.startPosition.row,
-        column: node.startPosition.column
+        column: node.startPosition.column,
       },
       endPosition: {
         row: node.endPosition.row,
-        column: node.endPosition.column
+        column: node.endPosition.column,
       },
-      children: node.children.map(child => this.nodeToObject(child))
+      children: node.children.map((child) => this.nodeToObject(child)),
     };
   }
 
@@ -178,38 +180,35 @@ export class LanguageAgnosticParser {
     return results;
   }
 
-  printTree(node: Parser.SyntaxNode, indent: string = ''): string {
+  printTree(node: Parser.SyntaxNode, indent: string = ""): string {
     let result = `${indent}${node.type}`;
     if (node.isNamed && node.text.length < 50) {
-      result += `: "${node.text.replace(/\n/g, '\\n')}"`;
+      result += `: "${node.text.replace(/\n/g, "\\n")}"`;
     }
-    result += '\n';
+    result += "\n";
 
     for (const child of node.children) {
-      result += this.printTree(child, indent + '  ');
+      result += this.printTree(child, indent + "  ");
     }
 
     return result;
   }
 }
 
-// Legacy support - keep the old TypeScriptParser class for backward compatibility
-export class TypeScriptParser extends LanguageAgnosticParser {
-  constructor() {
-    super({
-      language: TypeScript.typescript,
-      methodDeclarationTypes: ['method_definition', 'function_declaration'],
-      classDeclarationTypes: ['class_declaration']
-    });
-  }
-}
-export function compareTreeStructures(tree1: Parser.Tree, tree2: Parser.Tree): {
+export function compareTreeStructures(
+  tree1: Parser.Tree,
+  tree2: Parser.Tree
+): {
   differences: string[];
   summary: string;
 } {
   const differences: string[] = [];
 
-  function compareNodes(node1: Parser.SyntaxNode | null, node2: Parser.SyntaxNode | null, path: string = 'root') {
+  function compareNodes(
+    node1: Parser.SyntaxNode | null,
+    node2: Parser.SyntaxNode | null,
+    path: string = "root"
+  ) {
     if (!node1 && !node2) return;
 
     if (!node1) {
@@ -223,11 +222,15 @@ export function compareTreeStructures(tree1: Parser.Tree, tree2: Parser.Tree): {
     }
 
     if (node1.type !== node2.type) {
-      differences.push(`Node type changed at ${path}: ${node1.type} -> ${node2.type}`);
+      differences.push(
+        `Node type changed at ${path}: ${node1.type} -> ${node2.type}`
+      );
     }
 
     if (node1.text !== node2.text && node1.text.length < 100) {
-      differences.push(`Node text changed at ${path} (${node1.type}): "${node1.text}" -> "${node2.text}"`);
+      differences.push(
+        `Node text changed at ${path} (${node1.type}): "${node1.text}" -> "${node2.text}"`
+      );
     }
 
     const maxChildren = Math.max(node1.children.length, node2.children.length);
@@ -242,6 +245,6 @@ export function compareTreeStructures(tree1: Parser.Tree, tree2: Parser.Tree): {
 
   return {
     differences,
-    summary: `Found ${differences.length} differences between the two trees`
+    summary: `Found ${differences.length} differences between the two trees`,
   };
 }

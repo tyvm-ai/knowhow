@@ -1,15 +1,14 @@
-import Parser = require("tree-sitter");
-import { LanguageAgnosticParser } from "./parser";
+import { LanguageAgnosticParser, PathLocation, SyntaxNode, Tree } from "./parser";
 import { readFileSync } from "fs";
 
 export class TreeEditor {
   private parser: LanguageAgnosticParser;
   private originalText: string;
-  private tree: Parser.Tree;
+  private tree: Tree;
 
   constructor(
-    parser: LanguageAgnosticParser, 
-    sourceCode: string, 
+    parser: LanguageAgnosticParser,
+    sourceCode: string,
     originalText?: string
   ) {
     this.parser = parser;
@@ -60,6 +59,7 @@ export class TreeEditor {
     const newText = lines.join("\n");
     return this.createModified(newText);
   }
+
   updateNodeByPath(path: string, newContent: string): TreeEditor {
     // Find the node by path
     const node = this.findNodeByPath(path);
@@ -94,7 +94,11 @@ export class TreeEditor {
     return this.createModified(newText);
   }
 
-  private findNodeByPath(path: string): Parser.SyntaxNode | null {
+  findPathsForLine(tree: Tree, searchText: string): PathLocation[] {
+    return this.parser.findPathsForLine(tree, searchText);
+  }
+
+  private findNodeByPath(path: string): SyntaxNode | null {
     const parts = path.split("/");
     let current = this.tree.rootNode;
 
@@ -119,10 +123,14 @@ export class TreeEditor {
   }
 
   getCurrentText(): string {
+    if (!this.tree || !this.tree.rootNode) {
+      throw new Error("Failed to parse source code. Tree:" + this.tree);
+    }
+
     return this.tree.rootNode.text;
   }
 
-  getTree(): Parser.Tree {
+  getTree(): Tree {
     return this.tree;
   }
 
