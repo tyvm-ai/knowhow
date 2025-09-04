@@ -1,19 +1,23 @@
 import { LanguageAgnosticParser, PathLocation, SyntaxNode, Tree } from "./parser";
+import { HumanReadablePathResolver, HumanReadablePathMatch } from "./human-readable-paths";
 import { readFileSync } from "fs";
 
 export class TreeEditor {
   private parser: LanguageAgnosticParser;
   private originalText: string;
-  private tree: Tree;
+  public tree: Tree;  // Made public for debugging
+  private pathResolver: HumanReadablePathResolver;
 
   constructor(
     parser: LanguageAgnosticParser,
     sourceCode: string,
-    originalText?: string
+    originalText?: string,
+    existingTree?: Tree
   ) {
     this.parser = parser;
     this.originalText = originalText || sourceCode;
-    this.tree = parser.parseString(sourceCode);
+    this.tree = existingTree || parser.parseString(sourceCode);
+    this.pathResolver = new HumanReadablePathResolver(parser);
   }
 
   private createModified(newText: string): TreeEditor {
@@ -26,6 +30,14 @@ export class TreeEditor {
   ): TreeEditor {
     const sourceCode = readFileSync(filePath, "utf8");
     return new TreeEditor(parser, sourceCode);
+  }
+
+  static fromTree(
+    parser: LanguageAgnosticParser,
+    tree: Tree
+  ): TreeEditor {
+    const sourceCode = tree.rootNode.text;
+    return new TreeEditor(parser, sourceCode, sourceCode, tree);
   }
 
   addLines(path: string, content: string, afterLine?: number): TreeEditor {
@@ -94,29 +106,56 @@ export class TreeEditor {
     return this.createModified(newText);
   }
 
+  /**
+   * Update a node using human-readable path like "ClassName.methodName"
+   */
+  updateNodeByHumanPath(humanPath: string, newContent: string): TreeEditor {
+    const matches = this.pathResolver.findByHumanPath(this.tree, humanPath);
+    if (matches.length === 0) {
+      throw new Error(`No nodes found for human path: ${humanPath}`);
+    }
+    if (matches.length > 1) {
+      throw new Error(`Multiple nodes found for human path: ${humanPath}. Found: ${matches.map(m => m.description).join(', ')}`);
+    }
+
+    return this.updateNodeByPath(matches[0].path, newContent);
+  }
+
+  /**
+   * Find nodes using human-readable paths
+   */
+  findNodesByHumanPath(humanPath: string): HumanReadablePathMatch[] {
+    return this.pathResolver.findByHumanPath(this.tree, humanPath);
+  }
+
+  /**
+   * Get all available human-readable paths in the current tree
+   */
+  getAllHumanPaths(): string[] {
+    return this.pathResolver.getAllHumanPaths(this.tree);
+  }
+
   findPathsForLine(tree: Tree, searchText: string): PathLocation[] {
     return this.parser.findPathsForLine(tree, searchText);
   }
 
-  private findNodeByPath(path: string): SyntaxNode | null {
+  findNodeByPath(path: string): SyntaxNode | null {
     const parts = path.split("/");
+    if (parts.length === 0) return null;
     let current = this.tree.rootNode;
 
     for (const part of parts) {
       const match = part.match(/^(.+)\[(\d+)\]$/);
-      if (!match) continue;
+      if (!match) return null;
 
       const [, nodeType, indexStr] = match;
       const index = parseInt(indexStr, 10);
-
-      const children = current.children.filter(
-        (child) => child.type === nodeType
-      );
-      if (index >= children.length) {
+      
+      if (index >= current.children.length || current.children[index].type !== nodeType) {
         return null;
       }
 
-      current = children[index];
+      current = current.children[index];
     }
 
     return current;

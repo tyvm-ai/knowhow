@@ -14,10 +14,6 @@ describe("TreeEditor", () => {
   }
 }`;
 
-  console.log("RESOLVE tree-sitter:", require.resolve("tree-sitter"));
-  console.log("RESOLVE ts:", require.resolve("tree-sitter-typescript"));
-  console.log("RESOLVE js:", require.resolve("tree-sitter-javascript"));
-
   beforeEach(() => {
     parser = LanguageAgnosticParser.createJavaScriptParser();
   });

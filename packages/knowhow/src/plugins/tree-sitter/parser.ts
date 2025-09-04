@@ -1,6 +1,6 @@
-import  Parser from "tree-sitter";
-import TypeScript = require("tree-sitter-typescript");
-import JavaScript = require("tree-sitter-javascript");
+import Parser from "tree-sitter";
+import TypeScript from "tree-sitter-typescript";
+import JavaScript from "tree-sitter-javascript";
 import { readFileSync } from "fs";
 
 export type Tree = Parser.Tree;
@@ -111,7 +111,7 @@ export class LanguageAgnosticParser {
     return results;
   }
 
-  private getNodePath(
+  getNodePath(
     rootNode: Parser.SyntaxNode,
     targetNode: Parser.SyntaxNode
   ): string {

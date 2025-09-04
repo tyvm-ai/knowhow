@@ -33,7 +33,7 @@ export class GitPlugin extends PluginBase {
   async call(input: string): Promise<string> {
     // Get current project git status
     const projectGitStatus = this.getProjectGitStatus();
-    
+
     return `Git Plugin Status:
 
 AGENT TRACKING (via --git-dir ${this.knowhowGitPath}):
@@ -43,7 +43,9 @@ AGENT TRACKING (via --git-dir ${this.knowhowGitPath}):
     }
 - Tasks in progress: ${this.taskStack.length}
 - Agent edit history is tracked separately in .knowhow/.git
-- Use git commands with --git-dir="${this.knowhowGitPath}" to view/revert agent changes
+- Use git commands with --git-dir="${
+      this.knowhowGitPath
+    }" to view/revert agent changes
 
 PROJECT REPOSITORY STATUS:
 ${projectGitStatus}
@@ -55,20 +57,26 @@ Your agent modifications are tracked separately and won't affect the main projec
   private getProjectGitStatus(): string {
     try {
       // Check if project has git repository
-      const hasGit = fs.existsSync(path.join(this.projectRoot, '.git'));
+      const hasGit = fs.existsSync(path.join(this.projectRoot, ".git"));
       if (!hasGit) {
         return "- No git repository found in project root";
       }
 
       // Get project git status
-      const status = execSync("git status --porcelain", { 
-        cwd: this.projectRoot, 
-        stdio: "pipe" 
-      }).toString().trim();
-      
-      return status ? `Modified files:\n${status}` : "- No modified files (working tree clean)";
+      const status = execSync("git status --porcelain", {
+        cwd: this.projectRoot,
+        stdio: "pipe",
+      })
+        .toString()
+        .trim();
+
+      return status
+        ? `Modified files:\n${status}`
+        : "- No modified files (working tree clean)";
     } catch (error) {
-      return `- Error reading project git status: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      return `- Error reading project git status: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`;
     }
   }
 
@@ -202,8 +210,10 @@ Your agent modifications are tracked separately and won't affect the main projec
       try {
         actualRepoHash = execSync("git rev-parse --short HEAD", {
           cwd: this.projectRoot,
-          stdio: "pipe"
-        }).toString().trim();
+          stdio: "pipe",
+        })
+          .toString()
+          .trim();
       } catch {
         // No actual git repo or no commits
         actualRepoHash = null;
@@ -222,19 +232,13 @@ Your agent modifications are tracked separately and won't affect the main projec
       }
       this.currentBranch = "main";
 
-      // Check if there are uncommitted changes in the .knowhow repo
-      let hasChanges = false;
-      try {
-        this.gitCommand("diff-index --quiet HEAD --");
-      } catch {
-        hasChanges = true;
-      }
+      const hasChanges = await this.hasChanges();
 
       // If there are uncommitted changes, commit them
       if (hasChanges) {
         try {
           this.gitCommand("add -A");
-          const syncMessage = actualRepoHash 
+          const syncMessage = actualRepoHash
             ? `sync ${actualRepoHash}`
             : `sync ${new Date().toISOString()}`;
           this.gitCommand(`commit -m "${syncMessage}"`);
@@ -243,10 +247,20 @@ Your agent modifications are tracked separately and won't affect the main projec
           console.error("Failed to commit uncommitted changes:", error);
         }
       }
-
     } catch (error) {
       console.error("Failed to ensure clean state:", error);
     }
+  }
+
+  async hasChanges() {
+    // Check if there are uncommitted changes in the .knowhow repo
+    let hasChanges = false;
+    try {
+      this.gitCommand("diff-index --quiet HEAD --");
+    } catch {
+      hasChanges = true;
+    }
+    return hasChanges;
   }
 
   async setBranch(branchName: string): Promise<void> {
@@ -399,18 +413,11 @@ Your agent modifications are tracked separately and won't affect the main projec
       await this.createBranch(branchName);
 
       // Create initial commit for the task
-      const taskFile = path.join(this.knowhowDir, `task-${taskId}.md`);
-      const taskContent = `# Task: ${taskId}\n\n${
-        description || "No description provided"
-      }\n\nStarted: ${new Date().toISOString()}\nBranch: ${branchName}\nParent Branch: ${
-        this.currentBranch
-      }\n`;
-
-      fs.writeFileSync(taskFile, taskContent);
-      await this.commit(
-        `[${taskId}] Start new task: ${description || taskId}`,
-        [taskFile]
-      );
+      const hasChanges = await this.hasChanges();
+      if (hasChanges) {
+        await this.gitCommand("add -A");
+      }
+      await this.commit(`[${taskId}] Start new task: ${description || taskId}`);
 
       console.log(`Created new task branch: ${branchName}`);
     } catch (error) {
@@ -461,9 +468,6 @@ Your agent modifications are tracked separately and won't affect the main projec
           data.answer ? data.answer.substring(0, 100) + "..." : completedTaskId
         }`;
         this.gitCommand(`commit -m "${squashMessage}"`);
-
-        // Delete the completed task branch
-        this.gitCommand(`branch -D ${completedBranch}`);
 
         console.log(
           `Task ${completedTaskId} completed and merged to ${parentBranch}`
