@@ -100,7 +100,7 @@ describe("Calculator Tests", () => {
     expect(tree.rootNode.hasError).toBe(true);
 
     // Verify error location can be identified
-    const errorNodes = findErrorNodes(tree.rootNode);
+    const errorNodes = parser.findErrorNodes(tree.rootNode);
     expect(errorNodes.length).toBeGreaterThan(0);
   });
 
@@ -132,13 +132,13 @@ describe("Calculator Tests", () => {
     const tree = parser.parseString(invalidCode);
     expect(tree.rootNode.hasError).toBe(true);
 
-    const errorNodes = findErrorNodes(tree.rootNode);
+    const errorNodes = parser.findErrorNodes(tree.rootNode);
     expect(errorNodes.length).toBeGreaterThan(0);
   });
 
   it("should detect syntax errors with unclosed string literals", () => {
     const invalidCode = validTypeScriptCode.replace(
-      'expect(result).toBe(7);',
+      "expect(result).toBe(7);",
       'expect(result).toBe("unclosed string;' // Unclosed string literal
     );
 
@@ -147,14 +147,14 @@ describe("Calculator Tests", () => {
     const tree = parser.parseString(invalidCode);
     expect(tree.rootNode.hasError).toBe(true);
 
-    const errorNodes = findErrorNodes(tree.rootNode);
+    const errorNodes = parser.findErrorNodes(tree.rootNode);
     expect(errorNodes.length).toBeGreaterThan(0);
   });
 
-  it.only("should detect syntax errors with invalid bracket nesting", () => {
+  it("should detect syntax errors with invalid bracket nesting", () => {
     const invalidCode = validTypeScriptCode.replace(
-      "describe(\"Calculator Tests\", () => {",
-      "describe(\"Calculator Tests\", (() => {" // Extra opening parenthesis
+      'describe("Calculator Tests", () => {',
+      'describe("Calculator Tests", (() => {' // Extra opening parenthesis
     );
 
     writeFileSync(join(testFilesDir, "invalid-nesting.ts"), invalidCode);
@@ -178,7 +178,7 @@ describe("Calculator Tests", () => {
     expect(tree.rootNode.hasError).toBe(true);
 
     // Even with broken syntax, tree-sitter should not crash
-    const errorNodes = findErrorNodes(tree.rootNode);
+    const errorNodes = parser.findErrorNodes(tree.rootNode);
     expect(errorNodes.length).toBeGreaterThan(0);
   });
 
@@ -204,7 +204,7 @@ export class TestClass {
     const tree = parser.parseString(invalidCode);
     expect(tree.rootNode.hasError).toBe(true);
 
-    const errorNodes = findErrorNodes(tree.rootNode);
+    const errorNodes = parser.findErrorNodes(tree.rootNode);
     expect(errorNodes.length).toBeGreaterThan(0);
 
     // Check that we can still find some valid parts
@@ -240,7 +240,11 @@ export class TestClass {
       "add(value number): Calculator {" // Missing colon before type
     );
 
-    const brokenEditor = new TreeEditor(parser, brokenCode, validTypeScriptCode);
+    const brokenEditor = new TreeEditor(
+      parser,
+      brokenCode,
+      validTypeScriptCode
+    );
 
     // Generate diff
     const diff = brokenEditor.generateDiff();
@@ -276,7 +280,10 @@ export class Calculator {
   }
 }`;
 
-    writeFileSync(join(testFilesDir, "partially-broken.ts"), partiallyBrokenCode);
+    writeFileSync(
+      join(testFilesDir, "partially-broken.ts"),
+      partiallyBrokenCode
+    );
 
     const tree = parser.parseString(partiallyBrokenCode);
     expect(tree.rootNode.hasError).toBe(true);
@@ -290,21 +297,3 @@ export class Calculator {
     expect(methods.length).toBeGreaterThan(0);
   });
 });
-
-// Helper function to find error nodes in the tree
-function findErrorNodes(node: any): any[] {
-  const errorNodes: any[] = [];
-
-  function traverse(n: any) {
-    if (n.type === 'ERROR' || n.hasError) {
-      errorNodes.push(n);
-    }
-
-    for (const child of n.children || []) {
-      traverse(child);
-    }
-  }
-
-  traverse(node);
-  return errorNodes;
-}
