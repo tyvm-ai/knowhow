@@ -562,16 +562,6 @@ export async function patchFile(
       originalContent = await readFile(filePath, "utf8"); // Use async read
     }
 
-    // Emit pre-edit blocking event
-    if (context.Events) {
-      await context.Events.emitBlocking("file:pre-edit", {
-        filePath,
-        operation: "patch",
-        patch,
-        originalContent,
-      });
-    }
-
     let updatedContent = applyPatch(originalContent, patch);
     let appliedPatch = patch; // Keep track of which patch succeeded
 
@@ -642,19 +632,34 @@ export async function patchFile(
       console.log("Successfully applied the original patch.");
     }
 
+    const eventResults: any[] = [];
+    // Emit pre-edit blocking event
+    if (context.Events) {
+      eventResults.push(
+        ...(await context.Events.emitBlocking("file:pre-edit", {
+          filePath,
+          operation: "patch",
+          patch: appliedPatch,
+          originalContent,
+          updatedContent: updatedContent as string,
+        }))
+      );
+    }
+
     // Write the updated content
     await writeFile(filePath, updatedContent as string); // Type assertion needed as applyPatch might return boolean
 
     // Emit post-edit blocking event to get event results
-    let eventResults: any[] = [];
     if (context.Events) {
-      eventResults = await context.Events.emitBlocking("file:post-edit", {
-        filePath,
-        operation: "patch",
-        patch: appliedPatch,
-        originalContent,
-        updatedContent: updatedContent as string,
-      });
+      eventResults.push(
+        ...(await context.Events.emitBlocking("file:post-edit", {
+          filePath,
+          operation: "patch",
+          patch: appliedPatch,
+          originalContent,
+          updatedContent: updatedContent as string,
+        }))
+      );
     }
 
     // Format event results

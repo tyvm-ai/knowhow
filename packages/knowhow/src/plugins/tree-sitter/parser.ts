@@ -193,6 +193,23 @@ export class LanguageAgnosticParser {
 
     return result;
   }
+
+  findErrorNodes(node: Parser.SyntaxNode): Parser.SyntaxNode[] {
+    const errorNodes: Parser.SyntaxNode[] = [];
+
+    function traverse(n: any) {
+      if (n.type === "ERROR" || n.hasError) {
+        errorNodes.push(n);
+      }
+
+      for (const child of n.children || []) {
+        traverse(child);
+      }
+    }
+
+    traverse(node);
+    return errorNodes;
+  }
 }
 
 export function compareTreeStructures(

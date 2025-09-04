@@ -7,7 +7,7 @@ describe("Human-Readable Path Functionality", () => {
   let resolver: HumanReadablePathResolver;
 
   beforeEach(() => {
-    parser = new LanguageAgnosticParser();
+    parser = LanguageAgnosticParser.createTypeScriptParser();
     resolver = new HumanReadablePathResolver(parser);
   });
 
@@ -90,10 +90,20 @@ export class Calculator {
 
     test("should find multiple nodes with same name", () => {
       const editor = new TreeEditor(parser, sampleCode);
-      const matches = editor.findNodesByHumanPath("result");
       
-      // Should find multiple 'result' variables
+      // Create a sample with duplicate method names to test multiple matches
+      const duplicateMethodCode = `
+class A { method() { return 1; } }
+class B { method() { return 2; } }
+      `.trim();
+      
+      const duplicateEditor = new TreeEditor(parser, duplicateMethodCode);
+      const matches = duplicateEditor.findNodesByHumanPath("method");
+      
+      // Should find multiple 'method' functions
       expect(matches.length).toBeGreaterThan(1);
+      expect(matches.some(m => m.description.includes("method in class A"))).toBe(true);
+      expect(matches.some(m => m.description.includes("method in class B"))).toBe(true);
     });
 
     test("should get all human paths from TreeEditor", () => {
@@ -115,9 +125,17 @@ export class Calculator {
     test("should handle multiple matches error", () => {
       const editor = new TreeEditor(parser, sampleCode);
       
-      // Try to update with ambiguous path that might match multiple nodes
+      // Create a sample with duplicate method names
+      const duplicateMethodCode = `
+class A { method() { return 1; } }
+class B { method() { return 2; } }
+      `.trim();
+      
+      const duplicateEditor = new TreeEditor(parser, duplicateMethodCode);
+      
+      // Try to update with ambiguous path that matches multiple nodes
       expect(() => {
-        editor.updateNodeByHumanPath("result", "new content");
+        duplicateEditor.updateNodeByHumanPath("method", "new content");
       }).toThrow("Multiple nodes found for human path");
     });
   });

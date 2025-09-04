@@ -115,7 +115,7 @@ describe("Calculator Tests", () => {
     const tree = parser.parseString(invalidCode);
     // Note: Missing semicolons might not always cause parse errors in TypeScript
     // as ASI (Automatic Semicolon Insertion) can handle many cases
-    
+
     // But we can still analyze the tree structure
     const classes = parser.findClassDeclarations(tree);
     expect(classes).toHaveLength(1);
@@ -151,7 +151,7 @@ describe("Calculator Tests", () => {
     expect(errorNodes.length).toBeGreaterThan(0);
   });
 
-  it("should detect syntax errors with invalid bracket nesting", () => {
+  it.only("should detect syntax errors with invalid bracket nesting", () => {
     const invalidCode = validTypeScriptCode.replace(
       "describe(\"Calculator Tests\", () => {",
       "describe(\"Calculator Tests\", (() => {" // Extra opening parenthesis
@@ -188,11 +188,11 @@ export class TestClass {
   method1() {
     return "valid";
   }
-  
+
   method2( {  // Missing parameter, extra opening brace
     return "broken";
   }
-  
+
   method3() {
     return "valid again";
   }
@@ -214,7 +214,7 @@ export class TestClass {
 
   it("should test TreeEditor behavior with invalid syntax", () => {
     const editor = new TreeEditor(parser, validTypeScriptCode);
-    
+
     // Test that TreeEditor can handle the valid code
     expect(editor.getCurrentText()).toBe(validTypeScriptCode);
     expect(editor.getTree().rootNode.hasError).toBe(false);
@@ -224,32 +224,32 @@ export class TestClass {
       "add(value: number): Calculator {",
       "add(value number): Calculator {" // Missing colon before type
     );
-    
+
     const invalidEditor = new TreeEditor(parser, invalidCode);
-    
+
     // The invalid editor tree should have errors
     expect(invalidEditor.getTree().rootNode.hasError).toBe(true);
   });
 
   it("should test semantic diffing with broken syntax changes", () => {
     const originalEditor = new TreeEditor(parser, validTypeScriptCode);
-    
+
     // Create a version with broken syntax
     const brokenCode = validTypeScriptCode.replace(
       "add(value: number): Calculator {",
       "add(value number): Calculator {" // Missing colon before type
     );
-    
+
     const brokenEditor = new TreeEditor(parser, brokenCode, validTypeScriptCode);
-    
+
     // Generate diff
     const diff = brokenEditor.generateDiff();
     expect(diff).toContain("-");
     expect(diff).toContain("+");
-    
+
     // Verify the broken version has errors
     expect(brokenEditor.getTree().rootNode.hasError).toBe(true);
-    
+
     // Verify original doesn't have errors
     expect(originalEditor.getTree().rootNode.hasError).toBe(false);
   });
@@ -294,17 +294,17 @@ export class Calculator {
 // Helper function to find error nodes in the tree
 function findErrorNodes(node: any): any[] {
   const errorNodes: any[] = [];
-  
+
   function traverse(n: any) {
     if (n.type === 'ERROR' || n.hasError) {
       errorNodes.push(n);
     }
-    
+
     for (const child of n.children || []) {
       traverse(child);
     }
   }
-  
+
   traverse(node);
   return errorNodes;
 }

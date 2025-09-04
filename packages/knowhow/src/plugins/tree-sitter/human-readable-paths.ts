@@ -48,11 +48,16 @@ export class HumanReadablePathResolver {
       for (const methodNode of methods) {
         const methodName = this.extractMethodName(methodNode);
         if (methodName === singleName) {
+          const className = this.findContainingClassName(methodNode);
+          const description = className 
+            ? `Method ${methodName} in class ${className}`
+            : `Method declaration: ${methodName}`;
+            
           matches.push({
             node: methodNode,
             path: this.getNodePath(tree.rootNode, methodNode),
             humanPath,
-            description: `Method declaration: ${methodName}`
+            description
           });
         }
       }
@@ -267,6 +272,17 @@ export class HumanReadablePathResolver {
     }
     
     return paths;
+  }
+
+  private findContainingClassName(methodNode: SyntaxNode): string | null {
+    let current = methodNode.parent;
+    while (current) {
+      if (current.type === 'class_declaration') {
+        return this.extractClassName(current);
+      }
+      current = current.parent;
+    }
+    return null;
   }
 
   private isMethodInClass(methodNode: SyntaxNode): boolean {
