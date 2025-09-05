@@ -269,7 +269,7 @@ describe("Common Code Editing Operations with Tree Editor", () => {
       console.log("✓ Successfully updated test assertion from 11 to 12");
     });
 
-    test("should add new test to existing describe block using addTestToDescribe", () => {
+    test("should add new test to existing describe block using appendToBlock", () => {
       console.log("=== Adding new test to existing describe block ===");
 
       // First create a describe block with one test using appendChild
@@ -288,8 +288,8 @@ describe("Common Code Editing Operations with Tree Editor", () => {
     expect(calc.multiply(2, 3)).toBe(6);
   });`;
 
-      const finalEditor = modifiedEditor.addTestToDescribe(
-        "Calculator Advanced Operations",
+      const finalEditor = modifiedEditor.appendToBlock(
+        "describe(\"Calculator Advanced Operations\")",
         newTest
       );
       const finalText = finalEditor.getCurrentText();
@@ -487,8 +487,8 @@ describe("Common Code Editing Operations with Tree Editor", () => {
     expect(calc.modulo(0, 5)).toBe(0);
   });`;
 
-      const finalEditor = editorWithTest.addTestToDescribe(
-        "Calculator Modulo Tests",
+      const finalEditor = editorWithTest.appendToBlock(
+        "describe(\"Calculator Modulo Tests\")",
         newTest
       );
 

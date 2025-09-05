@@ -319,61 +319,115 @@ export class TreeEditor {
   }
 
   /**
-   * Add a test to a describe block
-   * @param describeName - Name of the describe block
-   * @param testContent - Content of the test to add
+   * Append content to any block type using human-readable block syntax
+   * @param blockPath - Block path like describe("name"), beforeEach(), test("should work")
+   * @param content - Content to append to the block
    */
-  addTestToDescribe(describeName: string, testContent: string): TreeEditor {
-    // Find all call expressions that might be describe blocks
-    const allNodes = this.getAllNodes(this.tree.rootNode);
+  appendToBlock(blockPath: string, content: string): TreeEditor {
+    return this.appendChild(blockPath, content);
+  }
 
-    // Find the specific describe block by name
-    let targetDescribe: SyntaxNode | null = null;
-    for (const node of allNodes) {
-      if (node.type === "call_expression") {
-        const args = node.children.find((child) => child.type === "arguments");
-        if (args && args.children.length > 0) {
-          // Find the first string argument (the describe block name)
-          const firstArg = args.children.find(
-            (child) =>
-              child.type === "string" || child.type === "template_string"
-          );
-          if (
-            firstArg &&
-            firstArg.type === "string" &&
-            (firstArg.text.includes(describeName) ||
-              firstArg.text.slice(1, -1) === describeName)
-          ) {
-            targetDescribe = node;
-            break;
-          }
-        }
-      }
+  /**
+   * Update the entire content of a block's callback function
+   * @param blockPath - Block path like describe("name"), beforeEach(), test("should work")
+   * @param content - New content to replace the block's body
+   */
+  updateBlock(blockPath: string, content: string): TreeEditor {
+    return this.updateNodeByPath(blockPath, content);
+/*
+ *    const resolver = new HumanReadablePathResolver(this.parser);
+ *    const matches = resolver.findByHumanPath(this.tree, blockPath);
+ *
+ *    if (matches.length === 0) {
+ *      throw new Error(`Could not find block: ${blockPath}`);
+ *    }
+ *
+ *    // Use the first match
+ *    const targetBlock = matches[0].node;
+ *
+ *    // Get the body node of the block
+ *    const bodyNode = this.findBodyNode(targetBlock);
+ *    if (!bodyNode) {
+ *      throw new Error(
+ *        `Cannot find body node for block: ${blockPath}`
+ *      );
+ *    }
+ *
+ *    // Replace the content of the body node
+ *    const currentText = this.getCurrentText();
+ *    const startPos = bodyNode.startPosition;
+ *    const endPos = bodyNode.endPosition;
+ *
+ *    // Build new text with replaced body content
+ *    const lines = currentText.split("\n");
+ *    const beforeLines = lines.slice(0, startPos.row);
+ *    const afterLines = lines.slice(endPos.row + 1);
+ *
+ *    // Get the indentation from the opening brace line
+ *    const openBraceLine = lines[startPos.row];
+ *    const indent = openBraceLine.match(/^(\s*)/)?.[1] || "";
+ *
+ *    // Format the new content with proper indentation
+ *    const contentLines = content.split("\n");
+ *    const indentedContent = contentLines.map((line, index) => {
+ *      if (line.trim() === "") return line;
+ *      return index === 0 ? `${indent}  ${line}` : `${indent}  ${line}`;
+ *    });
+ *
+ *    const newBodyContent = [
+ *      `${indent}{`,
+ *      ...indentedContent,
+ *      `${indent}}`
+ *    ];
+ *
+ *    const newText = [
+ *      ...beforeLines,
+ *      ...newBodyContent,
+ *      ...afterLines
+ *    ].join("\n");
+ *
+ *    return new TreeEditor(this.parser, newText);
+ */
+  }
+
+  /**
+   * Delete an entire block
+   * @param blockPath - Block path like describe("name"), beforeEach(), test("should work")
+   */
+  deleteBlock(blockPath: string): TreeEditor {
+    const resolver = new HumanReadablePathResolver(this.parser);
+    const matches = resolver.findByHumanPath(this.tree, blockPath);
+
+    if (matches.length === 0) {
+      throw new Error(`Could not find block: ${blockPath}`);
     }
 
-    if (!targetDescribe) {
-      throw new Error(`Could not find describe block: ${describeName}`);
-    }
-    // Get the body node of the describe block
-    const bodyNode = this.findBodyNode(targetDescribe);
-    if (!bodyNode) {
-      throw new Error(
-        `Cannot find body node for describe block: ${describeName}`
-      );
-    }
+    // Use the first match
+    const targetBlock = matches[0].node;
 
-    // Find insertion point before the closing brace
+    // Remove the entire block node
     const currentText = this.getCurrentText();
-    const endLine = bodyNode.endPosition.row;
+    const startPos = targetBlock.startPosition;
+    const endPos = targetBlock.endPosition;
+
     const lines = currentText.split("\n");
-    lines.splice(endLine, 0, testContent);
-    const describePath = this.parser.getNodePath(
-      this.tree.rootNode,
-      targetDescribe
-    );
-    const newText = lines.join("\n");
-    return this.createModified(newText);
-    return this.insertBefore(describePath, testContent, ["call_expression"]);
+    const beforeLines = lines.slice(0, startPos.row);
+    const afterLines = lines.slice(endPos.row + 1);
+
+    // Handle case where the block is on its own lines - remove empty line
+    const startLine = lines[startPos.row];
+    const isBlockOnOwnLine = startLine.trim() !== "" && startPos.column === 0;
+
+    let newLines: string[];
+    if (isBlockOnOwnLine && afterLines.length > 0 && afterLines[0].trim() === "") {
+      // Remove the empty line after the block if it exists
+      newLines = [...beforeLines, ...afterLines.slice(1)];
+    } else {
+      newLines = [...beforeLines, ...afterLines];
+    }
+
+    const newText = newLines.join("\n");
+    return new TreeEditor(this.parser, newText);
   }
 
   /**
