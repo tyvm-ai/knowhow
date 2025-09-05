@@ -1,6 +1,6 @@
 import { LanguageAgnosticParser, SyntaxNode, Tree } from "./parser";
 import { getLanguagePack, LanguagePack } from "./lang-packs";
-const Query = require("tree-sitter").Query;
+import { Query } from "tree-sitter";
 
 export interface HumanReadablePathMatch {
   node: SyntaxNode;
@@ -114,7 +114,7 @@ export class HumanReadablePathResolver {
    * Parse a human path to detect block syntax like describe("name") vs regular paths
    */
   private parseHumanPath(humanPath: string): {
-    type: 'block' | 'regular';
+    type: "block" | "regular";
     functionName?: string;
     argument?: string;
     parts: string[];
@@ -125,10 +125,10 @@ export class HumanReadablePathResolver {
 
     if (blockMatch) {
       return {
-        type: 'block',
+        type: "block",
         functionName: blockMatch[1],
         argument: blockMatch[2],
-        parts: [blockMatch[1]]
+        parts: [blockMatch[1]],
       };
     }
 
@@ -138,16 +138,16 @@ export class HumanReadablePathResolver {
 
     if (parameterlessMatch) {
       return {
-        type: 'block',
+        type: "block",
         functionName: parameterlessMatch[1],
-        parts: [parameterlessMatch[1]]
+        parts: [parameterlessMatch[1]],
       };
     }
 
     // Regular path like "ClassName.methodName" or just "name"
     return {
-      type: 'regular',
-      parts: humanPath.split('.')
+      type: "regular",
+      parts: humanPath.split("."),
     };
   }
   /**
@@ -185,12 +185,14 @@ export class HumanReadablePathResolver {
       if (nameNode) {
         // Extract string content from quotes
         let nameText = nameNode.text;
-        if ((nameText.startsWith('"') && nameText.endsWith('"')) ||
-            (nameText.startsWith("'") && nameText.endsWith("'")) ||
-            (nameText.startsWith('`') && nameText.endsWith('`'))) {
+        if (
+          (nameText.startsWith('"') && nameText.endsWith('"')) ||
+          (nameText.startsWith("'") && nameText.endsWith("'")) ||
+          (nameText.startsWith("`") && nameText.endsWith("`"))
+        ) {
           nameText = nameText.slice(1, -1);
         }
-        
+
         if (nameText === argument) {
           matches.push({
             node: match.node,
@@ -199,19 +201,6 @@ export class HumanReadablePathResolver {
             description: `${functionName} block: ${argument}`,
           });
         }
-      }
-    }
-
-    return matches;
-  }
-  /**
-   * Find nodes using human-readable paths like:
-        matches.push({
-          node: match.node,
-          path: this.getNodePath(tree.rootNode, match.node),
-          humanPath,
-          description: `${functionName} block: ${argument}`,
-        });
       }
     }
 
@@ -235,7 +224,9 @@ export class HumanReadablePathResolver {
     }
 
     if (!this.languagePack) {
-      console.warn("No language pack loaded, falling back to legacy implementation");
+      console.warn(
+        "No language pack loaded, falling back to legacy implementation"
+      );
       return [];
     }
 
@@ -248,8 +239,13 @@ export class HumanReadablePathResolver {
     const parts = pathInfo.parts;
 
     // Handle block syntax like describe("Authentication") or beforeEach()
-    if (pathInfo.type === 'block') {
-      return this.findBlockMatches(tree, pathInfo.functionName!, pathInfo.argument, humanPath);
+    if (pathInfo.type === "block") {
+      return this.findBlockMatches(
+        tree,
+        pathInfo.functionName!,
+        pathInfo.argument,
+        humanPath
+      );
     }
 
     if (parts.length === 1) {
@@ -304,19 +300,9 @@ export class HumanReadablePathResolver {
       // Check for generic blocks like describe(), test(), it(), etc.
       const blockMatches = this.findNodesByQuery(tree, "blocks");
       for (const match of blockMatches) {
+        const calleeNode = match.captures.callee;
         const nameNode = match.captures.name;
-        const calleeNode = match.captures.callee;
-        if (nameNode && nameNode.text === singleName && calleeNode) {
-          matches.push({
-            node: match.node,
-            path: this.getNodePath(tree.rootNode, match.node),
-            humanPath,
-            description: `${calleeNode.text} block: ${singleName}`,
-          });
-        }
-      }
-        const calleeNode = match.captures.callee;
-        
+
         // Check if this is a parameterless call matching the search term
         if (calleeNode && calleeNode.text === singleName) {
           matches.push({
@@ -327,7 +313,16 @@ export class HumanReadablePathResolver {
           });
           continue;
         }
-        
+
+        if (nameNode && nameNode.text === singleName && calleeNode) {
+          matches.push({
+            node: match.node,
+            path: this.getNodePath(tree.rootNode, match.node),
+            humanPath,
+            description: `${calleeNode.text} block: ${singleName}`,
+          });
+        }
+      }
     } else if (parts.length === 2) {
       const [className, memberName] = parts;
       // Find classes with the given name
@@ -376,11 +371,11 @@ export class HumanReadablePathResolver {
   }
   /**
    * Find the containing class name for a method node
-
-  /**
-   * Find the containing class name for a method node
    */
-  private findContainingClassName(tree: Tree, methodNode: SyntaxNode): string | null {
+  private findContainingClassName(
+    tree: Tree,
+    methodNode: SyntaxNode
+  ): string | null {
     if (!this.languagePack) return null;
 
     // Find all classes and check if this method is within any of them
@@ -500,8 +495,10 @@ export class HumanReadablePathResolver {
         if (nameNode && nameNode.text) {
           // Extract the name from quotes if needed
           let name = nameNode.text;
-          if ((name.startsWith('"') && name.endsWith('"')) ||
-              (name.startsWith("'") && name.endsWith("'"))) {
+          if (
+            (name.startsWith('"') && name.endsWith('"')) ||
+            (name.startsWith("'") && name.endsWith("'"))
+          ) {
             name = name.slice(1, -1);
           }
           paths.push(`${callee}("${name}")`);
@@ -518,7 +515,10 @@ export class HumanReadablePathResolver {
   /**
    * Helper method to check if one node is contained within another
    */
-  private isNodeWithinNode(childNode: SyntaxNode, parentNode: SyntaxNode): boolean {
+  private isNodeWithinNode(
+    childNode: SyntaxNode,
+    parentNode: SyntaxNode
+  ): boolean {
     let current = childNode.parent;
     while (current) {
       if (current === parentNode) {
