@@ -80,7 +80,7 @@ export class TreeEditor {
 
   updateNodeByPath(path: string, newContent: string): TreeEditor {
     // Find the node by path
-    const node = this.findNodeByPath(path);
+    const node = this.resolvePathToNode(path);
     if (!node) {
       throw new Error(`Node not found at path: ${path}`);
     }
@@ -116,19 +116,7 @@ export class TreeEditor {
    * Update a node using human-readable path like "ClassName.methodName"
    */
   updateNodeByHumanPath(humanPath: string, newContent: string): TreeEditor {
-    const matches = this.pathResolver.findByHumanPath(this.tree, humanPath);
-    if (matches.length === 0) {
-      throw new Error(`No nodes found for human path: ${humanPath}`);
-    }
-    if (matches.length > 1) {
-      throw new Error(
-        `Multiple nodes found for human path: ${humanPath}. Found: ${matches
-          .map((m) => m.description)
-          .join(", ")}`
-      );
-    }
-
-    return this.updateNodeByPath(matches[0].path, newContent);
+    return this.updateNodeByPath(humanPath, newContent);
   }
 
   /**
@@ -184,7 +172,7 @@ export class TreeEditor {
       throw new Error(`No nodes found for path: ${parentPath}`);
     }
 
-    const bodyNode = this.findBodyNode(parentNode);
+    const bodyNode = this.parser.getBodyNode(parentNode);
     if (!bodyNode) {
       throw new Error(`Cannot find body node for path: ${parentPath}`);
     }
@@ -203,54 +191,6 @@ export class TreeEditor {
   /**
    * Find the body node of a class, function, or describe block
    */
-  private findBodyNode(node: SyntaxNode): SyntaxNode | null {
-    // For class declarations, look for class_body
-    if (node.type === "class_declaration") {
-      return node.children.find((child) => child.type === "class_body") || null;
-    }
-
-    // For function declarations, look for statement_block
-    if (
-      node.type === "function_declaration" ||
-      node.type === "method_definition"
-    ) {
-      return (
-        node.children.find((child) => child.type === "statement_block") || null
-      );
-    }
-
-    // For describe blocks (call_expression with "describe" identifier)
-    if (node.type === "call_expression") {
-      const identifier = node.children.find(
-        (child) => child.type === "identifier"
-      );
-      if (identifier && identifier.text === "describe") {
-        // Find the arrow function or function expression in the arguments
-        const args = node.children.find((child) => child.type === "arguments");
-        if (args) {
-          const arrowFunc = args.children.find(
-            (child) =>
-              child.type === "arrow_function" || child.type === "function"
-          );
-          if (arrowFunc) {
-            return (
-              arrowFunc.children.find(
-                (child) => child.type === "statement_block"
-              ) || null
-            );
-          }
-        }
-      }
-    }
-
-    // If the node itself is a body type, return it
-    if (node.type === "class_body" || node.type === "statement_block") {
-      return node;
-    }
-
-    return null;
-  }
-
   /**
    * Append content to a parent node
    * @param parentPath - Path to parent node (empty string for root level)
@@ -269,7 +209,7 @@ export class TreeEditor {
       throw new Error(`No nodes found for path: ${parentPath}`);
     }
 
-    const bodyNode = this.findBodyNode(parentNode);
+    const bodyNode = this.parser.getBodyNode(parentNode);
     if (!bodyNode) {
       throw new Error(`Cannot find body node for path: ${parentPath}`);
     }
@@ -335,60 +275,6 @@ export class TreeEditor {
    */
   updateBlock(blockPath: string, content: string): TreeEditor {
     return this.updateNodeByPath(blockPath, content);
-/*
- *    const resolver = new HumanReadablePathResolver(this.parser);
- *    const matches = resolver.findByHumanPath(this.tree, blockPath);
- *
- *    if (matches.length === 0) {
- *      throw new Error(`Could not find block: ${blockPath}`);
- *    }
- *
- *    // Use the first match
- *    const targetBlock = matches[0].node;
- *
- *    // Get the body node of the block
- *    const bodyNode = this.findBodyNode(targetBlock);
- *    if (!bodyNode) {
- *      throw new Error(
- *        `Cannot find body node for block: ${blockPath}`
- *      );
- *    }
- *
- *    // Replace the content of the body node
- *    const currentText = this.getCurrentText();
- *    const startPos = bodyNode.startPosition;
- *    const endPos = bodyNode.endPosition;
- *
- *    // Build new text with replaced body content
- *    const lines = currentText.split("\n");
- *    const beforeLines = lines.slice(0, startPos.row);
- *    const afterLines = lines.slice(endPos.row + 1);
- *
- *    // Get the indentation from the opening brace line
- *    const openBraceLine = lines[startPos.row];
- *    const indent = openBraceLine.match(/^(\s*)/)?.[1] || "";
- *
- *    // Format the new content with proper indentation
- *    const contentLines = content.split("\n");
- *    const indentedContent = contentLines.map((line, index) => {
- *      if (line.trim() === "") return line;
- *      return index === 0 ? `${indent}  ${line}` : `${indent}  ${line}`;
- *    });
- *
- *    const newBodyContent = [
- *      `${indent}{`,
- *      ...indentedContent,
- *      `${indent}}`
- *    ];
- *
- *    const newText = [
- *      ...beforeLines,
- *      ...newBodyContent,
- *      ...afterLines
- *    ].join("\n");
- *
- *    return new TreeEditor(this.parser, newText);
- */
   }
 
   /**

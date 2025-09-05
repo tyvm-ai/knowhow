@@ -69,3 +69,52 @@ export interface HumanReadablePathMatch {
   humanPath: string;
   description: string;
 }
+
+/**
+ * Normalized node kinds for language-agnostic processing
+ */
+export type NormalizedKind = "class" | "method" | "function" | "property" | "body" | "block" | "unknown";
+
+/**
+ * Rules for finding body nodes
+ */
+export type BodyRule = 
+  | { kind: "self" }                                    // The node itself is the body
+  | { kind: "child"; nodeType: string }                 // Look for child with specific type
+  | { kind: "field"; field: string }                    // Look for named field
+  | { kind: "functionBody" }                            // Special handling for function bodies
+  | { kind: "callCallbackBody" };                       // Special handling for callback bodies
+
+/**
+ * Language pack for declarative language support
+ */
+export interface LanguagePackConfig {
+  /** Language identifier */
+  language: string;
+  
+  /** Tree-sitter queries for different constructs */
+  queries: {
+    classes?: string;
+    methods?: string;
+    properties?: string;
+    blocks?: string;
+  };
+  
+  /** Map from raw node types to normalized kinds */
+  kindMap: Record<string, NormalizedKind>;
+  
+  /** Map from node types to body resolution rules */
+  bodyMap: Record<string, BodyRule[]>;
+  
+  /** Hint for string unwrapping behavior */
+  stringUnwrapHint?: string;
+}
+
+/**
+ * Registry of language packs
+ */
+export interface LanguagePackRegistry {
+  get(language: string): LanguagePackConfig | undefined;
+  register(pack: LanguagePackConfig): void;
+  list(): string[];
+}

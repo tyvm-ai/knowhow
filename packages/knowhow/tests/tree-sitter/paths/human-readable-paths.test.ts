@@ -37,7 +37,7 @@ export class Calculator {
     test("should find nodes by class name", () => {
       const tree = parser.parseString(sampleCode);
       const matches = resolver.findByHumanPath(tree, "Calculator");
-      
+
       expect(matches.length).toBeGreaterThan(0);
       expect(matches[0].description).toContain("Calculator");
     });
@@ -45,7 +45,7 @@ export class Calculator {
     test("should find nodes by method name", () => {
       const tree = parser.parseString(sampleCode);
       const matches = resolver.findByHumanPath(tree, "add");
-      
+
       expect(matches.length).toBeGreaterThan(0);
       expect(matches.some(m => m.description.includes("add"))).toBe(true);
     });
@@ -53,7 +53,7 @@ export class Calculator {
     test("should find nodes by class.method pattern", () => {
       const tree = parser.parseString(sampleCode);
       const matches = resolver.findByHumanPath(tree, "Calculator.add");
-      
+
       expect(matches.length).toBeGreaterThan(0);
       expect(matches[0].description).toContain("Calculator");
       expect(matches[0].description).toContain("add");
@@ -62,7 +62,7 @@ export class Calculator {
     test("should get all available human paths", () => {
       const tree = parser.parseString(sampleCode);
       const paths = resolver.getAllHumanPaths(tree);
-      
+
       expect(paths.length).toBeGreaterThan(0);
       expect(paths.some(p => p.includes("Calculator"))).toBe(true);
       expect(paths.some(p => p.includes("add"))).toBe(true);
@@ -73,16 +73,16 @@ export class Calculator {
   describe("TreeEditor Human Path Integration", () => {
     test("should update node using human-readable path", () => {
       const editor = new TreeEditor(parser, sampleCode);
-      
+
       // Find a method to update
       const matches = editor.findNodesByHumanPath("add");
       expect(matches.length).toBeGreaterThan(0);
-      
+
       // Update the method body
       const updatedEditor = editor.updateNodeByHumanPath("Calculator.add", `add(x: number): number {
     return this.value + x + 1; // Modified
   }`);
-      
+
       const newText = updatedEditor.getCurrentText();
       expect(newText).toContain("Modified");
       expect(newText).toContain("x + 1");
@@ -90,16 +90,16 @@ export class Calculator {
 
     test("should find multiple nodes with same name", () => {
       const editor = new TreeEditor(parser, sampleCode);
-      
+
       // Create a sample with duplicate method names to test multiple matches
       const duplicateMethodCode = `
 class A { method() { return 1; } }
 class B { method() { return 2; } }
       `.trim();
-      
+
       const duplicateEditor = new TreeEditor(parser, duplicateMethodCode);
       const matches = duplicateEditor.findNodesByHumanPath("method");
-      
+
       // Should find multiple 'method' functions
       expect(matches.length).toBeGreaterThan(1);
       expect(matches.some(m => m.description.includes("method in class A"))).toBe(true);
@@ -109,34 +109,34 @@ class B { method() { return 2; } }
     test("should get all human paths from TreeEditor", () => {
       const editor = new TreeEditor(parser, sampleCode);
       const paths = editor.getAllHumanPaths();
-      
+
       expect(paths.length).toBeGreaterThan(0);
       expect(paths.some(p => p.includes("Calculator"))).toBe(true);
     });
 
     test("should handle path not found error", () => {
       const editor = new TreeEditor(parser, sampleCode);
-      
+
       expect(() => {
         editor.updateNodeByHumanPath("NonExistentClass.nonExistentMethod", "new content");
-      }).toThrow("No nodes found for human path");
+      }).toThrow(/Node not found at path: NonExistentClass.nonExistentMethod/);
     });
 
     test("should handle multiple matches error", () => {
       const editor = new TreeEditor(parser, sampleCode);
-      
+
       // Create a sample with duplicate method names
       const duplicateMethodCode = `
 class A { method() { return 1; } }
 class B { method() { return 2; } }
       `.trim();
-      
+
       const duplicateEditor = new TreeEditor(parser, duplicateMethodCode);
-      
+
       // Try to update with ambiguous path that matches multiple nodes
       expect(() => {
         duplicateEditor.updateNodeByHumanPath("method", "new content");
-      }).toThrow("Multiple nodes found for human path");
+      }).toThrow(/Multiple nodes found for path: method.*/);
     });
   });
 
@@ -170,7 +170,7 @@ describe("User Management", () => {
     test("should find describe blocks by name", () => {
       const tree = parser.parseString(testFrameworkCode);
       const matches = resolver.findByHumanPath(tree, 'describe("Authentication")');
-      
+
       expect(matches.length).toBe(1);
       expect(matches[0].description).toContain("describe");
       expect(matches[0].description).toContain("Authentication");
@@ -179,7 +179,7 @@ describe("User Management", () => {
     test("should find test blocks by name", () => {
       const tree = parser.parseString(testFrameworkCode);
       const matches = resolver.findByHumanPath(tree, 'test("should login successfully")');
-      
+
       expect(matches.length).toBe(1);
       expect(matches[0].description).toContain("test");
       expect(matches[0].description).toContain("should login successfully");
@@ -188,7 +188,7 @@ describe("User Management", () => {
     test("should find it blocks by name", () => {
       const tree = parser.parseString(testFrameworkCode);
       const matches = resolver.findByHumanPath(tree, 'it("should logout properly")');
-      
+
       expect(matches.length).toBe(1);
       expect(matches[0].description).toContain("it");
       expect(matches[0].description).toContain("should logout properly");
@@ -197,7 +197,7 @@ describe("User Management", () => {
     test("should find beforeEach blocks", () => {
       const tree = parser.parseString(testFrameworkCode);
       const matches = resolver.findByHumanPath(tree, "beforeEach");
-      
+
       expect(matches.length).toBe(1);
       expect(matches[0].description).toContain("beforeEach");
     });
@@ -205,7 +205,7 @@ describe("User Management", () => {
     test("should find afterEach blocks", () => {
       const tree = parser.parseString(testFrameworkCode);
       const matches = resolver.findByHumanPath(tree, "afterEach");
-      
+
       expect(matches.length).toBe(1);
       expect(matches[0].description).toContain("afterEach");
     });
@@ -218,10 +218,10 @@ describe(\`User \${userId} Tests\`, () => {
   });
 });
 `.trim();
-      
+
       const tree = parser.parseString(templateStringCode);
       const matches = resolver.findByHumanPath(tree, 'describe(`User ${userId} Tests`)');
-      
+
       expect(matches.length).toBe(1);
       expect(matches[0].description).toContain("describe");
     });
@@ -230,7 +230,7 @@ describe(\`User \${userId} Tests\`, () => {
       const tree = parser.parseString(testFrameworkCode);
       const authMatches = resolver.findByHumanPath(tree, 'describe("Authentication")');
       const userMatches = resolver.findByHumanPath(tree, 'describe("User Management")');
-      
+
       expect(authMatches.length).toBe(1);
       expect(userMatches.length).toBe(1);
       expect(authMatches[0].description).toContain("Authentication");
@@ -240,7 +240,7 @@ describe(\`User \${userId} Tests\`, () => {
     test("should include generic blocks in getAllHumanPaths", () => {
       const tree = parser.parseString(testFrameworkCode);
       const paths = resolver.getAllHumanPaths(tree);
-      
+
       expect(paths.some(p => p.includes('describe("Authentication")'))).toBe(true);
       expect(paths.some(p => p.includes('test("should login successfully")'))).toBe(true);
       expect(paths.some(p => p.includes('it("should logout properly")'))).toBe(true);
@@ -264,13 +264,13 @@ class Calculator {
   constructor(initialValue = 0) {
     this.value = initialValue;
   }
-  
+
   add(x) {
     const result = this.value + x;
     console.log(\`Adding: \${result}\`);
     return result;
   }
-  
+
   multiply(x, y) {
     const result = x * y;
     console.log(\`Multiplying: \${result}\`);
@@ -282,7 +282,7 @@ class Calculator {
       test("should find JavaScript classes", () => {
         const tree = jsParser.parseString(jsCode);
         const matches = jsResolver.findByHumanPath(tree, "Calculator");
-        
+
         expect(matches.length).toBeGreaterThan(0);
         expect(matches[0].description).toContain("Calculator");
       });
@@ -290,7 +290,7 @@ class Calculator {
       test("should find JavaScript methods", () => {
         const tree = jsParser.parseString(jsCode);
         const matches = jsResolver.findByHumanPath(tree, "add");
-        
+
         expect(matches.length).toBeGreaterThan(0);
         expect(matches.some(m => m.description.includes("add"))).toBe(true);
       });
@@ -298,12 +298,12 @@ class Calculator {
       test("should find JavaScript class.method patterns", () => {
         const tree = jsParser.parseString(jsCode);
         const matches = jsResolver.findByHumanPath(tree, "Calculator.add");
-        
+
         expect(matches.length).toBeGreaterThan(0);
         expect(matches[0].description).toContain("Calculator");
         expect(matches[0].description).toContain("add");
       });
-      
+
       test("should handle JavaScript with test blocks", () => {
         const jsTestCode = `
 describe("Calculator Tests", () => {
@@ -313,10 +313,10 @@ describe("Calculator Tests", () => {
   });
 });
 `.trim();
-        
+
         const tree = jsParser.parseString(jsTestCode);
         const matches = jsResolver.findByHumanPath(tree, 'describe("Calculator Tests")');
-        
+
         expect(matches.length).toBe(1);
         expect(matches[0].description).toContain("describe");
         expect(matches[0].description).toContain("Calculator Tests");
@@ -340,7 +340,7 @@ class Calculator implements ICalculator {
   add(x: number): number {
     return x;
   }
-  
+
   multiply(x: number, y: number): number {
     return x * y;
   }
@@ -350,7 +350,7 @@ class Calculator implements ICalculator {
     test("should find interfaces", () => {
       const tree = parser.parseString(interfaceCode);
       const matches = resolver.findByHumanPath(tree, "ICalculator");
-      
+
       expect(matches.length).toBeGreaterThan(0);
       expect(matches[0].description).toContain("ICalculator");
     });
@@ -358,7 +358,7 @@ class Calculator implements ICalculator {
     test("should find interface methods", () => {
       const tree = parser.parseString(interfaceCode);
       const matches = resolver.findByHumanPath(tree, "ICalculator.add");
-      
+
       expect(matches.length).toBeGreaterThan(0);
       expect(matches[0].description).toContain("ICalculator");
       expect(matches[0].description).toContain("add");

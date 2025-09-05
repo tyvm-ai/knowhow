@@ -2,6 +2,9 @@ import Parser from "tree-sitter";
 import TypeScript from "tree-sitter-typescript";
 import JavaScript from "tree-sitter-javascript";
 import { readFileSync } from "fs";
+import { LanguagePackConfig, BodyRule, NormalizedKind, LanguagePackRegistry } from "./lang-packs/types";
+import { jsMiniPack } from "./packs/js-mini";
+import { tsMiniPack } from "./packs/ts-mini";
 
 export type Tree = Parser.Tree;
 export type SyntaxNode = Parser.SyntaxNode;
@@ -34,9 +37,23 @@ export interface TreeEdit {
   lineNumber?: number;
 }
 
+// Mini language pack registry
+const languagePackRegistry: Map<string, LanguagePackConfig> = new Map([
+  ["javascript", jsMiniPack],
+  ["typescript", tsMiniPack],
+  ["js", jsMiniPack],
+  ["ts", tsMiniPack],
+]);
+
+// Utility function to get mini pack by language name
+export function getLanguagePackForLanguage(languageName: string): LanguagePackConfig | undefined {
+  return languagePackRegistry.get(languageName);
+}
+
 export class LanguageAgnosticParser {
   private parser: Parser;
   private config: LanguageConfig;
+  private currentLanguagePack?: LanguagePackConfig;
 
   constructor(config?: LanguageConfig) {
     this.parser = new Parser();
@@ -49,6 +66,99 @@ export class LanguageAgnosticParser {
   setLanguageConfig(config: LanguageConfig) {
     this.config = config;
     this.parser.setLanguage(config.language);
+    this.currentLanguagePack = undefined; // Reset mini pack when changing language
+  }
+
+  setLanguagePack(languageName: string) {
+    const pack = languagePackRegistry.get(languageName);
+    if (pack) {
+      this.currentLanguagePack = pack;
+    }
+  }
+
+  getLanguagePack(): LanguagePackConfig | undefined {
+    return this.currentLanguagePack;
+  }
+
+  // Helper function to get normalized node kind
+  nodeKind(node: Parser.SyntaxNode, pack: LanguagePackConfig): NormalizedKind {
+    return pack.kindMap[node.type] || "unknown";
+  }
+
+  // Apply a body rule to find the body node
+  applyRule(node: Parser.SyntaxNode, rule: BodyRule, pack: LanguagePackConfig): Parser.SyntaxNode | undefined {
+    switch (rule.kind) {
+      case "self":
+        return node;
+      
+      case "child":
+        if (!rule.nodeType) return undefined;
+        return node.children.find(child => child.type === rule.nodeType);
+      
+      case "field":
+        if (!rule.field) return undefined;
+        return node.childForFieldName(rule.field);
+      
+      case "functionBody":
+        // Find statement_block child for functions
+        return node.children.find(child => child.type === "statement_block");
+      
+      case "callCallbackBody":
+        // For call expressions, find the last argument if it's a function
+        const args = node.childForFieldName("arguments");
+        if (!args) return undefined;
+        const lastArg = args.children[args.children.length - 1];
+        if (!lastArg) return undefined;
+        
+        // If it's a function-like node, get its body
+        if (lastArg.type === "arrow_function" || lastArg.type === "function_expression") {
+          return this.applyRule(lastArg, { kind: "functionBody" }, pack);
+        }
+        return lastArg;
+      
+      default:
+        return undefined;
+    }
+  }
+
+  // Get body node using mini language pack
+  getBodyNodeWithLanguagePack(node: Parser.SyntaxNode, pack: LanguagePackConfig): Parser.SyntaxNode | undefined {
+    const rules = pack.bodyMap[node.type];
+    if (!rules || rules.length === 0) {
+      return undefined;
+    }
+
+    // Try each rule in order until one succeeds
+    for (const rule of rules) {
+      const result = this.applyRule(node, rule, pack);
+      if (result) {
+        return result;
+      }
+    }
+
+    return undefined;
+  }
+
+  getBodyNode(node: Parser.SyntaxNode): Parser.SyntaxNode | null {
+    if (!this.currentLanguagePack) {
+      return null;
+    }
+    const result = this.getBodyNodeWithLanguagePack(node, this.currentLanguagePack);
+    return result || null;
+  }
+
+  // Get body node using mini language pack (public method for editor)
+  getBodyNodeForLanguage(node: Parser.SyntaxNode, language: string): Parser.SyntaxNode | undefined {
+    const pack = languagePackRegistry.get(language.toLowerCase());
+    if (!pack) return undefined;
+    return this.getBodyNodeWithLanguagePack(node, pack);
+  }
+
+  // Get normalized node kind for a language
+  getNodeKindForLanguage(node: Parser.SyntaxNode, language: string): NormalizedKind {
+    const pack = languagePackRegistry.get(language.toLowerCase());
+    if (!pack) return "unknown";
+    return this.nodeKind(node, pack);
   }
 
   static createTypeScriptParser(): LanguageAgnosticParser {
@@ -57,7 +167,9 @@ export class LanguageAgnosticParser {
       methodDeclarationTypes: ["method_definition", "function_declaration"],
       classDeclarationTypes: ["class_declaration"],
     };
-    return new LanguageAgnosticParser(config);
+    const parser = new LanguageAgnosticParser(config);
+    parser.setLanguagePack("typescript");
+    return parser;
   }
 
   static createJavaScriptParser(): LanguageAgnosticParser {
@@ -66,7 +178,9 @@ export class LanguageAgnosticParser {
       methodDeclarationTypes: ["method_definition", "function_declaration"],
       classDeclarationTypes: ["class_declaration"],
     };
-    return new LanguageAgnosticParser(config);
+    const parser = new LanguageAgnosticParser(config);
+    parser.setLanguagePack("javascript");
+    return parser;
   }
 
   parseFile(filePath: string): Parser.Tree {
