@@ -85,6 +85,7 @@ describe("TreeEditor", () => {
     expect(diff).toContain("-class Calculator {");
     expect(diff).toContain("+class AdvancedCalculator {");
     expect(diff).toContain("+  subtract(a, b) {");
+    expect(diff).toContain("+    return a - b;");
 
     console.log("Generated diff:\n", diff);
   });

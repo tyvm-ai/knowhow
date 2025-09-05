@@ -488,7 +488,7 @@ describe("Common Code Editing Operations with Tree Editor", () => {
   });`;
 
       const finalEditor = editorWithTest.appendToBlock(
-        "describe(\"Calculator Modulo Tests\")",
+        `describe("Calculator Modulo Tests")`,
         newTest
       );
 
