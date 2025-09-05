@@ -366,6 +366,14 @@ Your agent modifications are tracked separately and won't affect the main projec
         message: enhancedMessage,
         files,
       });
+
+      this.eventService.emit(
+        "agent:msg",
+        `GitPlugin:: Auto Commit: ${enhancedMessage} on branch: ${this.currentBranch}
+        You can access your change history via git --git-dir ${this.knowhowGitPath} log or other commands
+        This can be used to revert changes, or compare against previous states during a task.
+        `
+      );
     } catch (error) {
       console.error("Failed to commit changes:", error);
     }

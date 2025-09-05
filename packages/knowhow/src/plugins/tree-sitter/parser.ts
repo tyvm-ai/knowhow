@@ -62,6 +62,18 @@ export class LanguageAgnosticParser {
     this.setupFromLanguageName(language);
   }
 
+  static createTypeScriptParser(): LanguageAgnosticParser {
+    return new LanguageAgnosticParser("typescript");
+  }
+
+  static createJavaScriptParser(): LanguageAgnosticParser {
+    return new LanguageAgnosticParser("javascript");
+  }
+
+  static supportsLanguage(languageName: string): boolean {
+    return !!getLanguagePackForLanguage(languageName);
+  }
+
   private setupFromLanguageName(languageName: string) {
     this.setLanguagePack(languageName);
     this.setupParserForLanguage(languageName);
@@ -192,14 +204,6 @@ export class LanguageAgnosticParser {
     const pack = getLanguagePackForLanguage(language.toLowerCase());
     if (!pack) return "unknown";
     return this.nodeKind(node, pack);
-  }
-
-  static createTypeScriptParser(): LanguageAgnosticParser {
-    return new LanguageAgnosticParser("typescript");
-  }
-
-  static createJavaScriptParser(): LanguageAgnosticParser {
-    return new LanguageAgnosticParser("javascript");
   }
 
   parseFile(filePath: string): Parser.Tree {

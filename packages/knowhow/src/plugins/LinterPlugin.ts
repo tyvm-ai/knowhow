@@ -19,6 +19,11 @@ export class LinterPlugin extends PluginBase {
       "file:post-edit",
       this.handleFilePostEdit.bind(this)
     );
+
+    this.context.Events.onBlocking(
+      "git:pre-commit",
+      this.handleFilesPostEdit.bind(this)
+    );
   }
 
   async embed() {
@@ -27,6 +32,18 @@ export class LinterPlugin extends PluginBase {
 
   async call(userPrompt: string): Promise<string> {
     return "";
+  }
+
+  async handleFilesPostEdit(payload: { files: string[] }): Promise<string> {
+    const { files } = payload;
+    let lintResult = "";
+    for (const filePath of files) {
+      const result = await this.lintFile(filePath);
+      if (result) {
+        lintResult += `Results for ${filePath}:\n${result}\n\n`;
+      }
+    }
+    return lintResult || "[Build Stable] No linting issues found";
   }
 
   /**
