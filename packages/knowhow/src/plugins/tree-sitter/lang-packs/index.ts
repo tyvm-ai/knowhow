@@ -4,14 +4,14 @@ export { pythonLanguagePack } from "./python";
 export { javaLanguagePack } from "./java";
 
 import { LanguagePack } from "./types";
-import { javascriptLanguagePack } from "./javascript";
+import { javascriptLanguagePack, typescriptLanguagePack } from "./javascript";
 import { pythonLanguagePack } from "./python";
 import { javaLanguagePack } from "./java";
 
 // Language pack registry
 export const languagePacks: Record<string, LanguagePack> = {
   javascript: javascriptLanguagePack,
-  typescript: javascriptLanguagePack, // TypeScript uses the same pack as JavaScript
+  typescript: typescriptLanguagePack, // TypeScript extends JavaScript pack
   python: pythonLanguagePack,
   java: javaLanguagePack,
 };

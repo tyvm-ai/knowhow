@@ -9,14 +9,14 @@ export const pythonLanguagePack: LanguagePack = {
     classes: `
       (class_definition
         name: (identifier) @name
-      ) @decl.class
+      ) @class
     `,
     
     // Function definitions
     methods: `
       (function_definition
         name: (identifier) @name
-      ) @decl.method
+      ) @method
     `,
     
     // Property assignments and attribute definitions
@@ -25,11 +25,11 @@ export const pythonLanguagePack: LanguagePack = {
         left: (attribute
           attribute: (identifier) @name
         )
-      ) @decl.property
+      ) @property
       
       (assignment
         left: (identifier) @name
-      ) @decl.property
+      ) @property
     `,
     
     // Generic blocks for test frameworks (pytest, unittest)

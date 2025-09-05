@@ -9,26 +9,26 @@ export const javaLanguagePack: LanguagePack = {
     classes: `
       (class_declaration
         name: (identifier) @name
-      ) @decl.class
+      ) @class
       
       (interface_declaration
         name: (identifier) @name
-      ) @decl.class
+      ) @class
       
       (enum_declaration
         name: (identifier) @name
-      ) @decl.class
+      ) @class
     `,
     
     // Method definitions
     methods: `
       (method_declaration
         name: (identifier) @name
-      ) @decl.method
+      ) @method
       
       (constructor_declaration
         name: (identifier) @name
-      ) @decl.method
+      ) @method
     `,
     
     // Field definitions
@@ -37,7 +37,7 @@ export const javaLanguagePack: LanguagePack = {
         declarator: (variable_declarator
           name: (identifier) @name
         )
-      ) @decl.property
+      ) @property
     `,
     
     // Generic blocks for test frameworks (JUnit, TestNG)

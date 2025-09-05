@@ -1,6 +1,6 @@
 import { LanguageAgnosticParser, SyntaxNode, Tree } from "./parser";
 import { getLanguagePack, LanguagePack } from "./lang-packs";
-const Query = require('tree-sitter').Query;
+const Query = require("tree-sitter").Query;
 
 export interface HumanReadablePathMatch {
   node: SyntaxNode;
@@ -29,22 +29,10 @@ export class HumanReadablePathResolver {
 
   private getParserLanguage(): string | undefined {
     // Try to get language from the parser's language configuration
-    const config = this.parser['config'];
+    const config = (this.parser as any).config;
     if (config && config.language) {
       const language = config.language;
-
-      // Map tree-sitter language objects to our language pack names
-      if (language.name === 'typescript') return 'typescript';
-      if (language.name === 'javascript') return 'javascript';
-      if (language.name === 'python') return 'python';
-      if (language.name === 'java') return 'java';
-
-      // Try to infer from the language object itself
-      const languageStr = language.toString();
-      if (languageStr.includes('typescript')) return 'typescript';
-      if (languageStr.includes('javascript')) return 'javascript';
-      if (languageStr.includes('python')) return 'python';
-      if (languageStr.includes('java')) return 'java';
+      return language.name;
     }
 
     return undefined;
@@ -54,14 +42,14 @@ export class HumanReadablePathResolver {
    * Set language based on file extension or explicit language name
    */
   setLanguageFromFile(filePath: string): void {
-    const ext = filePath.split('.').pop()?.toLowerCase();
+    const ext = filePath.split(".").pop()?.toLowerCase();
     const languageMap: Record<string, string> = {
-      'ts': 'typescript',
-      'tsx': 'typescript',
-      'js': 'javascript',
-      'jsx': 'javascript',
-      'py': 'python',
-      'java': 'java'
+      ts: "typescript",
+      tsx: "typescript",
+      js: "javascript",
+      jsx: "javascript",
+      py: "python",
+      java: "java",
     };
 
     if (ext && languageMap[ext]) {
@@ -79,30 +67,37 @@ export class HumanReadablePathResolver {
   /**
    * Execute a tree-sitter query and return matches with capture names
    */
-  private executeQuery(tree: Tree, queryString: string): Array<{node: SyntaxNode, captures: Record<string, SyntaxNode>}> {
+  private executeQuery(
+    tree: Tree,
+    queryString: string
+  ): { node: SyntaxNode; captures: Record<string, SyntaxNode> }[] {
     if (!this.languagePack) {
       return [];
     }
 
     try {
-      const language = this.parser['parser'].getLanguage(); // Access internal parser
+      const language = (this.parser as any).parser.getLanguage(); // Access internal parser
       if (!language) return [];
+      
+      console.log('Executing query with language:', language.name || 'unknown');
+      console.log('Query string:', queryString);
+      console.log('Tree root type:', tree.rootNode.type);
 
       const query = new Query(language, queryString);
       const matches = query.matches(tree.rootNode);
 
-      return matches.map(match => {
+      return matches.map((match) => {
         const captures: Record<string, SyntaxNode> = {};
         for (const capture of match.captures) {
           captures[capture.name] = capture.node;
         }
         return {
           node: match.captures[0]?.node, // Main node
-          captures
+          captures,
         };
       });
     } catch (error) {
-      console.warn('Failed to execute tree-sitter query:', error);
+      console.warn("Failed to execute tree-sitter query:", error);
       return [];
     }
   }
@@ -110,7 +105,10 @@ export class HumanReadablePathResolver {
   /**
    * Find all nodes of a specific type using the language pack
    */
-  private findNodesByQuery(tree: Tree, queryType: keyof LanguagePack['queries']): Array<{node: SyntaxNode, captures: Record<string, SyntaxNode>}> {
+  private findNodesByQuery(
+    tree: Tree,
+    queryType: keyof LanguagePack["queries"]
+  ): { node: SyntaxNode; captures: Record<string, SyntaxNode> }[] {
     if (!this.languagePack || !this.languagePack.queries[queryType]) {
       return [];
     }
@@ -134,7 +132,9 @@ export class HumanReadablePathResolver {
     }
 
     if (!this.languagePack) {
-      console.warn('No language pack loaded, falling back to legacy implementation');
+      console.warn(
+        "No language pack loaded, falling back to legacy implementation"
+      );
       return [];
     }
 
@@ -143,30 +143,30 @@ export class HumanReadablePathResolver {
     }
 
     const matches: HumanReadablePathMatch[] = [];
-    const parts = humanPath.split('.');
+    const parts = humanPath.split(".");
 
     if (parts.length === 1) {
       // Single part - could be class, method, property, or generic block
       const singleName = parts[0];
 
       // Check for classes
-      const classMatches = this.findNodesByQuery(tree, 'classes');
+      const classMatches = this.findNodesByQuery(tree, "classes");
       for (const match of classMatches) {
-        const nameNode = match.captures['name'];
+        const nameNode = match.captures.name;
         if (nameNode && nameNode.text === singleName) {
           matches.push({
             node: match.node,
             path: this.getNodePath(tree.rootNode, match.node),
             humanPath,
-            description: `Class declaration: ${singleName}`
+            description: `Class declaration: ${singleName}`,
           });
         }
       }
 
       // Check for methods
-      const methodMatches = this.findNodesByQuery(tree, 'methods');
+      const methodMatches = this.findNodesByQuery(tree, "methods");
       for (const match of methodMatches) {
-        const nameNode = match.captures['name'];
+        const nameNode = match.captures.name;
         if (nameNode && nameNode.text === singleName) {
           const className = this.findContainingClassName(match.node);
           const description = className
@@ -176,54 +176,52 @@ export class HumanReadablePathResolver {
             node: match.node,
             path: this.getNodePath(tree.rootNode, match.node),
             humanPath,
-            description
+            description,
           });
         }
       }
 
       // Check for properties
-      const propertyMatches = this.findNodesByQuery(tree, 'properties');
+      const propertyMatches = this.findNodesByQuery(tree, "properties");
       for (const match of propertyMatches) {
-        const nameNode = match.captures['name'];
+        const nameNode = match.captures.name;
         if (nameNode && nameNode.text === singleName) {
           matches.push({
             node: match.node,
             path: this.getNodePath(tree.rootNode, match.node),
             humanPath,
-            description: `Property declaration: ${singleName}`
+            description: `Property declaration: ${singleName}`,
           });
         }
       }
 
       // Check for generic blocks like describe(), test(), it(), etc.
-      const blockMatches = this.findNodesByQuery(tree, 'blocks');
+      const blockMatches = this.findNodesByQuery(tree, "blocks");
       for (const match of blockMatches) {
-        const nameNode = match.captures['name'];
-        const calleeNode = match.captures['callee'];
+        const nameNode = match.captures.name;
+        const calleeNode = match.captures.callee;
         if (nameNode && nameNode.text === singleName && calleeNode) {
           matches.push({
             node: match.node,
             path: this.getNodePath(tree.rootNode, match.node),
             humanPath,
-            description: `${calleeNode.text} block: ${singleName}`
+            description: `${calleeNode.text} block: ${singleName}`,
           });
         }
       }
-
     } else if (parts.length === 2) {
       // Two parts - ClassName.MemberName
       const [className, memberName] = parts;
 
       // Find classes with the given name
-      const classMatches = this.findNodesByQuery(tree, 'classes');
+      const classMatches = this.findNodesByQuery(tree, "classes");
       for (const classMatch of classMatches) {
-        const classNameNode = classMatch.captures['name'];
+        const classNameNode = classMatch.captures.name;
         if (classNameNode && classNameNode.text === className) {
-
           // Look for methods in this class
-          const methodMatches = this.findNodesByQuery(tree, 'methods');
+          const methodMatches = this.findNodesByQuery(tree, "methods");
           for (const methodMatch of methodMatches) {
-            const methodNameNode = methodMatch.captures['name'];
+            const methodNameNode = methodMatch.captures.name;
             if (methodNameNode && methodNameNode.text === memberName) {
               // Check if this method is within the target class
               if (this.isNodeWithinNode(methodMatch.node, classMatch.node)) {
@@ -231,16 +229,16 @@ export class HumanReadablePathResolver {
                   node: methodMatch.node,
                   path: this.getNodePath(tree.rootNode, methodMatch.node),
                   humanPath,
-                  description: `Method ${memberName} in class ${className}`
+                  description: `Method ${memberName} in class ${className}`,
                 });
               }
             }
           }
 
           // Look for properties in this class
-          const propertyMatches = this.findNodesByQuery(tree, 'properties');
+          const propertyMatches = this.findNodesByQuery(tree, "properties");
           for (const propertyMatch of propertyMatches) {
-            const propertyNameNode = propertyMatch.captures['name'];
+            const propertyNameNode = propertyMatch.captures.name;
             if (propertyNameNode && propertyNameNode.text === memberName) {
               // Check if this property is within the target class
               if (this.isNodeWithinNode(propertyMatch.node, classMatch.node)) {
@@ -248,7 +246,7 @@ export class HumanReadablePathResolver {
                   node: propertyMatch.node,
                   path: this.getNodePath(tree.rootNode, propertyMatch.node),
                   humanPath,
-                  description: `Property ${memberName} in class ${className}`
+                  description: `Property ${memberName} in class ${className}`,
                 });
               }
             }
@@ -263,7 +261,10 @@ export class HumanReadablePathResolver {
   /**
    * Check if one node is contained within another node
    */
-  private isNodeWithinNode(childNode: SyntaxNode, parentNode: SyntaxNode): boolean {
+  private isNodeWithinNode(
+    childNode: SyntaxNode,
+    parentNode: SyntaxNode
+  ): boolean {
     let current = childNode.parent;
     while (current) {
       if (current === parentNode) {
@@ -280,7 +281,6 @@ export class HumanReadablePathResolver {
   getParser(): LanguageAgnosticParser {
     return this.parser;
   }
-
 
   private getNodePath(rootNode: SyntaxNode, targetNode: SyntaxNode): string {
     const path: string[] = [];
@@ -311,30 +311,36 @@ export class HumanReadablePathResolver {
     }
 
     // Add class names
-    const classMatches = this.findNodesByQuery(tree, 'classes');
+    const classMatches = this.findNodesByQuery(tree, "classes");
     for (const classMatch of classMatches) {
-      const classNameNode = classMatch.captures['name'];
+      const classNameNode = classMatch.captures.name;
       if (classNameNode && classNameNode.text) {
         const className = classNameNode.text;
         paths.push(className);
 
         // Add methods within this class
-        const methodMatches = this.findNodesByQuery(tree, 'methods');
+        const methodMatches = this.findNodesByQuery(tree, "methods");
         for (const methodMatch of methodMatches) {
-          const methodNameNode = methodMatch.captures['name'];
-          if (methodNameNode && methodNameNode.text &&
-              this.isNodeWithinNode(methodMatch.node, classMatch.node)) {
+          const methodNameNode = methodMatch.captures.name;
+          if (
+            methodNameNode &&
+            methodNameNode.text &&
+            this.isNodeWithinNode(methodMatch.node, classMatch.node)
+          ) {
             const methodName = methodNameNode.text;
             paths.push(`${className}.${methodName}`);
           }
         }
 
         // Add properties within this class
-        const propertyMatches = this.findNodesByQuery(tree, 'properties');
+        const propertyMatches = this.findNodesByQuery(tree, "properties");
         for (const propertyMatch of propertyMatches) {
-          const propertyNameNode = propertyMatch.captures['name'];
-          if (propertyNameNode && propertyNameNode.text &&
-              this.isNodeWithinNode(propertyMatch.node, classMatch.node)) {
+          const propertyNameNode = propertyMatch.captures.name;
+          if (
+            propertyNameNode &&
+            propertyNameNode.text &&
+            this.isNodeWithinNode(propertyMatch.node, classMatch.node)
+          ) {
             const propertyName = propertyNameNode.text;
             paths.push(`${className}.${propertyName}`);
           }
@@ -343,14 +349,14 @@ export class HumanReadablePathResolver {
     }
 
     // Add standalone methods (not within classes)
-    const methodMatches = this.findNodesByQuery(tree, 'methods');
+    const methodMatches = this.findNodesByQuery(tree, "methods");
     for (const methodMatch of methodMatches) {
-      const methodNameNode = methodMatch.captures['name'];
+      const methodNameNode = methodMatch.captures.name;
       if (methodNameNode && methodNameNode.text) {
         const methodName = methodNameNode.text;
 
         // Check if this method is not within any class
-        const isInClass = classMatches.some(classMatch =>
+        const isInClass = classMatches.some((classMatch) =>
           this.isNodeWithinNode(methodMatch.node, classMatch.node)
         );
 
@@ -361,10 +367,10 @@ export class HumanReadablePathResolver {
     }
 
     // Add generic blocks (describe, test, it, etc.)
-    const blockMatches = this.findNodesByQuery(tree, 'blocks');
+    const blockMatches = this.findNodesByQuery(tree, "blocks");
     for (const blockMatch of blockMatches) {
-      const nameNode = blockMatch.captures['name'];
-      const calleeNode = blockMatch.captures['callee'];
+      const nameNode = blockMatch.captures.name;
+      const calleeNode = blockMatch.captures.callee;
       if (nameNode && nameNode.text && calleeNode) {
         paths.push(nameNode.text);
       }
@@ -377,16 +383,16 @@ export class HumanReadablePathResolver {
 
     // Find all classes and check if this method is within any of them
     // TODO: Fix this to work without full Tree object - for now return null
-    // const tree = { rootNode: this.getTreeRoot(methodNode) };
-    // const classMatches = this.findNodesByQuery(tree, 'classes');
+    return null; // TODO: Need full tree context to find containing class
+    /*const classMatches = this.findNodesByQuery(tree, "classes");
 
-    // for (const classMatch of classMatches) {
-    //   if (this.isNodeWithinNode(methodNode, classMatch.node)) {
-    //     const nameNode = classMatch.captures['name'];
-    //     return nameNode ? nameNode.text : null;
-    //   }
-    // }
-    return null;
+    for (const classMatch of classMatches) {
+      if (this.isNodeWithinNode(methodNode, classMatch.node)) {
+        const nameNode = classMatch.captures.name;
+        return nameNode ? nameNode.text : null;
+      }
+    }
+    return null;*/
   }
 
   private getTreeRoot(node: SyntaxNode): SyntaxNode {

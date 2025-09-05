@@ -9,42 +9,42 @@ export const javascriptLanguagePack: LanguagePack = {
     classes: `
       (class_declaration
         name: (identifier) @name
-      ) @decl.class
+      ) @class
     `,
     
     // Method definitions, function declarations, and arrow functions
     methods: `
       (method_definition
         name: (property_identifier) @name
-      ) @decl.method
+      ) @method
       
       (function_declaration
         name: (identifier) @name
-      ) @decl.method
+      ) @method
       
-      (arrow_function) @decl.method
+      (arrow_function) @method
       
       (function_expression
         name: (identifier)? @name
-      ) @decl.method
+      ) @method
       
       (variable_declarator
         name: (identifier) @name
         value: (arrow_function)
-      ) @decl.method
+      ) @method
     `,
     
     // Property definitions and field declarations
     properties: `
-      (field_definition
+      (public_field_definition
         name: (property_identifier) @name
-      ) @decl.property
+      ) @property
       
       (assignment_expression
         left: (member_expression
           property: (property_identifier) @name
         )
-      ) @decl.property
+      ) @property
     `,
     
     // Generic blocks for test frameworks and other patterns
@@ -52,19 +52,9 @@ export const javascriptLanguagePack: LanguagePack = {
       (call_expression
         function: (identifier) @callee
         arguments: (arguments
-          (string 
+          (string
             (string_fragment) @name
-          )
-          .
-        )
-      ) @block
-      
-      (call_expression
-        function: (identifier) @callee
-        arguments: (arguments
-          (template_string
-            (string_fragment) @name
-          )
+          )?
           .
         )
       ) @block
@@ -134,37 +124,37 @@ export const typescriptLanguagePack: LanguagePack = {
     classes: `
       (class_declaration
         name: (identifier) @name
-      ) @decl.class
+      ) @class
       
       (interface_declaration
         name: (identifier) @name
-      ) @decl.class
+      ) @class
     `,
     
     // Add TypeScript-specific method constructs
     methods: `
       (method_definition
         name: (property_identifier) @name
-      ) @decl.method
+      ) @method
       
       (function_declaration
         name: (identifier) @name
-      ) @decl.method
+      ) @method
       
       (method_signature
         name: (property_identifier) @name
-      ) @decl.method
+      ) @method
     `,
     
     // Add TypeScript-specific property constructs
     properties: `
       (field_definition
         name: (property_identifier) @name
-      ) @decl.property
+      ) @property
       
       (property_signature
         name: (property_identifier) @name
-      ) @decl.property
+      ) @property
     `
   }
 };
