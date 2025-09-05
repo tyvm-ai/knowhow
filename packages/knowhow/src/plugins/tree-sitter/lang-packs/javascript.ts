@@ -14,8 +14,6 @@ export const javascriptLanguagePack: LanguagePackConfig = {
     `,
     properties: `
       (public_field_definition name: (property_identifier) @name) @property
-      (field_definition name: (property_identifier) @name) @property
-      (property_signature name: (property_identifier) @name) @property
     `,
     blocks: `
       (call_expression
@@ -27,28 +25,25 @@ export const javascriptLanguagePack: LanguagePackConfig = {
           [
             (string (string_fragment) @name)
             (template_string (string_fragment) @name)
+            (template_string) @name
           ]? . (_)*)
       ) @block
     `,
   },
   kindMap: {
     class_declaration: "class",
-    class: "class",
     method_definition: "method",
     method_signature: "method",
     function_declaration: "function",
     function_expression: "function",
     arrow_function: "function",
     public_field_definition: "property",
-    field_definition: "property",
-    property_signature: "property",
     class_body: "body",
     statement_block: "body",
     call_expression: "block",
   },
   bodyMap: {
     class_declaration: [{ kind: "child", nodeType: "class_body" }],
-    class: [{ kind: "child", nodeType: "class_body" }],
     method_definition: [{ kind: "functionBody" }],
     function_declaration: [{ kind: "functionBody" }],
     function_expression: [{ kind: "functionBody" }],

@@ -4,30 +4,31 @@ import { javascriptLanguagePack } from "./javascript";
 export const typescriptLanguagePack: LanguagePackConfig = {
   language: "typescript",
   queries: {
-    // Extend JavaScript queries with TypeScript-specific ones
-    ...javascriptLanguagePack.queries,
     classes: `
       (class_declaration name: (type_identifier) @name) @class
       (interface_declaration name: (type_identifier) @name) @class
       (type_alias_declaration name: (type_identifier) @name) @class
     `,
     methods: `
-      ${javascriptLanguagePack.queries.methods}
+      (method_definition name: (property_identifier) @name) @method
+      (function_declaration name: (identifier) @name) @method
+      (function_expression name: (identifier) @name) @method
+      (variable_declarator name: (identifier) @name value: (arrow_function)) @method
       (method_signature name: (property_identifier) @name) @method
       (construct_signature) @method
       (call_signature) @method
     `,
     properties: `
-      ${javascriptLanguagePack.queries.properties}
+      (public_field_definition name: (property_identifier) @name) @property
       (property_signature name: (property_identifier) @name) @property
       (index_signature) @property
     `,
+    blocks: javascriptLanguagePack.queries.blocks,
   },
   kindMap: {
     ...javascriptLanguagePack.kindMap,
-    // TypeScript-specific kinds
     interface_declaration: "class",
-    type_alias_declaration: "class", 
+    type_alias_declaration: "class",
     method_signature: "method",
     construct_signature: "method",
     call_signature: "method",

@@ -224,11 +224,23 @@ export class TreeEditor {
 
     // Insert content before the closing brace, with proper indentation
     const insertLine = endLine;
-    const indentedContent = content
-      .split("\n")
+    
+    // Detect if content is already properly indented by checking the first non-empty line
+    const contentLines = content.split("\n");
+    const firstNonEmptyLine = contentLines.find(line => line.trim() !== "");
+    const isAlreadyIndented = firstNonEmptyLine && firstNonEmptyLine.startsWith("  ");
+    
+    const indentedContent = contentLines
       .map((line, index) => {
-        if (index === 0 && line.trim() === "") return line;
-        return line.trim() === "" ? line : "  " + line; // Add base indentation
+        if (line.trim() === "") return line; // Keep empty lines as-is
+        
+        if (isAlreadyIndented) {
+          // Content is already indented, use as-is
+          return line;
+        } else {
+          // Add base indentation for unindented content
+          return "  " + line;
+        }
       })
       .join("\n");
 

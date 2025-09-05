@@ -65,6 +65,65 @@ describe("Common Code Editing Operations with Tree Editor", () => {
       console.log("New method content:", newMethodContent.trim());
     });
 
+    test("should automatically match 4-space indentation when adding methods", () => {
+      console.log("=== Testing 4-space indentation matching ===" );
+
+      // Create a class with 4-space indented methods
+      const fourSpaceIndentedCode = `export class FourSpaceCalculator {
+    private history: number[] = [];
+    private operationCount: number = 0;
+
+    constructor(private precision: number = 2) {}
+
+    add(a: number, b: number): number {
+        const result = a + b;
+        this.history.push(result);
+        this.operationCount++;
+        return result;
+    }
+
+    multiply(a: number, b: number): number {
+        const result = a * b;
+        this.history.push(result);
+        this.operationCount++;
+        return result;
+    }
+}`;
+
+      // Create a new editor with the 4-space indented code
+      const fourSpaceEditor = new TreeEditor(parser, fourSpaceIndentedCode);
+
+      // Add a new method with 4-space indentation to match existing methods
+      const newMethodContent = `    subtract(a: number, b: number): number {
+        const result = a - b;
+        this.history.push(result);
+        this.operationCount++;
+        return result;
+    }`;
+
+      const modifiedEditor = fourSpaceEditor.addMethodToClass(
+        "FourSpaceCalculator",
+        newMethodContent
+      );
+      const modifiedText = modifiedEditor.getCurrentText();
+
+      // Verify the method was added
+      expect(modifiedText).toContain("subtract(a: number, b: number): number");
+      expect(modifiedText).toContain("const result = a - b;");
+
+      // Check that the indentation is preserved correctly (4 spaces for method, 8 spaces for body)
+      const lines = modifiedText.split('\n');
+      const subtractMethodLine = lines.find(line => line.includes('subtract(a: number, b: number)'));
+      const resultLine = lines.find(line => line.includes('const result = a - b;'));
+      
+      expect(subtractMethodLine).toMatch(/^    subtract/); // 4 spaces before method name
+      expect(resultLine).toMatch(/^        const result = a - b;/); // 8 spaces before method body
+
+      console.log("✓ Successfully preserved 4-space indentation when adding method");
+      console.log("Method line indentation:", subtractMethodLine?.match(/^ */)?.[0].length, "spaces");
+      console.log("Body line indentation:", resultLine?.match(/^ */)?.[0].length, "spaces");
+    });
+
     test("should rename a method on a class", () => {
       console.log("=== Renaming multiply method to times ===");
 
