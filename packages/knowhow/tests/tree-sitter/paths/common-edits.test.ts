@@ -201,7 +201,7 @@ describe("Common Code Editing Operations with Tree Editor", () => {
         modifiedEditor.findNodesByHumanPath("Statistics.getMean");
       expect(meanMatches.length).toBe(1);
       expect(meanMatches[0].description).toContain(
-        "Method getMean in class Statistics"
+        "getMean method in class Statistics"
       );
 
       console.log("✓ Successfully defined Statistics class with methods");
@@ -317,7 +317,7 @@ describe("Common Code Editing Operations with Tree Editor", () => {
       const addMatches = editor.findNodesByHumanPath("Calculator.add");
       expect(addMatches.length).toBe(1);
       expect(addMatches[0].description).toContain(
-        "Method add in class Calculator"
+        "add method in class Calculator"
       );
 
       const multiplyMatches = editor.findNodesByHumanPath(
