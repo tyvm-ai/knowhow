@@ -12,7 +12,7 @@ export const javascriptLanguagePack: LanguagePack = {
       ) @class
     `,
     
-    // Method definitions, function declarations, and arrow functions
+    // Method definitions in classes, function declarations, and arrow functions
     methods: `
       (method_definition
         name: (property_identifier) @name
@@ -22,10 +22,8 @@ export const javascriptLanguagePack: LanguagePack = {
         name: (identifier) @name
       ) @method
       
-      (arrow_function) @method
-      
       (function_expression
-        name: (identifier)? @name
+        name: (identifier) @name
       ) @method
       
       (variable_declarator
@@ -36,8 +34,8 @@ export const javascriptLanguagePack: LanguagePack = {
     
     // Property definitions and field declarations
     properties: `
-      (public_field_definition
-        name: (property_identifier) @name
+      (assignment_expression
+        left: (identifier) @name
       ) @property
       
       (assignment_expression
@@ -51,12 +49,16 @@ export const javascriptLanguagePack: LanguagePack = {
     blocks: `
       (call_expression
         function: (identifier) @callee
-        arguments: (arguments
-          (string
-            (string_fragment) @name
-          )?
-          .
-        )
+        arguments: (arguments . (string) @name)
+      ) @block
+      
+      (call_expression
+        function: (identifier) @callee
+        arguments: (arguments . (template_string) @name)
+      ) @block
+      
+      (call_expression
+        function: (identifier) @callee
       ) @block
     `
   },
@@ -74,7 +76,7 @@ export const javascriptLanguagePack: LanguagePack = {
     }
     
     // For string literals, remove quotes
-    if (node.type === "string" || node.type === "string_fragment") {
+    if (node.type === "string") {
       const text = node.text;
       if ((text.startsWith('"') && text.endsWith('"')) ||
           (text.startsWith("'") && text.endsWith("'"))) {
@@ -84,12 +86,16 @@ export const javascriptLanguagePack: LanguagePack = {
     }
     
     // For template strings, extract content
-    if (node.type === "template_string" || node.type === "string_fragment") {
+    if (node.type === "template_string") {
       const text = node.text;
       if (text.startsWith("`") && text.endsWith("`")) {
         return text.slice(1, -1);
       }
       return text;
+    }
+    
+    if (node.type === "string_fragment") {
+      return node.text;
     }
     
     return node.text;
@@ -101,7 +107,7 @@ export const javascriptLanguagePack: LanguagePack = {
       const args = node.children.find(child => child.type === "arguments");
       if (args) {
         const firstStringArg = args.children.find(child => 
-          child.type === "string" || child.type === "template_string" || child.type === "string_fragment"
+          child.type === "string" || child.type === "template_string"
         );
         if (firstStringArg) {
           return this.getNameText(firstStringArg);
@@ -123,11 +129,11 @@ export const typescriptLanguagePack: LanguagePack = {
     // Add TypeScript-specific class constructs
     classes: `
       (class_declaration
-        name: (identifier) @name
+        name: (type_identifier) @name
       ) @class
       
       (interface_declaration
-        name: (identifier) @name
+        name: (type_identifier) @name
       ) @class
     `,
     
@@ -144,16 +150,31 @@ export const typescriptLanguagePack: LanguagePack = {
       (method_signature
         name: (property_identifier) @name
       ) @method
+      
+      (variable_declarator
+        name: (identifier) @name
+        value: (arrow_function)
+      ) @method
     `,
     
     // Add TypeScript-specific property constructs
     properties: `
-      (field_definition
+      (public_field_definition
         name: (property_identifier) @name
       ) @property
       
       (property_signature
         name: (property_identifier) @name
+      ) @property
+      
+      (assignment_expression
+        left: (identifier) @name
+      ) @property
+      
+      (assignment_expression
+        left: (member_expression
+          property: (property_identifier) @name
+        )
       ) @property
     `
   }

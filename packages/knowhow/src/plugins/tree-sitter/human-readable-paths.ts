@@ -37,7 +37,6 @@ export class HumanReadablePathResolver {
 
     return undefined;
   }
-
   /**
    * Set language based on file extension or explicit language name
    */
@@ -78,10 +77,6 @@ export class HumanReadablePathResolver {
     try {
       const language = (this.parser as any).parser.getLanguage(); // Access internal parser
       if (!language) return [];
-      
-      console.log('Executing query with language:', language.name || 'unknown');
-      console.log('Query string:', queryString);
-      console.log('Tree root type:', tree.rootNode.type);
 
       const query = new Query(language, queryString);
       const matches = query.matches(tree.rootNode);
@@ -98,10 +93,10 @@ export class HumanReadablePathResolver {
       });
     } catch (error) {
       console.warn("Failed to execute tree-sitter query:", error);
+      console.warn("Query that failed:", JSON.stringify(queryString));
       return [];
     }
   }
-
   /**
    * Find all nodes of a specific type using the language pack
    */
@@ -116,11 +111,119 @@ export class HumanReadablePathResolver {
   }
 
   /**
+   * Parse a human path to detect block syntax like describe("name") vs regular paths
+   */
+  private parseHumanPath(humanPath: string): {
+    type: 'block' | 'regular';
+    functionName?: string;
+    argument?: string;
+    parts: string[];
+  } {
+    // Check for function call syntax like describe("name") or test("should work")
+    const blockPattern = /^(\w+)\s*\(\s*["'`]([^"'`]*)["'`]\s*\)$/;
+    const blockMatch = humanPath.match(blockPattern);
+
+    if (blockMatch) {
+      return {
+        type: 'block',
+        functionName: blockMatch[1],
+        argument: blockMatch[2],
+        parts: [blockMatch[1]]
+      };
+    }
+
+    // Check for parameterless function calls like beforeEach()
+    const parameterlessBlockPattern = /^(\w+)\s*\(\s*\)$/;
+    const parameterlessMatch = humanPath.match(parameterlessBlockPattern);
+
+    if (parameterlessMatch) {
+      return {
+        type: 'block',
+        functionName: parameterlessMatch[1],
+        parts: [parameterlessMatch[1]]
+      };
+    }
+
+    // Regular path like "ClassName.methodName" or just "name"
+    return {
+      type: 'regular',
+      parts: humanPath.split('.')
+    };
+  }
+  /**
+   * Find block matches for syntax like describe("name") or beforeEach()
+   */
+  private findBlockMatches(
+    tree: Tree,
+    functionName: string,
+    argument: string | undefined,
+    humanPath: string
+  ): HumanReadablePathMatch[] {
+    const matches: HumanReadablePathMatch[] = [];
+    const blockMatches = this.findNodesByQuery(tree, "blocks");
+
+    for (const match of blockMatches) {
+      const calleeNode = match.captures.callee;
+      const nameNode = match.captures.name;
+
+      if (!calleeNode || calleeNode.text !== functionName) {
+        continue;
+      }
+
+      // For parameterless blocks like beforeEach(), just match the function name
+      if (!argument) {
+        matches.push({
+          node: match.node,
+          path: this.getNodePath(tree.rootNode, match.node),
+          humanPath,
+          description: `${functionName} block`,
+        });
+        continue;
+      }
+
+      // For blocks with arguments, match the argument text
+      if (nameNode) {
+        // Extract string content from quotes
+        let nameText = nameNode.text;
+        if ((nameText.startsWith('"') && nameText.endsWith('"')) ||
+            (nameText.startsWith("'") && nameText.endsWith("'")) ||
+            (nameText.startsWith('`') && nameText.endsWith('`'))) {
+          nameText = nameText.slice(1, -1);
+        }
+        
+        if (nameText === argument) {
+          matches.push({
+            node: match.node,
+            path: this.getNodePath(tree.rootNode, match.node),
+            humanPath,
+            description: `${functionName} block: ${argument}`,
+          });
+        }
+      }
+    }
+
+    return matches;
+  }
+  /**
+   * Find nodes using human-readable paths like:
+        matches.push({
+          node: match.node,
+          path: this.getNodePath(tree.rootNode, match.node),
+          humanPath,
+          description: `${functionName} block: ${argument}`,
+        });
+      }
+    }
+
+    return matches;
+  }
+  /**
    * Find nodes using human-readable paths like:
    * - "ClassName.methodName" - finds a method in a class
    * - "ClassName" - finds a class declaration
    * - "methodName" - finds any method with that name
    * - "ClassName.propertyName" - finds a property in a class
+   * - "describe(\"test name\")" - finds a describe block
    */
   findByHumanPath(tree: Tree, humanPath: string): HumanReadablePathMatch[] {
     if (!this.languagePack) {
@@ -132,9 +235,7 @@ export class HumanReadablePathResolver {
     }
 
     if (!this.languagePack) {
-      console.warn(
-        "No language pack loaded, falling back to legacy implementation"
-      );
+      console.warn("No language pack loaded, falling back to legacy implementation");
       return [];
     }
 
@@ -143,10 +244,16 @@ export class HumanReadablePathResolver {
     }
 
     const matches: HumanReadablePathMatch[] = [];
-    const parts = humanPath.split(".");
+    const pathInfo = this.parseHumanPath(humanPath);
+    const parts = pathInfo.parts;
+
+    // Handle block syntax like describe("Authentication") or beforeEach()
+    if (pathInfo.type === 'block') {
+      return this.findBlockMatches(tree, pathInfo.functionName!, pathInfo.argument, humanPath);
+    }
 
     if (parts.length === 1) {
-      // Single part - could be class, method, property, or generic block
+      // Single part - could be class, method, or property
       const singleName = parts[0];
 
       // Check for classes
@@ -162,15 +269,14 @@ export class HumanReadablePathResolver {
           });
         }
       }
-
       // Check for methods
       const methodMatches = this.findNodesByQuery(tree, "methods");
       for (const match of methodMatches) {
         const nameNode = match.captures.name;
         if (nameNode && nameNode.text === singleName) {
-          const className = this.findContainingClassName(match.node);
+          const className = this.findContainingClassName(tree, match.node);
           const description = className
-            ? `Method ${singleName} in class ${className}`
+            ? `${singleName} method in class ${className}`
             : `Method declaration: ${singleName}`;
           matches.push({
             node: match.node,
@@ -209,10 +315,21 @@ export class HumanReadablePathResolver {
           });
         }
       }
+        const calleeNode = match.captures.callee;
+        
+        // Check if this is a parameterless call matching the search term
+        if (calleeNode && calleeNode.text === singleName) {
+          matches.push({
+            node: match.node,
+            path: this.getNodePath(tree.rootNode, match.node),
+            humanPath,
+            description: `${singleName} block`,
+          });
+          continue;
+        }
+        
     } else if (parts.length === 2) {
-      // Two parts - ClassName.MemberName
       const [className, memberName] = parts;
-
       // Find classes with the given name
       const classMatches = this.findNodesByQuery(tree, "classes");
       for (const classMatch of classMatches) {
@@ -229,7 +346,7 @@ export class HumanReadablePathResolver {
                   node: methodMatch.node,
                   path: this.getNodePath(tree.rootNode, methodMatch.node),
                   humanPath,
-                  description: `Method ${memberName} in class ${className}`,
+                  description: `${memberName} method in class ${className}`,
                 });
               }
             }
@@ -257,22 +374,25 @@ export class HumanReadablePathResolver {
 
     return matches;
   }
+  /**
+   * Find the containing class name for a method node
 
   /**
-   * Check if one node is contained within another node
+   * Find the containing class name for a method node
    */
-  private isNodeWithinNode(
-    childNode: SyntaxNode,
-    parentNode: SyntaxNode
-  ): boolean {
-    let current = childNode.parent;
-    while (current) {
-      if (current === parentNode) {
-        return true;
+  private findContainingClassName(tree: Tree, methodNode: SyntaxNode): string | null {
+    if (!this.languagePack) return null;
+
+    // Find all classes and check if this method is within any of them
+    const classMatches = this.findNodesByQuery(tree, "classes");
+
+    for (const classMatch of classMatches) {
+      if (this.isNodeWithinNode(methodNode, classMatch.node)) {
+        const nameNode = classMatch.captures.name;
+        return nameNode ? nameNode.text : null;
       }
-      current = current.parent;
     }
-    return false;
+    return null;
   }
 
   /**
@@ -299,7 +419,6 @@ export class HumanReadablePathResolver {
 
     return path.join("/");
   }
-
   /**
    * Get all possible human-readable paths for a tree
    */
@@ -347,59 +466,66 @@ export class HumanReadablePathResolver {
         }
       }
     }
-
     // Add standalone methods (not within classes)
-    const methodMatches = this.findNodesByQuery(tree, "methods");
-    for (const methodMatch of methodMatches) {
+    const standaloneMethods = this.findNodesByQuery(tree, "methods");
+    for (const methodMatch of standaloneMethods) {
       const methodNameNode = methodMatch.captures.name;
       if (methodNameNode && methodNameNode.text) {
         const methodName = methodNameNode.text;
 
-        // Check if this method is not within any class
-        const isInClass = classMatches.some((classMatch) =>
-          this.isNodeWithinNode(methodMatch.node, classMatch.node)
-        );
+        // Check if this method is NOT within a class
+        let isWithinClass = false;
+        for (const classMatch of classMatches) {
+          if (this.isNodeWithinNode(methodMatch.node, classMatch.node)) {
+            isWithinClass = true;
+            break;
+          }
+        }
 
-        if (!isInClass) {
+        if (!isWithinClass) {
           paths.push(methodName);
         }
       }
     }
 
-    // Add generic blocks (describe, test, it, etc.)
+    // Add blocks
     const blockMatches = this.findNodesByQuery(tree, "blocks");
     for (const blockMatch of blockMatches) {
-      const nameNode = blockMatch.captures.name;
       const calleeNode = blockMatch.captures.callee;
-      if (nameNode && nameNode.text && calleeNode) {
-        paths.push(nameNode.text);
+      const nameNode = blockMatch.captures.name;
+
+      if (calleeNode && calleeNode.text) {
+        const callee = calleeNode.text;
+
+        if (nameNode && nameNode.text) {
+          // Extract the name from quotes if needed
+          let name = nameNode.text;
+          if ((name.startsWith('"') && name.endsWith('"')) ||
+              (name.startsWith("'") && name.endsWith("'"))) {
+            name = name.slice(1, -1);
+          }
+          paths.push(`${callee}("${name}")`);
+        } else {
+          // Block without name parameter
+          paths.push(`${callee}()`);
+        }
       }
     }
 
     return paths;
   }
-  private findContainingClassName(methodNode: SyntaxNode): string | null {
-    if (!this.languagePack) return null;
 
-    // Find all classes and check if this method is within any of them
-    // TODO: Fix this to work without full Tree object - for now return null
-    return null; // TODO: Need full tree context to find containing class
-    /*const classMatches = this.findNodesByQuery(tree, "classes");
-
-    for (const classMatch of classMatches) {
-      if (this.isNodeWithinNode(methodNode, classMatch.node)) {
-        const nameNode = classMatch.captures.name;
-        return nameNode ? nameNode.text : null;
+  /**
+   * Helper method to check if one node is contained within another
+   */
+  private isNodeWithinNode(childNode: SyntaxNode, parentNode: SyntaxNode): boolean {
+    let current = childNode.parent;
+    while (current) {
+      if (current === parentNode) {
+        return true;
       }
-    }
-    return null;*/
-  }
-
-  private getTreeRoot(node: SyntaxNode): SyntaxNode {
-    let current = node;
-    while (current.parent) {
       current = current.parent;
     }
-    return current;
+    return false;
   }
 }
