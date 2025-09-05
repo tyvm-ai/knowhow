@@ -139,4 +139,229 @@ class B { method() { return 2; } }
       }).toThrow("Multiple nodes found for human path");
     });
   });
+
+  describe("Generic Block Support", () => {
+    const testFrameworkCode = `
+describe("Authentication", () => {
+  beforeEach(() => {
+    setup();
+  });
+
+  test("should login successfully", () => {
+    expect(login()).toBe(true);
+  });
+
+  it("should logout properly", () => {
+    expect(logout()).toBe(true);
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+});
+
+describe("User Management", () => {
+  test("should create user", () => {
+    expect(createUser()).toBeTruthy();
+  });
+});
+`.trim();
+
+    test("should find describe blocks by name", () => {
+      const tree = parser.parseString(testFrameworkCode);
+      const matches = resolver.findByHumanPath(tree, 'describe("Authentication")');
+      
+      expect(matches.length).toBe(1);
+      expect(matches[0].description).toContain("describe");
+      expect(matches[0].description).toContain("Authentication");
+    });
+
+    test("should find test blocks by name", () => {
+      const tree = parser.parseString(testFrameworkCode);
+      const matches = resolver.findByHumanPath(tree, 'test("should login successfully")');
+      
+      expect(matches.length).toBe(1);
+      expect(matches[0].description).toContain("test");
+      expect(matches[0].description).toContain("should login successfully");
+    });
+
+    test("should find it blocks by name", () => {
+      const tree = parser.parseString(testFrameworkCode);
+      const matches = resolver.findByHumanPath(tree, 'it("should logout properly")');
+      
+      expect(matches.length).toBe(1);
+      expect(matches[0].description).toContain("it");
+      expect(matches[0].description).toContain("should logout properly");
+    });
+
+    test("should find beforeEach blocks", () => {
+      const tree = parser.parseString(testFrameworkCode);
+      const matches = resolver.findByHumanPath(tree, "beforeEach");
+      
+      expect(matches.length).toBe(1);
+      expect(matches[0].description).toContain("beforeEach");
+    });
+
+    test("should find afterEach blocks", () => {
+      const tree = parser.parseString(testFrameworkCode);
+      const matches = resolver.findByHumanPath(tree, "afterEach");
+      
+      expect(matches.length).toBe(1);
+      expect(matches[0].description).toContain("afterEach");
+    });
+
+    test("should handle template string literals", () => {
+      const templateStringCode = `
+describe(\`User \${userId} Tests\`, () => {
+  test(\`should process \${action}\`, () => {
+    // test content
+  });
+});
+`.trim();
+      
+      const tree = parser.parseString(templateStringCode);
+      const matches = resolver.findByHumanPath(tree, 'describe(`User ${userId} Tests`)');
+      
+      expect(matches.length).toBe(1);
+      expect(matches[0].description).toContain("describe");
+    });
+
+    test("should find multiple describe blocks with different names", () => {
+      const tree = parser.parseString(testFrameworkCode);
+      const authMatches = resolver.findByHumanPath(tree, 'describe("Authentication")');
+      const userMatches = resolver.findByHumanPath(tree, 'describe("User Management")');
+      
+      expect(authMatches.length).toBe(1);
+      expect(userMatches.length).toBe(1);
+      expect(authMatches[0].description).toContain("Authentication");
+      expect(userMatches[0].description).toContain("User Management");
+    });
+
+    test("should include generic blocks in getAllHumanPaths", () => {
+      const tree = parser.parseString(testFrameworkCode);
+      const paths = resolver.getAllHumanPaths(tree);
+      
+      expect(paths.some(p => p.includes('describe("Authentication")'))).toBe(true);
+      expect(paths.some(p => p.includes('test("should login successfully")'))).toBe(true);
+      expect(paths.some(p => p.includes('it("should logout properly")'))).toBe(true);
+      expect(paths.some(p => p.includes("beforeEach"))).toBe(true);
+      expect(paths.some(p => p.includes("afterEach"))).toBe(true);
+    });
+  });
+
+  describe("Multi-Language Support", () => {
+    describe("JavaScript Support", () => {
+      let jsParser: LanguageAgnosticParser;
+      let jsResolver: HumanReadablePathResolver;
+
+      beforeEach(() => {
+        jsParser = LanguageAgnosticParser.createJavaScriptParser();
+        jsResolver = new HumanReadablePathResolver(jsParser);
+      });
+
+      const jsCode = `
+class Calculator {
+  constructor(initialValue = 0) {
+    this.value = initialValue;
+  }
+  
+  add(x) {
+    const result = this.value + x;
+    console.log(\`Adding: \${result}\`);
+    return result;
+  }
+  
+  multiply(x, y) {
+    const result = x * y;
+    console.log(\`Multiplying: \${result}\`);
+    return result;
+  }
+}
+`.trim();
+
+      test("should find JavaScript classes", () => {
+        const tree = jsParser.parseString(jsCode);
+        const matches = jsResolver.findByHumanPath(tree, "Calculator");
+        
+        expect(matches.length).toBeGreaterThan(0);
+        expect(matches[0].description).toContain("Calculator");
+      });
+
+      test("should find JavaScript methods", () => {
+        const tree = jsParser.parseString(jsCode);
+        const matches = jsResolver.findByHumanPath(tree, "add");
+        
+        expect(matches.length).toBeGreaterThan(0);
+        expect(matches.some(m => m.description.includes("add"))).toBe(true);
+      });
+
+      test("should find JavaScript class.method patterns", () => {
+        const tree = jsParser.parseString(jsCode);
+        const matches = jsResolver.findByHumanPath(tree, "Calculator.add");
+        
+        expect(matches.length).toBeGreaterThan(0);
+        expect(matches[0].description).toContain("Calculator");
+        expect(matches[0].description).toContain("add");
+      });
+      
+      test("should handle JavaScript with test blocks", () => {
+        const jsTestCode = `
+describe("Calculator Tests", () => {
+  test("should add numbers", () => {
+    const calc = new Calculator();
+    expect(calc.add(2)).toBe(2);
+  });
+});
+`.trim();
+        
+        const tree = jsParser.parseString(jsTestCode);
+        const matches = jsResolver.findByHumanPath(tree, 'describe("Calculator Tests")');
+        
+        expect(matches.length).toBe(1);
+        expect(matches[0].description).toContain("describe");
+        expect(matches[0].description).toContain("Calculator Tests");
+      });
+    });
+  });
+
+  describe("Interface Support (TypeScript)", () => {
+    const interfaceCode = `
+interface ICalculator {
+  add(x: number): number;
+  multiply(x: number, y: number): number;
+}
+
+interface IUserManager {
+  createUser(name: string): User;
+  deleteUser(id: number): void;
+}
+
+class Calculator implements ICalculator {
+  add(x: number): number {
+    return x;
+  }
+  
+  multiply(x: number, y: number): number {
+    return x * y;
+  }
+}
+`.trim();
+
+    test("should find interfaces", () => {
+      const tree = parser.parseString(interfaceCode);
+      const matches = resolver.findByHumanPath(tree, "ICalculator");
+      
+      expect(matches.length).toBeGreaterThan(0);
+      expect(matches[0].description).toContain("ICalculator");
+    });
+
+    test("should find interface methods", () => {
+      const tree = parser.parseString(interfaceCode);
+      const matches = resolver.findByHumanPath(tree, "ICalculator.add");
+      
+      expect(matches.length).toBeGreaterThan(0);
+      expect(matches[0].description).toContain("ICalculator");
+      expect(matches[0].description).toContain("add");
+    });
+  });
 });

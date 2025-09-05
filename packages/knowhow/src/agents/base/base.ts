@@ -621,7 +621,7 @@ export abstract class BaseAgent implements IAgent {
 
       if (
         this.getMessagesLength(messages) > compressThreshold &&
-        messages.length > 10
+        messages.length > 20
       ) {
         const taskBreakdown = await this.getTaskBreakdown(messages);
         console.log(

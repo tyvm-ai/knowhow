@@ -40,8 +40,10 @@ export class LanguageAgnosticParser {
 
   constructor(config?: LanguageConfig) {
     this.parser = new Parser();
-    this.config = config;
-    this.parser.setLanguage(this.config.language);
+    this.config = config || {} as LanguageConfig;
+    if (config && config.language) {
+      this.parser.setLanguage(config.language);
+    }
   }
 
   setLanguageConfig(config: LanguageConfig) {
