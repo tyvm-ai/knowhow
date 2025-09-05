@@ -20,47 +20,6 @@ export interface QueryMatch {
 }
 
 /**
- * Language pack interface defining how to parse language-specific constructs
- */
-export interface LanguagePack {
-  /**
-   * Language identifier (e.g., "javascript", "typescript", "python")
-   */
-  language: string;
-  
-  /**
-   * Tree-sitter queries for finding different constructs
-   */
-  queries: {
-    /** Query for class declarations */
-    classes?: string;
-    /** Query for method/function declarations */
-    methods?: string;
-    /** Query for property/field declarations */
-    properties?: string;
-    /** Query for generic blocks (describe, test, it, etc.) */
-    blocks?: string;
-  };
-  
-  /**
-   * Helper function to determine if a node is a class node
-   */
-  isClassNode(node: SyntaxNode): boolean;
-  
-  /**
-   * Optional function to extract name text from a node
-   * If not provided, will use node.text
-   */
-  getNameText?(node: SyntaxNode): string;
-  
-  /**
-   * Optional function to extract block name from arguments
-   * Used for describe("name"), test("name"), etc.
-   */
-  getBlockName?(node: SyntaxNode): string;
-}
-
-/**
  * Match result for human-readable path resolution
  */
 export interface HumanReadablePathMatch {

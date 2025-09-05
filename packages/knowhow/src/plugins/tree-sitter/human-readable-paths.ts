@@ -1,5 +1,5 @@
 import { LanguageAgnosticParser, SyntaxNode, Tree } from "./parser";
-import { getLanguagePack, LanguagePack } from "./lang-packs";
+import { getLanguagePack, LanguagePackConfig } from "./lang-packs";
 import { Query } from "tree-sitter";
 
 export interface HumanReadablePathMatch {
@@ -11,56 +11,11 @@ export interface HumanReadablePathMatch {
 
 export class HumanReadablePathResolver {
   private parser: LanguageAgnosticParser;
-  private currentLanguage: string | undefined;
-  private languagePack?: LanguagePack;
+  private languagePack: LanguagePackConfig;
 
   constructor(parser: LanguageAgnosticParser) {
     this.parser = parser;
-    this.initializeLanguagePack();
-  }
-
-  private initializeLanguagePack(): void {
-    // Try to determine language from parser
-    const language = this.getParserLanguage();
-    if (language) {
-      this.languagePack = getLanguagePack(language);
-    }
-  }
-
-  private getParserLanguage(): string | undefined {
-    // Try to get language from the parser's language configuration
-    const config = (this.parser as any).config;
-    if (config && config.language) {
-      const language = config.language;
-      return language.name;
-    }
-
-    return undefined;
-  }
-  /**
-   * Set language based on file extension or explicit language name
-   */
-  setLanguageFromFile(filePath: string): void {
-    const ext = filePath.split(".").pop()?.toLowerCase();
-    const languageMap: Record<string, string> = {
-      ts: "typescript",
-      tsx: "typescript",
-      js: "javascript",
-      jsx: "javascript",
-      py: "python",
-      java: "java",
-    };
-
-    if (ext && languageMap[ext]) {
-      this.setLanguage(languageMap[ext]);
-    }
-  }
-
-  /**
-   * Set the language pack manually (useful when language can't be auto-detected)
-   */
-  setLanguage(language: string): void {
-    this.languagePack = getLanguagePack(language);
+    this.languagePack = parser.getLanguagePack();
   }
 
   /**
@@ -70,12 +25,8 @@ export class HumanReadablePathResolver {
     tree: Tree,
     queryString: string
   ): { node: SyntaxNode; captures: Record<string, SyntaxNode> }[] {
-    if (!this.languagePack) {
-      return [];
-    }
-
     try {
-      const language = (this.parser as any).parser.getLanguage(); // Access internal parser
+      const language = this.parser.parser.getLanguage(); // Access internal parser
       if (!language) return [];
 
       const query = new Query(language, queryString);
@@ -102,7 +53,7 @@ export class HumanReadablePathResolver {
    */
   private findNodesByQuery(
     tree: Tree,
-    queryType: keyof LanguagePack["queries"]
+    queryType: keyof LanguagePackConfig["queries"]
   ): { node: SyntaxNode; captures: Record<string, SyntaxNode> }[] {
     if (!this.languagePack || !this.languagePack.queries[queryType]) {
       return [];
@@ -215,21 +166,6 @@ export class HumanReadablePathResolver {
    * - "describe(\"test name\")" - finds a describe block
    */
   findByHumanPath(tree: Tree, humanPath: string): HumanReadablePathMatch[] {
-    if (!this.languagePack) {
-      // Try to set language automatically if not already set
-      const detectedLanguage = this.getParserLanguage();
-      if (detectedLanguage) {
-        this.setLanguage(detectedLanguage);
-      }
-    }
-
-    if (!this.languagePack) {
-      console.warn(
-        "No language pack loaded, falling back to legacy implementation"
-      );
-      return [];
-    }
-
     if (!tree.rootNode) {
       return [];
     }

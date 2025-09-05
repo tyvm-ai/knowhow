@@ -1,87 +1,45 @@
-import { SyntaxNode } from "../parser";
-import { LanguagePack } from "./types";
+import { LanguagePackConfig } from "./types";
 
-export const pythonLanguagePack: LanguagePack = {
+export const pythonLanguagePack: LanguagePackConfig = {
   language: "python",
-  
   queries: {
-    // Class definitions
     classes: `
-      (class_definition
-        name: (identifier) @name
-      ) @class
+      (class_definition name: (identifier) @name) @class
     `,
-    
-    // Function definitions
     methods: `
-      (function_definition
-        name: (identifier) @name
-      ) @method
+      (function_definition name: (identifier) @name) @method
     `,
-    
-    // Property assignments and attribute definitions
     properties: `
       (assignment
-        left: (attribute
-          attribute: (identifier) @name
-        )
+        left: (attribute attribute: (identifier) @name)
       ) @property
-      
       (assignment
         left: (identifier) @name
       ) @property
     `,
-    
-    // Generic blocks for test frameworks (pytest, unittest)
     blocks: `
       (call
         function: (identifier) @callee
-        arguments: (argument_list
-          (string) @name
-        )
+        arguments: (argument_list (string) @name? . (_)*)
       ) @block
-    `
+    `,
   },
-  
-  isClassNode(node: SyntaxNode): boolean {
-    return node.type === "class_definition";
+  kindMap: {
+    class_definition: "class",
+    class: "class",
+    function_definition: "method",
+    assignment: "property",
+    call: "block",
+    block: "body",
+    suite: "body",
   },
-  
-  getNameText(node: SyntaxNode): string {
-    // Handle different identifier types
-    if (node.type === "identifier") {
-      return node.text;
-    }
-    
-    // For string literals, remove quotes
-    if (node.type === "string") {
-      const text = node.text;
-      // Handle different Python string quote styles
-      if ((text.startsWith('"""') && text.endsWith('"""')) ||
-          (text.startsWith("'''") && text.endsWith("'''"))) {
-        return text.slice(3, -3);
-      }
-      if ((text.startsWith('"') && text.endsWith('"')) ||
-          (text.startsWith("'") && text.endsWith("'"))) {
-        return text.slice(1, -1);
-      }
-      return text;
-    }
-    
-    return node.text;
+  bodyMap: {
+    class_definition: [{ kind: "child", nodeType: "block" }],
+    class: [{ kind: "child", nodeType: "block" }],
+    function_definition: [{ kind: "functionBody" }],
+    call: [{ kind: "callCallbackBody" }],
+    block: [{ kind: "self" }],
+    suite: [{ kind: "self" }],
   },
-  
-  getBlockName(node: SyntaxNode): string {
-    // For call expressions, find the first string argument
-    if (node.type === "call") {
-      const args = node.children.find(child => child.type === "argument_list");
-      if (args) {
-        const firstStringArg = args.children.find(child => child.type === "string");
-        if (firstStringArg) {
-          return this.getNameText(firstStringArg);
-        }
-      }
-    }
-    return "";
-  }
+  stringUnwrapHint: "python-like",
 };

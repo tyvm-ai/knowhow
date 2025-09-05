@@ -1,30 +1,30 @@
-import { LanguagePackConfig } from "../lang-packs/types";
-import { jsMiniPack } from "./js-mini";
+import { LanguagePackConfig } from "./types";
+import { javascriptLanguagePack } from "./javascript";
 
-export const tsMiniPack: LanguagePackConfig = {
+export const typescriptLanguagePack: LanguagePackConfig = {
   language: "typescript",
   queries: {
     // Extend JavaScript queries with TypeScript-specific ones
-    ...jsMiniPack.queries,
+    ...javascriptLanguagePack.queries,
     classes: `
       (class_declaration name: (type_identifier) @name) @class
       (interface_declaration name: (type_identifier) @name) @class
       (type_alias_declaration name: (type_identifier) @name) @class
     `,
     methods: `
-      ${jsMiniPack.queries.methods}
+      ${javascriptLanguagePack.queries.methods}
       (method_signature name: (property_identifier) @name) @method
       (construct_signature) @method
       (call_signature) @method
     `,
     properties: `
-      ${jsMiniPack.queries.properties}
+      ${javascriptLanguagePack.queries.properties}
       (property_signature name: (property_identifier) @name) @property
       (index_signature) @property
     `,
   },
   kindMap: {
-    ...jsMiniPack.kindMap,
+    ...javascriptLanguagePack.kindMap,
     // TypeScript-specific kinds
     interface_declaration: "class",
     type_alias_declaration: "class", 
@@ -37,7 +37,7 @@ export const tsMiniPack: LanguagePackConfig = {
     interface_body: "body",
   },
   bodyMap: {
-    ...jsMiniPack.bodyMap,
+    ...javascriptLanguagePack.bodyMap,
     // TypeScript-specific body mappings
     interface_declaration: [{ kind: "child", nodeType: "object_type" }],
     type_alias_declaration: [{ kind: "field", field: "value" }],

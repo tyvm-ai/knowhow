@@ -1,181 +1,61 @@
-import { SyntaxNode } from "../parser";
-import { LanguagePack } from "./types";
+import { LanguagePackConfig } from "./types";
 
-export const javascriptLanguagePack: LanguagePack = {
+export const javascriptLanguagePack: LanguagePackConfig = {
   language: "javascript",
-  
   queries: {
-    // Class declarations including class expressions
     classes: `
-      (class_declaration
-        name: (identifier) @name
-      ) @class
+      (class_declaration name: (identifier) @name) @class
     `,
-    
-    // Method definitions in classes, function declarations, and arrow functions
     methods: `
-      (method_definition
-        name: (property_identifier) @name
-      ) @method
-      
-      (function_declaration
-        name: (identifier) @name
-      ) @method
-      
-      (function_expression
-        name: (identifier) @name
-      ) @method
-      
-      (variable_declarator
-        name: (identifier) @name
-        value: (arrow_function)
-      ) @method
+      (method_definition name: (property_identifier) @name) @method
+      (function_declaration name: (identifier) @name) @method
+      (function_expression name: (identifier) @name) @method
+      (variable_declarator name: (identifier) @name value: (arrow_function)) @method
     `,
-    
-    // Property definitions and field declarations
     properties: `
-      (assignment_expression
-        left: (identifier) @name
-      ) @property
-      
-      (assignment_expression
-        left: (member_expression
-          property: (property_identifier) @name
-        )
-      ) @property
+      (public_field_definition name: (property_identifier) @name) @property
+      (field_definition name: (property_identifier) @name) @property
+      (property_signature name: (property_identifier) @name) @property
     `,
-    
-    // Generic blocks for test frameworks and other patterns
     blocks: `
       (call_expression
-        function: (identifier) @callee
-        arguments: (arguments . (string) @name)
+        function: [
+          (identifier) @callee
+          (member_expression object: (identifier) @callee property: (property_identifier))
+        ]
+        arguments: (arguments
+          [
+            (string (string_fragment) @name)
+            (template_string (string_fragment) @name)
+          ]? . (_)*)
       ) @block
-      
-      (call_expression
-        function: (identifier) @callee
-        arguments: (arguments . (template_string) @name)
-      ) @block
-      
-      (call_expression
-        function: (identifier) @callee
-      ) @block
-    `
-  },
-  
-  isClassNode(node: SyntaxNode): boolean {
-    return node.type === "class_declaration" || node.type === "class";
-  },
-  
-  getNameText(node: SyntaxNode): string {
-    // Handle different identifier types
-    if (node.type === "identifier" || 
-        node.type === "property_identifier" || 
-        node.type === "type_identifier") {
-      return node.text;
-    }
-    
-    // For string literals, remove quotes
-    if (node.type === "string") {
-      const text = node.text;
-      if ((text.startsWith('"') && text.endsWith('"')) ||
-          (text.startsWith("'") && text.endsWith("'"))) {
-        return text.slice(1, -1);
-      }
-      return text;
-    }
-    
-    // For template strings, extract content
-    if (node.type === "template_string") {
-      const text = node.text;
-      if (text.startsWith("`") && text.endsWith("`")) {
-        return text.slice(1, -1);
-      }
-      return text;
-    }
-    
-    if (node.type === "string_fragment") {
-      return node.text;
-    }
-    
-    return node.text;
-  },
-  
-  getBlockName(node: SyntaxNode): string {
-    // For call expressions, find the first string argument
-    if (node.type === "call_expression") {
-      const args = node.children.find(child => child.type === "arguments");
-      if (args) {
-        const firstStringArg = args.children.find(child => 
-          child.type === "string" || child.type === "template_string"
-        );
-        if (firstStringArg) {
-          return this.getNameText(firstStringArg);
-        }
-      }
-    }
-    return "";
-  }
-};
-
-// TypeScript extends JavaScript with additional constructs
-export const typescriptLanguagePack: LanguagePack = {
-  ...javascriptLanguagePack,
-  language: "typescript",
-  
-  queries: {
-    ...javascriptLanguagePack.queries,
-    
-    // Add TypeScript-specific class constructs
-    classes: `
-      (class_declaration
-        name: (type_identifier) @name
-      ) @class
-      
-      (interface_declaration
-        name: (type_identifier) @name
-      ) @class
     `,
-    
-    // Add TypeScript-specific method constructs
-    methods: `
-      (method_definition
-        name: (property_identifier) @name
-      ) @method
-      
-      (function_declaration
-        name: (identifier) @name
-      ) @method
-      
-      (method_signature
-        name: (property_identifier) @name
-      ) @method
-      
-      (variable_declarator
-        name: (identifier) @name
-        value: (arrow_function)
-      ) @method
-    `,
-    
-    // Add TypeScript-specific property constructs
-    properties: `
-      (public_field_definition
-        name: (property_identifier) @name
-      ) @property
-      
-      (property_signature
-        name: (property_identifier) @name
-      ) @property
-      
-      (assignment_expression
-        left: (identifier) @name
-      ) @property
-      
-      (assignment_expression
-        left: (member_expression
-          property: (property_identifier) @name
-        )
-      ) @property
-    `
-  }
+  },
+  kindMap: {
+    class_declaration: "class",
+    class: "class",
+    method_definition: "method",
+    method_signature: "method",
+    function_declaration: "function",
+    function_expression: "function",
+    arrow_function: "function",
+    public_field_definition: "property",
+    field_definition: "property",
+    property_signature: "property",
+    class_body: "body",
+    statement_block: "body",
+    call_expression: "block",
+  },
+  bodyMap: {
+    class_declaration: [{ kind: "child", nodeType: "class_body" }],
+    class: [{ kind: "child", nodeType: "class_body" }],
+    method_definition: [{ kind: "functionBody" }],
+    function_declaration: [{ kind: "functionBody" }],
+    function_expression: [{ kind: "functionBody" }],
+    arrow_function: [{ kind: "functionBody" }],
+    call_expression: [{ kind: "callCallbackBody" }],
+    class_body: [{ kind: "self" }],
+    statement_block: [{ kind: "self" }],
+  },
+  stringUnwrapHint: "js-like",
 };
