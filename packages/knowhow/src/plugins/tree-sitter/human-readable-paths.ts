@@ -75,6 +75,20 @@ export class HumanReadablePathResolver {
           });
         }
       }
+      
+      // Look for describe blocks and other test structures
+      const describeBlocks = this.findDescribeBlocks(tree);
+      for (const describeNode of describeBlocks) {
+        const describeName = this.extractDescribeBlockName(describeNode);
+        if (describeName === singleName) {
+          matches.push({
+            node: describeNode,
+            path: this.getNodePath(tree.rootNode, describeNode),
+            humanPath,
+            description: `Describe block: ${describeName}`
+          });
+        }
+      }
 
     } else if (parts.length === 2) {
       // Two parts - ClassName.MemberName
@@ -211,6 +225,47 @@ export class HumanReadablePathResolver {
     return properties;
   }
 
+  private findDescribeBlocks(tree: Tree): SyntaxNode[] {
+    const describeBlocks: SyntaxNode[] = [];
+    
+    function traverse(node: SyntaxNode) {
+      // Look for call expressions where the function name is 'describe'
+      if (node.type === 'call_expression') {
+        const functionNode = node.children.find(child => 
+          child.type === 'identifier' && child.text === 'describe'
+        );
+        if (functionNode) {
+          describeBlocks.push(node);
+        }
+      }
+      
+      for (const child of node.children) {
+        traverse(child);
+      }
+    }
+    
+    traverse(tree.rootNode);
+    return describeBlocks;
+  }
+
+  private extractDescribeBlockName(describeNode: SyntaxNode): string {
+    // Look for the arguments of the describe call - the first argument should be a string
+    const argumentsNode = describeNode.children.find(child => 
+      child.type === 'arguments'
+    );
+    
+    if (argumentsNode) {
+      const firstArg = argumentsNode.children.find(child => 
+        child.type === 'string' || child.type === 'template_string'
+      );
+      if (firstArg) {
+        // Remove quotes from the string literal
+        return firstArg.text.slice(1, -1);
+      }
+    }
+    return '';
+  }
+
   private getNodePath(rootNode: SyntaxNode, targetNode: SyntaxNode): string {
     const path: string[] = [];
     let current: SyntaxNode | null = targetNode;
@@ -268,6 +323,15 @@ export class HumanReadablePathResolver {
       const methodName = this.extractMethodName(methodNode);
       if (methodName && !this.isMethodInClass(methodNode)) {
         paths.push(methodName);
+      }
+    }
+    
+    // Add describe blocks
+    const describeBlocks = this.findDescribeBlocks(tree);
+    for (const describeNode of describeBlocks) {
+      const describeName = this.extractDescribeBlockName(describeNode);
+      if (describeName) {
+        paths.push(describeName);
       }
     }
     

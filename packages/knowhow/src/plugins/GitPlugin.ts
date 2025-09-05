@@ -19,7 +19,7 @@ export class GitPlugin extends PluginBase {
   private projectHasGit: boolean = false;
   private currentBranch: string = "main";
   private eventService: EventService;
-  private taskStack: string[] = []; // Track nested tasks
+  private currentTask: string | null = null;
 
   constructor(context: PluginContext = {}) {
     super(context);
@@ -41,7 +41,7 @@ AGENT TRACKING (via --git-dir ${this.knowhowGitPath}):
 - Knowhow Git: ${
       fs.existsSync(this.knowhowGitPath) ? "initialized" : "not initialized"
     }
-- Tasks in progress: ${this.taskStack.length}
+- Task in progress: ${this.currentTask}
 - Agent edit history is tracked separately in .knowhow/.git
 - Use git commands with --git-dir="${
       this.knowhowGitPath
@@ -294,6 +294,17 @@ Your agent modifications are tracked separately and won't affect the main projec
     }
   }
 
+  async commitAll(message: string): Promise<void> {
+    if (!this.isEnabled()) return;
+
+    try {
+      this.gitCommand("add -A");
+      await this.commit(message);
+    } catch (error) {
+      console.error("Failed to commit all changes:", error);
+    }
+  }
+
   async commit(message: string, files?: string[]): Promise<void> {
     if (!this.isEnabled()) return;
 
@@ -385,9 +396,8 @@ Your agent modifications are tracked separately and won't affect the main projec
       let message = `Auto-commit: ${operation || "modified"} ${filePath}`;
 
       // Add current task context if available
-      if (this.taskStack.length > 0) {
-        const currentTask = this.taskStack[this.taskStack.length - 1];
-        message = `[${currentTask}] ${message}`;
+      if (this.currentTask) {
+        message = `[${this.currentTask}] ${message}`;
       }
 
       await this.commit(message, [filePath]);
@@ -407,7 +417,7 @@ Your agent modifications are tracked separately and won't affect the main projec
       const branchName = `task/${taskId}`;
 
       // Add to task stack
-      this.taskStack.push(taskId);
+      this.currentTask = taskId;
 
       // Create new branch from current branch
       await this.createBranch(branchName);
@@ -429,35 +439,25 @@ Your agent modifications are tracked separately and won't affect the main projec
     if (!this.isEnabled()) return;
 
     try {
-      if (this.taskStack.length === 0) {
+      if (!this.currentTask) {
         console.warn("No tasks in progress to complete");
         return;
       }
 
       // Get current task
-      const completedTaskId = this.taskStack.pop();
+      const completedTaskId = this.currentTask;
       const completedBranch = this.currentBranch;
 
       // Determine parent branch
-      const parentBranch =
-        this.taskStack.length > 0
-          ? `task/${this.taskStack[this.taskStack.length - 1]}`
-          : "main";
+      const parentBranch = this.currentTask
+        ? `task/${this.currentTask}`
+        : "main";
 
-      // Update task file with completion info
-      const taskFile = path.join(this.knowhowDir, `task-${completedTaskId}.md`);
-      if (fs.existsSync(taskFile)) {
-        let taskContent = fs.readFileSync(taskFile, "utf-8");
-        taskContent += `\nCompleted: ${new Date().toISOString()}\n`;
-        if (data.answer) {
-          taskContent += `\nFinal Answer:\n${data.answer}\n`;
-        }
-        fs.writeFileSync(taskFile, taskContent);
-        await this.commit(`[${completedTaskId}] Task completed`, [taskFile]);
-      }
+      // commit all changes before merge
+      await this.commitAll("Final commit before merging task");
 
-      // Switch to parent branch
-      await this.setBranch(parentBranch);
+      // Switch to main branch
+      await this.setBranch("main");
 
       // Squash merge the completed task branch
       try {
@@ -482,10 +482,6 @@ Your agent modifications are tracked separately and won't affect the main projec
 
   async getCurrentBranch(): Promise<string> {
     return this.currentBranch;
-  }
-
-  async getTaskStack(): Promise<string[]> {
-    return [...this.taskStack];
   }
 
   async getGitStatus(): Promise<string> {

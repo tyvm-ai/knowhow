@@ -1,11 +1,19 @@
-import { LanguageAgnosticParser, PathLocation, SyntaxNode, Tree } from "./parser";
-import { HumanReadablePathResolver, HumanReadablePathMatch } from "./human-readable-paths";
+import {
+  LanguageAgnosticParser,
+  PathLocation,
+  SyntaxNode,
+  Tree,
+} from "./parser";
+import {
+  HumanReadablePathResolver,
+  HumanReadablePathMatch,
+} from "./human-readable-paths";
 import { readFileSync } from "fs";
 
 export class TreeEditor {
   private parser: LanguageAgnosticParser;
   private originalText: string;
-  public tree: Tree;  // Made public for debugging
+  public tree: Tree; // Made public for debugging
   private pathResolver: HumanReadablePathResolver;
 
   constructor(
@@ -32,10 +40,7 @@ export class TreeEditor {
     return new TreeEditor(parser, sourceCode);
   }
 
-  static fromTree(
-    parser: LanguageAgnosticParser,
-    tree: Tree
-  ): TreeEditor {
+  static fromTree(parser: LanguageAgnosticParser, tree: Tree): TreeEditor {
     const sourceCode = tree.rootNode.text;
     return new TreeEditor(parser, sourceCode, sourceCode, tree);
   }
@@ -115,7 +120,11 @@ export class TreeEditor {
       throw new Error(`No nodes found for human path: ${humanPath}`);
     }
     if (matches.length > 1) {
-      throw new Error(`Multiple nodes found for human path: ${humanPath}. Found: ${matches.map(m => m.description).join(', ')}`);
+      throw new Error(
+        `Multiple nodes found for human path: ${humanPath}. Found: ${matches
+          .map((m) => m.description)
+          .join(", ")}`
+      );
     }
 
     return this.updateNodeByPath(matches[0].path, newContent);
@@ -135,6 +144,252 @@ export class TreeEditor {
     return this.pathResolver.getAllHumanPaths(this.tree);
   }
 
+  /**
+   * Try to resolve a path that could be either human-readable or programmatic format
+   * Returns the matching node or null if not found
+   */
+  private resolvePathToNode(path: string): SyntaxNode | null {
+    // First try human-readable path
+    const humanMatches = this.pathResolver.findByHumanPath(this.tree, path);
+    if (humanMatches.length > 0) {
+      if (humanMatches.length > 1) {
+        throw new Error(
+          `Multiple nodes found for path: ${path}. Found: ${humanMatches
+            .map((m) => m.description)
+            .join(", ")}`
+        );
+      }
+      return humanMatches[0].node;
+    }
+
+    // Then try programmatic path
+    return this.findNodeByPath(path);
+  }
+
+  /**
+   * Insert content before nodes of specified types within a parent path
+   * @param parentPath - Path to the parent node (human-readable or programmatic)
+   * @param content - Content to insert
+   * @param beforeTypes - Array of node types to insert before (e.g., ['method_definition', 'constructor_definition'])
+   * @returns Modified TreeEditor
+   */
+  insertBefore(
+    parentPath: string,
+    content: string,
+    beforeTypes: string[]
+  ): TreeEditor {
+    const parentNode = this.resolvePathToNode(parentPath);
+    if (!parentNode) {
+      throw new Error(`No nodes found for path: ${parentPath}`);
+    }
+
+    const bodyNode = this.findBodyNode(parentNode);
+    if (!bodyNode) {
+      throw new Error(`Cannot find body node for path: ${parentPath}`);
+    }
+
+    // Find the first child that matches any of the beforeTypes
+    for (const child of bodyNode.children) {
+      if (beforeTypes.includes(child.type)) {
+        return this.addLines("", content, child.startPosition.row);
+      }
+    }
+
+    // If no matching types found, append to the parent
+    return this.appendChild(parentPath, content);
+  }
+
+  /**
+   * Find the body node of a class, function, or describe block
+   */
+  private findBodyNode(node: SyntaxNode): SyntaxNode | null {
+    // For class declarations, look for class_body
+    if (node.type === "class_declaration") {
+      return node.children.find((child) => child.type === "class_body") || null;
+    }
+
+    // For function declarations, look for statement_block
+    if (
+      node.type === "function_declaration" ||
+      node.type === "method_definition"
+    ) {
+      return (
+        node.children.find((child) => child.type === "statement_block") || null
+      );
+    }
+
+    // For describe blocks (call_expression with "describe" identifier)
+    if (node.type === "call_expression") {
+      const identifier = node.children.find(
+        (child) => child.type === "identifier"
+      );
+      if (identifier && identifier.text === "describe") {
+        // Find the arrow function or function expression in the arguments
+        const args = node.children.find((child) => child.type === "arguments");
+        if (args) {
+          const arrowFunc = args.children.find(
+            (child) =>
+              child.type === "arrow_function" || child.type === "function"
+          );
+          if (arrowFunc) {
+            return (
+              arrowFunc.children.find(
+                (child) => child.type === "statement_block"
+              ) || null
+            );
+          }
+        }
+      }
+    }
+
+    // If the node itself is a body type, return it
+    if (node.type === "class_body" || node.type === "statement_block") {
+      return node;
+    }
+
+    return null;
+  }
+
+  /**
+   * Append content to a parent node
+   * @param parentPath - Path to parent node (empty string for root level)
+   * @param content - Content to append
+   */
+  appendChild(parentPath: string, content: string): TreeEditor {
+    if (parentPath === "") {
+      // Append to the end of the file
+      const current = this.getCurrentText();
+      const newText = current + "\n\n" + content;
+      return this.createModified(newText);
+    }
+
+    const parentNode = this.resolvePathToNode(parentPath);
+    if (!parentNode) {
+      throw new Error(`No nodes found for path: ${parentPath}`);
+    }
+
+    const bodyNode = this.findBodyNode(parentNode);
+    if (!bodyNode) {
+      throw new Error(`Cannot find body node for path: ${parentPath}`);
+    }
+
+    // Find the insertion point (before the closing brace)
+    const currentText = this.getCurrentText();
+    const lines = currentText.split("\n");
+
+    // Find the line with the closing brace of the body
+    const endLine = bodyNode.endPosition.row;
+    const endCol = bodyNode.endPosition.column;
+
+    // Insert content before the closing brace, with proper indentation
+    const insertLine = endLine;
+    const indentedContent = content
+      .split("\n")
+      .map((line, index) => {
+        if (index === 0 && line.trim() === "") return line;
+        return line.trim() === "" ? line : "  " + line; // Add base indentation
+      })
+      .join("\n");
+
+    lines.splice(insertLine, 0, indentedContent);
+
+    const newText = lines.join("\n");
+    return this.createModified(newText);
+  }
+
+  /**
+   * Add a method to a class
+   * @param className - Name of the class
+   * @param methodContent - Content of the method to add
+   */
+  addMethodToClass(className: string, methodContent: string): TreeEditor {
+    return this.appendChild(className, methodContent);
+  }
+
+  /**
+   * Add a property to a class
+   * @param className - Name of the class
+   * @param propertyContent - Content of the property to add
+   */
+  addPropertyToClass(className: string, propertyContent: string): TreeEditor {
+    return this.insertBefore(className, propertyContent, [
+      "method_definition",
+      "constructor_definition",
+    ]);
+  }
+
+  /**
+   * Add a test to a describe block
+   * @param describeName - Name of the describe block
+   * @param testContent - Content of the test to add
+   */
+  addTestToDescribe(describeName: string, testContent: string): TreeEditor {
+    // Find all call expressions that might be describe blocks
+    const allNodes = this.getAllNodes(this.tree.rootNode);
+
+    // Find the specific describe block by name
+    let targetDescribe: SyntaxNode | null = null;
+    for (const node of allNodes) {
+      if (node.type === "call_expression") {
+        const args = node.children.find((child) => child.type === "arguments");
+        if (args && args.children.length > 0) {
+          // Find the first string argument (the describe block name)
+          const firstArg = args.children.find(
+            (child) =>
+              child.type === "string" || child.type === "template_string"
+          );
+          if (
+            firstArg &&
+            firstArg.type === "string" &&
+            (firstArg.text.includes(describeName) ||
+              firstArg.text.slice(1, -1) === describeName)
+          ) {
+            targetDescribe = node;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!targetDescribe) {
+      throw new Error(`Could not find describe block: ${describeName}`);
+    }
+    // Get the body node of the describe block
+    const bodyNode = this.findBodyNode(targetDescribe);
+    if (!bodyNode) {
+      throw new Error(
+        `Cannot find body node for describe block: ${describeName}`
+      );
+    }
+
+    // Find insertion point before the closing brace
+    const currentText = this.getCurrentText();
+    const endLine = bodyNode.endPosition.row;
+    const lines = currentText.split("\n");
+    lines.splice(endLine, 0, testContent);
+    const describePath = this.parser.getNodePath(
+      this.tree.rootNode,
+      targetDescribe
+    );
+    const newText = lines.join("\n");
+    return this.createModified(newText);
+    return this.insertBefore(describePath, testContent, ["call_expression"]);
+  }
+
+  /**
+   * Helper method to get all nodes in the tree
+   */
+  private getAllNodes(node: SyntaxNode): SyntaxNode[] {
+    const nodes: SyntaxNode[] = [node];
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i);
+      if (child) {
+        nodes.push(...this.getAllNodes(child));
+      }
+    }
+    return nodes;
+  }
+
   findPathsForLine(tree: Tree, searchText: string): PathLocation[] {
     return this.parser.findPathsForLine(tree, searchText);
   }
@@ -150,8 +405,11 @@ export class TreeEditor {
 
       const [, nodeType, indexStr] = match;
       const index = parseInt(indexStr, 10);
-      
-      if (index >= current.children.length || current.children[index].type !== nodeType) {
+
+      if (
+        index >= current.children.length ||
+        current.children[index].type !== nodeType
+      ) {
         return null;
       }
 
