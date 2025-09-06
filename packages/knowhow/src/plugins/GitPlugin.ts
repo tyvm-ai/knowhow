@@ -37,9 +37,8 @@ export class GitPlugin extends PluginBase {
     return `Git Plugin:
 
 - Current branch: ${this.currentBranch}
-- Task in progress: ${this.currentTask}
 - Agent edit history is tracked separately in .knowhow/.git
-- Use git commands with git --git-dir="${ this.knowhowGitPath }" to view/revert your changes
+- Use git commands with git --git-dir="${this.knowhowGitPath}" to view/revert your changes
 
 PROJECT REPOSITORY STATUS:
 ${projectGitStatus}
@@ -52,12 +51,6 @@ Your modifications are automatically tracked separately and won't affect the use
 
   private getProjectGitStatus(): string {
     try {
-      // Check if project has git repository
-      const hasGit = fs.existsSync(path.join(this.projectRoot, ".git"));
-      if (!hasGit) {
-        return "- No git repository found in project root";
-      }
-
       // Get project git status
       const status = execSync("git status --porcelain", {
         cwd: this.projectRoot,
@@ -222,7 +215,7 @@ Your modifications are automatically tracked separately and won't affect the use
         try {
           this.gitCommand("checkout -b main");
         } catch (error) {
-          console.error("Failed to create or switch to main branch:", error);
+          console.error("Failed to create or switch to main branch");
           return;
         }
       }
@@ -275,7 +268,7 @@ Your modifications are automatically tracked separately and won't affect the use
 
       this.currentBranch = branchName;
     } catch (error) {
-      console.error(`Failed to set branch ${branchName}:`, error);
+      console.error(`GitPlugin: Failed to set branch ${branchName}:`);
     }
   }
 
@@ -286,7 +279,7 @@ Your modifications are automatically tracked separately and won't affect the use
       this.gitCommand(`checkout -b ${branchName}`);
       this.currentBranch = branchName;
     } catch (error) {
-      console.error(`Failed to create branch ${branchName}:`, error);
+      console.error(`GitPlugin: Failed to create branch ${branchName}:`);
     }
   }
 
@@ -474,10 +467,10 @@ Your modifications are automatically tracked separately and won't affect the use
         this.gitCommand(`commit -m "${squashMessage}"`);
 
         console.log(
-          `Task ${completedTaskId} completed and merged to ${parentBranch}`
+          `Task ${completedTaskId} completed and merged to main`
         );
       } catch (error) {
-        console.error(`Failed to squash merge task ${completedTaskId}:`, error);
+        console.error(`Failed to squash merge task ${completedTaskId}:`);
       }
     } catch (error) {
       console.error("Failed to handle task completion:", error);

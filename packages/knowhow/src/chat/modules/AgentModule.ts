@@ -608,6 +608,17 @@ ${reason}
     let knowhowTaskId: string | undefined;
 
     try {
+      // Get context for plugins
+      const context = this.chatService?.getContext();
+      const plugins = context?.plugins || [];
+
+      // Format the prompt with plugins and chat history
+      const formattedPrompt = await this.chatService.formatChatInput(
+        input,
+        plugins,
+        chatHistory
+      );
+
       // Create task info object
       let taskInfo: TaskInfo = {
         taskId,
@@ -616,6 +627,7 @@ ${reason}
         agentName,
         agent,
         initialInput: input,
+        formattedPrompt,
         status: "running",
         startTime: Date.now(),
         totalCost: 0,
@@ -687,17 +699,6 @@ ${reason}
           { model: options.model, provider: options.provider as any },
         ]);
       }
-
-      // Get context for plugins
-      const context = this.chatService?.getContext();
-      const plugins = context?.plugins || [];
-
-      // Format the prompt with plugins and chat history
-      const formattedPrompt = await this.chatService.formatChatInput(
-        input,
-        plugins,
-        chatHistory
-      );
 
       // Set up message processors like in original startAgent
 
@@ -782,7 +783,13 @@ ${reason}
         agent.call(formattedPrompt);
       }
 
-      return { agent, taskId, formattedPrompt, taskCompleted };
+      return {
+        agent,
+        taskId,
+        formattedPrompt,
+        initialInput: input,
+        taskCompleted,
+      };
     } catch (error) {
       console.error("Agent setup failed:", error);
       this.taskRegistry.delete(taskId);
@@ -904,7 +911,7 @@ ${reason}
     chatHistory: ChatInteraction[] = []
   ): Promise<{ result: boolean; finalOutput?: string }> {
     try {
-      const { agent, taskId } = await this.setupAgent({
+      const { agent, taskId, formattedPrompt } = await this.setupAgent({
         agentName: selectedAgent.name,
         input: initialInput,
         chatHistory,
@@ -913,7 +920,7 @@ ${reason}
       const result = await this.attachedAgentChatLoop(
         taskId,
         agent,
-        initialInput
+        formattedPrompt
       );
       return result;
     } catch (error) {
@@ -950,7 +957,9 @@ ${reason}
       // Now start the agent if we have an initial input (this means we're starting, not just attaching)
       if (initialInput) {
         const taskInfo = this.taskRegistry.get(taskId);
-        agent.call(taskInfo?.initialInput || initialInput);
+        agent.call(
+          taskInfo?.formattedPrompt || taskInfo?.initialInput || initialInput
+        );
       }
 
       let input =

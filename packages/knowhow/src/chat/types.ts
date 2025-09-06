@@ -68,6 +68,7 @@ export interface TaskInfo {
   agentName: string;
   agent: BaseAgent;
   initialInput: string;
+  formattedPrompt: string;
   status: "running" | "paused" | "completed" | "failed";
   startTime: number;
   endTime?: number;
