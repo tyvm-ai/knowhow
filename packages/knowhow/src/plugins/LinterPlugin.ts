@@ -22,7 +22,7 @@ export class LinterPlugin extends PluginBase {
 
     this.context.Events.onBlocking(
       "git:pre-commit",
-      this.handleFilesPostEdit.bind(this)
+      this.handleFilesPreCommit.bind(this)
     );
   }
 
@@ -34,8 +34,8 @@ export class LinterPlugin extends PluginBase {
     return "";
   }
 
-  async handleFilesPostEdit(payload: { files: string[] }): Promise<string> {
-    const { files } = payload;
+  async handleFilesPreCommit(payload: { files: string[] }): Promise<string> {
+    const { files = [] } = payload;
     let lintResult = "";
     for (const filePath of files) {
       const result = await this.lintFile(filePath);

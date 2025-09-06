@@ -34,24 +34,20 @@ export class GitPlugin extends PluginBase {
     // Get current project git status
     const projectGitStatus = this.getProjectGitStatus();
 
-    return `Git Plugin Status:
+    return `Git Plugin:
 
-AGENT TRACKING (via --git-dir ${this.knowhowGitPath}):
 - Current branch: ${this.currentBranch}
-- Knowhow Git: ${
-      fs.existsSync(this.knowhowGitPath) ? "initialized" : "not initialized"
-    }
 - Task in progress: ${this.currentTask}
 - Agent edit history is tracked separately in .knowhow/.git
-- Use git commands with --git-dir="${
-      this.knowhowGitPath
-    }" to view/revert agent changes
+- Use git commands with git --git-dir="${ this.knowhowGitPath }" to view/revert your changes
 
 PROJECT REPOSITORY STATUS:
 ${projectGitStatus}
 
-Note: The files shown above are what you're currently working on in the project repo.
-Your agent modifications are tracked separately and won't affect the main project git history.`;
+via git status
+
+Note: The files shown above are files that have changed in the user's git repo.  It is likely these files are relevant to the user's request as they've got changes recently.
+Your modifications are automatically tracked separately and won't affect the user's git history.`;
   }
 
   private getProjectGitStatus(): string {
