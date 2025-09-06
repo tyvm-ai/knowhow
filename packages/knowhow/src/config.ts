@@ -19,6 +19,7 @@ const defaultConfig = {
   plugins: [
     "embeddings",
     "language",
+    "git",
     "vim",
     "github",
     "asana",
