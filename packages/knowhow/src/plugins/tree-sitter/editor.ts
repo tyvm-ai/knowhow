@@ -4,10 +4,7 @@ import {
   SyntaxNode,
   Tree,
 } from "./parser";
-import {
-  HumanReadablePathResolver,
-  HumanReadablePathMatch,
-} from "./human-readable-paths";
+import { SimplePathResolver, SimplePathMatch } from "./simple-paths";
 import { readFileSync } from "fs";
 import { createPatch } from "diff";
 
@@ -15,7 +12,7 @@ export class TreeEditor {
   private parser: LanguageAgnosticParser;
   private originalText: string;
   public tree: Tree; // Made public for debugging
-  private pathResolver: HumanReadablePathResolver;
+  private pathResolver: SimplePathResolver;
 
   constructor(
     parser: LanguageAgnosticParser,
@@ -26,7 +23,7 @@ export class TreeEditor {
     this.parser = parser;
     this.originalText = originalText || sourceCode;
     this.tree = existingTree || parser.parseString(sourceCode);
-    this.pathResolver = new HumanReadablePathResolver(parser);
+    this.pathResolver = new SimplePathResolver(parser);
   }
 
   private createModified(newText: string): TreeEditor {
@@ -113,42 +110,42 @@ export class TreeEditor {
   }
 
   /**
-   * Update a node using human-readable path like "ClassName.methodName"
+   * Update a node using simple path like "ClassName.methodName"
    */
-  updateNodeByHumanPath(humanPath: string, newContent: string): TreeEditor {
-    return this.updateNodeByPath(humanPath, newContent);
+  updateNodeBySimplePath(simplePath: string, newContent: string): TreeEditor {
+    return this.updateNodeByPath(simplePath, newContent);
   }
 
   /**
-   * Find nodes using human-readable paths
+   * Find nodes using simple paths
    */
-  findNodesByHumanPath(humanPath: string): HumanReadablePathMatch[] {
-    return this.pathResolver.findByHumanPath(this.tree, humanPath);
+  findNodesBySimplePath(simplePath: string): SimplePathMatch[] {
+    return this.pathResolver.findBySimplePath(this.tree, simplePath);
   }
 
   /**
-   * Get all available human-readable paths in the current tree
+   * Get all available simple paths in the current tree
    */
-  getAllHumanPaths(): string[] {
-    return this.pathResolver.getAllHumanPaths(this.tree);
+  getAllSimplePaths(): string[] {
+    return this.pathResolver.getAllSimplePaths(this.tree);
   }
 
   /**
-   * Try to resolve a path that could be either human-readable or programmatic format
+   * Try to resolve a path that could be either simple or programmatic format
    * Returns the matching node or null if not found
    */
   private resolvePathToNode(path: string): SyntaxNode | null {
-    // First try human-readable path
-    const humanMatches = this.pathResolver.findByHumanPath(this.tree, path);
-    if (humanMatches.length > 0) {
-      if (humanMatches.length > 1) {
+    // First try simple path
+    const simpleMatches = this.pathResolver.findBySimplePath(this.tree, path);
+    if (simpleMatches.length > 0) {
+      if (simpleMatches.length > 1) {
         throw new Error(
-          `Multiple nodes found for path: ${path}. Found: ${humanMatches
+          `Multiple nodes found for path: ${path}. Found: ${simpleMatches
             .map((m) => m.description)
             .join(", ")}`
         );
       }
-      return humanMatches[0].node;
+      return simpleMatches[0].node;
     }
 
     // Then try programmatic path
@@ -157,7 +154,7 @@ export class TreeEditor {
 
   /**
    * Insert content before nodes of specified types within a parent path
-   * @param parentPath - Path to the parent node (human-readable or programmatic)
+   * @param parentPath - Path to the parent node (simple or programmatic)
    * @param content - Content to insert
    * @param beforeTypes - Array of node types to insert before (e.g., ['method_definition', 'constructor_definition'])
    * @returns Modified TreeEditor
@@ -224,16 +221,17 @@ export class TreeEditor {
 
     // Insert content before the closing brace, with proper indentation
     const insertLine = endLine;
-    
+
     // Detect if content is already properly indented by checking the first non-empty line
     const contentLines = content.split("\n");
-    const firstNonEmptyLine = contentLines.find(line => line.trim() !== "");
-    const isAlreadyIndented = firstNonEmptyLine && firstNonEmptyLine.startsWith("  ");
-    
+    const firstNonEmptyLine = contentLines.find((line) => line.trim() !== "");
+    const isAlreadyIndented =
+      firstNonEmptyLine && firstNonEmptyLine.startsWith("  ");
+
     const indentedContent = contentLines
       .map((line, index) => {
         if (line.trim() === "") return line; // Keep empty lines as-is
-        
+
         if (isAlreadyIndented) {
           // Content is already indented, use as-is
           return line;
@@ -272,7 +270,7 @@ export class TreeEditor {
   }
 
   /**
-   * Append content to any block type using human-readable block syntax
+   * Append content to any block type using simple block syntax
    * @param blockPath - Block path like describe("name"), beforeEach(), test("should work")
    * @param content - Content to append to the block
    */
@@ -294,8 +292,8 @@ export class TreeEditor {
    * @param blockPath - Block path like describe("name"), beforeEach(), test("should work")
    */
   deleteBlock(blockPath: string): TreeEditor {
-    const resolver = new HumanReadablePathResolver(this.parser);
-    const matches = resolver.findByHumanPath(this.tree, blockPath);
+    const resolver = new SimplePathResolver(this.parser);
+    const matches = resolver.findBySimplePath(this.tree, blockPath);
 
     if (matches.length === 0) {
       throw new Error(`Could not find block: ${blockPath}`);
@@ -318,7 +316,11 @@ export class TreeEditor {
     const isBlockOnOwnLine = startLine.trim() !== "" && startPos.column === 0;
 
     let newLines: string[];
-    if (isBlockOnOwnLine && afterLines.length > 0 && afterLines[0].trim() === "") {
+    if (
+      isBlockOnOwnLine &&
+      afterLines.length > 0 &&
+      afterLines[0].trim() === ""
+    ) {
       // Remove the empty line after the block if it exists
       newLines = [...beforeLines, ...afterLines.slice(1)];
     } else {

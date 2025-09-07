@@ -2,14 +2,14 @@ import { LanguageAgnosticParser, SyntaxNode, Tree } from "./parser";
 import { getLanguagePack, LanguagePackConfig } from "./lang-packs";
 import { Query } from "tree-sitter";
 
-export interface HumanReadablePathMatch {
+export interface SimplePathMatch {
   node: SyntaxNode;
   path: string;
-  humanPath: string;
+  simplePath: string;
   description: string;
 }
 
-export class HumanReadablePathResolver {
+export class SimplePathResolver {
   private parser: LanguageAgnosticParser;
   private languagePack: LanguagePackConfig;
 
@@ -62,9 +62,9 @@ export class HumanReadablePathResolver {
   }
 
   /**
-   * Parse a human path to detect block syntax like describe("name") vs regular paths
+   * Parse a path to detect block syntax like describe("name") vs regular paths
    */
-  private parseHumanPath(humanPath: string): {
+  private parseSimplePath(simplePath: string): {
     type: "block" | "regular";
     functionName?: string;
     argument?: string;
@@ -72,7 +72,7 @@ export class HumanReadablePathResolver {
   } {
     // Check for function call syntax like describe("name") or test("should work")
     const blockPattern = /^(\w+)\s*\(\s*["'`]([^"'`]*)["'`]\s*\)$/;
-    const blockMatch = humanPath.match(blockPattern);
+    const blockMatch = simplePath.match(blockPattern);
 
     if (blockMatch) {
       return {
@@ -85,7 +85,7 @@ export class HumanReadablePathResolver {
 
     // Check for parameterless function calls like beforeEach()
     const parameterlessBlockPattern = /^(\w+)\s*\(\s*\)$/;
-    const parameterlessMatch = humanPath.match(parameterlessBlockPattern);
+    const parameterlessMatch = simplePath.match(parameterlessBlockPattern);
 
     if (parameterlessMatch) {
       return {
@@ -98,7 +98,7 @@ export class HumanReadablePathResolver {
     // Regular path like "ClassName.methodName" or just "name"
     return {
       type: "regular",
-      parts: humanPath.split("."),
+      parts: simplePath.split("."),
     };
   }
   /**
@@ -108,9 +108,9 @@ export class HumanReadablePathResolver {
     tree: Tree,
     functionName: string,
     argument: string | undefined,
-    humanPath: string
-  ): HumanReadablePathMatch[] {
-    const matches: HumanReadablePathMatch[] = [];
+    simplePath: string
+  ): SimplePathMatch[] {
+    const matches: SimplePathMatch[] = [];
     const blockMatches = this.findNodesByQuery(tree, "blocks");
 
     for (const match of blockMatches) {
@@ -126,7 +126,7 @@ export class HumanReadablePathResolver {
         matches.push({
           node: match.node,
           path: this.getNodePath(tree.rootNode, match.node),
-          humanPath,
+          simplePath,
           description: `${functionName} block`,
         });
         continue;
@@ -148,7 +148,7 @@ export class HumanReadablePathResolver {
           matches.push({
             node: match.node,
             path: this.getNodePath(tree.rootNode, match.node),
-            humanPath,
+            simplePath,
             description: `${functionName} block: ${argument}`,
           });
         }
@@ -165,13 +165,13 @@ export class HumanReadablePathResolver {
    * - "ClassName.propertyName" - finds a property in a class
    * - "describe(\"test name\")" - finds a describe block
    */
-  findByHumanPath(tree: Tree, humanPath: string): HumanReadablePathMatch[] {
+  findBySimplePath(tree: Tree, simplePath: string): SimplePathMatch[] {
     if (!tree.rootNode) {
       return [];
     }
 
-    const matches: HumanReadablePathMatch[] = [];
-    const pathInfo = this.parseHumanPath(humanPath);
+    const matches: SimplePathMatch[] = [];
+    const pathInfo = this.parseSimplePath(simplePath);
     const parts = pathInfo.parts;
 
     // Handle block syntax like describe("Authentication") or beforeEach()
@@ -180,7 +180,7 @@ export class HumanReadablePathResolver {
         tree,
         pathInfo.functionName!,
         pathInfo.argument,
-        humanPath
+        simplePath
       );
     }
 
@@ -196,7 +196,7 @@ export class HumanReadablePathResolver {
           matches.push({
             node: match.node,
             path: this.getNodePath(tree.rootNode, match.node),
-            humanPath,
+            simplePath,
             description: `Class declaration: ${singleName}`,
           });
         }
@@ -213,7 +213,7 @@ export class HumanReadablePathResolver {
           matches.push({
             node: match.node,
             path: this.getNodePath(tree.rootNode, match.node),
-            humanPath,
+            simplePath,
             description,
           });
         }
@@ -227,7 +227,7 @@ export class HumanReadablePathResolver {
           matches.push({
             node: match.node,
             path: this.getNodePath(tree.rootNode, match.node),
-            humanPath,
+            simplePath,
             description: `Property declaration: ${singleName}`,
           });
         }
@@ -244,7 +244,7 @@ export class HumanReadablePathResolver {
           matches.push({
             node: match.node,
             path: this.getNodePath(tree.rootNode, match.node),
-            humanPath,
+            simplePath,
             description: `${singleName} block`,
           });
           continue;
@@ -254,7 +254,7 @@ export class HumanReadablePathResolver {
           matches.push({
             node: match.node,
             path: this.getNodePath(tree.rootNode, match.node),
-            humanPath,
+            simplePath,
             description: `${calleeNode.text} block: ${singleName}`,
           });
         }
@@ -276,7 +276,7 @@ export class HumanReadablePathResolver {
                 matches.push({
                   node: methodMatch.node,
                   path: this.getNodePath(tree.rootNode, methodMatch.node),
-                  humanPath,
+                  simplePath,
                   description: `${memberName} method in class ${className}`,
                 });
               }
@@ -293,7 +293,7 @@ export class HumanReadablePathResolver {
                 matches.push({
                   node: propertyMatch.node,
                   path: this.getNodePath(tree.rootNode, propertyMatch.node),
-                  humanPath,
+                  simplePath,
                   description: `Property ${memberName} in class ${className}`,
                 });
               }
@@ -353,7 +353,7 @@ export class HumanReadablePathResolver {
   /**
    * Get all possible human-readable paths for a tree
    */
-  getAllHumanPaths(tree: Tree): string[] {
+  getAllSimplePaths(tree: Tree): string[] {
     const paths: string[] = [];
 
     if (!this.languagePack || !tree.rootNode) {

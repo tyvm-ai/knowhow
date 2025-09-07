@@ -3,7 +3,7 @@ import { SyntaxNode } from "../parser";
 /**
  * Capture types for tree-sitter queries used in language packs
  */
-export type CaptureType = 
+export type CaptureType =
   | "@decl.class"      // Class declarations
   | "@decl.method"     // Method declarations
   | "@decl.property"   // Property declarations
@@ -22,10 +22,10 @@ export interface QueryMatch {
 /**
  * Match result for human-readable path resolution
  */
-export interface HumanReadablePathMatch {
+export interface SimplePathMatch {
   node: SyntaxNode;
   path: string;
-  humanPath: string;
+  simplePath: string;
   description: string;
 }
 
@@ -37,7 +37,7 @@ export type NormalizedKind = "class" | "method" | "function" | "property" | "bod
 /**
  * Rules for finding body nodes
  */
-export type BodyRule = 
+export type BodyRule =
   | { kind: "self" }                                    // The node itself is the body
   | { kind: "child"; nodeType: string }                 // Look for child with specific type
   | { kind: "field"; field: string }                    // Look for named field
@@ -50,7 +50,7 @@ export type BodyRule =
 export interface LanguagePackConfig {
   /** Language identifier */
   language: string;
-  
+
   /** Tree-sitter queries for different constructs */
   queries: {
     classes?: string;
@@ -58,13 +58,13 @@ export interface LanguagePackConfig {
     properties?: string;
     blocks?: string;
   };
-  
+
   /** Map from raw node types to normalized kinds */
   kindMap: Record<string, NormalizedKind>;
-  
+
   /** Map from node types to body resolution rules */
   bodyMap: Record<string, BodyRule[]>;
-  
+
   /** Hint for string unwrapping behavior */
   stringUnwrapHint?: string;
 }

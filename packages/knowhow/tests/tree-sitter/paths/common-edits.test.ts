@@ -115,7 +115,7 @@ describe("Common Code Editing Operations with Tree Editor", () => {
       const lines = modifiedText.split('\n');
       const subtractMethodLine = lines.find(line => line.includes('subtract(a: number, b: number)'));
       const resultLine = lines.find(line => line.includes('const result = a - b;'));
-      
+
       expect(subtractMethodLine).toMatch(/^    subtract/); // 4 spaces before method name
       expect(resultLine).toMatch(/^        const result = a - b;/); // 8 spaces before method body
 
@@ -128,7 +128,7 @@ describe("Common Code Editing Operations with Tree Editor", () => {
       console.log("=== Renaming multiply method to times ===");
 
       // Find the multiply method using human-readable path
-      const matches = editor.findNodesByHumanPath("Calculator.multiply");
+      const matches = editor.findNodesBySimplePath("Calculator.multiply");
       expect(matches.length).toBe(1);
 
       const methodNode = matches[0].node;
@@ -170,7 +170,7 @@ describe("Common Code Editing Operations with Tree Editor", () => {
       const editorWithNewClass = editor.appendChild("", newClassDefinition);
 
       // Find the getHistory method to move
-      const historyMatches = editorWithNewClass.findNodesByHumanPath(
+      const historyMatches = editorWithNewClass.findNodesBySimplePath(
         "Calculator.getHistory"
       );
       expect(historyMatches.length).toBe(1);
@@ -249,7 +249,7 @@ describe("Common Code Editing Operations with Tree Editor", () => {
       expect(modifiedText).toContain("getMedian(): number");
 
       // Verify we can find the new class using human-readable paths
-      const statsMatches = modifiedEditor.findNodesByHumanPath("Statistics");
+      const statsMatches = modifiedEditor.findNodesBySimplePath("Statistics");
       expect(statsMatches.length).toBe(1);
       expect(statsMatches[0].description).toContain(
         "Class declaration: Statistics"
@@ -257,7 +257,7 @@ describe("Common Code Editing Operations with Tree Editor", () => {
 
       // Verify we can find methods in the new class
       const meanMatches =
-        modifiedEditor.findNodesByHumanPath("Statistics.getMean");
+        modifiedEditor.findNodesBySimplePath("Statistics.getMean");
       expect(meanMatches.length).toBe(1);
       expect(meanMatches[0].description).toContain(
         "getMean method in class Statistics"
@@ -267,7 +267,7 @@ describe("Common Code Editing Operations with Tree Editor", () => {
       console.log(
         "Available human paths:",
         modifiedEditor
-          .getAllHumanPaths()
+          .getAllSimplePaths()
           .filter((p) => p.includes("Statistics"))
       );
     });
@@ -366,20 +366,20 @@ describe("Common Code Editing Operations with Tree Editor", () => {
       console.log("=== Validating path resolution functionality ===");
 
       // Test finding class
-      const classMatches = editor.findNodesByHumanPath("Calculator");
+      const classMatches = editor.findNodesBySimplePath("Calculator");
       expect(classMatches.length).toBe(1);
       expect(classMatches[0].description).toContain(
         "Class declaration: Calculator"
       );
 
       // Test finding methods
-      const addMatches = editor.findNodesByHumanPath("Calculator.add");
+      const addMatches = editor.findNodesBySimplePath("Calculator.add");
       expect(addMatches.length).toBe(1);
       expect(addMatches[0].description).toContain(
         "add method in class Calculator"
       );
 
-      const multiplyMatches = editor.findNodesByHumanPath(
+      const multiplyMatches = editor.findNodesBySimplePath(
         "Calculator.multiply"
       );
       expect(multiplyMatches.length).toBe(1);
@@ -396,7 +396,7 @@ describe("Common Code Editing Operations with Tree Editor", () => {
       console.log("✓ Path resolution validation successful");
       console.log(
         "Available human paths:",
-        editor.getAllHumanPaths().slice(0, 5)
+        editor.getAllSimplePaths().slice(0, 5)
       );
     });
 
@@ -424,7 +424,7 @@ describe("Common Code Editing Operations with Tree Editor", () => {
 
       // Verify we can still find elements
       const divideMatches =
-        currentEditor.findNodesByHumanPath("Calculator.divide");
+        currentEditor.findNodesBySimplePath("Calculator.divide");
       expect(divideMatches.length).toBe(1);
 
       console.log("✓ Syntax remains valid after edits");
@@ -475,7 +475,7 @@ describe("Common Code Editing Operations with Tree Editor", () => {
       expect(currentEditor.getTree().rootNode.hasError).toBe(false);
 
       // Verify we can still navigate with paths
-      const allPaths = currentEditor.getAllHumanPaths();
+      const allPaths = currentEditor.getAllSimplePaths();
       expect(allPaths.some((path) => path.includes("getLastOperation"))).toBe(
         true
       );
