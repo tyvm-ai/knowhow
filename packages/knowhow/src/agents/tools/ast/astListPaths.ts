@@ -15,9 +15,11 @@ export async function astListPaths(filePath: string): Promise<string> {
 
   const context = toolService.getContext();
 
-  // Emit pre-action event
   if (context.Events) {
-    await context.Events.emitBlocking("ast:pre-list-paths", {
+    await context.Events.emitBlocking("file:pre-read", {
+      filePath,
+    });
+    await context.Events.emitNonBlocking("ast:pre-list-paths", {
       filePath,
     });
   }
@@ -29,7 +31,7 @@ export async function astListPaths(filePath: string): Promise<string> {
 
   try {
     const content = fs.readFileSync(filePath, "utf8");
-    
+
     if (!LanguageAgnosticParser.supportsFile(filePath)) {
       throw new Error(`Unsupported file type for AST parsing: ${filePath}`);
     }
@@ -40,14 +42,18 @@ export async function astListPaths(filePath: string): Promise<string> {
 
     // Emit post-action event
     if (context.Events) {
+      await context.Events.emitNonBlocking("file:post-read", {
+        filePath,
+        content,
+      });
       await context.Events.emitNonBlocking("ast:post-list-paths", {
         filePath,
-        pathCount: paths.length,
+        paths,
       });
     }
 
     // Get file extension for result metadata
-    const ext = filePath.split('.').pop()?.toLowerCase();
+    const ext = filePath.split(".").pop()?.toLowerCase();
 
     const result = {
       file: filePath,

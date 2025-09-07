@@ -70,6 +70,10 @@ export class LanguageAgnosticParser {
     return aliases[extOrName.toLowerCase()] || extOrName;
   }
 
+  static suportedLanguages(): string[] {
+    return Array.from(new Set(Object.keys(languagePacks)));
+  }
+
   static createParserForFile(filePath: string): LanguageAgnosticParser {
     const ext = filePath.split(".").pop()?.toLowerCase();
     return new LanguageAgnosticParser(ext);
