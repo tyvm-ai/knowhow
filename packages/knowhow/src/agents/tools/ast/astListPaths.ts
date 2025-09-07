@@ -52,12 +52,9 @@ export async function astListPaths(filePath: string): Promise<string> {
       });
     }
 
-    // Get file extension for result metadata
-    const ext = filePath.split(".").pop()?.toLowerCase();
-
     const result = {
       file: filePath,
-      language: ext,
+      language: parser.getLanguage(),
       totalPaths: paths.length,
       paths: paths.sort(),
     };

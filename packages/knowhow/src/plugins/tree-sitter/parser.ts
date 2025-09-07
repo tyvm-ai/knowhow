@@ -128,6 +128,10 @@ export class LanguageAgnosticParser {
     return this.currentLanguagePack;
   }
 
+  getLanguage(): string | undefined {
+    return this.currentLanguagePack?.language;
+  }
+
   // Helper function to get normalized node kind
   nodeKind(node: Parser.SyntaxNode): NormalizedKind {
     const pack = this.currentLanguagePack;
