@@ -110,6 +110,13 @@ export class TreeEditor {
   }
 
   /**
+   * Delete a node by path (sets content to empty string)
+   */
+  deleteNodeByPath(path: string): TreeEditor {
+    return this.updateNodeByPath(path, "");
+  }
+
+  /**
    * Update a node using simple path like "ClassName.methodName"
    */
   updateNodeBySimplePath(simplePath: string, newContent: string): TreeEditor {
@@ -156,13 +163,13 @@ export class TreeEditor {
    * Insert content before nodes of specified types within a parent path
    * @param parentPath - Path to the parent node (simple or programmatic)
    * @param content - Content to insert
-   * @param beforeTypes - Array of node types to insert before (e.g., ['method_definition', 'constructor_definition'])
+   * @param beforeKinds - Array of node types to insert before (e.g., ['method_definition', 'constructor_definition'])
    * @returns Modified TreeEditor
    */
   insertBefore(
     parentPath: string,
     content: string,
-    beforeTypes: string[]
+    beforeKinds: string[]
   ): TreeEditor {
     const parentNode = this.resolvePathToNode(parentPath);
     if (!parentNode) {
@@ -176,7 +183,7 @@ export class TreeEditor {
 
     // Find the first child that matches any of the beforeTypes
     for (const child of bodyNode.children) {
-      if (beforeTypes.includes(child.type)) {
+      if (beforeKinds.includes(this.parser.nodeKind(child))) {
         return this.addLines("", content, child.startPosition.row);
       }
     }
@@ -264,8 +271,8 @@ export class TreeEditor {
    */
   addPropertyToClass(className: string, propertyContent: string): TreeEditor {
     return this.insertBefore(className, propertyContent, [
-      "method_definition",
-      "constructor_definition",
+      "method",
+      "constructor",
     ]);
   }
 
@@ -292,43 +299,7 @@ export class TreeEditor {
    * @param blockPath - Block path like describe("name"), beforeEach(), test("should work")
    */
   deleteBlock(blockPath: string): TreeEditor {
-    const resolver = new SimplePathResolver(this.parser);
-    const matches = resolver.findBySimplePath(this.tree, blockPath);
-
-    if (matches.length === 0) {
-      throw new Error(`Could not find block: ${blockPath}`);
-    }
-
-    // Use the first match
-    const targetBlock = matches[0].node;
-
-    // Remove the entire block node
-    const currentText = this.getCurrentText();
-    const startPos = targetBlock.startPosition;
-    const endPos = targetBlock.endPosition;
-
-    const lines = currentText.split("\n");
-    const beforeLines = lines.slice(0, startPos.row);
-    const afterLines = lines.slice(endPos.row + 1);
-
-    // Handle case where the block is on its own lines - remove empty line
-    const startLine = lines[startPos.row];
-    const isBlockOnOwnLine = startLine.trim() !== "" && startPos.column === 0;
-
-    let newLines: string[];
-    if (
-      isBlockOnOwnLine &&
-      afterLines.length > 0 &&
-      afterLines[0].trim() === ""
-    ) {
-      // Remove the empty line after the block if it exists
-      newLines = [...beforeLines, ...afterLines.slice(1)];
-    } else {
-      newLines = [...beforeLines, ...afterLines];
-    }
-
-    const newText = newLines.join("\n");
-    return new TreeEditor(this.parser, newText);
+    return this.deleteNodeByPath(blockPath);
   }
 
   /**

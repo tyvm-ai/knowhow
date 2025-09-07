@@ -74,7 +74,9 @@ export class LinterPlugin extends PluginBase {
 
       try {
         const lintResult = await execCommand(`${lintCommand}`, 0, false, true);
-        console.log("Lint Result:", lintResult);
+        if (lintResult) {
+          console.log("Lint Result:", lintResult);
+        }
         return lintResult;
       } catch (error) {
         console.error("Linting failed:", error);

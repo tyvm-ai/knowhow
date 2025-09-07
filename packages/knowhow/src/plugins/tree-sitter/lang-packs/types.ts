@@ -32,7 +32,7 @@ export interface SimplePathMatch {
 /**
  * Normalized node kinds for language-agnostic processing
  */
-export type NormalizedKind = "class" | "method" | "function" | "property" | "body" | "block" | "unknown";
+export type NormalizedKind = "class" | "constructor" | "method" | "function" | "property" | "body" | "block" | "unknown";
 
 /**
  * Rules for finding body nodes

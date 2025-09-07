@@ -33,6 +33,7 @@ export const javascriptLanguagePack: LanguagePackConfig = {
   kindMap: {
     class_declaration: "class",
     method_definition: "method",
+    constructor_definition: "constructor",
     method_signature: "method",
     function_declaration: "function",
     function_expression: "function",

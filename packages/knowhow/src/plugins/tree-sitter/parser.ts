@@ -44,12 +44,8 @@ export interface TreeEdit {
 export function getLanguagePackForLanguage(
   languageName: string
 ): LanguagePackConfig | undefined {
-  // Support common aliases
-  const aliases: Record<string, string> = {
-    js: "javascript",
-    ts: "typescript",
-  };
-  const normalizedName = aliases[languageName] || languageName;
+  const normalizedName =
+    LanguageAgnosticParser.resolveLanguageName(languageName);
   return getLanguagePack(normalizedName);
 }
 
@@ -60,6 +56,23 @@ export class LanguageAgnosticParser {
   constructor(language: string) {
     this.parser = new Parser();
     this.setupFromLanguageName(language);
+  }
+
+  static resolveLanguageName(extOrName: string): string {
+    const aliases: Record<string, string> = {
+      js: "javascript",
+      jsx: "javascript",
+      ts: "typescript",
+      tsx: "typescript",
+      javascript: "javascript",
+      typescript: "typescript",
+    };
+    return aliases[extOrName.toLowerCase()] || extOrName;
+  }
+
+  static createParserForFile(filePath: string): LanguageAgnosticParser {
+    const ext = filePath.split(".").pop()?.toLowerCase();
+    return new LanguageAgnosticParser(ext);
   }
 
   static createTypeScriptParser(): LanguageAgnosticParser {
@@ -74,20 +87,25 @@ export class LanguageAgnosticParser {
     return !!getLanguagePackForLanguage(languageName);
   }
 
+  static supportsFile(filePath: string): boolean {
+    const ext = filePath.split(".").pop()?.toLowerCase();
+    return !!getLanguagePackForLanguage(ext || "");
+  }
+
   private setupFromLanguageName(languageName: string) {
     this.setLanguagePack(languageName);
     this.setupParserForLanguage(languageName);
   }
 
   private setupParserForLanguage(languageName: string) {
-    const normalizedName = languageName.toLowerCase();
+    const normalizedName =
+      LanguageAgnosticParser.resolveLanguageName(languageName);
+
     switch (normalizedName) {
       case "javascript":
-      case "js":
         this.parser.setLanguage(JavaScript);
         break;
       case "typescript":
-      case "ts":
         this.parser.setLanguage(TypeScript.typescript);
         break;
       default:
@@ -107,7 +125,8 @@ export class LanguageAgnosticParser {
   }
 
   // Helper function to get normalized node kind
-  nodeKind(node: Parser.SyntaxNode, pack: LanguagePackConfig): NormalizedKind {
+  nodeKind(node: Parser.SyntaxNode): NormalizedKind {
+    const pack = this.currentLanguagePack;
     return pack.kindMap[node.type] || "unknown";
   }
 
@@ -203,7 +222,7 @@ export class LanguageAgnosticParser {
   ): NormalizedKind {
     const pack = getLanguagePackForLanguage(language.toLowerCase());
     if (!pack) return "unknown";
-    return this.nodeKind(node, pack);
+    return this.nodeKind(node);
   }
 
   parseFile(filePath: string): Parser.Tree {
