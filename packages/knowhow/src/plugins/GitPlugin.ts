@@ -91,13 +91,6 @@ Your modifications are automatically tracked separately and won't affect the use
           "# Knowhow agent tracking repository\n"
         );
 
-        // Create an initial tracking file in the project root instead
-        const trackingFile = path.join(this.projectRoot, ".knowhow-tracking");
-        fs.writeFileSync(
-          trackingFile,
-          `# Knowhow Agent Tracking\nInitialized: ${new Date().toISOString()}\n`
-        );
-
         try {
           this.gitCommand("add -A");
           this.gitCommand('commit -m "Initial commit for agent tracking"');
