@@ -664,25 +664,28 @@ ${reason}
       }
 
       // Set up session update listener
-      agent.agentEvents.on("threadUpdate", async (threadState) => {
-        // Update task cost from agent's current total cost
-        taskInfo.totalCost = agent.getTotalCostUsd();
-        this.updateSession(taskId, threadState);
+      agent.agentEvents.on(
+        agent.eventTypes.threadUpdate,
+        async (threadState) => {
+          // Update task cost from agent's current total cost
+          taskInfo.totalCost = agent.getTotalCostUsd();
+          this.updateSession(taskId, threadState);
 
-        // Update Knowhow chat task if created
-        if (knowhowTaskId && options.messageId && baseUrl) {
-          await client
-            .updateChatTask(knowhowTaskId, {
-              threads: agent.getThreads(),
-              totalCostUsd: agent.getTotalCostUsd(),
-              inProgress: true,
-            })
-            .catch((error) => {
-              console.error(`❌ Failed to update Knowhow chat task:`, error);
-            });
-          console.log(`✅ Updated Knowhow chat task: ${knowhowTaskId}`);
+          // Update Knowhow chat task if created
+          if (knowhowTaskId && options.messageId && baseUrl) {
+            await client
+              .updateChatTask(knowhowTaskId, {
+                threads: agent.getThreads(),
+                totalCostUsd: agent.getTotalCostUsd(),
+                inProgress: true,
+              })
+              .catch((error) => {
+                console.error(`❌ Failed to update Knowhow chat task:`, error);
+              });
+            console.log(`✅ Updated Knowhow chat task: ${knowhowTaskId}`);
+          }
         }
-      });
+      );
 
       console.log(
         Marked.parse(`**Starting ${agent.name} with task ID: ${taskId}...**`)

@@ -82,6 +82,7 @@ export type McpConfig = {
   env?: { [key: string]: string };
   params?: Partial<{ socket: WebSocket }>;
   authorization_token?: string;
+  authorization_token_file?: string;
 };
 
 export type ModelProvider = {

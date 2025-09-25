@@ -103,6 +103,8 @@ export class PatchingAgent extends BaseAgent {
 
         IF you fail twice to patch a file, you may switch using writeFileChunk to rewrite the whole file.
 
+        If you need to know about a type, you should use the ycmd completion tool to discovery the properties, and fallback to reading the source files if the ycmd tools are not available.
+
         # Debugging Workflow
         If a build or test command fails due to compilation errors:
 

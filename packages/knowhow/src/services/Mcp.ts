@@ -2,6 +2,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import Anthropic from "@anthropic-ai/sdk";
 
+import fs from "fs";
 import { McpConfig } from "../types";
 import { Tool } from "../clients";
 import { getConfig } from "../config";
@@ -79,6 +80,10 @@ export class McpService {
       }
       if (mcp.url) {
         // TODO: also support refresh tokens
+        if (mcp.authorization_token_file) {
+          const token = fs.readFileSync(mcp.authorization_token_file, "utf-8");
+          mcp.authorization_token = token.trim();
+        }
         return new StreamableHTTPClientTransport(new URL(mcp.url), {
           requestInit: {
             headers: {
