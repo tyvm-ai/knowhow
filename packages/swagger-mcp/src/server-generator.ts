@@ -7,6 +7,14 @@ export class ServerGenerator {
     private tools: Tool[]
   ) {}
 
+  private escapeString(str: string): string {
+    return str
+      .replace(/\\/g, '\\\\')  // Escape backslashes first
+      .replace(/'/g, "\\'")    // Escape single quotes
+      .replace(/\n/g, '\\n')   // Escape newlines
+      .replace(/\r/g, '\\r');  // Escape carriage returns
+  }
+
   generateServerFactory(): string {
     const tools = this.tools;
     const apiBaseUrl = this.baseUrl;
@@ -128,8 +136,7 @@ ${tools
 ${tools
   .map(
     (tool) => `        {
-          name: '${tool.name}',
-          description: '${tool.description}',
+          description: '${this.escapeString(tool.description)}',
           inputSchema: ${JSON.stringify(tool.inputSchema, null, 10)}
         }`
   )

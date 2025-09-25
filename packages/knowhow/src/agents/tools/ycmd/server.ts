@@ -364,11 +364,13 @@ export class YcmdServer {
    */
   private async waitForServerStart(): Promise<YcmdServerInfo> {
     return new Promise((resolve, reject) => {
+      let timedOut = false;
       const timeout = setTimeout(() => {
         console.log(
           "ycmd server startup timeout - server failed to start within 30 seconds"
         );
         reject(new Error("ycmd server failed to start within timeout"));
+        timedOut = true;
       }, 30000);
 
       const host = "127.0.0.1";
@@ -378,6 +380,10 @@ export class YcmdServer {
       // Check for server readiness
       const checkReady = async () => {
         try {
+          if (timedOut) {
+            return;
+          }
+
           const port = getPort();
           console.log(`Checking ycmd server health on port ${port}`);
 
@@ -450,18 +456,22 @@ export class YcmdServer {
   private setupExitHandler(): void {
     // Handle normal process exit
     process.on("exit", () => this.forceCleanup());
-    
+
     // Handle Ctrl+C (SIGINT)
     process.on("SIGINT", () => {
-      console.log("\nReceived SIGINT (Ctrl+C), shutting down ycmd server gracefully...");
+      console.log(
+        "\nReceived SIGINT (Ctrl+C), shutting down ycmd server gracefully..."
+      );
       this.gracefulShutdown().finally(() => {
         process.exit(0);
       });
     });
-    
+
     // Handle SIGTERM (termination signal)
     process.on("SIGTERM", () => {
-      console.log("\nReceived SIGTERM, shutting down ycmd server gracefully...");
+      console.log(
+        "\nReceived SIGTERM, shutting down ycmd server gracefully..."
+      );
       this.gracefulShutdown().finally(() => {
         process.exit(0);
       });
