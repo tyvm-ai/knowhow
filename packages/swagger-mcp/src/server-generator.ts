@@ -136,6 +136,7 @@ ${tools
 ${tools
   .map(
     (tool) => `        {
+          name: '${this.escapeString(tool.name)}',
           description: '${this.escapeString(tool.description)}',
           inputSchema: ${JSON.stringify(tool.inputSchema, null, 10)}
         }`
