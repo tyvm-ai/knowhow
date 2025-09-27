@@ -3,6 +3,7 @@ import { CliChatService } from "../CliChatService";
 import { ChatCommand, ChatMode, ChatContext } from "../types";
 import { ask } from "../../utils";
 import { services } from "../../services";
+import { Models } from "../../types";
 
 export class SystemModule extends BaseChatModule {
   name = "system";
@@ -63,7 +64,10 @@ export class SystemModule extends BaseChatModule {
       console.log(
         `Updating active agent ${context.currentAgent} model to: ${selectedModel}`
       );
-      context?.selectedAgent?.setModel(selectedModel);
+      context?.selectedAgent?.updatePreferences({
+        model: selectedModel,
+        provider: currentProvider as any,
+      });
     }
   }
 
@@ -84,10 +88,10 @@ export class SystemModule extends BaseChatModule {
 
     // Get default model for new provider
     const ChatModelDefaults = {
-      openai: "gpt-4o",
-      anthropic: "claude-3-5-sonnet-20241022",
-      google: "gemini-2.0-flash-exp",
-      xai: "grok-beta",
+      openai: Models.openai.GPT_5,
+      anthropic: Models.anthropic.Sonnet4,
+      google: Models.google.Gemini_25_Flash_Preview,
+      xai: Models.xai.GrokCodeFast,
     };
 
     const newModel =
@@ -106,9 +110,13 @@ export class SystemModule extends BaseChatModule {
     // Update currently active agent if any
     if (context?.selectedAgent) {
       console.log(
-        `Updating active agent ${context.currentAgent} provider to: ${selectedProvider}`
+        `Updating active agent ${context.currentAgent} provider to: ${selectedProvider} and model to: ${newModel}`
       );
-      context?.selectedAgent?.setModel(selectedProvider);
+
+      context?.selectedAgent?.updatePreferences({
+        model: newModel,
+        provider: selectedProvider as any,
+      });
     }
   }
 

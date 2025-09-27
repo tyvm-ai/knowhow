@@ -389,39 +389,66 @@ export const includedTools = [
       description: "Create a completion using the knowhow AI client",
       parameters: {
         type: "object",
-        positional: true,
+        additionalProperties: false,
+        $defs: {
+          message: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              role: {
+                type: "string",
+                enum: ["system", "user", "assistant", "tool"],
+              },
+              content: { type: "string" },
+            },
+            required: ["role", "content"],
+          },
+          toolLite: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              type: { type: "string", enum: ["function"] },
+              function: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  name: { type: "string" },
+                  description: { type: "string" },
+                  parameters: { type: "object" },
+                },
+                required: ["name", "parameters"],
+              },
+            },
+            required: ["type", "function"],
+          },
+        },
         properties: {
           provider: {
             type: "string",
             description:
               "The AI provider to use (e.g., 'openai', 'anthropic'). Use listAllModels to discover providers.",
           },
-
           options: {
             type: "object",
+            additionalProperties: false,
             description: "Provider-specific completion options",
             properties: {
-              model: {
-                type: "string",
-                description: "The model to use",
-              },
-
+              model: { type: "string", description: "The model to use" },
               messages: {
                 type: "array",
                 description: "The chat history for the completion",
-                items: { $ref: "#/definitions/message" },
+                items: { $ref: "#/$defs/message" },
                 minItems: 1,
               },
-
               max_tokens: {
                 type: "number",
                 description: "Maximum number of tokens to generate",
               },
-
               tools: {
                 type: "array",
-                description: "Tool definitions the model may call",
-                items: { $ref: "#/definitions/tool" },
+                description:
+                  "Tool definitions the model may call (non-recursive subset)",
+                items: { $ref: "#/$defs/toolLite" },
               },
             },
             required: ["model", "messages"],
@@ -429,49 +456,12 @@ export const includedTools = [
         },
         required: ["provider"],
       },
-
       returns: {
         type: "object",
         description: "The completion response from the AI provider",
       },
     },
-
-    definitions: {
-      message: {
-        type: "object",
-        properties: {
-          role: {
-            type: "string",
-            enum: ["system", "user", "assistant", "tool"],
-          },
-          content: { type: "string" },
-        },
-        required: ["role", "content"],
-      },
-
-      tool: {
-        type: "object",
-        properties: {
-          type: {
-            type: "string",
-            enum: ["function"],
-          },
-          function: {
-            type: "object",
-            properties: {
-              name: { type: "string" },
-              description: { type: "string" },
-              parameters: { type: "object" },
-              returns: { type: "object" },
-            },
-            required: ["name", "description", "parameters"],
-          },
-        },
-        required: ["type", "function"],
-      },
-    },
   },
-
   {
     type: "function",
     function: {
@@ -676,7 +666,8 @@ export const includedTools = [
       },
       returns: {
         type: "string",
-        description: "JSON object containing all available AST paths in the file",
+        description:
+          "JSON object containing all available AST paths in the file",
       },
     },
   },
@@ -696,7 +687,8 @@ export const includedTools = [
           },
           path: {
             type: "string",
-            description: "The AST path to the node to update (from astListPaths)",
+            description:
+              "The AST path to the node to update (from astListPaths)",
           },
           newContent: {
             type: "string",
@@ -758,7 +750,8 @@ export const includedTools = [
           },
           path: {
             type: "string",
-            description: "The AST path to the node to delete (from astListPaths)",
+            description:
+              "The AST path to the node to delete (from astListPaths)",
           },
         },
         required: ["filePath", "path"],
@@ -792,7 +785,8 @@ export const includedTools = [
       },
       returns: {
         type: "string",
-        description: "JSON object containing AST paths and locations for the matching text",
+        description:
+          "JSON object containing AST paths and locations for the matching text",
       },
     },
   },

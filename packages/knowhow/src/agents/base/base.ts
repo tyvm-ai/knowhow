@@ -160,6 +160,7 @@ export abstract class BaseAgent implements IAgent {
 
   setModel(value: string) {
     this.modelName = value;
+    this.client = null; // Reset client to force re-fetch
   }
 
   getProvider() {
@@ -168,6 +169,7 @@ export abstract class BaseAgent implements IAgent {
 
   setProvider(value: keyof typeof Clients.clients) {
     this.provider = value;
+    this.client = null; // Reset client to force re-fetch
   }
 
   getClient() {
@@ -562,8 +564,11 @@ export abstract class BaseAgent implements IAgent {
             if (finalMessage) {
               // Emit task completion event for plugins (like GitPlugin)
               this.events.emit("agent:taskComplete", {
-                taskId: this.currentTaskId || this.startTimeMs?.toString() || Date.now().toString(),
-                result: finalMessage.content || "Done"
+                taskId:
+                  this.currentTaskId ||
+                  this.startTimeMs?.toString() ||
+                  Date.now().toString(),
+                result: finalMessage.content || "Done",
               });
               const doneMsg = finalMessage.content || "Done";
               this.agentEvents.emit(this.eventTypes.done, doneMsg);
