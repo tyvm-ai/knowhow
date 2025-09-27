@@ -44,6 +44,10 @@ export class CliChatService implements ChatService {
     this.loadInputHistory();
   }
 
+  getModuleByName(name: string) {
+    return this.modules.find((module) => module.name === "agent");
+  }
+
   /**
    * Load input history from disk for scrollback functionality
    */

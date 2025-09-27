@@ -56,8 +56,15 @@ export class SystemModule extends BaseChatModule {
       currentModel: selectedModel,
       currentProvider,
     });
-
     console.log(`Model set to: ${selectedModel}`);
+
+    // Update currently active agent if any
+    if (context?.selectedAgent) {
+      console.log(
+        `Updating active agent ${context.currentAgent} model to: ${selectedModel}`
+      );
+      context?.selectedAgent?.setModel(selectedModel);
+    }
   }
 
   async handleProviderCommand(args: string[]): Promise<void> {
@@ -95,6 +102,14 @@ export class SystemModule extends BaseChatModule {
     console.log(
       `Provider set to: ${selectedProvider}, Model set to: ${newModel}`
     );
+
+    // Update currently active agent if any
+    if (context?.selectedAgent) {
+      console.log(
+        `Updating active agent ${context.currentAgent} provider to: ${selectedProvider}`
+      );
+      context?.selectedAgent?.setModel(selectedProvider);
+    }
   }
 
   async handleDebugCommand(args: string[]): Promise<void> {

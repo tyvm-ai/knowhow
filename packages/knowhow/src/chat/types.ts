@@ -14,6 +14,7 @@ export interface ChatContext {
   currentModel?: string;
   currentProvider?: string;
   inputMethod?: InputMethod;
+  selectedAgent?: BaseAgent;
   [key: string]: any;
 }
 
