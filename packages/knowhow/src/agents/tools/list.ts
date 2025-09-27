@@ -389,6 +389,7 @@ export const includedTools = [
       description: "Create a completion using the knowhow AI client",
       parameters: {
         type: "object",
+        positional: true,
         additionalProperties: false,
         $defs: {
           message: {
