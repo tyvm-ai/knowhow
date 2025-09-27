@@ -30,7 +30,7 @@ export class GenericXAIClient implements GenericClient {
     this.client = new OpenAI({
       apiKey,
       baseURL: "https://api.x.ai/v1",
-      timeout: 3600,
+      timeout: 60,
     });
   }
 
