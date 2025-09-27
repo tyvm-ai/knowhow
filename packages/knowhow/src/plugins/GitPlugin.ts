@@ -17,7 +17,6 @@ export class GitPlugin extends PluginBase {
   private knowhowDir: string;
   private projectRoot: string;
   private projectHasGit: boolean = false;
-  private currentBranch: string = "main";
   private eventService: EventService;
   private currentTask: string | null = null;
 
@@ -36,9 +35,11 @@ export class GitPlugin extends PluginBase {
 
     return `Git Plugin:
 
-- Current branch: ${this.currentBranch}
+- Current branch: ${this.getCurrentBranch()}
 - Agent edit history is tracked separately in .knowhow/.git
-- Use git commands with git --git-dir="${this.knowhowGitPath}" to view/revert your changes
+- Use git commands with git --git-dir="${
+      this.knowhowGitPath
+    }" to view/revert your changes
 
 PROJECT REPOSITORY STATUS:
 ${projectGitStatus}
@@ -92,8 +93,7 @@ Your modifications are automatically tracked separately and won't affect the use
         );
 
         try {
-          this.gitCommand("add -A");
-          this.gitCommand('commit -m "Initial commit for agent tracking"');
+          this.commit("Initial commit for agent tracking");
         } catch (error) {
           // If we can't commit the tracking file, create an empty commit
           this.gitCommand(
@@ -109,7 +109,6 @@ Your modifications are automatically tracked separately and won't affect the use
         // If main doesn't exist, create it
         this.gitCommand("checkout -b main");
       }
-      this.currentBranch = "main";
     } catch (error) {
       console.error("Failed to initialize .knowhow git repository:", error);
     }
@@ -161,8 +160,7 @@ Your modifications are automatically tracked separately and won't affect the use
     // Listen for agent newTask events to create new branches
     this.eventService.on("agent:newTask", async (data: any) => {
       if (this.isEnabled()) {
-        await this.ensureCleanState();
-        await this.initializeKnowhowRepo();
+        await this.ensureCleanState(data);
         await this.handleNewTask(data);
       }
     });
@@ -176,10 +174,37 @@ Your modifications are automatically tracked separately and won't affect the use
   }
 
   /**
-   * Ensures the .knowhow/.git repository is in a clean state before starting new tasks.
-   * This method commits any uncommitted changes and syncs the main branch with the current codebase state.
+   * Gets the current branch name from the git repository
    */
-  private async ensureCleanState(): Promise<void> {
+  private getCurrentBranch(): string {
+    try {
+      return this.gitCommand("branch --show-current").trim() || "main";
+    } catch {
+      return "main";
+    }
+  }
+
+  private getRepoHash(): string | null {
+    let actualRepoHash: string | null = null;
+    try {
+      actualRepoHash = execSync("git rev-parse --short HEAD", {
+        cwd: this.projectRoot,
+        stdio: "pipe",
+      })
+        .toString()
+        .trim();
+    } catch {
+      // No actual git repo or no commits
+      actualRepoHash = null;
+    }
+    return actualRepoHash;
+  }
+
+  /**
+   * Ensures the .knowhow/.git repository is in a clean state before starting new tasks.
+   * This method commits any uncommitted changes and preserves work from any current branch.
+   */
+  private async ensureCleanState(taskData?: any): Promise<void> {
     try {
       // Initialize the repo if it doesn't exist
       if (!fs.existsSync(this.knowhowGitPath)) {
@@ -188,47 +213,30 @@ Your modifications are automatically tracked separately and won't affect the use
       }
 
       // Get the current HEAD commit hash from the actual repo (if it exists)
-      let actualRepoHash: string | null = null;
-      try {
-        actualRepoHash = execSync("git rev-parse --short HEAD", {
-          cwd: this.projectRoot,
-          stdio: "pipe",
-        })
-          .toString()
-          .trim();
-      } catch {
-        // No actual git repo or no commits
-        actualRepoHash = null;
-      }
+      const actualRepoHash = this.getRepoHash();
+      console.log(`GitPlugin: Current branch is ${this.getCurrentBranch()}`);
 
-      // Switch to main branch or create it
-      try {
-        this.gitCommand("checkout main");
-      } catch {
-        try {
-          this.gitCommand("checkout -b main");
-        } catch (error) {
-          console.error("Failed to create or switch to main branch");
-          return;
-        }
-      }
-      this.currentBranch = "main";
-
+      // First, handle any uncommitted changes on the current branch
       const hasChanges = await this.hasChanges();
-
-      // If there are uncommitted changes, commit them
       if (hasChanges) {
         try {
-          this.gitCommand("add -A");
-          const syncMessage = actualRepoHash
+          const message = actualRepoHash
             ? `sync ${actualRepoHash}`
             : `sync ${new Date().toISOString()}`;
-          this.gitCommand(`commit -m "${syncMessage}"`);
-          console.log(`Committed uncommitted changes to main: ${syncMessage}`);
+          await this.commitAll(message);
         } catch (error) {
           console.error("Failed to commit uncommitted changes:", error);
         }
       }
+
+      // If we're not on main, we need to merge the current branch into main to preserve work
+      const branchToMerge = this.getCurrentBranch();
+      if (this.getCurrentBranch() !== "main") {
+        await this.setBranch("main");
+        await this.squashMerge(branchToMerge);
+      }
+
+      await this.setBranch("main");
     } catch (error) {
       console.error("Failed to ensure clean state:", error);
     }
@@ -258,8 +266,6 @@ Your modifications are automatically tracked separately and won't affect the use
         // Branch doesn't exist, create and switch to it
         this.gitCommand(`checkout -b ${branchName}`);
       }
-
-      this.currentBranch = branchName;
     } catch (error) {
       console.error(`GitPlugin: Failed to set branch ${branchName}:`);
     }
@@ -270,10 +276,38 @@ Your modifications are automatically tracked separately and won't affect the use
 
     try {
       this.gitCommand(`checkout -b ${branchName}`);
-      this.currentBranch = branchName;
     } catch (error) {
       console.error(`GitPlugin: Failed to create branch ${branchName}:`);
     }
+  }
+
+  async commit(message: string, files?: string[]): Promise<void> {
+    if (!this.isEnabled()) return;
+
+    const hasChanges = await this.hasChanges();
+
+    if (!hasChanges) {
+      return;
+    }
+
+    // Add files (or all if none specified)
+    if (files && files.length > 0) {
+      for (const file of files) {
+        try {
+          this.gitCommand(`add "${file}"`);
+        } catch (error) {
+          console.warn(`Failed to add file ${file}:`, error);
+        }
+      }
+    } else {
+      this.gitCommand("add -A");
+    }
+
+    // Ensure we have a valid HEAD before committing
+    this.ensureValidHead();
+
+    // Commit the changes
+    this.gitCommand(`commit -m "${message}"`);
   }
 
   async commitAll(message: string): Promise<void> {
@@ -281,21 +315,18 @@ Your modifications are automatically tracked separately and won't affect the use
 
     try {
       this.gitCommand("add -A");
-      await this.commit(message);
+      await this.commitWithEvents(message);
     } catch (error) {
       console.error("Failed to commit all changes:", error);
     }
   }
 
-  async commit(message: string, files?: string[]): Promise<void> {
-    if (!this.isEnabled()) return;
-
+  async commitWithEvents(message: string, files?: string[]): Promise<void> {
     try {
-      // Emit pre-commit event and collect results
       const preCommitResults = await this.eventService.emitBlocking(
         "git:pre-commit",
         {
-          branch: this.currentBranch,
+          branch: this.getCurrentBranch(),
           message,
           files,
         }
@@ -314,50 +345,26 @@ Your modifications are automatically tracked separately and won't affect the use
         }
       }
 
-      // Add files (or all if none specified)
-      if (files && files.length > 0) {
-        for (const file of files) {
-          try {
-            this.gitCommand(`add "${file}"`);
-          } catch (error) {
-            console.warn(`Failed to add file ${file}:`, error);
-          }
-        }
-      } else {
-        this.gitCommand("add .");
-      }
-
-      // Check if there are changes to commit
-      try {
-        this.gitCommand("diff-index --quiet HEAD --");
-        // No changes to commit
-        return;
-      } catch {
-        // There are changes, proceed with commit
-      }
-
-      // Ensure we have a valid HEAD before committing
-      this.ensureValidHead();
-
-      // Commit the changes
-      this.gitCommand(`commit -m "${enhancedMessage}"`);
+      await this.commit(enhancedMessage, files);
 
       // Emit post-commit event
       this.eventService.emit("git:post-commit", {
-        branch: this.currentBranch,
+        branch: this.getCurrentBranch(),
         message: enhancedMessage,
         files,
       });
 
       this.eventService.emit(
         "agent:msg",
-        `GitPlugin::Commit: ${enhancedMessage} on branch: ${this.currentBranch}
-        You can access your change history via git --git-dir ${this.knowhowGitPath} log or other commands
+        `GitPlugin::Commit: ${enhancedMessage} on branch: ${this.getCurrentBranch()}
+        You can access your change history via git --git-dir ${
+          this.knowhowGitPath
+        } log or other commands
         This can be used to revert changes, or compare against previous states during a task.
         `
       );
     } catch (error) {
-      console.error("Failed to commit changes:", error);
+      console.error("Failed to commit with events:", error);
     }
   }
 
@@ -390,13 +397,16 @@ Your modifications are automatically tracked separately and won't affect the use
         message = `[${this.currentTask}] ${message}`;
       }
 
-      await this.commit(message, [filePath]);
+      await this.commitAll(message);
     } catch (error) {
       console.error("Auto-commit failed:", error);
     }
   }
 
-  private async handleNewTask(data: any): Promise<void> {
+  private async handleNewTask(data: {
+    taskId: string;
+    description: string;
+  }): Promise<void> {
     if (!this.isEnabled()) return;
 
     try {
@@ -415,9 +425,10 @@ Your modifications are automatically tracked separately and won't affect the use
       // Create initial commit for the task
       const hasChanges = await this.hasChanges();
       if (hasChanges) {
-        await this.gitCommand("add -A");
+        await this.commitWithEvents(
+          `[${taskId}] Start new task: ${description || taskId}`
+        );
       }
-      await this.commit(`[${taskId}] Start new task: ${description || taskId}`);
 
       console.log(`Created new task branch: ${branchName}`);
     } catch (error) {
@@ -436,12 +447,7 @@ Your modifications are automatically tracked separately and won't affect the use
 
       // Get current task
       const completedTaskId = this.currentTask;
-      const completedBranch = this.currentBranch;
-
-      // Determine parent branch
-      const parentBranch = this.currentTask
-        ? `task/${this.currentTask}`
-        : "main";
+      const completedBranch = this.getCurrentBranch();
 
       // commit all changes before merge
       await this.commitAll("Final commit before merging task");
@@ -449,29 +455,16 @@ Your modifications are automatically tracked separately and won't affect the use
       // Switch to main branch
       await this.setBranch("main");
 
-      // Squash merge the completed task branch
-      try {
-        this.gitCommand(`merge --squash ${completedBranch}`);
+      const squashMessage = `[${completedTaskId}] Complete task: ${
+        data.answer ? data.answer.substring(0, 100) + "..." : completedTaskId
+      }`;
+      await this.squashMerge(completedBranch, squashMessage);
 
-        // Create squash commit with task summary
-        const squashMessage = `[${completedTaskId}] Complete task: ${
-          data.answer ? data.answer.substring(0, 100) + "..." : completedTaskId
-        }`;
-        this.gitCommand(`commit -m "${squashMessage}"`);
-
-        console.log(
-          `Task ${completedTaskId} completed and merged to main`
-        );
-      } catch (error) {
-        console.error(`Failed to squash merge task ${completedTaskId}:`);
-      }
+      // Clear current task
+      this.currentTask = null;
     } catch (error) {
       console.error("Failed to handle task completion:", error);
     }
-  }
-
-  async getCurrentBranch(): Promise<string> {
-    return this.currentBranch;
   }
 
   async getGitStatus(): Promise<string> {
@@ -511,16 +504,17 @@ Your modifications are automatically tracked separately and won't affect the use
 
   // Manual git operations for advanced users
   async manualCommit(message: string, files?: string[]): Promise<void> {
-    await this.commit(message, files);
+    await this.commitWithEvents(message, files);
   }
 
   async manualBranch(branchName: string): Promise<void> {
     await this.createBranch(branchName);
   }
 
-  async manualMerge(
+  async squashMerge(
     branchName: string,
-    squash: boolean = false
+    message: string = "",
+    squash: boolean = true
   ): Promise<void> {
     if (!this.isEnabled()) return;
 
@@ -532,7 +526,8 @@ Your modifications are automatically tracked separately and won't affect the use
 
       if (squash) {
         // Need to create commit after squash merge
-        this.gitCommand(`commit -m "Squash merge ${branchName}"`);
+        message = message || `Squash merge ${branchName}`;
+        this.commitAll(message);
       }
     } catch (error) {
       console.error(`Failed to merge ${branchName}:`, error);
