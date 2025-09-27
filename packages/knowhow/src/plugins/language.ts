@@ -123,7 +123,7 @@ export class LanguagePlugin extends PluginBase implements Plugin {
     try {
       const languageConfig = await getLanguageConfig();
       const filePath = eventData?.filePath || eventData?.path;
-
+      const fileContent = await readFile(filePath, "utf8");
 
       if (!filePath) {
         return;
@@ -136,12 +136,15 @@ export class LanguagePlugin extends PluginBase implements Plugin {
           if (!config.events || !config.events.includes(eventType)) {
             return false;
           }
-          
+
           // Check if file path matches any of the term patterns
-          const patterns = term
-            .split(",")
-            .map(p => p.trim());
-          const matches = patterns.some((pattern) => minimatch(filePath, pattern));
+          // Or if the file content includes any of the term patterns
+          const patterns = term.split(",").map((p) => p.trim());
+          const matches = patterns.some(
+            (pattern) =>
+              minimatch(filePath, pattern) ||
+              fileContent.toString().toLowerCase().includes(pattern.toLowerCase())
+          );
           return matches;
         })
         .map(([term]) => term);
@@ -186,7 +189,9 @@ export class LanguagePlugin extends PluginBase implements Plugin {
       term.split(",").some((pattern) => {
         const trimmedPattern = pattern.trim();
         // Use minimatch for file patterns, fallback to string contains for non-glob patterns
-        return trimmedPattern.includes("*") ? minimatch(userPrompt, trimmedPattern) : userPrompt.toLowerCase().includes(trimmedPattern.toLowerCase());
+        return trimmedPattern.includes("*")
+          ? minimatch(userPrompt, trimmedPattern)
+          : userPrompt.toLowerCase().includes(trimmedPattern.toLowerCase());
       })
     );
 

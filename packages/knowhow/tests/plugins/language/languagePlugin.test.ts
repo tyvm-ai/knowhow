@@ -1,34 +1,34 @@
-jest.mock("../src/utils", () => ({
+jest.mock("../../../src/utils", () => ({
   readFile: jest.fn().mockReturnValue(Buffer.from("test")),
   fileExists: jest.fn().mockReturnValue(true),
   fileStat: jest.fn(),
 }));
 
-jest.mock("../src/services/EventService", () => ({
+jest.mock("../../../src/services/EventService", () => ({
   EventService: jest.fn().mockImplementation(() => ({
     on: jest.fn(),
     emit: jest.fn(),
   })),
 }));
-jest.mock("../src/config", () => ({
+jest.mock("../../../src/config", () => ({
   getConfig: jest.fn(),
   getConfigSync: jest.fn(),
   getLanguageConfig: jest.fn(),
 }));
 
-jest.mock("../src/plugins/plugins", () => ({
+jest.mock("../../../src/plugins/plugins", () => ({
   PluginService: jest.fn().mockImplementation(() => ({
     listPlugins: jest.fn(),
     call: jest.fn(),
   })),
 }));
 
-import { LanguagePlugin } from "../src/plugins/language";
-import { Config } from "../src/types";
-import { EventService } from "../src/services/EventService";
-import * as utils from "../src/utils";
-import { getConfig, getLanguageConfig } from "../src/config";
-import { PluginService } from "../src/plugins/plugins";
+import { LanguagePlugin } from "../../../src/plugins/language";
+import { Config } from "../../../src/types";
+import { EventService } from "../../../src/services/EventService";
+import * as utils from "../../../src/utils";
+import { getConfig, getLanguageConfig } from "../../../src/config";
+import { PluginService } from "../../../src/plugins/plugins";
 
 import { minimatch } from "minimatch";
 const mockedConfig = getConfig as jest.MockedFunction<typeof getConfig>;
@@ -37,13 +37,16 @@ const mockedLanguageConfig = getLanguageConfig as jest.MockedFunction<
 >;
 
 // Use minimatch for consistent pattern matching with the plugin
-const matchGlobPattern = (pattern: string, text: string) => minimatch(text, pattern);
+const matchGlobPattern = (pattern: string, text: string) =>
+  minimatch(text, pattern);
 
 describe("matchGlobPattern", () => {
   it("should match exact patterns", () => {
-    expect(matchGlobPattern("src/components/Button.ts", "src/components/Button.ts")).toBe(true);
+    expect(
+      matchGlobPattern("src/components/Button.ts", "src/components/Button.ts")
+    ).toBe(true);
   });
-  
+
   it("should match wildcard patterns", () => {
     expect(matchGlobPattern("**/*.ts", "Button.ts")).toBe(true);
     expect(matchGlobPattern("**/*.ts", "src/components/Button.ts")).toBe(true);
@@ -51,8 +54,12 @@ describe("matchGlobPattern", () => {
   });
 });
 
-const MockedPluginService = PluginService as jest.MockedClass<typeof PluginService>;
-const MockedEventService = EventService as jest.MockedClass<typeof EventService>;
+const MockedPluginService = PluginService as jest.MockedClass<
+  typeof PluginService
+>;
+const MockedEventService = EventService as jest.MockedClass<
+  typeof EventService
+>;
 
 describe("LanguagePlugin", () => {
   const userPrompt = "test prompt including terms";
@@ -83,21 +90,15 @@ describe("LanguagePlugin", () => {
 
     const languagePlugin = new LanguagePlugin({
       Events: mockEventService,
-      Plugins: mockPluginService
+      Plugins: mockPluginService,
     } as any);
     const pluginResponse = await languagePlugin.call(userPrompt);
 
     expect(utils.fileExists).toHaveBeenCalled();
     expect(utils.readFile).toHaveBeenCalled();
     expect(mockListPlugins).toHaveBeenCalled();
-    expect(mockCall).toHaveBeenCalledWith(
-      "github",
-      expect.any(String)
-    );
-    expect(mockCall).toHaveBeenCalledWith(
-      "asana",
-      expect.any(String)
-    );
+    expect(mockCall).toHaveBeenCalledWith("github", expect.any(String));
+    expect(mockCall).toHaveBeenCalledWith("asana", expect.any(String));
     expect(pluginResponse).toContain(
       "LANGUAGE PLUGIN: The user mentioned these terms triggering contextual expansions"
     );
@@ -121,7 +122,9 @@ describe("LanguagePlugin", () => {
 
       mockPluginService = new MockedPluginService({} as any);
       mockPluginService.listPlugins = jest.fn().mockReturnValue(["github"]);
-      mockPluginService.call = jest.fn().mockResolvedValue(["plugin context data"]);
+      mockPluginService.call = jest
+        .fn()
+        .mockResolvedValue(["plugin context data"]);
     });
 
     test("should register event handlers for configured events during initialization", async () => {
@@ -142,10 +145,16 @@ describe("LanguagePlugin", () => {
       } as any);
 
       // Wait for async setupEventHandlers to complete
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
-      expect(mockEventService.on).toHaveBeenCalledWith("file:post-edit", expect.any(Function));
-      expect(mockEventService.on).toHaveBeenCalledWith("file:create", expect.any(Function));
+      expect(mockEventService.on).toHaveBeenCalledWith(
+        "file:post-edit",
+        expect.any(Function)
+      );
+      expect(mockEventService.on).toHaveBeenCalledWith(
+        "file:create",
+        expect.any(Function)
+      );
     });
 
     test("should handle file:post-edit event and emit agent:msg when file pattern matches", async () => {
@@ -166,7 +175,7 @@ describe("LanguagePlugin", () => {
       } as any);
 
       // Wait for async setupEventHandlers to complete
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       // Simulate file:post-edit event
       const fileEditHandler = eventHandlers.get("file:post-edit");
@@ -178,7 +187,7 @@ describe("LanguagePlugin", () => {
       });
 
       // Wait for async event processing to complete
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       expect(mockEventService.emit).toHaveBeenCalledWith(
         "agent:msg",
@@ -186,7 +195,7 @@ describe("LanguagePlugin", () => {
       );
 
       const emitCall = mockEventService.emit.mock.calls.find(
-        call => call[0] === "agent:msg"
+        (call) => call[0] === "agent:msg"
       );
 
       expect(emitCall).toBeDefined();
@@ -211,7 +220,7 @@ describe("LanguagePlugin", () => {
         Plugins: mockPluginService,
       } as any);
 
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       const fileEditHandler = eventHandlers.get("file:post-edit");
       await fileEditHandler!({
@@ -219,7 +228,10 @@ describe("LanguagePlugin", () => {
         operation: "edit",
       });
 
-      expect(mockEventService.emit).not.toHaveBeenCalledWith("agent:msg", expect.anything());
+      expect(mockEventService.emit).not.toHaveBeenCalledWith(
+        "agent:msg",
+        expect.anything()
+      );
     });
 
     test("should handle multiple matching patterns for a single file", async () => {
@@ -240,18 +252,17 @@ describe("LanguagePlugin", () => {
         Plugins: mockPluginService,
       } as any);
 
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       const fileEditHandler = eventHandlers.get("file:post-edit");
       await fileEditHandler!({
         filePath: "src/components/Button.ts",
       });
       // Wait for async event processing to complete
-      await new Promise(resolve => setTimeout(resolve, 10));
-
+      await new Promise((resolve) => setTimeout(resolve, 10));
 
       const emitCall = mockEventService.emit.mock.calls.find(
-        call => call[0] === "agent:msg"
+        (call) => call[0] === "agent:msg"
       );
       const eventData = JSON.parse(emitCall![1]);
       // With minimatch, *.ts doesn't match src/components/Button.ts (needs **/*.ts)
@@ -272,7 +283,7 @@ describe("LanguagePlugin", () => {
         Plugins: mockPluginService,
       } as any);
 
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       const fileEditHandler = eventHandlers.get("file:post-edit");
       if (fileEditHandler) {
@@ -281,7 +292,10 @@ describe("LanguagePlugin", () => {
         });
       }
 
-      expect(mockEventService.emit).not.toHaveBeenCalledWith("agent:msg", expect.anything());
+      expect(mockEventService.emit).not.toHaveBeenCalledWith(
+        "agent:msg",
+        expect.anything()
+      );
     });
 
     test("should resolve different source types in event context", async () => {
@@ -302,7 +316,7 @@ describe("LanguagePlugin", () => {
         Plugins: mockPluginService,
       } as any);
 
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       const fileEditHandler = eventHandlers.get("file:post-edit");
       await fileEditHandler!({
@@ -310,9 +324,18 @@ describe("LanguagePlugin", () => {
       });
 
       expect(utils.fileExists).toHaveBeenCalledWith("config/settings.json");
-      expect(utils.readFile).toHaveBeenCalledWith("config/settings.json", "utf8");
-      expect(mockPluginService.call).toHaveBeenCalledWith("github", "https://github.com/repo/config");
-      expect(mockEventService.emit).toHaveBeenCalledWith("agent:msg", expect.stringContaining("language_context_trigger"));
+      expect(utils.readFile).toHaveBeenCalledWith(
+        "config/settings.json",
+        "utf8"
+      );
+      expect(mockPluginService.call).toHaveBeenCalledWith(
+        "github",
+        "https://github.com/repo/config"
+      );
+      expect(mockEventService.emit).toHaveBeenCalledWith(
+        "agent:msg",
+        expect.stringContaining("language_context_trigger")
+      );
     });
   });
 
@@ -331,7 +354,7 @@ describe("LanguagePlugin", () => {
 
     const languagePlugin = new LanguagePlugin({
       Events: mockEventService,
-      Plugins: mockPluginService
+      Plugins: mockPluginService,
     } as any);
     const pluginResponse = await languagePlugin.call(userPrompt);
 
