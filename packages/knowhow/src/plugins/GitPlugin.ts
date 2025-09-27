@@ -74,7 +74,7 @@ Your modifications are automatically tracked separately and won't affect the use
     return [];
   }
 
-  private initializeKnowhowRepo(): void {
+  private async initializeKnowhowRepo(): Promise<void> {
     try {
       // Create .knowhow directory if it doesn't exist
       if (!fs.existsSync(this.knowhowDir)) {
@@ -92,23 +92,17 @@ Your modifications are automatically tracked separately and won't affect the use
           "# Knowhow agent tracking repository\n"
         );
 
-        try {
+        const hasChanges = await this.hasChanges();
+        if (hasChanges) {
           this.commit("Initial commit for agent tracking");
-        } catch (error) {
-          // If we can't commit the tracking file, create an empty commit
+        } else {
           this.gitCommand(
             'commit --allow-empty -m "Initial commit for agent tracking"'
           );
         }
       }
 
-      // Ensure we're on main branch
-      try {
-        this.gitCommand("checkout main");
-      } catch {
-        // If main doesn't exist, create it
-        this.gitCommand("checkout -b main");
-      }
+      await this.setBranch("main");
     } catch (error) {
       console.error("Failed to initialize .knowhow git repository:", error);
     }
@@ -208,7 +202,7 @@ Your modifications are automatically tracked separately and won't affect the use
     try {
       // Initialize the repo if it doesn't exist
       if (!fs.existsSync(this.knowhowGitPath)) {
-        this.initializeKnowhowRepo();
+        await this.initializeKnowhowRepo();
         return;
       }
 

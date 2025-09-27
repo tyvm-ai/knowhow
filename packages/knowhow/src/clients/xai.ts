@@ -1,5 +1,4 @@
 import OpenAI from "openai";
-import { getConfigSync } from "../config";
 import {
   GenericClient,
   CompletionOptions,
@@ -13,8 +12,6 @@ import {
 } from "openai/resources/chat";
 
 import { Models } from "../types";
-
-const config = getConfigSync();
 
 export class GenericXAIClient implements GenericClient {
   private client: OpenAI;
@@ -81,6 +78,11 @@ export class GenericXAIClient implements GenericClient {
 
   pricesPerMillion() {
     return {
+      [Models.xai.GrokCodeFast]: {
+        input: 0.2,
+        cache_hit: 0.02,
+        output: 1.5,
+      },
       [Models.xai.Grok4]: {
         input: 3.0,
         output: 15.0,
@@ -117,19 +119,26 @@ export class GenericXAIClient implements GenericClient {
     model: string,
     usage: OpenAI.ChatCompletion["usage"]
   ): number | undefined {
+    if (!usage) {
+      return undefined;
+    }
+
     const pricing = this.pricesPerMillion()[model];
 
     if (!pricing) {
       return undefined;
     }
 
-    const inputTokens = usage.prompt_tokens;
+    const inputTokens = usage.prompt_tokens || 0;
     const inputCost = (inputTokens * pricing.input) / 1e6;
 
     const outputTokens = usage.completion_tokens || 0;
     const outputCost = (outputTokens * pricing.output) / 1e6;
 
-    const total = inputCost + outputCost;
+    const cacheToken = usage.prompt_tokens_details?.cached_tokens || 0;
+    const cacheCost = (cacheToken * (pricing.cache_hit || 0)) / 1e6;
+
+    const total = inputCost + outputCost + cacheCost;
     return total;
   }
 
