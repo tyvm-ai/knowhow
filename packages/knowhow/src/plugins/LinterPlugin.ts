@@ -73,7 +73,7 @@ export class LinterPlugin extends PluginBase {
       }
 
       try {
-        const lintResult = await execCommand(`${lintCommand}`, 0, false, true);
+        const lintResult = await execCommand(`${lintCommand}`, -1);
         if (lintResult) {
           console.log("Lint Result:", lintResult);
         }

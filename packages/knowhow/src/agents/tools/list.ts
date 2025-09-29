@@ -49,7 +49,7 @@ export const includedTools = [
     function: {
       name: "execCommand",
       description:
-        "Execute a command in the system's command line interface. Use this to run tests and things in the terminal. Supports timeout functionality.",
+        "Execute a command in the system's command line interface. Use this to run tests and things in the terminal. Supports timeout functionality. Use timeout: -1 to wait indefinitely.",
       parameters: {
         type: "object",
         positional: true,
@@ -61,17 +61,12 @@ export const includedTools = [
           timeout: {
             type: "number",
             description:
-              "Timeout in milliseconds (optional). If not provided, defaults to 5000ms.",
+              "Timeout in milliseconds (optional). If not provided, defaults to 5000ms. Use -1 to wait indefinitely for command completion.",
           },
           continueInBackground: {
             type: "boolean",
             description:
               "Whether to let command continue in background on timeout (default: false). If false, command is killed on timeout.",
-          },
-          waitForCompletion: {
-            type: "boolean",
-            description:
-              "Whether to wait for full completion regardless of timeout (default: false). When true, overrides timeout behavior.",
           },
         },
         required: ["command"],
