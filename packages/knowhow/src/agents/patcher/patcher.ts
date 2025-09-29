@@ -79,11 +79,9 @@ export class PatchingAgent extends BaseAgent {
     super(context);
 
     this.setModelPreferences([
-      { model: Models.anthropic.Sonnet4, provider: "anthropic" },
-      {
-        model: Models.openai.GPT_41_Mini,
-        provider: "openai",
-      },
+      { model: Models.anthropic.Sonnet4_5, provider: "anthropic" },
+      { model: Models.xai.GrokCodeFast, provider: "xai" },
+      { model: Models.openai.GPT_5, provider: "openai" },
     ]);
   }
 
