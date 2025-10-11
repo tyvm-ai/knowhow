@@ -94,10 +94,10 @@ Your modifications are automatically tracked separately and won't affect the use
 
         const hasChanges = await this.hasChanges();
         if (hasChanges) {
-          this.commit("Initial commit for agent tracking");
+          this.commit("Initial commit for agent tracking, with changes");
         } else {
           this.gitCommand(
-            'commit --allow-empty -m "Initial commit for agent tracking"'
+            'commit --allow-empty -m "Initial commit for agent tracking, no changes"'
           );
         }
       }

@@ -1,149 +1,280 @@
-import { exec } from "child_process";
+import { exec, spawn, ExecException } from "child_process";
 import { promisify } from "util";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 
 const execAsync = promisify(exec);
 
 export interface ExecCommandOptions {
-  timeout?: number; // Timeout in milliseconds (default: 5000), use -1 to wait indefinitely
-  continueInBackground?: boolean; // Whether to let command continue in background on timeout (default: false)
+  timeout?: number; // ms; -1 = wait indefinitely
+  continueInBackground?: boolean; // allow to keep running on timeout
+  maxBuffer?: number; // for exec()
 }
 
-// Enhanced exec function with timeout support
-const execWithTimeout = async (
-  command: string,
-  options: ExecCommandOptions = {}
-): Promise<{
+type ExecResult = {
   stdout: string;
   stderr: string;
   timedOut: boolean;
   killed: boolean;
-}> => {
-  const { timeout = 5000, continueInBackground = false } = options;
+  pid?: number;
+  logPath?: string;
+};
 
-  // If timeout is -1, wait indefinitely
-  if (timeout === -1) {
-    try {
-      const result = await execAsync(command);
-      return { ...result, timedOut: false, killed: false };
-    } catch (error) {
-      return {
-        stdout: error.stdout || "",
-        stderr: error.stderr || error.message,
-        timedOut: false,
-        killed: false,
-      };
+const PROCESSES_DIR = path.join(process.cwd(), ".knowhow", "processes");
+fs.mkdirSync(PROCESSES_DIR, { recursive: true });
+
+const STARTED_PIDS = new Set<number>();
+setupProcessCleanup();
+
+// ---------- utils ----------
+function stripTrailingAmp(cmd: string) {
+  const t = cmd.trim();
+  return t.endsWith("&") ? t.replace(/&\s*$/, "").trim() : t;
+}
+
+function commandNameFrom(cmd: string) {
+  const cleaned = stripTrailingAmp(cmd);
+  const first = cleaned.split(/\s+/)[0] || "command";
+  return first.replace(/[^\w.-]+/g, "_");
+}
+
+function makeLogPath(cmd: string) {
+  const name = commandNameFrom(cmd);
+  return path.join(PROCESSES_DIR, `${name}.txt`);
+}
+
+function setupProcessCleanup() {
+  const killAll = () => {
+    for (const pid of STARTED_PIDS) {
+      try {
+        if (os.platform() === "win32") {
+          spawn("taskkill", ["/PID", String(pid), "/T", "/F"], {
+            stdio: "ignore",
+            detached: true,
+          }).unref();
+        } else {
+          try {
+            process.kill(-pid, "SIGTERM");
+          } catch {
+            try {
+              process.kill(pid, "SIGTERM");
+            } catch {}
+          }
+        }
+      } catch {}
     }
+  };
+  process.once("exit", killAll);
+  process.once("SIGINT", () => {
+    killAll();
+    process.exit(130);
+  });
+  process.once("SIGTERM", () => {
+    killAll();
+    process.exit(143);
+  });
+  process.once("uncaughtException", (e) => {
+    console.error(e);
+    killAll();
+    process.exit(1);
+  });
+  process.once("unhandledRejection", (e: any) => {
+    console.error(e);
+    killAll();
+    process.exit(1);
+  });
+}
+
+// ---------- core ----------
+const execWithTimeout = async (
+  command: string,
+  opts: ExecCommandOptions = {}
+): Promise<ExecResult> => {
+  const {
+    timeout = 5000,
+    continueInBackground = false,
+    maxBuffer = 1024 * 1024 * 16,
+  } = opts;
+
+  const cleaned = stripTrailingAmp(command);
+  const shouldBg = continueInBackground || command.trim().endsWith("&");
+
+  // Foreground, indefinite wait → stream with spawn
+  if (timeout === -1 && !shouldBg) {
+    return new Promise<ExecResult>((resolve) => {
+      let out = "";
+      let err = "";
+      const child = spawn(cleaned, { shell: true });
+      child.stdout?.on("data", (d) => (out += d.toString()));
+      child.stderr?.on("data", (d) => (err += d.toString()));
+      child.once("error", (e) =>
+        resolve({
+          stdout: out,
+          stderr: err || String(e),
+          timedOut: false,
+          killed: false,
+          pid: child.pid ?? undefined,
+        })
+      );
+      child.once("exit", () =>
+        resolve({
+          stdout: out,
+          stderr: err,
+          timedOut: false,
+          killed: false,
+          pid: child.pid ?? undefined,
+        })
+      );
+    });
   }
 
-  // Timeout behavior when timeout is positive
-  return new Promise((resolve) => {
-    // Capture output incrementally so we can return it even on timeout
-    let capturedStdout = "";
-    let capturedStderr = "";
-    
-    const childProcess = exec(command, (error, stdout, stderr) => {
-      // Update captured output when process completes
-      capturedStdout = stdout;
-      capturedStderr = stderr;
-      
-      if (error && !error.killed) {
-        resolve({
-          stdout,
-          stderr: stderr || error.message,
+  if (shouldBg) {
+    // --- BACKGROUND MODE WITH CHILD-OWNED LOG FD ---
+    const logPath = makeLogPath(cleaned);
+
+    // Open the log file now; we'll pass this FD to the child so it writes directly.
+    // Use 'w' to truncate old logs and guarantee our header goes first.
+    const fd = fs.openSync(logPath, "w");
+
+    // Spawn detached; bind stdout/stderr to the same file.
+    const child = spawn(cleaned, {
+      shell: true,
+      detached: true,
+      stdio: ["ignore", fd, fd], // child writes directly to file for its entire lifetime
+    });
+
+    // Immediately write header (first line includes PID), then close *our* fd.
+    // The child keeps its own duplicated handle open.
+    const pid = child.pid!;
+    const header =
+      `PID: ${pid}\n` +
+      `CMD: ${cleaned}\n` +
+      `START: ${new Date().toISOString()}\n` +
+      `---\n`;
+    fs.writeSync(fd, header);
+    fs.fsyncSync(fd); // flush header before we let go
+    try {
+      fs.closeSync(fd);
+    } catch {}
+
+    // We only wait 'timeout' ms to return; process keeps running/logging after that.
+    return await new Promise<ExecResult>((resolve) => {
+      let settled = false;
+
+      const done = (res: ExecResult) => {
+        if (settled) return;
+        settled = true;
+        resolve({ ...res, pid, logPath });
+      };
+
+      child.once("error", (e) =>
+        done({
+          stdout: "",
+          stderr: `Failed to start command: ${String(e)}`,
+          timedOut: false,
+          killed: false,
+        })
+      );
+
+      const tid = setTimeout(() => {
+        // fully detach from our side
+        try {
+          child.unref();
+        } catch {}
+        STARTED_PIDS.add(pid);
+        done({
+          stdout: "",
+          stderr:
+            `Command timed out after ${timeout}ms but continues in background\n` +
+            `Logs: ${logPath}\n` +
+            `Tip: read first line for PID; kill by PID for cleanup.\n`,
+          timedOut: true,
+          killed: false,
+        });
+      }, timeout);
+
+      // If it finishes early, report success and avoid “timed out” messaging
+      child.once("exit", () => {
+        clearTimeout(tid);
+        done({
+          stdout: "",
+          stderr: `Process finished before timeout. Logs: ${logPath}\n`,
           timedOut: false,
           killed: false,
         });
-      } else {
-        resolve({
-          stdout,
-          stderr,
-          timedOut: false,
-          killed: error?.killed || false,
-        });
+      });
+    });
+  }
+
+  // Foreground with timeout → use exec (buffered) or switch to spawn+manual timer if you prefer
+  return new Promise<ExecResult>((resolve) => {
+    let out = "";
+    let err = "";
+    const child = exec(
+      cleaned,
+      { timeout, maxBuffer },
+      (error: ExecException | null, stdout: string, stderr: string) => {
+        out = out || stdout;
+        err = err || stderr;
+        if (error) {
+          resolve({
+            stdout: out,
+            stderr: err || error.message,
+            timedOut: (error as any).killed ?? false,
+            killed: !!(error as any).killed,
+            pid: (child as any).pid ?? undefined,
+          });
+        } else {
+          resolve({
+            stdout: out,
+            stderr: err,
+            timedOut: false,
+            killed: false,
+            pid: (child as any).pid ?? undefined,
+          });
+        }
       }
-    });
-
-    // Stream output as it comes in
-    childProcess.stdout?.on("data", (data) => {
-      capturedStdout += data.toString();
-    });
-    
-    childProcess.stderr?.on("data", (data) => {
-      capturedStderr += data.toString();
-    });
-
-    const timeoutId = setTimeout(() => {
-      if (!continueInBackground) {
-        // Kill the process if continueInBackground is false (default behavior)
-        childProcess.kill("SIGTERM");
-        // Force kill after additional 5 seconds if still running
-        setTimeout(() => {
-          if (!childProcess.killed) {
-            childProcess.kill("SIGKILL");
-          }
-        }, 5000);
-        resolve({
-          stdout: capturedStdout,
-          stderr: `Command timed out after ${timeout}ms and was killed\n` + capturedStderr,
-          timedOut: true,
-          killed: true,
-        });
-      } else {
-        // Let command continue in background
-        resolve({
-          stdout: capturedStdout,
-          stderr: `Command timed out after ${timeout}ms but is still running in background\n` + capturedStderr,
-          timedOut: true,
-          killed: false,
-        });
-      }
-    }, timeout);
-
-    // Clear timeout if command completes before timeout
-    childProcess.on("exit", () => {
-      clearTimeout(timeoutId);
-    });
+    );
+    child.stdout?.on("data", (d) => (out += d.toString()));
+    child.stderr?.on("data", (d) => (err += d.toString()));
   });
 };
 
-// Tool to execute a command in the system's command line interface
+// Public tool
 export const execCommand = async (
   command: string,
   timeout?: number,
   continueInBackground?: boolean
 ): Promise<string> => {
+  const { stdout, stderr, timedOut, killed, pid, logPath } =
+    await execWithTimeout(command, {
+      timeout,
+      continueInBackground,
+    });
+
   let output = "";
-  console.log("execCommand:", command);
+  if (stderr) output += stderr + "\n";
+  if (stdout) output += stdout;
 
-  const { stdout, stderr, timedOut, killed } = await execWithTimeout(command, {
-    timeout,
-    continueInBackground,
-  });
-
-  if (stderr) {
-    output += stderr + "\n";
-  }
-  output += stdout;
-
-  if (timedOut) {
-    const statusMsg = killed
+  const statusMsg = timedOut
+    ? killed
       ? " (killed due to timeout)"
-      : " (timed out, still running)";
-    console.log(`$ ${command}${statusMsg}:\n${output}`);
-  } else {
-    console.log(`$ ${command}:\n${output}`);
-  }
-
-  const fullOutput = output.split("\n");
-
-  const maxLines = 1000;
-  const maxCharacters = 40000;
-  const shouldTrim = fullOutput.length > maxLines;
-  const trimmedOutput = shouldTrim ? fullOutput.slice(0, maxLines) : fullOutput;
-
-  const trimmedMessage = shouldTrim
-    ? ` (${fullOutput.length - maxLines} results trimmed)`
+      : ` (timed out, still running${pid ? `, pid=${pid}` : ""}${
+          logPath ? `, logs=${logPath}` : ""
+        })`
     : "";
 
-  return trimmedOutput.join("\n").slice(0, maxCharacters) + trimmedMessage;
+  const lines = output.split("\n");
+  const maxLines = 1000;
+  const maxChars = 40000;
+  const trimmed = (lines.length > maxLines ? lines.slice(0, maxLines) : lines)
+    .join("\n")
+    .slice(0, maxChars);
+  const trimmedMsg =
+    lines.length > maxLines
+      ? ` (${lines.length - maxLines} results trimmed)`
+      : "";
+
+  return `$ ${command}${statusMsg}\n${trimmed}${trimmedMsg}`;
 };

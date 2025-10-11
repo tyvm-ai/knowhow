@@ -49,7 +49,7 @@ export const includedTools = [
     function: {
       name: "execCommand",
       description:
-        "Execute a command in the system's command line interface. Use this to run tests and things in the terminal. Supports timeout functionality. Use timeout: -1 to wait indefinitely.",
+        "Execute a command in the system's command line interface. Use this to run tests and things in the terminal. Supports timeout functionality. Use timeout: -1 to wait indefinitely. Commands ending with '&' or with continueInBackground=true will run in the background and write logs to .knowhow/processes/<command_name>.txt with PID in the first line for cleanup.",
       parameters: {
         type: "object",
         positional: true,

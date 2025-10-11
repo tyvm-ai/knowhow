@@ -136,9 +136,11 @@ async function ensureGlobalConfigDir() {
 }
 
 export async function init() {
+  console.log("Initializing global knowhow config at ~/.knowhow");
   const globalConfigDir = await ensureGlobalConfigDir();
 
   // create the folder structure
+  console.log("Initializing local knowhow config at ./.knowhow");
   await mkdir(".knowhow", { recursive: true });
   for (const folder of globalTemplateFolders) {
     await mkdir(path.join(".knowhow", folder), { recursive: true });
@@ -149,8 +151,14 @@ export async function init() {
 }
 
 export async function getLanguageConfig() {
-  const language = JSON.parse(await readFile(".knowhow/language.json", "utf8"));
-  return language as Language;
+  try {
+    const language = JSON.parse(
+      await readFile(".knowhow/language.json", "utf8")
+    );
+    return language as Language;
+  } catch (e) {
+    return {} as Language;
+  }
 }
 
 export async function updateLanguageConfig(language: Language) {
@@ -208,9 +216,11 @@ export async function getConfig() {
   if (!fs.existsSync(".knowhow/knowhow.json")) {
     if (!loggedWarning) {
       loggedWarning = true;
-      console.warn(
-        "KnowHow config file not found. Please run `knowhow init` to create it."
-      );
+      if (!process.argv.includes("init")) {
+        console.warn(
+          "KnowHow config file not found. Please run `knowhow init` to create it."
+        );
+      }
     }
     return {} as Config;
   }
