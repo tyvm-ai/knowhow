@@ -130,7 +130,6 @@ export class ToolResponseCache {
     }
 
     try {
-      
       // First parse the stored string as JSON, then handle nested JSON strings
       const jsonData = this.tryParseJson(data);
       if (!jsonData) {
@@ -207,14 +206,12 @@ export class ToolResponseCache {
    * Registers the jqToolResponse tool with the ToolsService
    */
   registerTool(toolsService: ToolsService): void {
-    if (!toolsService.getTool(this.toolName)) {
-      toolsService.addTool(jqToolResponseDefinition);
-      toolsService.addFunctions({
-        [this.toolName]: async (toolCallId: string, jqQuery: string) => {
-          return await this.queryToolResponse(toolCallId, jqQuery);
-        },
-      });
-    }
+    toolsService.addTools([jqToolResponseDefinition]);
+    toolsService.addFunctions({
+      [this.toolName]: async (toolCallId: string, jqQuery: string) => {
+        return await this.queryToolResponse(toolCallId, jqQuery);
+      },
+    });
   }
 }
 

@@ -231,7 +231,6 @@ export async function embed(
     }
 
     if (alreadyEmbedded) {
-      console.log("Skipping", chunkId);
       continue;
     }
 

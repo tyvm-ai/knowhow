@@ -101,18 +101,24 @@ export class CustomVariables {
    */
   private listVariables(): string {
     const variableNames = Object.keys(this.variables);
-    
+
     if (variableNames.length === 0) {
       return "No variables are currently stored.";
     }
 
-    const variableList = variableNames.map(name => {
-      const value = this.variables[name];
-      const preview = typeof value === "string" 
-        ? (value.length > 50 ? value.substring(0, 50) + "..." : value)
-        : JSON.stringify(value).substring(0, 50) + (JSON.stringify(value).length > 50 ? "..." : "");
-      return `- ${name}: ${preview}`;
-    }).join("\n");
+    const variableList = variableNames
+      .map((name) => {
+        const value = this.variables[name];
+        const preview =
+          typeof value === "string"
+            ? value.length > 50
+              ? value.substring(0, 50) + "..."
+              : value
+            : JSON.stringify(value).substring(0, 50) +
+              (JSON.stringify(value).length > 50 ? "..." : "");
+        return `- ${name}: ${preview}`;
+      })
+      .join("\n");
 
     return `Currently stored variables (${variableNames.length}):\n${variableList}`;
   }
@@ -146,17 +152,17 @@ export class CustomVariables {
       // Check if ALL variables are undefined - if so, return just the error message for the first one
       const variableMatches = value.match(/\{\{([a-zA-Z0-9_]+)\}\}/g);
       if (variableMatches) {
-        const allUndefined = variableMatches.every(match => {
-          const varName = match.replace(/[{}]/g, '');
+        const allUndefined = variableMatches.every((match) => {
+          const varName = match.replace(/[{}]/g, "");
           return !(varName in this.variables);
         });
-        
+
         if (allUndefined && variableMatches.length > 0) {
-          const firstUndefinedVar = variableMatches[0].replace(/[{}]/g, '');
+          const firstUndefinedVar = variableMatches[0].replace(/[{}]/g, "");
           return `{{ERROR: Variable "${firstUndefinedVar}" is not defined}}`;
         }
       }
-      
+
       // Otherwise, proceed with partial substitution
       return value.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (match, varName) => {
         // Prevent infinite recursion
@@ -251,62 +257,34 @@ export class CustomVariables {
    */
   private registerTools(toolsService: ToolsService): void {
     // Register setVariable tool
-    if (!toolsService.getTool(this.setVariableToolName)) {
-      toolsService.addTool(setVariableToolDefinition);
-      toolsService.addFunctions({
-        [this.setVariableToolName]: (name: string, contents: any) => {
-          return this.setVariable(name, contents);
-        },
-      });
-    }
-
-    // Register getVariable tool
-    if (!toolsService.getTool(this.getVariableToolName)) {
-      toolsService.addTool(getVariableToolDefinition);
-      toolsService.addFunctions({
-        [this.getVariableToolName]: (varName: string) => {
-          return this.getVariable(varName);
-        },
-      });
-    }
-
-    // Register storeToolCallToVariable tool
-    if (!toolsService.getTool(this.storeToolCallToolName)) {
-      toolsService.addTool(storeToolCallToVariableDefinition);
-      toolsService.addFunctions({
-        [this.storeToolCallToolName]: async (
-          varName: string,
-          toolName: string,
-          toolArgs: string
-        ) => {
-          return await this.storeToolCallToVariable(
-            varName,
-            toolName,
-            toolArgs
-          );
-        },
-      });
-    }
-
-    // Register listVariables tool
-    if (!toolsService.getTool(this.listVariablesToolName)) {
-      toolsService.addTool(listVariablesToolDefinition);
-      toolsService.addFunctions({
-        [this.listVariablesToolName]: () => {
-          return this.listVariables();
-        },
-      });
-    }
-
-    // Register deleteVariable tool
-    if (!toolsService.getTool(this.deleteVariableToolName)) {
-      toolsService.addTool(deleteVariableToolDefinition);
-      toolsService.addFunctions({
-        [this.deleteVariableToolName]: (varName: string) => {
-          return this.deleteVariable(varName);
-        },
-      });
-    }
+    toolsService.addTools([
+      setVariableToolDefinition,
+      getVariableToolDefinition,
+      storeToolCallToVariableDefinition,
+      listVariablesToolDefinition,
+      deleteVariableToolDefinition,
+    ]);
+    toolsService.addFunctions({
+      [this.setVariableToolName]: (name: string, contents: any) => {
+        return this.setVariable(name, contents);
+      },
+      [this.getVariableToolName]: (varName: string) => {
+        return this.getVariable(varName);
+      },
+      [this.storeToolCallToolName]: async (
+        varName: string,
+        toolName: string,
+        toolArgs: string
+      ) => {
+        return await this.storeToolCallToVariable(varName, toolName, toolArgs);
+      },
+      [this.listVariablesToolName]: () => {
+        return this.listVariables();
+      },
+      [this.deleteVariableToolName]: (varName: string) => {
+        return this.deleteVariable(varName);
+      },
+    });
   }
 
   /**

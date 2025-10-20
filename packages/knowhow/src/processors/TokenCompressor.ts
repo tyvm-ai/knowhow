@@ -116,8 +116,9 @@ export class TokenCompressor {
 
     // For nested properties (path !== ""), use maxTokens to avoid recompressing stored data
     // For top-level content (path === ""), use compressionThreshold to determine compression
-    const thresholdToUse = path === "" ? this.compressionThreshold : this.maxTokens;
-    
+    const thresholdToUse =
+      path === "" ? this.compressionThreshold : this.maxTokens;
+
     if (tokens <= thresholdToUse) {
       return content;
     }
@@ -320,21 +321,19 @@ export class TokenCompressor {
   }
 
   registerTool(toolsService?: ToolsService): void {
-    if (toolsService && !toolsService.getTool(this.toolName)) {
-      toolsService.addTool(expandTokensDefinition);
-      toolsService.addFunctions({
-        [this.toolName]: (key: string) => {
-          const data = this.retrieveString(key);
+    toolsService.addTools([expandTokensDefinition]);
+    toolsService.addFunctions({
+      [this.toolName]: (key: string) => {
+        const data = this.retrieveString(key);
 
-          if (!data) {
-            return `Error: No data found for key "${key}". Available keys: ${this.getStorageKeys().join(
-              ", "
-            )}`;
-          }
-          return data;
-        },
-      });
-    }
+        if (!data) {
+          return `Error: No data found for key "${key}". Available keys: ${this.getStorageKeys().join(
+            ", "
+          )}`;
+        }
+        return data;
+      },
+    });
   }
 }
 
