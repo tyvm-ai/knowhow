@@ -8,7 +8,7 @@ describe("CustomVariables", () => {
 
   beforeEach(() => {
     mockToolsService = {
-      addTool: jest.fn(),
+      addTools: jest.fn(),
       addFunctions: jest.fn(),
       getTool: jest.fn().mockReturnValue(undefined),
       callTool: jest.fn(),
@@ -23,12 +23,12 @@ describe("CustomVariables", () => {
 
   describe("constructor", () => {
     it("should register all variable tools with ToolsService", () => {
-      expect(mockToolsService.addTool).toHaveBeenCalledTimes(5);
-      expect(mockToolsService.addFunctions).toHaveBeenCalledTimes(5);
+      expect(mockToolsService.addTools).toHaveBeenCalledTimes(1);
+      expect(mockToolsService.addFunctions).toHaveBeenCalledTimes(1);
 
       // Verify all tools are registered
-      const addToolCalls = mockToolsService.addTool.mock.calls;
-      const toolNames = addToolCalls.map(call => call[0].function.name);
+      const addToolCalls = mockToolsService.addTools.mock.calls;
+      const toolNames = addToolCalls[0][0].map((args) => args.function.name);
 
       expect(toolNames).toContain("setVariable");
       expect(toolNames).toContain("getVariable");
@@ -37,12 +37,15 @@ describe("CustomVariables", () => {
       expect(toolNames).toContain("deleteVariable");
     });
 
-    it("should not register tools if they already exist", () => {
-      mockToolsService.getTool.mockReturnValue({ type: "function", function: { name: "setVariable" } } as any);
+    it("should overwrite tools if they already exist", () => {
+      mockToolsService.getTool.mockReturnValue({
+        type: "function",
+        function: { name: "setVariable" },
+      } as any);
       const newCustomVariables = new CustomVariables(mockToolsService);
 
-      // Should still be called only from the first instance (5 times)
-      expect(mockToolsService.addTool).toHaveBeenCalledTimes(5);
+      // Should still be called once per instance creation
+      expect(mockToolsService.addTools).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -51,7 +54,9 @@ describe("CustomVariables", () => {
 
     beforeEach(() => {
       const addFunctionsCalls = mockToolsService.addFunctions.mock.calls;
-      const setVariableCall = addFunctionsCalls.find(call => call[0].setVariable);
+      const setVariableCall = addFunctionsCalls.find(
+        (call) => call[0].setVariable
+      );
       setVariableFunction = setVariableCall[0].setVariable;
     });
 
@@ -86,7 +91,9 @@ describe("CustomVariables", () => {
 
     beforeEach(() => {
       const addFunctionsCalls = mockToolsService.addFunctions.mock.calls;
-      const setVariableCall = addFunctionsCalls.find(call => call[0].setVariable);
+      const setVariableCall = addFunctionsCalls.find(
+        (call) => call[0].setVariable
+      );
       setVariableFunction = setVariableCall[0].setVariable;
     });
 
@@ -122,8 +129,12 @@ describe("CustomVariables", () => {
 
     beforeEach(() => {
       const addFunctionsCalls = mockToolsService.addFunctions.mock.calls;
-      const setVariableCall = addFunctionsCalls.find(call => call[0].setVariable);
-      const getVariableCall = addFunctionsCalls.find(call => call[0].getVariable);
+      const setVariableCall = addFunctionsCalls.find(
+        (call) => call[0].setVariable
+      );
+      const getVariableCall = addFunctionsCalls.find(
+        (call) => call[0].getVariable
+      );
       setVariableFunction = setVariableCall[0].setVariable;
       getVariableFunction = getVariableCall[0].getVariable;
     });
@@ -166,8 +177,12 @@ describe("CustomVariables", () => {
 
     beforeEach(() => {
       const addFunctionsCalls = mockToolsService.addFunctions.mock.calls;
-      const setVariableCall = addFunctionsCalls.find(call => call[0].setVariable);
-      const listVariablesCall = addFunctionsCalls.find(call => call[0].listVariables);
+      const setVariableCall = addFunctionsCalls.find(
+        (call) => call[0].setVariable
+      );
+      const listVariablesCall = addFunctionsCalls.find(
+        (call) => call[0].listVariables
+      );
       setVariableFunction = setVariableCall[0].setVariable;
       listVariablesFunction = listVariablesCall[0].listVariables;
     });
@@ -204,8 +219,12 @@ describe("CustomVariables", () => {
 
     beforeEach(() => {
       const addFunctionsCalls = mockToolsService.addFunctions.mock.calls;
-      const setVariableCall = addFunctionsCalls.find(call => call[0].setVariable);
-      const deleteVariableCall = addFunctionsCalls.find(call => call[0].deleteVariable);
+      const setVariableCall = addFunctionsCalls.find(
+        (call) => call[0].setVariable
+      );
+      const deleteVariableCall = addFunctionsCalls.find(
+        (call) => call[0].deleteVariable
+      );
       setVariableFunction = setVariableCall[0].setVariable;
       deleteVariableFunction = deleteVariableCall[0].deleteVariable;
     });
@@ -213,7 +232,9 @@ describe("CustomVariables", () => {
     it("should delete existing variables", () => {
       setVariableFunction("testVar", "test value");
       const result = deleteVariableFunction("testVar");
-      expect(result).toContain('Variable "testVar" has been deleted successfully');
+      expect(result).toContain(
+        'Variable "testVar" has been deleted successfully'
+      );
       expect(customVariables.getVariableNames()).not.toContain("testVar");
     });
 
@@ -229,11 +250,17 @@ describe("CustomVariables", () => {
   });
 
   describe("storeToolCallToVariable functionality", () => {
-    let storeToolCallFunction: (varName: string, toolName: string, toolArgs: string) => Promise<string>;
+    let storeToolCallFunction: (
+      varName: string,
+      toolName: string,
+      toolArgs: string
+    ) => Promise<string>;
 
     beforeEach(() => {
       const addFunctionsCalls = mockToolsService.addFunctions.mock.calls;
-      const storeToolCallCall = addFunctionsCalls.find(call => call[0].storeToolCallToVariable);
+      const storeToolCallCall = addFunctionsCalls.find(
+        (call) => call[0].storeToolCallToVariable
+      );
       storeToolCallFunction = storeToolCallCall[0].storeToolCallToVariable;
     });
 
@@ -243,38 +270,56 @@ describe("CustomVariables", () => {
         toolCallId: "test-call-id",
         functionName: "testTool",
         functionArgs: { param1: "value1" },
-        functionResp: { success: true, data: "test data" }
+        functionResp: { success: true, data: "test data" },
       };
       mockToolsService.callTool.mockResolvedValue(mockResult);
 
-      const result = await storeToolCallFunction("resultVar", "testTool", '{"param1": "value1"}');
+      const result = await storeToolCallFunction(
+        "resultVar",
+        "testTool",
+        '{"param1": "value1"}'
+      );
 
-      expect(result).toContain('Tool call result for "testTool" has been stored in variable "resultVar"');
+      expect(result).toContain(
+        'Tool call result for "testTool" has been stored in variable "resultVar"'
+      );
       expect(mockToolsService.callTool).toHaveBeenCalledWith({
         id: expect.any(String),
         type: "function",
         function: {
           name: "testTool",
-          arguments: { param1: "value1" }
-        }
+          arguments: { param1: "value1" },
+        },
       });
     });
 
     it("should return error for invalid JSON arguments", async () => {
-      const result = await storeToolCallFunction("resultVar", "testTool", "invalid json");
+      const result = await storeToolCallFunction(
+        "resultVar",
+        "testTool",
+        "invalid json"
+      );
       expect(result).toContain("Error: Invalid JSON in toolArgs parameter");
     });
 
     it("should return error for invalid variable names", async () => {
-      const result = await storeToolCallFunction("invalid-name", "testTool", "{}");
+      const result = await storeToolCallFunction(
+        "invalid-name",
+        "testTool",
+        "{}"
+      );
       expect(result).toContain("Error: Invalid variable name");
     });
 
     it("should handle tool execution errors", async () => {
-      mockToolsService.callTool.mockRejectedValue(new Error("Tool execution failed"));
+      mockToolsService.callTool.mockRejectedValue(
+        new Error("Tool execution failed")
+      );
 
       const result = await storeToolCallFunction("resultVar", "testTool", "{}");
-      expect(result).toContain("Error storing tool call result: Tool execution failed");
+      expect(result).toContain(
+        "Error storing tool call result: Tool execution failed"
+      );
     });
   });
 
@@ -283,7 +328,9 @@ describe("CustomVariables", () => {
 
     beforeEach(() => {
       const addFunctionsCalls = mockToolsService.addFunctions.mock.calls;
-      const setVariableCall = addFunctionsCalls.find(call => call[0].setVariable);
+      const setVariableCall = addFunctionsCalls.find(
+        (call) => call[0].setVariable
+      );
       setVariableFunction = setVariableCall[0].setVariable;
     });
 
@@ -294,14 +341,16 @@ describe("CustomVariables", () => {
       const messages = [
         {
           role: "user" as const,
-          content: "{{greeting}} {{userName}}, how are you today?"
-        }
+          content: "{{greeting}} {{userName}}, how are you today?",
+        },
       ];
 
       const processor = customVariables.createProcessor();
       const modifiedMessages = [...messages];
       await processor(messages, modifiedMessages);
-      expect(modifiedMessages[0].content).toBe("Hello Alice, how are you today?");
+      expect(modifiedMessages[0].content).toBe(
+        "Hello Alice, how are you today?"
+      );
     });
 
     it("should handle multiple substitutions in single message", async () => {
@@ -312,8 +361,8 @@ describe("CustomVariables", () => {
       const messages = [
         {
           role: "user" as const,
-          content: "{{var1}} and {{var2}} and {{var3}}"
-        }
+          content: "{{var1}} and {{var2}} and {{var3}}",
+        },
       ];
 
       const processor = customVariables.createProcessor();
@@ -328,30 +377,34 @@ describe("CustomVariables", () => {
       const messages = [
         {
           role: "user" as const,
-          content: "Configuration: {{config}}"
-        }
+          content: "Configuration: {{config}}",
+        },
       ];
 
       const processor = customVariables.createProcessor();
       const modifiedMessages = [...messages];
       await processor(messages, modifiedMessages);
-      
-      expect(modifiedMessages[0].content).toBe('Configuration: {"api":"v1","timeout":5000}');
+
+      expect(modifiedMessages[0].content).toBe(
+        'Configuration: {"api":"v1","timeout":5000}'
+      );
     });
 
     it("should return error for undefined variables", async () => {
       const messages = [
         {
           role: "user" as const,
-          content: "Hello {{undefinedVar}}"
-        }
+          content: "Hello {{undefinedVar}}",
+        },
       ];
 
       const processor = customVariables.createProcessor();
       const modifiedMessages = [...messages];
       await processor(messages, modifiedMessages);
-      
-      expect(modifiedMessages[0].content).toBe('{{ERROR: Variable "undefinedVar" is not defined}}');
+
+      expect(modifiedMessages[0].content).toBe(
+        '{{ERROR: Variable "undefinedVar" is not defined}}'
+      );
     });
 
     it("should handle partial substitutions with mixed defined/undefined vars", async () => {
@@ -360,15 +413,17 @@ describe("CustomVariables", () => {
       const messages = [
         {
           role: "user" as const,
-          content: "{{defined}} and {{undefined}}"
-        }
+          content: "{{defined}} and {{undefined}}",
+        },
       ];
 
       const processor = customVariables.createProcessor();
       const modifiedMessages = [...messages];
       await processor(messages, modifiedMessages);
-      
-      expect(modifiedMessages[0].content).toBe('value and {{ERROR: Variable "undefined" is not defined}}');
+
+      expect(modifiedMessages[0].content).toBe(
+        'value and {{ERROR: Variable "undefined" is not defined}}'
+      );
     });
 
     it("should preserve message structure while substituting content", async () => {
@@ -378,18 +433,18 @@ describe("CustomVariables", () => {
         {
           role: "assistant" as const,
           content: "Original {{test}} content",
-          metadata: { id: "test-id" }
-        }
+          metadata: { id: "test-id" },
+        },
       ];
 
       const processor = customVariables.createProcessor();
       const modifiedMessages = [...messages];
       await processor(messages, modifiedMessages);
-      
+
       expect(modifiedMessages[0]).toEqual({
         role: "assistant",
         content: "Original replaced content",
-        metadata: { id: "test-id" }
+        metadata: { id: "test-id" },
       });
     });
 
@@ -400,8 +455,8 @@ describe("CustomVariables", () => {
       const messages = [
         {
           role: "user" as const,
-          content: "{{outerVar}} value"
-        }
+          content: "{{outerVar}} value",
+        },
       ];
 
       const processor = customVariables.createProcessor();
@@ -417,8 +472,8 @@ describe("CustomVariables", () => {
       const messages = [
         {
           role: "user" as const,
-          content: "Empty: '{{empty}}' Spaces: '{{spaces}}'"
-        }
+          content: "Empty: '{{empty}}' Spaces: '{{spaces}}'",
+        },
       ];
 
       const processor = customVariables.createProcessor();

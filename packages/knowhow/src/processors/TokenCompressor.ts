@@ -321,19 +321,21 @@ export class TokenCompressor {
   }
 
   registerTool(toolsService?: ToolsService): void {
-    toolsService.addTools([expandTokensDefinition]);
-    toolsService.addFunctions({
-      [this.toolName]: (key: string) => {
-        const data = this.retrieveString(key);
+    if (toolsService) {
+      toolsService.addTools([expandTokensDefinition]);
+      toolsService.addFunctions({
+        [this.toolName]: (key: string) => {
+          const data = this.retrieveString(key);
 
-        if (!data) {
-          return `Error: No data found for key "${key}". Available keys: ${this.getStorageKeys().join(
-            ", "
-          )}`;
-        }
-        return data;
-      },
-    });
+          if (!data) {
+            return `Error: No data found for key "${key}". Available keys: ${this.getStorageKeys().join(
+              ", "
+            )}`;
+          }
+          return data;
+        },
+      });
+    }
   }
 }
 
