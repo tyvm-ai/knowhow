@@ -341,6 +341,18 @@ export class GenericAnthropicClient implements GenericClient {
         cache_hit: 0.3,
         output: 15.0,
       },
+      [Models.anthropic.Sonnet4_5]: {
+        input: 3.0,
+        cache_write: 3.75,
+        cache_hit: 0.3,
+        output: 15.0,
+      },
+      [Models.anthropic.Haiku4_5]: {
+        input: 1,
+        cache_write: 1.25,
+        cache_hit: 0.1,
+        output: 5,
+      },
       [Models.anthropic.Sonnet3_7]: {
         input: 3.0,
         cache_write: 3.75,

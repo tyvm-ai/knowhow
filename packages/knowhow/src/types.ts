@@ -141,6 +141,7 @@ export const Models = {
     Opus4: "claude-opus-4-20250514",
     Opus4_1: "claude-opus-4-1-20250805",
     Sonnet4_5: "claude-sonnet-4-5-20250929",
+    Haiku4_5: "claude-haiku-4-5-20251001",
     Sonnet4: "claude-sonnet-4-20250514",
     Sonnet3_7: "claude-3-7-sonnet-20250219",
     Sonnet3_5: "claude-3-5-sonnet-20241022",

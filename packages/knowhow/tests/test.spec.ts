@@ -155,7 +155,7 @@ describe("Agent Tools Tests", () => {
 
   test("execCommand should execute a system command and return its output", async () => {
     const command = 'echo "Hello World"';
-    const expectedOutput = "Hello World\n";
+    const expectedOutput = '$ echo "Hello World"\nHello World\n';
 
     // Use the execCommand and expect it to return the correct result
     const result = await execCommand(command);
@@ -164,7 +164,7 @@ describe("Agent Tools Tests", () => {
 
   test("execCommand should return an error message if the command fails", async () => {
     const command = "exit 1";
-    const expectedOutput = "Command failed: exit 1";
+    const expectedOutput = "$ exit 1\nCommand failed: exit 1";
 
     // Use the execCommand and expect it to return the correct result
     const result = await execCommand(command);
