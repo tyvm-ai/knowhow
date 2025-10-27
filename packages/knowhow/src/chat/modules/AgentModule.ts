@@ -20,6 +20,7 @@ import {
 } from "../../processors/index";
 import { TaskInfo, ChatSession } from "../types";
 import { agents } from "../../agents";
+import { ToolCallEvent } from "src/agents/base/base";
 
 export class AgentModule extends BaseChatModule {
   name = "agent";
@@ -719,10 +720,28 @@ ${reason}
       ]);
 
       // Set up event listeners
+      if (!agent.agentEvents.listenerCount(agent.eventTypes.toolCall)) {
+        agent.agentEvents.on(
+          agent.eventTypes.toolCall,
+          (responseMsg: ToolCallEvent) => {
+            console.time(JSON.stringify(responseMsg.toolCall.function.name));
+            console.log(
+              ` 🔨 Tool: ${responseMsg.toolCall.function.name}\n Args: ${responseMsg.toolCall.function.arguments}\n`
+            );
+          }
+        );
+      }
       if (!agent.agentEvents.listenerCount(agent.eventTypes.toolUsed)) {
-        agent.agentEvents.on(agent.eventTypes.toolUsed, (responseMsg) => {
-          console.log(` 🔨 Tool used: ${JSON.stringify(responseMsg, null, 2)}`);
-        });
+        agent.agentEvents.on(
+          agent.eventTypes.toolUsed,
+          (responseMsg: ToolCallEvent) => {
+            console.timeEnd(JSON.stringify(responseMsg.toolCall.function.name));
+            console.log(
+              ` 🔨 Tool Response:
+              ${JSON.stringify(responseMsg.functionResp, null, 2)}`
+            );
+          }
+        );
       }
 
       const taskCompleted = new Promise<string>((resolve) => {

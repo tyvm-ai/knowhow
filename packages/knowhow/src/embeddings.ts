@@ -136,11 +136,10 @@ export async function embedSource(
     inputs = [source.input];
   }
 
-  console.log(`Found ${inputs.length} files`);
+  console.log(`Checking ${inputs.length} files`);
   if (inputs.length > 1000) {
     console.error("Large number of files detected. This may take a while");
   }
-  console.log(inputs);
   const embeddings: Embeddable[] = await loadEmbedding(source.output);
   let batch = [];
   let index = 0;
@@ -467,7 +466,7 @@ export async function queryEmbedding<E>(
   model = EmbeddingModels.openai.EmbeddingAda2
 ) {
   const providerEmbeddings = await Clients.createEmbedding("", {
-    input: takeFirstNWords(query, 5000),
+    input: takeFirstNWords(query, 5000).slice(0, 16000),
     model,
   });
   const queryVector = providerEmbeddings.data[0].embedding;

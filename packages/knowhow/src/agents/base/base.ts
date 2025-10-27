@@ -31,6 +31,11 @@ export interface AgentContext {
   Clients?: AIClient;
 }
 
+export interface ToolCallEvent {
+  toolCall: ToolCall;
+  functionResp: any;
+}
+
 export abstract class BaseAgent implements IAgent {
   abstract name: string;
   abstract description: string;
@@ -62,7 +67,8 @@ export abstract class BaseAgent implements IAgent {
     newThread: "new_thread",
     threadUpdate: "thread_update",
     costUpdate: "cost_update",
-    toolUsed: "tool_used",
+    toolCall: "tool:pre_call",
+    toolUsed: "tool:post_call",
     done: "done",
     pause: "pause",
     kill: "kill",
@@ -294,6 +300,8 @@ export abstract class BaseAgent implements IAgent {
   abstract getInitialMessages(userInput: string): Promise<Message[]>;
 
   async processToolMessages(toolCall: ToolCall) {
+    this.agentEvents.emit(this.eventTypes.toolCall, { toolCall });
+
     const { functionResp, toolMessages } = await this.tools.callTool(
       toolCall,
       this.getEnabledToolNames()
