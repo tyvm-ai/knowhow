@@ -92,12 +92,17 @@ Your modifications are automatically tracked separately and won't affect the use
           "# Knowhow agent tracking repository\n"
         );
 
-        const hasChanges = await this.hasChanges();
-        if (hasChanges) {
-          this.commit("Initial commit for agent tracking, with changes");
-        } else {
+        // For initial commit, we need to add files and commit directly
+        // since HEAD doesn't exist yet
+        try {
+          this.gitCommand("add -A");
           this.gitCommand(
-            'commit --allow-empty -m "Initial commit for agent tracking, no changes"'
+            'commit -m "Initial commit for agent tracking"'
+          );
+        } catch (error) {
+          // If there's nothing to commit, create an empty commit
+          this.gitCommand(
+            'commit --allow-empty -m "Initial commit for agent tracking"'
           );
         }
       }
