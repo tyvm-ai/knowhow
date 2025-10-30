@@ -65,6 +65,11 @@ export class HttpClient implements GenericClient {
 
     const data = response.data;
 
+    // Since this uses a keepalive, we need to detect 200 with error in body
+    if (data.error) {
+      throw new Error(JSON.stringify(data.error, null, 2));
+    }
+
     return {
       choices: data.choices.map((choice: any) => ({
         message: {
@@ -92,6 +97,11 @@ export class HttpClient implements GenericClient {
     );
 
     const data = response.data;
+
+    // Since this uses a keepalive, we need to detect 200 with error in body
+    if (data.error) {
+      throw new Error(JSON.stringify(data.error, null, 2));
+    }
 
     return {
       data: data.data,

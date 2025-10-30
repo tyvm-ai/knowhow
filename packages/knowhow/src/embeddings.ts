@@ -469,6 +469,8 @@ export async function queryEmbedding<E>(
     input: takeFirstNWords(query, 5000).slice(0, 16000),
     model,
   });
+
+  console.log(providerEmbeddings);
   const queryVector = providerEmbeddings.data[0].embedding;
   const results = new Array<EmbeddingBase<E>>();
   for (const embedding of embeddings) {
