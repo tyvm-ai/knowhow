@@ -42,33 +42,19 @@ export async function login(jwtFlag?: boolean): Promise<void> {
   // Get current user/org information
   try {
     const storedJwt = await loadJwt();
-    const response = await axios.get(`${KNOWHOW_API_URL}/api/users/me`, {
-      headers: {
-        Authorization: `Bearer ${storedJwt}`,
-      },
-    });
-    const user = response.data.user;
-    const orgs = user.orgs;
-    const orgId = response.data.orgId;
-
-    const currentOrg = orgs.find((org) => {
-      return org.organizationId === orgId;
-    });
-
-    console.log(
-      `Current user: ${user.email}, \nOrganization: ${currentOrg?.organization?.name} - ${orgId}`
-    );
+    await checkJwt(storedJwt);
 
     const config = await getConfig();
     const proxyUrl = KNOWHOW_API_URL + "/api/proxy";
+
+    if (!config.modelProviders) {
+      config.modelProviders = [];
+    }
+
     const hasProvider = config.modelProviders.find(
       (provider) => provider.provider === "knowhow" && provider.url === proxyUrl
     );
     if (!hasProvider) {
-      if (!config.modelProviders) {
-        config.modelProviders = [];
-      }
-
       config.modelProviders.push({
         provider: "knowhow",
         url: proxyUrl,
@@ -105,4 +91,25 @@ export async function loadJwt(): Promise<string> {
   }
 
   return jwt;
+}
+
+export async function checkJwt(storedJwt: string) {
+  const response = await axios.get(`${KNOWHOW_API_URL}/api/users/me`, {
+    headers: {
+      Authorization: `Bearer ${storedJwt}`,
+    },
+  });
+  const user = response.data.user;
+  const orgs = user.orgs;
+  const orgId = response.data.orgId;
+
+  const currentOrg = orgs.find((org) => {
+    return org.organizationId === orgId;
+  });
+
+  console.log(
+    `Current user: ${user.email}, \nOrganization: ${currentOrg?.organization?.name} - ${orgId}`
+  );
+
+  return { user, currentOrg };
 }

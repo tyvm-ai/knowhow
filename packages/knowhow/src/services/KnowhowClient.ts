@@ -38,7 +38,9 @@ export function loadKnowhowJwt(): string {
   if (!fs.existsSync(jwtFile)) {
     return "";
   }
-  return fs.readFileSync(jwtFile, "utf-8").trim();
+  const jwt = fs.readFileSync(jwtFile, "utf-8").trim();
+
+  return jwt;
 }
 
 export const KNOWHOW_API_URL =
@@ -46,6 +48,7 @@ export const KNOWHOW_API_URL =
 
 export class KnowhowSimpleClient {
   headers = {};
+  jwtValidated = false;
 
   constructor(private baseUrl, private jwt = loadKnowhowJwt()) {
     this.setJwt(jwt);
@@ -58,21 +61,45 @@ export class KnowhowSimpleClient {
     };
   }
 
-  checkJwt() {
+  async checkJwt() {
     if (!this.jwt) {
       throw new Error("No JWT found. Please login first.");
     }
+
+    if (!this.jwtValidated) {
+      try {
+        this.jwtValidated = true;
+        const response = await this.me();
+
+        const user = response.data.user;
+        const orgs = user.orgs;
+        const orgId = response.data.orgId;
+
+        const currentOrg = orgs.find((org) => {
+          return org.organizationId === orgId;
+        });
+
+        console.log(
+          `Current user: ${user.email}, \nOrganization: ${currentOrg?.organization?.name} - ${orgId}`
+        );
+      } catch (error) {
+        throw new Error("Invalid JWT. Please login again.");
+      }
+    }
   }
 
-  me() {
-    this.checkJwt();
+  async me() {
+    if (!this.jwt) {
+      throw new Error("No JWT found. Please login first.");
+    }
+
     return axios.get(`${this.baseUrl}/api/users/me`, {
       headers: this.headers,
     });
   }
 
   async getPresignedUploadUrl(source: Config["embedSources"][0]) {
-    this.checkJwt();
+    await this.checkJwt();
     const id = source.remoteId;
     const presignedUrlResp = await axios.post(
       `${this.baseUrl}/api/org-embeddings/${id}/upload`,
@@ -89,7 +116,7 @@ export class KnowhowSimpleClient {
   }
 
   async getPresignedDownloadUrl(source: Config["embedSources"][0]) {
-    this.checkJwt();
+    await this.checkJwt();
     const id = source.remoteId;
     const presignedUrlResp = await axios.post(
       `${this.baseUrl}/api/org-embeddings/${id}/download`,
@@ -103,8 +130,8 @@ export class KnowhowSimpleClient {
     return presignedUrl;
   }
 
-  createChatCompletion(options: CompletionOptions) {
-    this.checkJwt();
+  async createChatCompletion(options: CompletionOptions) {
+    await this.checkJwt();
     return axios.post<CompletionResponse>(
       `${this.baseUrl}/api/proxy/v1/chat/completions`,
       options,
@@ -114,8 +141,8 @@ export class KnowhowSimpleClient {
     );
   }
 
-  createEmbedding(options: EmbeddingOptions) {
-    this.checkJwt();
+  async createEmbedding(options: EmbeddingOptions) {
+    await this.checkJwt();
     return axios.post<EmbeddingResponse>(
       `${this.baseUrl}/api/proxy/v1/embeddings`,
       options,
@@ -125,15 +152,15 @@ export class KnowhowSimpleClient {
     );
   }
 
-  getModels() {
-    this.checkJwt();
+  async getModels() {
+    await this.checkJwt();
     return axios.get(`${this.baseUrl}/api/proxy/v1/models?type=all`, {
       headers: this.headers,
     });
   }
 
-  createChatTask(request: CreateMessageTaskRequest) {
-    this.checkJwt();
+  async createChatTask(request: CreateMessageTaskRequest) {
+    await this.checkJwt();
     return axios.post<CreateMessageTaskResponse>(
       `${this.baseUrl}/api/chat/tasks`,
       request,
@@ -143,8 +170,8 @@ export class KnowhowSimpleClient {
     );
   }
 
-  updateChatTask(taskId: string, updates: UpdateOrgTaskRequest) {
-    this.checkJwt();
+  async updateChatTask(taskId: string, updates: UpdateOrgTaskRequest) {
+    await this.checkJwt();
     return axios.put<UpdateOrgTaskResponse>(
       `${this.baseUrl}/api/chat/tasks/${taskId}`,
       updates,

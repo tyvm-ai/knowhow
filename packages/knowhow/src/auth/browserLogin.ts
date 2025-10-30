@@ -253,17 +253,17 @@ export function validateJwt(jwt: string): boolean {
 
   // If this looks like a real JWT (contains base64-like characters), validate it strictly
   const looksLikeRealJwt = parts.every(part => /^[A-Za-z0-9+/\-_]+={0,2}$/.test(part));
-  
+
   if (looksLikeRealJwt) {
     // Strict validation for real JWTs
     try {
       // Try to decode header and payload as valid JSON
       JSON.parse(Buffer.from(parts[0], "base64").toString());
       JSON.parse(Buffer.from(parts[1], "base64").toString());
-      
+
       // Try to decode signature - should be valid base64 with reasonable length
       const signature = Buffer.from(parts[2], "base64");
-      
+
       // JWT signatures are typically at least 32 bytes (256 bits)
       if (signature.length < 32) {
         return false;
@@ -273,7 +273,7 @@ export function validateJwt(jwt: string): boolean {
       return false;
     }
   }
-  
+
   // For simple test cases like 'part1.part2.part3', just check basic structure
   try {
     return true;
