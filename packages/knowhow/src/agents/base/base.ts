@@ -382,9 +382,10 @@ export abstract class BaseAgent implements IAgent {
 
   isRequiredToolMissing() {
     const requiredToolAvailable = this.getEnabledToolNames().some(
-      (t) =>
-        this.requiredToolNames.includes(t) ||
-        this.requiredToolNames.includes(mcpToolName(t))
+      (enabled) =>
+        this.requiredToolNames.includes(enabled) ||
+        this.requiredToolNames.includes(mcpToolName(enabled)) ||
+        this.requiredToolNames.some((required) => enabled.endsWith(required))
     );
 
     if (requiredToolAvailable) {
@@ -392,7 +393,7 @@ export abstract class BaseAgent implements IAgent {
     }
 
     console.log(
-      "Required tool not available, checking for finalAnswer",
+      `Required tool: [${this.requiredToolNames}] not available, checking for finalAnswer`,
       this.getEnabledToolNames(),
       this.requiredToolNames
     );
@@ -564,9 +565,12 @@ export abstract class BaseAgent implements IAgent {
             messages.push(...(toolMessages as Message[]));
 
             const finalMessage = toolMessages.find(
-              (m) =>
-                this.requiredToolNames.includes(m.name) ||
-                this.requiredToolNames.includes(mcpToolName(m.name))
+              (called) =>
+                this.requiredToolNames.includes(called.name) ||
+                this.requiredToolNames.includes(mcpToolName(called.name)) ||
+                this.requiredToolNames.some((required) =>
+                  called.endsWith(required)
+                )
             );
 
             if (finalMessage) {
