@@ -10,6 +10,7 @@ export interface ExecCommandOptions {
   timeout?: number; // ms; -1 = wait indefinitely
   continueInBackground?: boolean; // allow to keep running on timeout
   maxBuffer?: number; // for exec()
+  logFileName?: string; // custom log file name for background tasks (without path or extension)
 }
 
 type ExecResult = {
@@ -39,9 +40,22 @@ function commandNameFrom(cmd: string) {
   return first.replace(/[^\w.-]+/g, "_");
 }
 
-function makeLogPath(cmd: string) {
-  const name = commandNameFrom(cmd);
-  return path.join(PROCESSES_DIR, `${name}.txt`);
+function makeLogPath(cmd: string, customFileName?: string) {
+  // Use custom filename if provided, otherwise derive from command
+  let baseName = customFileName 
+    ? customFileName.replace(/[^\w.-]+/g, "_")
+    : commandNameFrom(cmd);
+  
+  let logPath = path.join(PROCESSES_DIR, `${baseName}.txt`);
+  
+  // If file already exists, append epoch seconds to ensure uniqueness
+  if (fs.existsSync(logPath)) {
+    const epochSeconds = Math.floor(Date.now() / 1000);
+    baseName = `${baseName}_${epochSeconds}`;
+    logPath = path.join(PROCESSES_DIR, `${baseName}.txt`);
+  }
+  
+  return logPath;
 }
 
 function setupProcessCleanup() {
@@ -131,7 +145,7 @@ const execWithTimeout = async (
 
   if (shouldBg) {
     // --- BACKGROUND MODE WITH CHILD-OWNED LOG FD ---
-    const logPath = makeLogPath(cleaned);
+    const logPath = makeLogPath(cleaned, opts.logFileName);
 
     // Open the log file now; we'll pass this FD to the child so it writes directly.
     // Use 'w' to truncate old logs and guarantee our header goes first.
@@ -245,12 +259,14 @@ const execWithTimeout = async (
 export const execCommand = async (
   command: string,
   timeout?: number,
-  continueInBackground?: boolean
+  continueInBackground?: boolean,
+  logFileName?: string
 ): Promise<string> => {
   const { stdout, stderr, timedOut, killed, pid, logPath } =
     await execWithTimeout(command, {
       timeout,
       continueInBackground,
+      logFileName,
     });
 
   let output = "";

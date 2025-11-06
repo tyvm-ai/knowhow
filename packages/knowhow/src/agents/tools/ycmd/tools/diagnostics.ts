@@ -94,6 +94,15 @@ export async function ycmdDiagnostics(params: YcmdDiagnosticsParams): Promise<{
 
     console.log("Diagnostics response:", response);
 
+    // Handle case where response is not an array (no diagnostics)
+    if (!response || !Array.isArray(response)) {
+      return {
+        success: true,
+        diagnostics: [],
+        message: "No diagnostic errors found for file",
+      };
+    }
+
     // Parse diagnostics
     const diagnostics: Diagnostic[] = response.map((diag: any) => ({
       kind: diag.kind,

@@ -569,7 +569,7 @@ export abstract class BaseAgent implements IAgent {
                 this.requiredToolNames.includes(called.name) ||
                 this.requiredToolNames.includes(mcpToolName(called.name)) ||
                 this.requiredToolNames.some((required) =>
-                  called.endsWith(required)
+                  called.name.endsWith(required)
                 )
             );
 
