@@ -17,6 +17,7 @@ import { EventService } from "../../services/EventService";
 import { AIClient, Clients } from "../../clients";
 import { Models } from "../../ai";
 import { MessageProcessor } from "../../services/MessageProcessor";
+import { Marked } from "../../utils";
 
 export { Message, Tool, ToolCall };
 export interface ModelPreference {
@@ -317,8 +318,8 @@ export abstract class BaseAgent implements IAgent {
 
   logMessages(messages: Message[]) {
     for (const message of messages) {
-      if (message.role === "assistant") {
-        console.log(message.content);
+      if (message.role === "assistant" && message.content) {
+        console.log("\n", "💬 " + message.content, "\n");
       }
     }
   }
