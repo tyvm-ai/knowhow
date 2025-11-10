@@ -62,7 +62,7 @@ export class ToolsService {
 
   getToolsByNames(names: string[]) {
     return this.tools.filter((tool) =>
-      names.some((name) => name && name.endsWith(tool.function.name))
+      names.some((name) => name && tool.function.name.endsWith(name))
     );
   }
 

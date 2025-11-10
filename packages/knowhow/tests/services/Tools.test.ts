@@ -1547,10 +1547,10 @@ describe("ToolsService", () => {
       expect(foundTool).toBeUndefined();
     });
 
-    it("should work with getToolsByNames using backwards endsWith logic", () => {
-      // Note: getToolsByNames has backwards logic!
-      // It checks if the INPUT name ends with the TOOL name
-      // So to find "tool1", you need to search with a string that ends with "tool1"
+    it("should work with getToolsByNames using endsWith logic for prefix stripping", () => {
+      // Note: getToolsByNames uses endsWith logic for prefix stripping!
+      // It checks if the TOOL name ends with the INPUT name
+      // So to find "mcp_prefix_tool1", you can search with just "tool1"
       const tool1: Tool = {
         type: "function",
         function: { name: "tool1", description: "", parameters: { type: "object", properties: {} } },
