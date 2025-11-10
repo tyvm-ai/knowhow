@@ -306,7 +306,8 @@ Your modifications are automatically tracked separately and won't affect the use
     this.ensureValidHead();
 
     // Commit the changes
-    this.gitCommand(`commit -m "${message}"`);
+    const escapedMessage = message.replace(/\n/g, '\\n');
+    this.gitCommand(`commit -m "${escapedMessage}"`);
   }
 
   async commitAll(message: string): Promise<void> {
