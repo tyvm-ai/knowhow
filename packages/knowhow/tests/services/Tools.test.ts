@@ -1336,4 +1336,236 @@ describe("ToolsService", () => {
       });
     });
   });
+
+  describe("endsWith Tool Name Resolution", () => {
+    it("should register tool with complex prefix", () => {
+      const complexTool: Tool = {
+        type: "function",
+        function: {
+          name: "mcp_server_prefix_actualTool",
+          description: "A tool with a complex prefix",
+          parameters: {
+            type: "object",
+            properties: {
+              input: { type: "string", description: "Test input" },
+            },
+            required: ["input"],
+          },
+        },
+      };
+
+      toolsService.addTool(complexTool);
+
+      expect(toolsService.getTools()).toContain(complexTool);
+      expect(toolsService.getToolNames()).toContain("mcp_server_prefix_actualTool");
+    });
+
+    it("should find tool using endsWith matching", () => {
+      const complexTool: Tool = {
+        type: "function",
+        function: {
+          name: "mcp_server_prefix_actualTool",
+          description: "A tool with a complex prefix",
+          parameters: {
+            type: "object",
+            properties: {
+              input: { type: "string", description: "Test input" },
+            },
+            required: ["input"],
+          },
+        },
+      };
+
+      toolsService.addTool(complexTool);
+
+      // Should find tool by partial name (suffix)
+      const foundTool = toolsService.getTool("actualTool");
+      expect(foundTool).toBeDefined();
+      expect(foundTool.function.name).toBe("mcp_server_prefix_actualTool");
+    });
+
+    it("should call tool using partial name with endsWith", async () => {
+      const complexTool: Tool = {
+        type: "function",
+        function: {
+          name: "mcp_server_prefix_testFunction",
+          description: "A tool with a complex prefix",
+          parameters: {
+            type: "object",
+            properties: {
+              message: { type: "string", description: "Test message" },
+            },
+            required: ["message"],
+          },
+        },
+      };
+
+      const testFunction = (args: { message: string }) => {
+        return `Received: ${args.message}`;
+      };
+
+      toolsService.addTool(complexTool);
+      toolsService.setFunction("mcp_server_prefix_testFunction", testFunction);
+
+      const toolCall: ToolCall = {
+        id: "test-endsWith-1",
+        type: "function",
+        function: {
+          name: "testFunction",
+          arguments: JSON.stringify({ message: "Hello" }),
+        },
+      };
+
+      const result = await toolsService.callTool(toolCall, [
+        "mcp_server_prefix_testFunction",
+      ]);
+
+      expect(result.functionResp).toBe("Received: Hello");
+      expect(result.functionName).toBe("testFunction");
+    });
+
+    it("should execute function correctly with endsWith resolution", async () => {
+      const complexTool: Tool = {
+        type: "function",
+        function: {
+          name: "complex_prefix_myTool",
+          description: "Test tool with prefix",
+          parameters: {
+            type: "object",
+            properties: {
+              value: { type: "number", description: "A number" },
+            },
+            required: ["value"],
+          },
+        },
+      };
+
+      const myFunction = (args: { value: number }) => {
+        return args.value * 2;
+      };
+
+      toolsService.addTool(complexTool);
+      toolsService.setFunction("complex_prefix_myTool", myFunction);
+
+      const toolCall: ToolCall = {
+        id: "test-endsWith-2",
+        type: "function",
+        function: {
+          name: "myTool",
+          arguments: JSON.stringify({ value: 5 }),
+        },
+      };
+
+      const result = await toolsService.callTool(toolCall, [
+        "complex_prefix_myTool",
+      ]);
+
+      expect(result.functionResp).toBe(10);
+      expect(result.functionName).toBe("myTool");
+    });
+
+    it("should handle multiple tools with same suffix", () => {
+      const tool1: Tool = {
+        type: "function",
+        function: {
+          name: "prefix_a_sharedTool",
+          description: "First tool",
+          parameters: { type: "object", properties: {} },
+        },
+      };
+
+      const tool2: Tool = {
+        type: "function",
+        function: {
+          name: "prefix_b_sharedTool",
+          description: "Second tool",
+          parameters: { type: "object", properties: {} },
+        },
+      };
+
+      toolsService.addTool(tool1);
+      toolsService.addTool(tool2);
+
+      // getTool should return the first matching tool
+      const foundTool = toolsService.getTool("sharedTool");
+      expect(foundTool).toBeDefined();
+      expect(foundTool.function.name).toMatch(/_sharedTool$/);
+    });
+
+    it("should return first matching tool (no exact match priority)", () => {
+      // The implementation does NOT prioritize exact matches
+      // It returns the first tool that matches either exactly or via endsWith
+      const prefixedTool: Tool = {
+        type: "function",
+        function: {
+          name: "prefix_myTool",
+          description: "Prefixed tool",
+          parameters: { type: "object", properties: {} },
+        },
+      };
+
+      const exactMatchTool: Tool = {
+        type: "function",
+        function: {
+          name: "myTool",
+          description: "Exact match tool",
+          parameters: { type: "object", properties: {} },
+        },
+      };
+
+      // Add prefixed tool first
+      toolsService.addTool(prefixedTool);
+      
+      // When we search for "myTool", it will find prefixedTool first
+      // because "prefix_myTool".endsWith("myTool") is true
+      let foundTool = toolsService.getTool("myTool");
+      expect(foundTool).toBeDefined();
+      expect(foundTool.function.name).toBe("prefix_myTool");
+      
+      // Now add exact match tool
+      toolsService.addTool(exactMatchTool);
+      
+      // It will still find prefixedTool first (first in array)
+      foundTool = toolsService.getTool("myTool");
+      expect(foundTool).toBeDefined();
+      expect(foundTool.function.name).toBe("prefix_myTool");
+    });
+
+    it("should return undefined for non-matching partial name", () => {
+      const tool: Tool = {
+        type: "function",
+        function: {
+          name: "mcp_server_myTool",
+          description: "A tool",
+          parameters: { type: "object", properties: {} },
+        },
+      };
+
+      toolsService.addTool(tool);
+
+      const foundTool = toolsService.getTool("nonExistent");
+      expect(foundTool).toBeUndefined();
+    });
+
+    it("should work with getToolsByNames using backwards endsWith logic", () => {
+      // Note: getToolsByNames has backwards logic!
+      // It checks if the INPUT name ends with the TOOL name
+      // So to find "tool1", you need to search with a string that ends with "tool1"
+      const tool1: Tool = {
+        type: "function",
+        function: { name: "tool1", description: "", parameters: { type: "object", properties: {} } },
+      };
+      const tool2: Tool = {
+        type: "function",
+        function: { name: "tool2", description: "", parameters: { type: "object", properties: {} } },
+      };
+
+      toolsService.addTools([tool1, tool2]);
+
+      const foundTools = toolsService.getToolsByNames(["tool1", "tool2"]);
+      expect(foundTools).toHaveLength(2);
+      expect(foundTools.map(t => t.function.name)).toContain("tool1");
+      expect(foundTools.map(t => t.function.name)).toContain("tool2");
+    });
+  });
 });

@@ -61,7 +61,9 @@ export class ToolsService {
   }
 
   getToolsByNames(names: string[]) {
-    return this.tools.filter((tool) => names.includes(tool.function.name));
+    return this.tools.filter((tool) =>
+      names.some((name) => name && name.endsWith(tool.function.name))
+    );
   }
 
   copyToolsFrom(toolNames: string[], toolsService: ToolsService) {
@@ -78,23 +80,29 @@ export class ToolsService {
   }
 
   getTool(name: string): Tool {
-    return this.tools.find((tool) => tool.function.name === name);
+    return this.tools.find(
+      (tool) =>
+        name &&
+        (tool.function.name === name || tool.function.name.endsWith(name))
+    );
   }
 
   getFunction(name: string) {
     // Apply overrides and wrappers before returning (even if no base function exists)
-    if (this.functions[name] || this.originalFunctions[name]) {
-      this.applyOverridesAndWrappers(name);
+    const tool = this.getTool(name);
+    const functionName = tool ? tool.function.name : name;
+    if (this.functions[functionName] || this.originalFunctions[functionName]) {
+      this.applyOverridesAndWrappers(functionName);
     } else {
       // Check if there are overrides for this name even without a base function
-      const matchingOverride = this.findMatchingOverride(name);
+      const matchingOverride = this.findMatchingOverride(functionName);
       if (matchingOverride) {
-        this.functions[name] = matchingOverride.override;
+        this.functions[functionName] = matchingOverride.override;
       } else {
         return undefined;
       }
     }
-    return this.functions[name];
+    return this.functions[functionName];
   }
 
   setFunction(name: string, func: (...args: any) => any) {
@@ -163,7 +171,7 @@ export class ToolsService {
       }
 
       // Check if tool is enabled
-      if (!enabledTools.includes(functionName)) {
+      if (!enabledTools.some((t) => t.endsWith(functionName))) {
         const options = enabledTools.join(", ");
         throw new Error(
           `Function ${functionName} not enabled, options are ${options}`
@@ -177,11 +185,13 @@ export class ToolsService {
       }
 
       // Check if function implementation exists
-      const functionToCall = this.getFunction(functionName);
+      // toolDefinition holds the real fn name
+      const toolName = toolDefinition.function.name;
+      const functionToCall = this.getFunction(toolName);
       if (!functionToCall) {
         const options = enabledTools.join(", ");
         throw new Error(
-          `Function ${functionName} not found, options are ${options}`
+          `Function ${toolName} not found, options are ${options}`
         );
       }
 
