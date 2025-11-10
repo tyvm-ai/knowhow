@@ -106,10 +106,8 @@ export class ToolsService {
   }
 
   setFunction(name: string, func: (...args: any) => any) {
-    // Store original function if not already stored
-    if (!this.originalFunctions[name]) {
-      this.originalFunctions[name] = func.bind(this);
-    }
+    // Always update the original function when setFunction is called
+    this.originalFunctions[name] = func.bind(this);
 
     // Set the function (bound) and apply any overrides/wrappers
     this.functions[name] = func.bind(this);

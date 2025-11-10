@@ -387,4 +387,87 @@ describe("TokenCompressor", () => {
       expect(result2).toBe(content);
     });
   });
+
+  describe("multi-task storage isolation", () => {
+    it("should not leak storage between tasks when reusing agent with new TokenCompressor instances", async () => {
+      // This test simulates the AgentModule scenario where:
+      // 1. Same agent instance is reused for multiple tasks
+      // 2. But a NEW TokenCompressor is created for each task
+      // 3. Old compressed keys from previous task should not cause errors
+      
+      const consoleLogSpy = jest.spyOn(console, 'log');
+      
+      // === FIRST TASK ===
+      // Create first TokenCompressor instance for first task
+      const firstCompressor = new TokenCompressor(mockToolsService);
+      const firstProcessor = firstCompressor.createProcessor((msg) =>
+        Boolean(msg.role === "tool" && msg.tool_call_id)
+      );
+      
+      const firstTaskMessages: Message[] = [
+        { 
+          role: "tool", 
+          content: "x".repeat(20000),
+          tool_call_id: "call_1" 
+        }
+      ];
+      
+      await firstProcessor([], firstTaskMessages);
+      
+      // Verify compression happened
+      expect(firstTaskMessages[0].content).toContain("[COMPRESSED_STRING");
+      
+      // Extract the key that was used
+      const firstContent = firstTaskMessages[0].content as string;
+      const keyMatch = firstContent.match(/Key: (compressed_[^\s]+)/);
+      expect(keyMatch).not.toBeNull();
+      const firstTaskKey = keyMatch![1];
+      
+      // Verify the key exists in first compressor's storage
+      expect(firstCompressor.retrieveString(firstTaskKey)).not.toBeNull();
+      
+      // === SECOND TASK ===
+      // Simulate agent.newTask() being called, which clears agent state
+      // But in AgentModule, a NEW TokenCompressor is created (line 711)
+      // This new compressor doesn't have the old keys from first task
+      const secondCompressor = new TokenCompressor(mockToolsService);
+      const secondProcessor = secondCompressor.createProcessor((msg) =>
+        Boolean(msg.role === "tool" && msg.tool_call_id)
+      );
+      
+      // Now simulate the second task receiving messages that might reference old keys
+      // The agent's message history was cleared by newTask(), so this shouldn't happen
+      // But if it does, the new compressor won't have the old keys
+      const secondTaskMessages: Message[] = [
+        { 
+          role: "tool", 
+          content: "y".repeat(20000),
+          tool_call_id: "call_2" 
+        }
+      ];
+      
+      await secondProcessor([], secondTaskMessages);
+      
+      // Verify compression happened for second task
+      expect(secondTaskMessages[0].content).toContain("[COMPRESSED_STRING");
+      
+      // The old key from first task should NOT exist in second compressor
+      expect(secondCompressor.retrieveString(firstTaskKey)).toBeNull();
+      
+      // Extract the key from second task
+      const secondContent = secondTaskMessages[0].content as string;
+      const secondKeyMatch = secondContent.match(/Key: (compressed_[^\s]+)/);
+      expect(secondKeyMatch).not.toBeNull();
+      const secondTaskKey = secondKeyMatch![1];
+      
+      // The second key should exist in second compressor
+      expect(secondCompressor.retrieveString(secondTaskKey)).not.toBeNull();
+      
+      // Clean up both compressors
+      firstCompressor.clearStorage();
+      secondCompressor.clearStorage();
+      
+      consoleLogSpy.mockRestore();
+    });
+  });
 });
