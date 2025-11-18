@@ -355,16 +355,27 @@ export class GenericGeminiClient implements GenericClient {
 
   pricesPerMillion(): { [key: string]: any } {
     return {
+      [Models.google.Gemini_3_Preview]: {
+        input: 2,
+        input_gt_200k: 4,
+        output: 12,
+        output_gt_200k: 18,
+        context_caching: 0.2,
+        context_caching_gt_200k: 0.4,
+      },
       [Models.google.Gemini_25_Flash_Preview]: {
-        input: 0.15,
-        output: 0.6,
+        input: 0.3,
+        output: 2.5,
         thinking_output: 3.5,
         context_caching: 0.0375,
       },
       [Models.google.Gemini_25_Pro_Preview]: {
         input: 1.25,
+        input_gt_200k: 2.5,
         output: 10.0,
-        context_caching: 0.31,
+        output_gt_200k: 15.0,
+        context_caching: 0.125,
+        context_caching_gt_200k: 0.25,
       },
       [Models.google.Gemini_20_Flash]: {
         input: 0.1,
@@ -417,11 +428,19 @@ export class GenericGeminiClient implements GenericClient {
     let cost = 0;
 
     if ("promptTokenCount" in usage && usage.promptTokenCount) {
-      cost += (usage.promptTokenCount * pricing.input) / 1e6;
+      if (usage.promptTokenCount > 200000 && pricing.input_gt_200k) {
+        cost += (usage.promptTokenCount * pricing.input_gt_200k) / 1e6;
+      } else {
+        cost += (usage.promptTokenCount * pricing.input) / 1e6;
+      }
     }
 
     if ("responseTokenCount" in usage && usage.responseTokenCount) {
-      cost += (usage.responseTokenCount * pricing.output) / 1e6;
+      if (usage.responseTokenCount > 200000 && pricing.output_gt_200k) {
+        cost += (usage.responseTokenCount * pricing.output_gt_200k) / 1e6;
+      } else {
+        cost += (usage.responseTokenCount * pricing.output) / 1e6;
+      }
     }
 
     if (
@@ -429,7 +448,16 @@ export class GenericGeminiClient implements GenericClient {
       usage.cachedContentTokenCount &&
       pricing.context_caching
     ) {
-      cost += (usage.cachedContentTokenCount * pricing.context_caching) / 1e6;
+      if (
+        usage.cachedContentTokenCount > 200000 &&
+        pricing.context_caching_gt_200k
+      ) {
+        cost +=
+          (usage.cachedContentTokenCount * pricing.context_caching_gt_200k) /
+          1e6;
+      } else {
+        cost += (usage.cachedContentTokenCount * pricing.context_caching) / 1e6;
+      }
     }
     return cost;
   }

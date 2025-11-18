@@ -186,6 +186,7 @@ export const Models = {
     // Codex_Mini: "codex-mini-latest",
   },
   google: {
+    Gemini_3_Preview: "gemini-3-pro-preview",
     Gemini_25_Flash_Preview: "gemini-2.5-flash-preview-05-20",
     Gemini_25_Pro_Preview: "gemini-2.5-pro-preview-05-06",
     Gemini_20_Flash: "gemini-2.0-flash",
