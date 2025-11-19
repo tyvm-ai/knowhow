@@ -210,6 +210,11 @@ export class GenericOpenAiClient implements GenericClient {
         cached_input: 0,
         output: 10.0,
       },
+      [Models.openai.GPT_5_1]: {
+        input: 1.25,
+        cached_input: 0.125,
+        output: 10,
+      },
       [Models.openai.GPT_5]: {
         input: 1.25,
         cached_input: 0.125,
