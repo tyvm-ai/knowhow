@@ -390,7 +390,7 @@ describe("CustomVariables", () => {
       );
     });
 
-    it("should return error for undefined variables", async () => {
+    it("should leave undefined variables unchanged", async () => {
       const messages = [
         {
           role: "user" as const,
@@ -403,7 +403,7 @@ describe("CustomVariables", () => {
       await processor(messages, modifiedMessages);
 
       expect(modifiedMessages[0].content).toBe(
-        '{{ERROR: Variable "undefinedVar" is not defined}}'
+        "Hello {{undefinedVar}}"
       );
     });
 
@@ -422,7 +422,7 @@ describe("CustomVariables", () => {
       await processor(messages, modifiedMessages);
 
       expect(modifiedMessages[0].content).toBe(
-        'value and {{ERROR: Variable "undefined" is not defined}}'
+        "value and {{undefined}}"
       );
     });
 
@@ -446,6 +446,77 @@ describe("CustomVariables", () => {
         content: "Original replaced content",
         metadata: { id: "test-id" },
       });
+    });
+
+    it("should substitute variables in tool call arguments", async () => {
+      setVariableFunction("username", "john_doe");
+      setVariableFunction("limit", "10");
+
+      const messages = [
+        {
+          role: "assistant" as const,
+          content: null,
+          tool_calls: [
+            {
+              id: "call_123",
+              type: "function" as const,
+              function: {
+                name: "searchUsers",
+                arguments: JSON.stringify({
+                  username: "{{username}}",
+                  limit: "{{limit}}",
+                }),
+              },
+            },
+          ],
+        },
+      ];
+
+      const processor = customVariables.createProcessor();
+      const modifiedMessages = [...messages];
+      await processor(messages, modifiedMessages);
+
+      expect(modifiedMessages[0].tool_calls?.[0].function.arguments).toBe(
+        JSON.stringify({
+          username: "john_doe",
+          limit: "10",
+        })
+      );
+    });
+
+    it("should leave undefined variables unchanged in tool call arguments", async () => {
+      setVariableFunction("defined", "value");
+
+      const messages = [
+        {
+          role: "assistant" as const,
+          content: null,
+          tool_calls: [
+            {
+              id: "call_456",
+              type: "function" as const,
+              function: {
+                name: "exampleTool",
+                arguments: JSON.stringify({
+                  param1: "{{defined}}",
+                  param2: "{{undefined}}",
+                }),
+              },
+            },
+          ],
+        },
+      ];
+
+      const processor = customVariables.createProcessor();
+      const modifiedMessages = [...messages];
+      await processor(messages, modifiedMessages);
+
+      expect(modifiedMessages[0].tool_calls?.[0].function.arguments).toBe(
+        JSON.stringify({
+          param1: "value",
+          param2: "{{undefined}}",
+        })
+      );
     });
 
     it("should handle nested variable references", async () => {

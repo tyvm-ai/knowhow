@@ -357,9 +357,7 @@ export async function startAgent(
       new TokenCompressor(activeAgent.tools).createProcessor((msg) =>
         Boolean(msg.role === "tool" && msg.tool_call_id)
       ),
-      new CustomVariables(activeAgent.tools).createProcessor((msg) =>
-        msg.role !== "tool"
-      ),
+      new CustomVariables(activeAgent.tools).createProcessor(),
     ]);
 
     // Process XML and Harmony tool calls in assistant responses

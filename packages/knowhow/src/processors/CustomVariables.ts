@@ -149,29 +149,15 @@ export class CustomVariables {
     processedVars: Set<string> = new Set()
   ): any {
     if (typeof value === "string") {
-      // Check if ALL variables are undefined - if so, return just the error message for the first one
-      const variableMatches = value.match(/\{\{([a-zA-Z0-9_]+)\}\}/g);
-      if (variableMatches) {
-        const allUndefined = variableMatches.every((match) => {
-          const varName = match.replace(/[{}]/g, "");
-          return !(varName in this.variables);
-        });
-
-        if (allUndefined && variableMatches.length > 0) {
-          const firstUndefinedVar = variableMatches[0].replace(/[{}]/g, "");
-          return `{{ERROR: Variable "${firstUndefinedVar}" is not defined}}`;
-        }
-      }
-
-      // Otherwise, proceed with partial substitution
+      // Substitute variables, leaving undefined ones unchanged
       return value.replace(/\{\{([a-zA-Z0-9_]+)\}\}/g, (match, varName) => {
         // Prevent infinite recursion
         if (processedVars.has(varName)) {
-          return `{{ERROR: Circular reference detected for variable "${varName}"}}`;
+          return match; // Leave circular references unchanged
         }
 
         if (!(varName in this.variables)) {
-          return `{{ERROR: Variable "${varName}" is not defined}}`;
+          return match; // Leave undefined variables unchanged
         }
 
         const varValue = this.variables[varName];

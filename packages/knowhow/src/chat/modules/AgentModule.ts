@@ -711,9 +711,7 @@ ${reason}
         new TokenCompressor(agent.tools).createProcessor((msg) =>
           Boolean(msg.role === "tool" && msg.tool_call_id)
         ),
-        new CustomVariables(agent.tools).createProcessor((msg) =>
-          msg.role !== "tool"
-        ),
+        new CustomVariables(agent.tools).createProcessor(),
       ]);
 
       agent.messageProcessor.setProcessors("post_call", [
