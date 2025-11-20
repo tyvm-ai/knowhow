@@ -150,6 +150,8 @@ export const Models = {
     Haiku3: "claude-3-haiku-20240307",
   },
   xai: {
+    Grok4_1_Fast_Reasoning: "grok-4-1-fast-reasoning",
+    Grok4_1_Fast_NonReasoning: "grok-4-1-fast-non-reasoning",
     GrokCodeFast: "grok-code-fast-1",
     Grok4: "grok-4-0709",
     Grok3Beta: "grok-3-beta",

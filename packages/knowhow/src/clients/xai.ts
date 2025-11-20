@@ -79,6 +79,16 @@ export class GenericXAIClient implements GenericClient {
 
   pricesPerMillion() {
     return {
+      [Models.xai.Grok4_1_Fast_NonReasoning]: {
+        input: 0.2,
+        cache_hit: 0.05,
+        output: 0.5,
+      },
+      [Models.xai.Grok4_1_Fast_Reasoning]: {
+        input: 0.2,
+        cache_hit: 0.05,
+        output: 0.5,
+      },
       [Models.xai.GrokCodeFast]: {
         input: 0.2,
         cache_hit: 0.02,
