@@ -162,6 +162,7 @@ export const Models = {
     Grok2Vision1212: "grok-2-vision-1212",
   },
   openai: {
+    GPT_5_2: "gpt-5.2",
     GPT_5_1: "gpt-5.1",
     GPT_5: "gpt-5",
     GPT_5_Mini: "gpt-5-mini",

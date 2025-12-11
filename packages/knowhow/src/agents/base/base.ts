@@ -512,7 +512,7 @@ export abstract class BaseAgent implements IAgent {
         messages,
         "pre_call"
       );
-      const compressThreshold = 10000;
+      const compressThreshold = 30000;
 
       const response = await this.getClient().createChatCompletion({
         model,
@@ -639,7 +639,7 @@ export abstract class BaseAgent implements IAgent {
 
       if (
         this.getMessagesLength(messages) > compressThreshold &&
-        messages.length > 20
+        messages.length > 30
       ) {
         const taskBreakdown = await this.getTaskBreakdown(messages);
         console.log(
