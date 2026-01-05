@@ -73,7 +73,9 @@ export async function summarizeTexts(
 
     console.log(content);
 
-    const summary = await singlePrompt(content, model, agent);
+    const summary = await singlePrompt(content, model, agent).catch((err) => {
+      return `Text of length ${text.length} could not be summarized due to error: ${err.message}`;
+    });
     summaries.push(summary);
   }
 

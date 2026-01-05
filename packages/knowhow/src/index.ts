@@ -253,12 +253,6 @@ export async function handleMultiOutputGeneration(
       hashes[file] = { promptHash: "", fileHash: "" };
     }
 
-    // summarize the file
-    console.log("Summarizing", file);
-    const summary = prompt
-      ? await summarizeFile(file, prompt, model, agent)
-      : fileContent;
-
     // write the summary to the output file
     const { name, ext, dir } = path.parse(file);
     const nestedFolder = inputPath ? (dir + "/").replace(inputPath, "") : "";
@@ -281,6 +275,12 @@ export async function handleMultiOutputGeneration(
       console.log("Skipping file", file, "because it hasn't changed");
       continue;
     }
+
+    // summarize the file
+    console.log("Summarizing", file);
+    const summary = prompt
+      ? await summarizeFile(file, prompt, model, agent)
+      : fileContent;
 
     console.log("Writing summary to", outputFile);
     await writeFile(outputFile, summary);
