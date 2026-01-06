@@ -55,7 +55,7 @@ export class InputQueueManager {
       const current = this.peek();
       if (!current) return;
 
-      const answer = line.trim();
+      const answer = this.sanitizeHistoryEntry(line);
 
       // Pop & resolve current question
       const resolved = this.stack.pop();
@@ -224,10 +224,11 @@ export class InputQueueManager {
     const seen = new Set<string>();
     const out: string[] = [];
     for (const item of merged) {
-      if (!item) continue;
-      if (seen.has(item)) continue;
-      seen.add(item);
-      out.push(item);
+      const clean = this.sanitizeHistoryEntry(item);
+      if (!clean) continue;
+      if (seen.has(clean)) continue;
+      seen.add(clean);
+      out.push(clean);
     }
     return out;
   }
@@ -254,9 +255,17 @@ export class InputQueueManager {
   private replaceLine(next: string): void {
     if (!this.rl) return;
 
+    const clean = this.sanitizeHistoryEntry(next);
+
     // Clear current line and write next input without affecting terminal scrollback
     this.rl.write(null, { ctrl: true, name: "u" }); // Ctrl+U clears the line
-    if (next) this.rl.write(next);
+    if (clean) this.rl.write(clean);
+  }
+
+  private sanitizeHistoryEntry(value: string): string {
+    // Remove any newline characters that could trigger readline's "line" event
+    // Replace with space so multi-line pastes become single-line commands.
+    return value.replace(/[\r\n]+/g, " ").trim();
   }
 
   /**
