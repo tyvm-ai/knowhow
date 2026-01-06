@@ -38,15 +38,19 @@ export class InputQueueManager {
         const opts = current?.options ?? [];
         if (opts.length === 0) return [[], line];
 
-        const hits = opts.filter((c) => c.startsWith(line));
-        if (hits.length === 0) return [[], line];
-        if (hits.length === 1) return [hits, hits[0]];
+        // Identify the "word" at the end of the line that we want to complete
+        // (default readline behavior is word-based completion)
+        const lastSpace = Math.max(
+          line.lastIndexOf(" "),
+          line.lastIndexOf("\t")
+        );
+        const word = line.slice(lastSpace + 1); // the token to complete
 
-        // Multiple matches: extend to longest common prefix if it grows the input
-        const lcp = this.longestCommonPrefix(hits);
-        const replacement = lcp.length > line.length ? lcp : line;
+        const hits = opts.filter((c) => c.startsWith(word));
 
-        return [hits, replacement];
+        // Return [matches, wordToReplace]
+        // Readline will replace `word` with the selected match (or extend if unique)
+        return [hits, word];
       },
     });
 
@@ -55,6 +59,7 @@ export class InputQueueManager {
       const current = this.peek();
       if (!current) return;
 
+      // IMPORTANT: do not allow embedded newlines in history / answers
       const answer = this.sanitizeHistoryEntry(line);
 
       // Pop & resolve current question
@@ -113,7 +118,7 @@ export class InputQueueManager {
       if (!this.rl || this.stack.length === 0) return;
 
       // Keep our buffer in sync with readline’s live line
-      this.currentLine = (this.rl as any).line ?? "";
+      this.syncFromReadline();
 
       // Any "real typing" should exit history mode
       // (we'll treat left/right as not exiting; you can tweak)
@@ -202,6 +207,10 @@ export class InputQueueManager {
 
       const rl = this.ensureRl();
 
+      // IMPORTANT: snapshot readline's current buffer before we redraw/switch prompts.
+      // This prevents us from clobbering tab-completed text with a stale currentLine.
+      this.syncFromReadline();
+
       // Update prompt to top-of-stack
       this.render();
 
@@ -216,13 +225,25 @@ export class InputQueueManager {
     return this.stack[this.stack.length - 1];
   }
 
+  private syncFromReadline(): void {
+    if (!this.rl) return;
+    this.currentLine = (this.rl as any).line ?? "";
+  }
+
+  private sanitizeHistoryEntry(value: string): string {
+    // Prevent embedded newlines from triggering readline's "line" event
+    return value.replace(/[\r\n]+/g, " ").trim();
+  }
+
   private getFullHistory(): string[] {
     const current = this.peek();
     const local = current?.history ?? [];
+
     // De-dup while preserving order preference (older -> newer)
     const merged = [...askHistory, ...local];
     const seen = new Set<string>();
     const out: string[] = [];
+
     for (const item of merged) {
       const clean = this.sanitizeHistoryEntry(item);
       if (!clean) continue;
@@ -230,6 +251,7 @@ export class InputQueueManager {
       seen.add(clean);
       out.push(clean);
     }
+
     return out;
   }
 
@@ -238,6 +260,7 @@ export class InputQueueManager {
     const current = this.peek();
     if (!current) return;
 
+    // Make prompt be the question (readline manages wrapping/cursor)
     this.rl.setPrompt(current.question);
     this.rl.prompt(true);
   }
@@ -247,6 +270,11 @@ export class InputQueueManager {
       this.close();
       return;
     }
+
+    // IMPORTANT: snapshot readline's current buffer before we redraw/switch prompts.
+    // This prevents us from clobbering tab-completed text with a stale currentLine.
+    this.syncFromReadline();
+
     this.render();
     this.replaceLine(this.currentLine);
     this.rl?.prompt(true);
@@ -255,17 +283,11 @@ export class InputQueueManager {
   private replaceLine(next: string): void {
     if (!this.rl) return;
 
-    const clean = this.sanitizeHistoryEntry(next);
+    const safe = this.sanitizeHistoryEntry(next);
 
     // Clear current line and write next input without affecting terminal scrollback
     this.rl.write(null, { ctrl: true, name: "u" }); // Ctrl+U clears the line
-    if (clean) this.rl.write(clean);
-  }
-
-  private sanitizeHistoryEntry(value: string): string {
-    // Remove any newline characters that could trigger readline's "line" event
-    // Replace with space so multi-line pastes become single-line commands.
-    return value.replace(/[\r\n]+/g, " ").trim();
+    if (safe) this.rl.write(safe);
   }
 
   /**
