@@ -44,9 +44,6 @@ This will:
   - `GEMINI_API_KEY`
   - `GOOGLE_API_KEY`
   - `XAI_API_KEY`
-  - `GITHUB_TOKEN`
-  - `AWS_ACCESS_KEY_ID`
-  - `AWS_SECRET_ACCESS_KEY`
 
 ### Restore Keys
 

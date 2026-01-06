@@ -59,7 +59,8 @@ export async function startAgentTask(params: StartAgentTaskParams) {
     command += ` --max-spend-limit ${maxSpendLimit}`;
   }
 
-  return execCommand(command, 60000, true);
+  const timeout = maxTimeLimit || 60000;
+  return execCommand(command, timeout, true);
 }
 
 export const startAgentTaskDefinition: Tool = {
@@ -106,4 +107,3 @@ export const startAgentTaskDefinition: Tool = {
     },
   },
 };
-

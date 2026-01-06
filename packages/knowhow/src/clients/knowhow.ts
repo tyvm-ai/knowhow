@@ -5,9 +5,9 @@ import {
   EmbeddingOptions,
   EmbeddingResponse,
 } from "./types";
-import { KnowhowSimpleClient } from "../services/KnowhowClient";
+import { KnowhowSimpleClient, KNOWHOW_API_URL } from "../services/KnowhowClient";
 
-const envUrl = process.env.KNOWHOW_API_URL;
+const envUrl = KNOWHOW_API_URL;
 export class KnowhowGenericClient implements GenericClient {
   private client: KnowhowSimpleClient;
 

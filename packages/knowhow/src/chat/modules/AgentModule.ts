@@ -1,7 +1,10 @@
 /**
  * Agent Chat Module - Handles agent interactions
  */
-import { KnowhowSimpleClient } from "../../services/KnowhowClient";
+import {
+  KnowhowSimpleClient,
+  KNOWHOW_API_URL,
+} from "../../services/KnowhowClient";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -641,7 +644,7 @@ ${reason}
       this.saveSession(taskId, taskInfo, []);
 
       // Create Knowhow chat task if messageId provided
-      const baseUrl = process.env.KNOWHOW_API_URL;
+      const baseUrl = KNOWHOW_API_URL;
       console.log(
         `Base URL for Knowhow API: ${baseUrl}, Message ID: ${options.messageId}`
       );
@@ -705,6 +708,24 @@ ${reason}
       }
 
       // Set up message processors like in original startAgent
+
+      // Register an override for askHuman to use CLI input method
+      // This keeps the askHuman tool CLI-agnostic while enabling CLI-specific behavior
+      // through the override system, achieving better separation of concerns
+      agent.tools.registerOverride(
+        "askHuman",
+        async (originalArgs: any[], originalTool: any) => {
+          const question = originalArgs[0];
+
+          // Use CLI-specific input method from CliChatService
+          const chatService = this.chatService;
+          if (!chatService) {
+            throw new Error("ChatService not available in tools context");
+          }
+          return await chatService.getInput(question);
+        },
+        10 // Priority level
+      );
 
       agent.messageProcessor.setProcessors("pre_call", [
         new ToolResponseCache(agent.tools).createProcessor(),

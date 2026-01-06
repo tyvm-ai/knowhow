@@ -50,7 +50,10 @@ export class KnowhowSimpleClient {
   headers = {};
   jwtValidated = false;
 
-  constructor(private baseUrl, private jwt = loadKnowhowJwt()) {
+  constructor(
+    private baseUrl = KNOWHOW_API_URL,
+    private jwt = loadKnowhowJwt()
+  ) {
     this.setJwt(jwt);
   }
 

@@ -7,8 +7,9 @@ import { McpServerService } from "./services/Mcp";
 import * as allTools from "./agents/tools";
 import { wait } from "./utils";
 import { getConfig, updateConfig } from "./config";
+import { KNOWHOW_API_URL } from "./services/KnowhowClient";
 
-const API_URL = process.env.KNOWHOW_API_URL;
+const API_URL = KNOWHOW_API_URL;
 
 export async function worker() {
   const { Tools } = services();

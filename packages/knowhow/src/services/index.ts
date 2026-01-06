@@ -58,7 +58,7 @@ export const services = (): typeof Singletons => {
       Mcp: new McpService(),
       Plugins,
       Tools,
-      knowhowApiClient: new KnowhowSimpleClient(process.env.KNOWHOW_API_URL),
+      knowhowApiClient: new KnowhowSimpleClient(),
     };
 
     Singletons.Tools.setContext({
