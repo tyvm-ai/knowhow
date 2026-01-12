@@ -14,6 +14,12 @@ import * as allTools from "./agents/tools";
 import { services } from "./services";
 import { login } from "./login";
 import { worker } from "./worker";
+import {
+  startAllWorkers,
+  listWorkerPaths,
+  unregisterWorkerPath,
+  clearWorkerRegistry,
+} from "./workerRegistry";
 import { agents } from "./agents";
 import { startChat } from "./chat";
 import { askAI } from "./chat-old";
@@ -286,9 +292,52 @@ async function main() {
 
   program
     .command("worker")
-    .description("Start worker process")
-    .action(async () => {
-      await worker();
+    .description("Start worker process and optionally register current directory")
+    .option("--register", "Register current directory as a worker path")
+    .action(async (options) => {
+      await worker(options);
+    });
+
+  program
+    .command("workers")
+    .description("Manage and start all registered workers")
+    .option("--list", "List all registered worker paths")
+    .option("--unregister <path>", "Unregister a worker path")
+    .option("--clear", "Clear all registered worker paths")
+    .action(async (options) => {
+      try {
+        if (options.list) {
+          const workers = await listWorkerPaths();
+          if (workers.length === 0) {
+            console.log("No workers registered.");
+            console.log(
+              "\nTo register a worker, run 'knowhow worker --register' from the worker directory."
+            );
+          } else {
+            console.log(`Registered workers (${workers.length}):`);
+            workers.forEach((workerPath, index) => {
+              console.log(`  ${index + 1}. ${workerPath}`);
+            });
+          }
+          return;
+        }
+
+        if (options.unregister) {
+          await unregisterWorkerPath(options.unregister);
+          return;
+        }
+
+        if (options.clear) {
+          await clearWorkerRegistry();
+          return;
+        }
+
+        // Default action: start all workers
+        await startAllWorkers();
+      } catch (error) {
+        console.error("Error managing workers:", error);
+        process.exit(1);
+      }
     });
 
   await program.parseAsync(process.argv);

@@ -8,10 +8,11 @@ import * as allTools from "./agents/tools";
 import { wait } from "./utils";
 import { getConfig, updateConfig } from "./config";
 import { KNOWHOW_API_URL } from "./services/KnowhowClient";
+import { registerWorkerPath } from "./workerRegistry";
 
 const API_URL = KNOWHOW_API_URL;
 
-export async function worker() {
+export async function worker(options?: { register?: boolean }) {
   const { Tools } = services();
   const mcpServer = new McpServerService(Tools);
   const clientName = "knowhow-worker";
@@ -28,6 +29,12 @@ export async function worker() {
     };
 
     await updateConfig(config);
+    return;
+  }
+
+  // Handle registration flag
+  if (options?.register) {
+    await registerWorkerPath(process.cwd());
     return;
   }
 
