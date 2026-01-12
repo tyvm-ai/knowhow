@@ -152,7 +152,7 @@ export async function getInput(
     value = await editor({ message: question });
     Flags.disable(ChatFlags.multi);
   } else {
-    const history = chatHistory.map((c) => c.input).reverse();
+    const history = chatHistory.map((c) => c.input);
     value = await ask(question, options, history);
   }
 
@@ -248,7 +248,7 @@ export async function chatLoop<E extends GptQuestionEmbedding>(
           provider = await ask(
             `\n\nCurrent Provider: ${provider}\nCurrent Model: ${model}\n\nWhich provider would you like to use: `,
             providers
-          );
+          ) as keyof typeof Clients.clients;
           model =
             ChatModelDefaults[provider] ||
             (await Clients.getRegisteredModels(provider))[0];
