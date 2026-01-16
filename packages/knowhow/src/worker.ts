@@ -12,7 +12,7 @@ import { registerWorkerPath } from "./workerRegistry";
 
 const API_URL = KNOWHOW_API_URL;
 
-export async function worker(options?: { register?: boolean }) {
+export async function worker(options?: { register?: boolean; share?: boolean; unshare?: boolean }) {
   const { Tools } = services();
   const mcpServer = new McpServerService(Tools);
   const clientName = "knowhow-worker";
@@ -50,12 +50,26 @@ export async function worker(options?: { register?: boolean }) {
     const dir = process.cwd();
     const homedir = os.homedir();
     const root = dir === homedir ? "~" : dir.replace(homedir, "~");
+    
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${jwt}`,
+      "User-Agent": `${clientName}/${clientVersion}/${os.hostname()}`,
+      Root: `${root}`,
+    };
+    
+    // Add shared header based on flags
+    if (options?.share) {
+      headers.Shared = "true";
+      console.log("🔓 Worker shared with organization");
+    } else if (options?.unshare) {
+      headers.Shared = "false";
+      console.log("🔒 Worker is now private (unshared)");
+    } else {
+      console.log("🔒 Worker is private (only you can use it)");
+    }
+    
     const ws = new WebSocket(`${API_URL}/ws/worker`, {
-      headers: {
-        Authorization: `Bearer ${jwt}`,
-        "User-Agent": `${clientName}/${clientVersion}/${os.hostname()}`,
-        Root: `${root}`,
-      },
+      headers,
     });
 
     ws.on("open", () => {

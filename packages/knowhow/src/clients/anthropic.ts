@@ -329,6 +329,12 @@ export class GenericAnthropicClient implements GenericClient {
 
   pricesPerMillion() {
     return {
+      [Models.anthropic.Opus4_5]: {
+        input: 5.0,
+        cache_write: 6.25,
+        cache_hit: 0.5,
+        output: 25.0,
+      },
       [Models.anthropic.Opus4]: {
         input: 15.0,
         cache_write: 18.75,
