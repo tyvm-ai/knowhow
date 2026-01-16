@@ -44,11 +44,7 @@ export class GenericAnthropicClient implements GenericClient {
     const transformed = tools.map((tool) => ({
       name: tool.function.name || "",
       description: tool.function.description || "",
-      input_schema: {
-        properties: tool.function.parameters.properties,
-        type: "object" as const,
-        required: tool.function.parameters.required || [],
-      },
+      input_schema: tool.function.parameters as any,
     }));
 
     this.handleToolCaching(transformed);

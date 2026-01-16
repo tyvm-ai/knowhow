@@ -117,18 +117,26 @@ sudo apt-get install sox libsox-fmt-all
 }
 
 export async function voiceToText() {
-  const input = await ask(
-    "Press Enter to Start Recording, or exit to quit...: "
+  let input = await ask(
+    "Press Enter to Start Recording, or exit to quit...: ",
+    ["exit"]
   );
 
   if (input === "exit") {
-    return "voice";
+    return "/voice";
   }
 
   const recording = await recordAudio();
   console.log("Recording audio...");
-  await ask("Press Enter to Stop...");
+  input = await ask("Press Enter to Stop Recording, or exit to quit...: ", [
+    "exit",
+  ]);
   recording.stop();
   console.log("Stopped recording");
+
+  if (input === "exit") {
+    return "/voice";
+  }
+
   return convertAudioToText("/tmp/knowhow.wav", false);
 }

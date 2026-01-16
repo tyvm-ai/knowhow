@@ -722,7 +722,9 @@ ${reason}
           if (!chatService) {
             throw new Error("ChatService not available in tools context");
           }
-          return await chatService.getInput(question);
+          console.log("AI has asked: ");
+          console.log(Marked.parse(question), "\n");
+          return await chatService.getInput("response: ");
         },
         10 // Priority level
       );

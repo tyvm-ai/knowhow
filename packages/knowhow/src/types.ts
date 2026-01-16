@@ -233,6 +233,8 @@ export const OpenAiReasoningModels = [
   Models.openai.GPT_5,
   Models.openai.GPT_5_Mini,
   Models.openai.GPT_5_Nano,
+  Models.openai.GPT_5_1,
+  Models.openai.GPT_5_2,
 ];
 
 export const OpenAiEmbeddingModels = [

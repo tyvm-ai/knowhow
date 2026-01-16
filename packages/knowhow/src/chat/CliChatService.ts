@@ -206,8 +206,8 @@ export class CliChatService implements ChatService {
       value = await editor({ message: prompt });
       this.context.multilineMode = false; // Disable after use like original
     } else {
-      // Use saved input history for scrollback instead of current chat history
-      const history = this.inputHistory.slice().reverse();
+      // Use saved input history for scrollback (InputQueueManager handles reverse access)
+      const history = this.inputHistory.slice();
       value = await ask(prompt, options, history);
     }
 
