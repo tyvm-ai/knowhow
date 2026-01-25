@@ -294,6 +294,10 @@ async function main() {
     .command("worker")
     .description("Start worker process and optionally register current directory")
     .option("--register", "Register current directory as a worker path")
+    .option("--share", "Share this worker with your organization (allows other users to use it)")
+    .option("--unshare", "Make this worker private (only you can use it)")
+    .option("--sandbox", "Run worker in a Docker container for isolation")
+    .option("--no-sandbox", "Run worker directly on host (disable sandbox mode)")
     .action(async (options) => {
       await worker(options);
     });
