@@ -86,6 +86,18 @@ export async function worker(options?: {
 }) {
   const config = await getConfig();
 
+  // Check if we're already running inside a Docker container
+  const isInsideDocker = process.env.KNOWHOW_DOCKER === "true";
+  
+  if (isInsideDocker) {
+    console.log("🐳 Already running inside Docker container, skipping sandbox mode");
+    // Force sandbox mode off when inside Docker to prevent nested containers
+    if (options) {
+      options.sandbox = false;
+      options.noSandbox = true;
+    }
+  }
+
   // Determine sandbox mode with priority: command line flags > config > default (false)
   let shouldUseSandbox = false;
   let sandboxSource = "";

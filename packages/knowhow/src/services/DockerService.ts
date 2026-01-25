@@ -3,6 +3,7 @@ import * as path from "path";
 import * as os from "os";
 import { Config } from "../types";
 import { updateConfig } from "../config";
+import * as crypto from "crypto";
 
 export interface DockerWorkerOptions {
   workspaceDir: string;
@@ -235,14 +236,49 @@ export class DockerService {
   }
 
   /**
+   * Generate a short hash from the workspace directory path
+   * This ensures one container per workspace directory
+   */
+  private getWorkspaceHash(workspaceDir: string): string {
+    const hash = crypto.createHash("md5").update(workspaceDir).digest("hex");
+    // Return first 8 characters for a short, readable hash
+    return hash.substring(0, 8);
+  }
+
+  /**
+   * Stop and remove a container by name if it exists
+   */
+  private async removeContainerByName(containerName: string): Promise<void> {
+    try {
+      // Check if container exists
+      const { stdout } = await execAsync(
+        `docker ps -a --filter "name=^/${containerName}$" --format "{{.ID}}"`
+      );
+      const containerId = stdout.trim();
+      
+      if (containerId) {
+        console.log(`🗑️  Removing existing container: ${containerName}`);
+        await execAsync(`docker stop ${containerId}`);
+        await execAsync(`docker rm ${containerId}`);
+      }
+    } catch (error) {
+      // Ignore errors if container doesn't exist
+    }
+  }
+
+  /**
    * Run the knowhow worker in a Docker container
    */
   async runWorkerContainer(options: DockerWorkerOptions): Promise<string> {
-    const containerName = `${DockerService.CONTAINER_PREFIX}-${Date.now()}`;
+    const workspaceHash = this.getWorkspaceHash(options.workspaceDir);
+    const containerName = `${DockerService.CONTAINER_PREFIX}-${workspaceHash}`;
     const homedir = os.homedir();
     const relativeWorkspace = options.workspaceDir.replace(homedir, "~");
     const knowhowDir = path.join(homedir, ".knowhow");
     const relativeKnowhowDir = "~/.knowhow";
+    // Remove any existing container for this workspace
+    await this.removeContainerByName(containerName);
+
 
     let config = options.config;
 
