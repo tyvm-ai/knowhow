@@ -12,12 +12,136 @@ import { registerWorkerPath } from "./workerRegistry";
 
 const API_URL = KNOWHOW_API_URL;
 
-export async function worker(options?: { register?: boolean; share?: boolean; unshare?: boolean }) {
+/**
+ * Run the worker in a Docker sandbox
+ */
+async function runWorkerInSandbox(
+  options: { share?: boolean; unshare?: boolean; sandbox?: boolean },
+  config: any
+) {
+  const { Docker } = services();
+
+  console.log("🐳 Starting knowhow worker in Docker sandbox mode...\n");
+
+  // Check if Docker is available
+  const dockerAvailable = await Docker.checkDockerAvailable();
+
+  if (!dockerAvailable) {
+    console.error("❌ Docker is not installed or not running.");
+    console.error("\nTo use --sandbox mode, you need to:");
+    console.error("  1. Install Docker: https://docs.docker.com/get-docker/");
+    console.error("  2. Start the Docker daemon");
+    console.error("  3. Run this command again with --sandbox\n");
+    process.exit(1);
+  }
+
+  console.log("✓ Docker is available");
+
+  // Always rebuild the image to ensure it's up to date with any Dockerfile changes
+  console.log("🔄 Building Docker image (ensuring latest version)...");
+  try {
+    await Docker.buildWorkerImage();
+  } catch (error) {
+    console.error("❌ Failed to build Docker image:", error.message);
+    console.error("\nPlease check the .knowhow/Dockerfile.worker for errors");
+    console.error("  You can edit this file to customize the worker image\n");
+    process.exit(1);
+  }
+
+  // Get JWT token
+  const jwt = await loadJwt();
+
+  // Run the container
+  let containerId: string;
+
+  console.log("🚀 Starting Docker container...");
+  try {
+    containerId = await Docker.runWorkerContainer({
+      workspaceDir: process.cwd(),
+      jwt,
+      apiUrl: API_URL,
+      config,
+      share: options?.share,
+      unshare: options?.unshare,
+    });
+  } catch (error) {
+    console.error("❌ Failed to start Docker container:", error.message);
+    process.exit(1);
+  }
+
+  // Follow logs and handle cleanup
+  try {
+    await Docker.followContainerLogs(containerId);
+  } finally {
+    await Docker.stopContainer(containerId);
+  }
+}
+
+export async function worker(options?: {
+  register?: boolean;
+  share?: boolean;
+  unshare?: boolean;
+  sandbox?: boolean;
+  noSandbox?: boolean;
+}) {
+  const config = await getConfig();
+
+  // Determine sandbox mode with priority: command line flags > config > default (false)
+  let shouldUseSandbox = false;
+  let sandboxSource = "";
+
+  if (options?.sandbox) {
+    shouldUseSandbox = true;
+    sandboxSource = "command line (--sandbox)";
+
+    // Save sandbox preference to config
+    const updatedConfig = {
+      ...config,
+      worker: {
+        ...config.worker,
+        sandbox: true,
+      },
+    };
+    await updateConfig(updatedConfig);
+    console.log("💾 Sandbox mode preference saved to config");
+  } else if (options?.noSandbox) {
+    shouldUseSandbox = false;
+    sandboxSource = "command line (--no-sandbox)";
+
+    // Save no-sandbox preference to config
+    const updatedConfig = {
+      ...config,
+      worker: {
+        ...config.worker,
+        sandbox: false,
+      },
+    };
+    await updateConfig(updatedConfig);
+    console.log("💾 No-sandbox mode preference saved to config");
+  } else {
+    // Use config preference or default to false
+    shouldUseSandbox = config.worker?.sandbox ?? false;
+    sandboxSource =
+      config.worker?.sandbox !== undefined
+        ? `config (${shouldUseSandbox ? "sandbox" : "no-sandbox"})`
+        : "default (no-sandbox)";
+  }
+
+  if (shouldUseSandbox) {
+    console.log(`🐳 Using sandbox mode (${sandboxSource})`);
+    return runWorkerInSandbox(options, config);
+  }
+
   const { Tools } = services();
   const mcpServer = new McpServerService(Tools);
   const clientName = "knowhow-worker";
   const clientVersion = "1.1.1";
-  const config = await getConfig();
+
+  if (!shouldUseSandbox) {
+    console.log(`🖥️  Using host mode (${sandboxSource})`);
+  }
+
+  // Use the config we already loaded above
 
   if (!config.worker || !config.worker.allowedTools) {
     console.log(
@@ -49,14 +173,17 @@ export async function worker(options?: { register?: boolean; share?: boolean; un
 
     const dir = process.cwd();
     const homedir = os.homedir();
-    const root = dir === homedir ? "~" : dir.replace(homedir, "~");
     
+    // Use environment variables if available (set by Docker), otherwise compute defaults
+    const hostname = process.env.WORKER_HOSTNAME || os.hostname();
+    const root = process.env.WORKER_ROOT || (dir === homedir ? "~" : dir.replace(homedir, "~"));
+
     const headers: Record<string, string> = {
       Authorization: `Bearer ${jwt}`,
-      "User-Agent": `${clientName}/${clientVersion}/${os.hostname()}`,
-      Root: `${root}`,
+      "User-Agent": `${clientName}/${clientVersion}/${hostname}`,
+      Root: root,
     };
-    
+
     // Add shared header based on flags
     if (options?.share) {
       headers.Shared = "true";
@@ -67,7 +194,7 @@ export async function worker(options?: { register?: boolean; share?: boolean; un
     } else {
       console.log("🔒 Worker is private (only you can use it)");
     }
-    
+
     const ws = new WebSocket(`${API_URL}/ws/worker`, {
       headers,
     });

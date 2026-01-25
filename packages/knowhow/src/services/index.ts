@@ -9,6 +9,7 @@ import { McpService } from "./Mcp";
 import { S3Service } from "./S3";
 import { ToolsService } from "./Tools";
 import { PluginService } from "../plugins/plugins";
+import { DockerService } from "./DockerService";
 
 export * from "./AgentService";
 export * from "./EventService";
@@ -18,6 +19,7 @@ export * from "./S3";
 export * from "./Tools";
 export * as MCP from "./Mcp";
 export * from "./EmbeddingService";
+export * from "./DockerService";
 export { Clients } from "../clients";
 
 let Singletons = {} as {
@@ -28,6 +30,7 @@ let Singletons = {} as {
   GitHub: GitHubService;
   Mcp: McpService;
   AwsS3: S3Service;
+  Docker: DockerService;
   knowhowApiClient: KnowhowSimpleClient;
   Plugins: PluginService;
   Clients: AIClient;
@@ -51,6 +54,7 @@ export const services = (): typeof Singletons => {
       Agents,
       AwsS3: new S3Service(),
       Clients,
+      Docker: new DockerService(),
       Downloader,
       Events,
       Flags: new FlagsService(),

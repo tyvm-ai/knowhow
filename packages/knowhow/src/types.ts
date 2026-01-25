@@ -63,6 +63,9 @@ export type Config = {
 
   worker?: {
     allowedTools?: string[];
+    sandbox?: boolean;
+    volumes?: string[];
+    envFile?: string;
   };
 };
 
