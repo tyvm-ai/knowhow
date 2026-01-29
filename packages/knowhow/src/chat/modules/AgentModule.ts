@@ -113,9 +113,14 @@ export class AgentModule extends BaseChatModule {
       if (allAgents && allAgents[agentName]) {
         // Set selected agent in context and enable agent mode
         if (context) {
-          context.selectedAgent = allAgents[agentName];
+          const selectedAgent = allAgents[agentName];
+          context.selectedAgent = selectedAgent;
           context.agentMode = true;
           context.currentAgent = agentName;
+          // Update context's model/provider to reflect the agent's settings
+          // so /model and /provider commands show accurate information
+          context.currentModel = selectedAgent.getModel();
+          context.currentProvider = selectedAgent.getProvider();
         }
         console.log(
           `Agent mode enabled. Selected agent: ${agentName}. Type your task to get started.`
@@ -366,6 +371,10 @@ export class AgentModule extends BaseChatModule {
           context.selectedAgent = selectedAgent;
           context.agentMode = true;
           context.currentAgent = taskInfo.agentName;
+          // Update context's model/provider to reflect the agent's settings
+          // so /model and /provider commands show accurate information
+          context.currentModel = selectedAgent.getModel();
+          context.currentProvider = selectedAgent.getProvider();
           console.log(`🔄 Switched to agent mode with ${taskInfo.agentName}`);
           console.log(`📋 Attached to running task: ${id}`);
           console.log(`Task: ${taskInfo.initialInput}`);
@@ -394,6 +403,10 @@ export class AgentModule extends BaseChatModule {
         if (context && selectedAgent) {
           context.selectedAgent = selectedAgent;
           context.agentMode = true;
+          // Update context's model/provider to reflect the agent's settings
+          // so /model and /provider commands show accurate information
+          context.currentModel = selectedAgent.getModel();
+          context.currentProvider = selectedAgent.getProvider();
           console.log(`🔄 Switched to agent mode with ${session.agentName}`);
           console.log(`📋 Resuming saved session: ${id}`);
           console.log(`Original task: ${session.initialInput}`);
