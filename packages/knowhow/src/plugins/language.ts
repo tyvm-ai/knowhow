@@ -46,9 +46,23 @@ export class LanguagePlugin extends PluginBase implements Plugin {
       });
 
       // Register handlers for each event
-      allEvents.forEach((eventType) => {
+      const fileEvents = Array.from(allEvents).filter((e: string) =>
+        e.startsWith("file")
+      );
+
+      const otherEvents = Array.from(allEvents).filter(
+        (e: string) => !e.startsWith("file")
+      );
+
+      fileEvents.forEach((eventType) => {
         this.eventService.on(eventType, async (eventData) => {
           await this.handleFileEvent(eventType, eventData);
+        });
+      });
+
+      otherEvents.forEach((eventType) => {
+        this.eventService.on(eventType, async (eventData) => {
+          await this.handleGenericEvent(eventType, eventData);
         });
       });
     } catch (error) {
@@ -143,7 +157,10 @@ export class LanguagePlugin extends PluginBase implements Plugin {
           const matches = patterns.some(
             (pattern) =>
               minimatch(filePath, pattern) ||
-              fileContent.toString().toLowerCase().includes(pattern.toLowerCase())
+              fileContent
+                .toString()
+                .toLowerCase()
+                .includes(pattern.toLowerCase())
           );
           return matches;
         })
@@ -175,11 +192,52 @@ export class LanguagePlugin extends PluginBase implements Plugin {
     }
   }
 
+  /**
+   * Handle agent message and say events and emit agent messages when patterns match
+   */
+  private async handleGenericEvent(eventType: string, eventData: any) {
+    try {
+      const languageConfig = await getLanguageConfig();
+      const userPrompt = JSON.stringify(eventData);
+      const isJsonObj = userPrompt.startsWith("{") && userPrompt.endsWith("}");
+
+      // Skip if this is probably a language_context_trigger to avoid loops
+      if (isJsonObj && userPrompt.includes("language_context_trigger")) {
+        return;
+      }
+
+      const matchingTerms = await this.getMatchingTerms(userPrompt);
+
+      if (matchingTerms.length > 0) {
+        // Resolve sources for matching terms
+        const resolvedSources = await this.resolveSources(matchingTerms);
+
+        // Emit agent message event with resolved context
+        this.eventService.emit(
+          "agent:msg",
+          JSON.stringify({
+            type: "language_context_trigger",
+            eventType,
+            matchingTerms,
+            resolvedSources,
+            contextMessage: `LANGUAGE PLUGIN: Agent event ${eventType} triggered contextual expansions for terms: ${matchingTerms.join(
+              ", "
+            )}.
+            Expanded context: ${JSON.stringify(resolvedSources)}
+            These terms are directly related to what the agent is discussing so be sure to contextualize your response to this information.`,
+          })
+        );
+      }
+    } catch (error) {
+      console.error("LANGUAGE PLUGIN: Error handling agent event:", error);
+    }
+  }
+
   async embed(userPrompt: string) {
     return [];
   }
 
-  async call(userPrompt: string) {
+  async getMatchingTerms(userPrompt: string) {
     // Get language configuration
     const languageConfig = await getLanguageConfig();
     const terms = Object.keys(languageConfig);
@@ -194,6 +252,12 @@ export class LanguagePlugin extends PluginBase implements Plugin {
           : userPrompt.toLowerCase().includes(trimmedPattern.toLowerCase());
       })
     );
+    return matchingTerms;
+  }
+
+  async call(userPrompt: string) {
+    // Get language configuration
+    const matchingTerms = await this.getMatchingTerms(userPrompt);
 
     if (matchingTerms.length === 0) {
       return "LANGUAGE PLUGIN: No matching terms found";

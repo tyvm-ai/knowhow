@@ -1,8 +1,15 @@
 import { Message } from "../clients/types";
 import { MessageProcessorFunction } from "../services/MessageProcessor";
 import { ToolsService } from "../services";
-import { Tool } from "../clients";
-import * as jq from "node-jq";
+import {
+  jqToolResponseDefinition,
+  executeJqQuery,
+  grepToolResponseDefinition,
+  executeGrep,
+  GrepOptions,
+  listStoredToolResponsesDefinition,
+  executeListStoredToolResponses,
+} from "./tools";
 
 interface ToolResponseStorage {
   [toolCallId: string]: string;
@@ -21,7 +28,7 @@ interface ToolResponseMetadataStorage {
 export class ToolResponseCache {
   private storage: ToolResponseStorage = {};
   private metadataStorage: ToolResponseMetadataStorage = {};
-  private toolName: string = jqToolResponseDefinition.function.name;
+  private toolNameMap: { [toolCallId: string]: string } = {};
 
   constructor(toolsService: ToolsService) {
     this.registerTool(toolsService);
@@ -68,8 +75,19 @@ export class ToolResponseCache {
   /**
    * Stores a tool response for later manipulation
    */
-  public storeToolResponse(content: string, toolCallId: string): void {
-    // Always store the original content for later JQ manipulation
+  public storeToolResponse(
+    content: string,
+    toolCallId: string,
+    toolName?: string
+  ): void {
+    // Only store if not already stored - prevents overwriting with compressed data
+    // The first time we see a tool response, it contains the original uncompressed content
+    // On subsequent passes (after compression), we don't want to overwrite with compressed data
+    if (this.storage[toolCallId]) {
+      return;
+    }
+
+    // Store the original content for later JQ/grep manipulation
     this.storage[toolCallId] = content;
 
     // Store metadata for reference
@@ -78,6 +96,10 @@ export class ToolResponseCache {
       originalLength: content.length,
       storedAt: Date.now(),
     };
+
+    if (toolName) {
+      this.toolNameMap[toolCallId] = toolName;
+    }
   }
 
   /**
@@ -94,7 +116,7 @@ export class ToolResponseCache {
     }
 
     // Store the tool response silently without modifying the message
-    this.storeToolResponse(message.content, message.tool_call_id);
+    this.storeToolResponse(message.content, message.tool_call_id, message.name);
   }
 
   /**
@@ -104,7 +126,7 @@ export class ToolResponseCache {
     filterFn?: (msg: Message) => boolean
   ): MessageProcessorFunction {
     return async (originalMessages: Message[], modifiedMessages: Message[]) => {
-      for (const message of modifiedMessages) {
+      for (const message of originalMessages) {
         if (filterFn && !filterFn(message)) {
           continue;
         }
@@ -121,56 +143,33 @@ export class ToolResponseCache {
     jqQuery: string
   ): Promise<string> {
     const data = this.storage[toolCallId];
+    const availableIds = Object.keys(this.storage);
+    return executeJqQuery(data, toolCallId, jqQuery, availableIds);
+  }
 
-    if (!data) {
-      const availableIds = Object.keys(this.storage);
-      return `Error: No tool response found for toolCallId "${toolCallId}". Available IDs: ${availableIds.join(
-        ", "
-      )}`;
-    }
+  /**
+   * Grep through tool response data to find matching lines
+   */
+  async grepToolResponse(
+    toolCallId: string,
+    pattern: string,
+    options?: GrepOptions
+  ): Promise<string> {
+    const data = this.storage[toolCallId];
+    console.log({ data });
+    const availableIds = Object.keys(this.storage);
+    return executeGrep(data, toolCallId, pattern, availableIds, options);
+  }
 
-    try {
-      // First parse the stored string as JSON, then handle nested JSON strings
-      const jsonData = this.tryParseJson(data);
-      if (!jsonData) {
-        return `Error: Tool response data is not valid JSON for toolCallId "${toolCallId}"`;
-      }
-      const parsedData = this.parseNestedJsonStrings(jsonData);
-
-      // Execute JQ query
-      const result = await jq.run(jqQuery, parsedData, { input: "json" });
-
-      // Handle the result based on its type
-      if (typeof result === "string") {
-        return result;
-      } else if (typeof result === "number" || typeof result === "boolean") {
-        return String(result);
-      } else if (result === null) {
-        return "null";
-      } else {
-        return JSON.stringify(result);
-      }
-    } catch (error: any) {
-      // If JQ fails, try to provide helpful error message
-      let errorMessage = `JQ Query Error: ${error.message}`;
-
-      // Try to parse as JSON to see if it's valid
-      const jsonObj = this.tryParseJson(data);
-      if (!jsonObj) {
-        errorMessage += `\nNote: The tool response data is not valid JSON. Raw data preview:\n${data.substring(
-          0,
-          300
-        )}...`;
-      } else {
-        errorMessage += `\nData structure preview:\n${JSON.stringify(
-          jsonObj,
-          null,
-          2
-        ).substring(0, 500)}...`;
-      }
-
-      return errorMessage;
-    }
+  /**
+   * List all stored tool responses with metadata
+   */
+  async listStoredToolResponses(): Promise<string> {
+    return executeListStoredToolResponses(
+      this.storage,
+      this.metadataStorage,
+      this.toolNameMap
+    );
   }
 
   /**
@@ -206,36 +205,34 @@ export class ToolResponseCache {
    * Registers the jqToolResponse tool with the ToolsService
    */
   registerTool(toolsService: ToolsService): void {
-    toolsService.addTools([jqToolResponseDefinition]);
+    toolsService.addTools([
+      jqToolResponseDefinition,
+      grepToolResponseDefinition,
+      listStoredToolResponsesDefinition,
+    ]);
     toolsService.addFunctions({
-      [this.toolName]: async (toolCallId: string, jqQuery: string) => {
+      [jqToolResponseDefinition.function.name]: async (
+        toolCallId: string,
+        jqQuery: string
+      ) => {
         return await this.queryToolResponse(toolCallId, jqQuery);
+      },
+      [grepToolResponseDefinition.function.name]: async (
+        toolCallId: string,
+        pattern: string,
+        options?: any
+      ) => {
+        return await this.grepToolResponse(toolCallId, pattern, options);
+      },
+      [listStoredToolResponsesDefinition.function.name]: async () => {
+        return await this.listStoredToolResponses();
       },
     });
   }
 }
 
-export const jqToolResponseDefinition: Tool = {
-  type: "function",
-  function: {
-    name: "jqToolResponse",
-    description:
-      "Execute a JQ query on a stored tool response to extract specific data. Use this when you need to extract specific information from any tool response that has been stored. Many MCP tool responses store data in nested structures like .content[0].text where the actual data array is located.",
-    parameters: {
-      type: "object",
-      positional: true,
-      properties: {
-        toolCallId: {
-          type: "string",
-          description: "The toolCallId of the stored tool response",
-        },
-        jqQuery: {
-          type: "string",
-          description:
-            "The JQ query to execute on the tool response data. Examples: '.content[0].text | map(.title)' (extract titles from MCP array), '.content[0].text | map(select(.createdAt > \"2025-01-01\"))' (filter MCP items by date) ",
-        },
-      },
-      required: ["toolCallId", "jqQuery"],
-    },
-  },
+export {
+  jqToolResponseDefinition,
+  grepToolResponseDefinition,
+  listStoredToolResponsesDefinition,
 };

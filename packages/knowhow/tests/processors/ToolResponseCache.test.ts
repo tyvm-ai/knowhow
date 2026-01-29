@@ -2,6 +2,8 @@ import { Message } from "../../src/clients/types";
 import {
   ToolResponseCache,
   jqToolResponseDefinition,
+  grepToolResponseDefinition,
+  listStoredToolResponsesDefinition,
 } from "../../src/processors/ToolResponseCache";
 import { ToolsService } from "../../src/services";
 
@@ -170,9 +172,13 @@ describe("ToolResponseCache", () => {
       expect(cache).toBeInstanceOf(ToolResponseCache);
       expect(mockToolsService.addTools).toHaveBeenCalledWith([
         jqToolResponseDefinition,
+        grepToolResponseDefinition,
+        listStoredToolResponsesDefinition,
       ]);
       expect(mockToolsService.addFunctions).toHaveBeenCalledWith({
         jqToolResponse: expect.any(Function),
+        grepToolResponse: expect.any(Function),
+        listStoredToolResponses: expect.any(Function),
       });
     });
 
@@ -549,9 +555,23 @@ describe("ToolResponseCache", () => {
             name: "jqToolResponse",
           }),
         },
+        {
+          type: "function",
+          function: expect.objectContaining({
+            name: "grepToolResponse",
+          }),
+        },
+        {
+          type: "function",
+          function: expect.objectContaining({
+            name: "listStoredToolResponses",
+          }),
+        },
       ]);
       expect(mockToolsService.addFunctions).toHaveBeenCalledWith({
         jqToolResponse: expect.any(Function),
+        grepToolResponse: expect.any(Function),
+        listStoredToolResponses: expect.any(Function),
       });
     });
 

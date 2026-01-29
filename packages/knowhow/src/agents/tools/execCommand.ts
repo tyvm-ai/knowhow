@@ -42,19 +42,19 @@ function commandNameFrom(cmd: string) {
 
 function makeLogPath(cmd: string, customFileName?: string) {
   // Use custom filename if provided, otherwise derive from command
-  let baseName = customFileName 
+  let baseName = customFileName
     ? customFileName.replace(/[^\w.-]+/g, "_")
     : commandNameFrom(cmd);
-  
+
   let logPath = path.join(PROCESSES_DIR, `${baseName}.txt`);
-  
+
   // If file already exists, append epoch seconds to ensure uniqueness
   if (fs.existsSync(logPath)) {
     const epochSeconds = Math.floor(Date.now() / 1000);
     baseName = `${baseName}_${epochSeconds}`;
     logPath = path.join(PROCESSES_DIR, `${baseName}.txt`);
   }
-  
+
   return logPath;
 }
 
@@ -282,15 +282,18 @@ export const execCommand = async (
     : "";
 
   const lines = output.split("\n");
-  const maxLines = 1000;
-  const maxChars = 40000;
-  const trimmed = (lines.length > maxLines ? lines.slice(0, maxLines) : lines)
-    .join("\n")
-    .slice(0, maxChars);
-  const trimmedMsg =
-    lines.length > maxLines
-      ? ` (${lines.length - maxLines} results trimmed)`
-      : "";
+  /*
+   *const maxLines = 1000;
+   *const maxChars = 40000;
+   *const trimmed = (lines.length > maxLines ? lines.slice(0, maxLines) : lines)
+   *  .join("\n")
+   *  .slice(0, maxChars);
+   *const trimmedMsg =
+   *  lines.length > maxLines
+   *    ? ` (${lines.length - maxLines} results trimmed)`
+   *    : "";
+   */
 
-  return `$ ${command}${statusMsg}\n${trimmed}${trimmedMsg}`;
+  // return `$ ${command}${statusMsg}\n${trimmed}${trimmedMsg}`;
+  return `$ ${command}${statusMsg}\n${output}`;
 };
