@@ -1,6 +1,7 @@
 import readline from "node:readline";
 
-export const askHistory: string[] = [];
+// Callback type for notifying when a new history entry is added
+type OnNewHistoryEntry = (entry: string) => void;
 
 type AskOptions = {
   question: string;
@@ -13,13 +14,25 @@ export class InputQueueManager {
   private stack: AskOptions[] = [];
   private rl: readline.Interface | null = null;
 
-  // We keep one “live” buffer shared across stacked questions
+  // We keep one "live" buffer shared across stacked questions
   // (so typing is preserved when questions change)
   private currentLine = "";
 
-  // History navigation state (custom: global askHistory + per-question history)
+  // History navigation state - uses only the history passed to ask()
   private historyIndex = -1;
   private savedLineBeforeHistory = "";
+
+  // Callback to notify caller when a new entry should be added to history
+  // This allows CliChatService to update inputHistory immediately
+  private onNewEntry?: OnNewHistoryEntry;
+
+  /**
+   * Set a callback to be notified when user enters a new history entry.
+   * This allows the caller to update their history source immediately.
+   */
+  setOnNewEntry(callback: OnNewHistoryEntry | undefined): void {
+    this.onNewEntry = callback;
+  }
 
   private ensureRl(): readline.Interface {
     if (this.rl) return this.rl;
@@ -28,7 +41,8 @@ export class InputQueueManager {
       input: process.stdin,
       output: process.stdout,
       terminal: true,
-      historySize: 500,
+      // Disable readline's internal history - we manage history ourselves
+      historySize: 0,
 
       /**
        * Use readline's built-in completion system so Tab does NOT insert a literal tab.
@@ -66,9 +80,9 @@ export class InputQueueManager {
       const resolved = this.stack.pop();
       resolved?.resolve(answer);
 
-      // Add to global history
-      if (answer && !askHistory.includes(answer)) {
-        askHistory.push(answer);
+      // Notify caller about new entry so they can update their history source
+      if (answer && this.onNewEntry) {
+        this.onNewEntry(answer);
       }
 
       // Reset preserved buffer + history nav state for the next question
@@ -82,7 +96,7 @@ export class InputQueueManager {
 
     // Handle Ctrl+C (readline SIGINT)
     this.rl.on("SIGINT", () => {
-      // If there’s an active question, cancel it (like Esc)
+      // If there's an active question, cancel it (like Esc)
       if (this.stack.length > 0) {
         const cancelled = this.stack.pop();
         cancelled?.resolve("");
@@ -117,7 +131,7 @@ export class InputQueueManager {
       // If RL is closed or nothing to ask, ignore
       if (!this.rl || this.stack.length === 0) return;
 
-      // Keep our buffer in sync with readline’s live line
+      // Keep our buffer in sync with readline's live line
       this.syncFromReadline();
 
       // Any "real typing" should exit history mode
@@ -151,20 +165,20 @@ export class InputQueueManager {
         return;
       }
 
-      // Custom Up/Down history: global askHistory + per-question history
+      // Custom Up/Down history navigation using only passed-in history
       if (key?.name === "up") {
-        const fullHistory = this.getFullHistory();
-        if (fullHistory.length === 0) return;
+        const history = this.getHistory();
+        if (history.length === 0) return;
 
         if (this.historyIndex === -1) {
           // entering history mode: remember current typed text
           this.savedLineBeforeHistory = this.currentLine;
         }
 
-        if (this.historyIndex < fullHistory.length - 1) {
+        if (this.historyIndex < history.length - 1) {
           this.historyIndex++;
           const next =
-            fullHistory[fullHistory.length - 1 - this.historyIndex] ?? "";
+            history[history.length - 1 - this.historyIndex] ?? "";
           this.replaceLine(next);
           this.currentLine = next;
         }
@@ -172,13 +186,13 @@ export class InputQueueManager {
       }
 
       if (key?.name === "down") {
-        const fullHistory = this.getFullHistory();
-        if (fullHistory.length === 0) return;
+        const history = this.getHistory();
+        if (history.length === 0) return;
 
         if (this.historyIndex > 0) {
           this.historyIndex--;
           const next =
-            fullHistory[fullHistory.length - 1 - this.historyIndex] ?? "";
+            history[history.length - 1 - this.historyIndex] ?? "";
           this.replaceLine(next);
           this.currentLine = next;
           return;
@@ -235,21 +249,21 @@ export class InputQueueManager {
     return value.replace(/[\r\n]+/g, " ").trim();
   }
 
-  private getFullHistory(): string[] {
+  /**
+   * Get history for navigation - simply uses the history passed to ask()
+   * Single source of truth: the caller (CliChatService) manages all history
+   */
+  private getHistory(): string[] {
     const current = this.peek();
-    const local = current?.history ?? [];
+    const history = current?.history ?? [];
 
-    // De-dup while preserving order preference (older -> newer)
-    const merged = [...askHistory, ...local];
-    const seen = new Set<string>();
+    // Sanitize entries
     const out: string[] = [];
-
-    for (const item of merged) {
+    for (const item of history) {
       const clean = this.sanitizeHistoryEntry(item);
-      if (!clean) continue;
-      if (seen.has(clean)) continue;
-      seen.add(clean);
-      out.push(clean);
+      if (clean) {
+        out.push(clean);
+      }
     }
 
     return out;
