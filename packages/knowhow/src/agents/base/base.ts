@@ -74,7 +74,12 @@ export abstract class BaseAgent implements IAgent {
     pause: "pause",
     kill: "kill",
     unpause: "unpause",
+    agentMsg: "agent:msg",
+    agentSay: "agent:say",
+    agentNewTask: "agent:newTask",
+    agentTaskComplete: "agent:taskComplete",
   };
+
   public tools: ToolsService;
   public events: EventService;
   public messageProcessor: MessageProcessor;
@@ -97,7 +102,7 @@ export abstract class BaseAgent implements IAgent {
     }
 
     // Subscribe to "agent:msg" events for dynamic context loading
-    this.events.on("agent:msg", (eventData: any) => {
+    this.events.on(this.eventTypes.agentMsg, (eventData: any) => {
       const message = {
         role: "user",
         content: JSON.stringify(eventData),
@@ -131,7 +136,7 @@ export abstract class BaseAgent implements IAgent {
 
     // Emit event for plugin integration
     const id = taskId || this.startTimeMs.toString();
-    this.events.emit("agent:newTask", {
+    this.events.emit(this.eventTypes.agentNewTask, {
       taskId: id,
     });
   }
@@ -319,6 +324,9 @@ export abstract class BaseAgent implements IAgent {
   logMessages(messages: Message[]) {
     for (const message of messages) {
       if (message.role === "assistant" && message.content) {
+        this.agentEvents.emit(this.eventTypes.agentSay, {
+          message: message.content,
+        });
         console.log("\n", "💬 " + message.content, "\n");
       }
     }
@@ -576,7 +584,7 @@ export abstract class BaseAgent implements IAgent {
 
             if (finalMessage) {
               // Emit task completion event for plugins (like GitPlugin)
-              this.events.emit("agent:taskComplete", {
+              this.events.emit(this.eventTypes.agentTaskComplete, {
                 taskId:
                   this.currentTaskId ||
                   this.startTimeMs?.toString() ||
@@ -723,6 +731,11 @@ export abstract class BaseAgent implements IAgent {
     if (this.status === this.eventTypes.done) {
       console.warn("Agent is done, cannot take more messages");
     } else {
+      const pendingMessages = this.pendingUserMessages.map((m) => m.content);
+      if (pendingMessages.includes(message.content)) {
+        // Ignore messages we already have queue'd up
+        return;
+      }
       this.pendingUserMessages.push(message);
     }
   }
