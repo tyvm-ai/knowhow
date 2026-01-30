@@ -33,6 +33,46 @@ export interface UpdateOrgTaskResponse {
   inProgress: boolean;
 }
 
+// Agent task synchronization interfaces
+export interface TaskDetailsResponse {
+  taskId: string;
+  inProgress: boolean;
+  status: "running" | "paused" | "killed" | "completed";
+  totalUsdCost: number;
+  threads: any;
+  createdAt: string;
+  updatedAt: string;
+  messageId?: string;
+  hasPendingMessages: boolean;
+  pendingMessagesCount: number;
+}
+
+export interface PendingMessage {
+  id: string;
+  message: string;
+  role: string;
+  createdAt: Date;
+  processedAt: Date | null;
+}
+
+export interface SendMessageRequest {
+  message: string;
+  role?: "user" | "system";
+}
+
+export interface SendMessageResponse {
+  id: string;
+  message: string;
+}
+
+export interface StatusResponse {
+  status: string;
+}
+
+export interface MarkProcessedResponse {
+  processedCount: number;
+}
+
 export function loadKnowhowJwt(): string {
   const jwtFile = path.join(process.cwd(), ".knowhow", ".jwt");
   if (!fs.existsSync(jwtFile)) {
@@ -178,6 +218,106 @@ export class KnowhowSimpleClient {
     return axios.put<UpdateOrgTaskResponse>(
       `${this.baseUrl}/api/chat/tasks/${taskId}`,
       updates,
+      {
+        headers: this.headers,
+      }
+    );
+  }
+
+  // ============================================
+  // Agent Task Synchronization Methods
+  // ============================================
+
+  /**
+   * Get task details including status, threads, and pending message info
+   */
+  async getTaskDetails(taskId: string) {
+    await this.checkJwt();
+    return axios.get<TaskDetailsResponse>(
+      `${this.baseUrl}/api/org-agent-tasks/${taskId}`,
+      {
+        headers: this.headers,
+      }
+    );
+  }
+
+  /**
+   * Get pending messages for an agent task
+   */
+  async getPendingMessages(taskId: string) {
+    await this.checkJwt();
+    return axios.get<PendingMessage[]>(
+      `${this.baseUrl}/api/org-agent-tasks/${taskId}/pending-messages`,
+      {
+        headers: this.headers,
+      }
+    );
+  }
+
+  /**
+   * Mark pending messages as processed
+   */
+  async markMessagesAsProcessed(taskId: string, messageIds: string[]) {
+    await this.checkJwt();
+    return axios.post<MarkProcessedResponse>(
+      `${this.baseUrl}/api/org-agent-tasks/${taskId}/pending-messages/mark-processed`,
+      { messageIds },
+      {
+        headers: this.headers,
+      }
+    );
+  }
+
+  /**
+   * Send a message to a running agent task
+   */
+  async sendMessageToAgent(taskId: string, message: string, role: "user" | "system" = "user") {
+    await this.checkJwt();
+    return axios.post<SendMessageResponse>(
+      `${this.baseUrl}/api/org-agent-tasks/${taskId}/messages`,
+      { message, role },
+      {
+        headers: this.headers,
+      }
+    );
+  }
+
+  /**
+   * Pause a running agent task
+   */
+  async pauseAgent(taskId: string) {
+    await this.checkJwt();
+    return axios.post<StatusResponse>(
+      `${this.baseUrl}/api/org-agent-tasks/${taskId}/pause`,
+      {},
+      {
+        headers: this.headers,
+      }
+    );
+  }
+
+  /**
+   * Resume a paused agent task
+   */
+  async resumeAgent(taskId: string) {
+    await this.checkJwt();
+    return axios.post<StatusResponse>(
+      `${this.baseUrl}/api/org-agent-tasks/${taskId}/resume`,
+      {},
+      {
+        headers: this.headers,
+      }
+    );
+  }
+
+  /**
+   * Kill/cancel a running or paused agent task
+   */
+  async killAgent(taskId: string) {
+    await this.checkJwt();
+    return axios.post<StatusResponse>(
+      `${this.baseUrl}/api/org-agent-tasks/${taskId}/kill`,
+      {},
       {
         headers: this.headers,
       }

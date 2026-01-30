@@ -3,6 +3,7 @@ import {
   ToolResponseCache,
   jqToolResponseDefinition,
   grepToolResponseDefinition,
+  tailToolResponseDefinition,
   listStoredToolResponsesDefinition,
 } from "../../src/processors/ToolResponseCache";
 import { ToolsService } from "../../src/services";
@@ -173,11 +174,13 @@ describe("ToolResponseCache", () => {
       expect(mockToolsService.addTools).toHaveBeenCalledWith([
         jqToolResponseDefinition,
         grepToolResponseDefinition,
+        tailToolResponseDefinition,
         listStoredToolResponsesDefinition,
       ]);
       expect(mockToolsService.addFunctions).toHaveBeenCalledWith({
         jqToolResponse: expect.any(Function),
         grepToolResponse: expect.any(Function),
+        tailToolResponse: expect.any(Function),
         listStoredToolResponses: expect.any(Function),
       });
     });
@@ -564,6 +567,12 @@ describe("ToolResponseCache", () => {
         {
           type: "function",
           function: expect.objectContaining({
+            name: "tailToolResponse",
+          }),
+        },
+        {
+          type: "function",
+          function: expect.objectContaining({
             name: "listStoredToolResponses",
           }),
         },
@@ -571,6 +580,7 @@ describe("ToolResponseCache", () => {
       expect(mockToolsService.addFunctions).toHaveBeenCalledWith({
         jqToolResponse: expect.any(Function),
         grepToolResponse: expect.any(Function),
+        tailToolResponse: expect.any(Function),
         listStoredToolResponses: expect.any(Function),
       });
     });
@@ -598,6 +608,104 @@ describe("ToolResponseCache", () => {
       // Test the registered function
       const result = await jqFunction("call_123", ".test");
       expect(result).toBe('"value"');
+    });
+  });
+
+  describe("tailToolResponse", () => {
+    beforeEach(() => {
+      // Store test data with multiple lines
+      const multiLineContent = Array(50)
+        .fill(0)
+        .map((_, i) => `Line ${i + 1}: This is line number ${i + 1}`)
+        .join("\n");
+      cache.storeToolResponse(multiLineContent, "call_multiline");
+
+      // Store short content
+      cache.storeToolResponse("Line 1\nLine 2\nLine 3", "call_short");
+
+      // Store single line
+      cache.storeToolResponse("Single line content", "call_single");
+
+      // Store empty content
+      cache.storeToolResponse("", "call_empty");
+    });
+
+    it("should return last 10 lines by default", async () => {
+      const result = await cache.tailToolResponse("call_multiline");
+      const lines = result.split("\n");
+      expect(lines).toHaveLength(10);
+      expect(lines[0]).toContain("41: Line 41");
+      expect(lines[9]).toContain("50: Line 50");
+    });
+
+    it("should return last n lines when specified", async () => {
+      const result = await cache.tailToolResponse("call_multiline", {
+        lines: 5,
+      });
+      const lines = result.split("\n");
+      expect(lines).toHaveLength(5);
+      expect(lines[0]).toContain("46: Line 46");
+      expect(lines[4]).toContain("50: Line 50");
+    });
+
+    it("should return all lines if n is greater than total lines", async () => {
+      const result = await cache.tailToolResponse("call_short", { lines: 10 });
+      const lines = result.split("\n");
+      expect(lines).toHaveLength(3);
+      expect(lines[0]).toContain("1: Line 1");
+      expect(lines[1]).toContain("2: Line 2");
+      expect(lines[2]).toContain("3: Line 3");
+    });
+
+    it("should handle single line content", async () => {
+      const result = await cache.tailToolResponse("call_single", { lines: 5 });
+      expect(result).toBe("1: Single line content");
+    });
+
+    it("should handle empty content", async () => {
+      const result = await cache.tailToolResponse("call_empty", { lines: 10 });
+      expect(result).toBe("1: ");
+    });
+
+    it("should return last 1 line when lines is 1", async () => {
+      const result = await cache.tailToolResponse("call_multiline", {
+        lines: 1,
+      });
+      expect(result).toBe("50: Line 50: This is line number 50");
+    });
+
+    it("should return last 20 lines", async () => {
+      const result = await cache.tailToolResponse("call_multiline", {
+        lines: 20,
+      });
+      const lines = result.split("\n");
+      expect(lines).toHaveLength(20);
+      expect(lines[0]).toContain("31: Line 31");
+      expect(lines[19]).toContain("50: Line 50");
+    });
+
+    it("should format line numbers correctly", async () => {
+      const result = await cache.tailToolResponse("call_multiline", {
+        lines: 3,
+      });
+      const lines = result.split("\n");
+      expect(lines[0]).toMatch(/^48:/);
+      expect(lines[1]).toMatch(/^49:/);
+      expect(lines[2]).toMatch(/^50:/);
+    });
+
+    it("should return error for missing tool call ID", async () => {
+      const result = await cache.tailToolResponse("missing_id");
+      expect(result).toContain("Error: No tool response found");
+      expect(result).toContain("missing_id");
+      expect(result).toContain("Available IDs:");
+    });
+
+    it("should handle lines option of 0", async () => {
+      const result = await cache.tailToolResponse("call_multiline", {
+        lines: 0,
+      });
+      expect(result).toBe("");
     });
   });
 

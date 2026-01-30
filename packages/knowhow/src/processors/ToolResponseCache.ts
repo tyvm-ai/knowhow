@@ -7,6 +7,9 @@ import {
   grepToolResponseDefinition,
   executeGrep,
   GrepOptions,
+  tailToolResponseDefinition,
+  executeTail,
+  TailOptions,
   listStoredToolResponsesDefinition,
   executeListStoredToolResponses,
 } from "./tools";
@@ -156,9 +159,20 @@ export class ToolResponseCache {
     options?: GrepOptions
   ): Promise<string> {
     const data = this.storage[toolCallId];
-    console.log({ data });
     const availableIds = Object.keys(this.storage);
     return executeGrep(data, toolCallId, pattern, availableIds, options);
+  }
+
+  /**
+   * Get the last n lines from a tool response
+   */
+  async tailToolResponse(
+    toolCallId: string,
+    options?: TailOptions
+  ): Promise<string> {
+    const data = this.storage[toolCallId];
+    const availableIds = Object.keys(this.storage);
+    return executeTail(data, toolCallId, availableIds, options);
   }
 
   /**
@@ -208,6 +222,7 @@ export class ToolResponseCache {
     toolsService.addTools([
       jqToolResponseDefinition,
       grepToolResponseDefinition,
+      tailToolResponseDefinition,
       listStoredToolResponsesDefinition,
     ]);
     toolsService.addFunctions({
@@ -224,6 +239,12 @@ export class ToolResponseCache {
       ) => {
         return await this.grepToolResponse(toolCallId, pattern, options);
       },
+      [tailToolResponseDefinition.function.name]: async (
+        toolCallId: string,
+        options?: any
+      ) => {
+        return await this.tailToolResponse(toolCallId, options);
+      },
       [listStoredToolResponsesDefinition.function.name]: async () => {
         return await this.listStoredToolResponses();
       },
@@ -234,5 +255,6 @@ export class ToolResponseCache {
 export {
   jqToolResponseDefinition,
   grepToolResponseDefinition,
+  tailToolResponseDefinition,
   listStoredToolResponsesDefinition,
 };
