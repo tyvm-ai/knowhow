@@ -25,7 +25,10 @@ export async function writeFileChunk(
 
   if (!filePath || content === undefined) {
     throw new Error(
-      "File path and content are both required. Make sure you write small chunks of content, otherwise you may hit output limits."
+      `File path and content are both required. We received: ${JSON.stringify({
+        filePath,
+        content,
+      })}. Make sure you write small chunks of content, otherwise you will hit output limits, resulting in content being empty.`
     );
   }
 
