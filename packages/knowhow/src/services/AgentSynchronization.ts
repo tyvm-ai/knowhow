@@ -9,6 +9,7 @@ import {
   PendingMessage,
 } from "./KnowhowClient";
 import { BaseAgent } from "../agents/base/base";
+import { wait } from "src/utils";
 
 export interface SyncOptions {
   messageId?: string;
@@ -235,7 +236,7 @@ export class AgentSynchronization {
       try {
         // Update task with current state
         await this.updateChatTask(this.knowhowTaskId, agent, true);
-        
+
         // Check for pending messages, pause, or kill status
         await this.checkAndProcessPendingMessages(agent, this.knowhowTaskId);
       } catch (error) {
@@ -251,6 +252,7 @@ export class AgentSynchronization {
       }
 
       try {
+        await wait(200);
         console.log(
           `Updating Knowhow chat task on completion..., ${this.knowhowTaskId}`
         );
