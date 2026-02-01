@@ -529,17 +529,18 @@ Please continue from where you left off and complete the original request.
           // Update TaskInfo with the created knowhowTaskId
           taskInfo.knowhowTaskId = knowhowTaskId;
           this.taskRegistry.register(taskId, taskInfo);
+
+          // Set up event-based synchronization with Knowhow API
+          await this.agentSync.setupAgentSync(agent, knowhowTaskId);
         }
       }
 
       // Set up session update listener
-
       agent.agentEvents.on(
         agent.eventTypes.threadUpdate,
         async (threadState) => {
           this.updateSession(taskId, threadState);
           taskInfo.totalCost = agent.getTotalCostUsd();
-          await this.agentSync.sync(agent, knowhowTaskId);
         }
       );
 
@@ -633,11 +634,6 @@ Please continue from where you left off and complete the original request.
             // Update session with final state
             this.updateSession(taskId, agent.getThreads());
             taskInfo.endTime = Date.now();
-
-            // Final update to Knowhow chat task
-            if (knowhowTaskId) {
-              await this.agentSync.finalizeTask(agent, knowhowTaskId, output);
-            }
           }
           console.log(Marked.parse(output));
           resolve(doneMsg);
