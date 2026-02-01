@@ -170,26 +170,45 @@ export class LanguagePlugin extends PluginBase implements Plugin {
         // Resolve sources for matching terms
         const resolvedSources = await this.resolveSources(matchingFileTerms);
 
-        // Emit agent message event with resolved context
-        this.eventService.emit(
-          "agent:msg",
-          JSON.stringify({
-            type: "language_context_trigger",
-            filePath,
-            matchingTerms: matchingFileTerms,
-            eventType,
-            resolvedSources,
-            contextMessage: `LANGUAGE PLUGIN: File event ${eventType} on ${filePath} triggered contextual expansions for terms: ${matchingFileTerms.join(
-              ", "
-            )}.
-            Expanded context: ${JSON.stringify(resolvedSources)}
-            These terms are directly related to the file operation so be sure to contextualize your response to this information.`,
-          })
+        const message = `These terms are directly related to the file operation so be sure to contextualize your response to this information.`;
+        this.emitAgentMessage(
+          eventType,
+          matchingFileTerms,
+          resolvedSources,
+          message
         );
       }
     } catch (error) {
       console.error("LANGUAGE PLUGIN: Error handling file event:", error);
     }
+  }
+
+  private emitAgentMessage(
+    eventType: string,
+    matchingTerms: string[],
+    resolvedSources: any[],
+    context: string
+  ) {
+    this.eventService.emit(
+      "agent:msg",
+
+      `<Workflow>
+      ${JSON.stringify({
+        type: "language_context_trigger",
+        eventType,
+        matchingTerms,
+        resolvedSources,
+        contextMessage: `LANGUAGE PLUGIN: Agent event ${eventType} triggered contextual expansions for terms: ${matchingTerms.join(
+          ", "
+        )}.
+            Expanded context: ${JSON.stringify(resolvedSources)}
+            These terms are directly related to what the agent is discussing so be sure to contextualize your response to this information.
+            ${context}
+        `,
+      })}
+      </Workflow>
+      `
+    );
   }
 
   /**
@@ -202,7 +221,7 @@ export class LanguagePlugin extends PluginBase implements Plugin {
       const isJsonObj = userPrompt.startsWith("{") && userPrompt.endsWith("}");
 
       // Skip if this is probably a language_context_trigger to avoid loops
-      if (isJsonObj && userPrompt.includes("language_context_trigger")) {
+      if (userPrompt.includes("language_context_trigger")) {
         return;
       }
 
@@ -212,20 +231,12 @@ export class LanguagePlugin extends PluginBase implements Plugin {
         // Resolve sources for matching terms
         const resolvedSources = await this.resolveSources(matchingTerms);
 
-        // Emit agent message event with resolved context
-        this.eventService.emit(
-          "agent:msg",
-          JSON.stringify({
-            type: "language_context_trigger",
-            eventType,
-            matchingTerms,
-            resolvedSources,
-            contextMessage: `LANGUAGE PLUGIN: Agent event ${eventType} triggered contextual expansions for terms: ${matchingTerms.join(
-              ", "
-            )}.
-            Expanded context: ${JSON.stringify(resolvedSources)}
-            These terms are directly related to what the agent is discussing so be sure to contextualize your response to this information.`,
-          })
+        const message = `These terms are directly related to the agent's message so be sure to contextualize your response to this information.`;
+        this.emitAgentMessage(
+          eventType,
+          matchingTerms,
+          resolvedSources,
+          message
         );
       }
     } catch (error) {
@@ -269,6 +280,8 @@ export class LanguagePlugin extends PluginBase implements Plugin {
     if (!matchingTerms || !matchingTerms.length) {
       return "LANGUAGE PLUGIN: No matching terms found";
     }
+
+    console.log("LANGUAGE PLUGIN: Matching terms found:", matchingTerms);
 
     // Return the file contents in a format that can be added to the prompt context
     return `LANGUAGE PLUGIN: The user mentioned these terms triggering contextual expansions ${matchingTerms} expanded to: ${JSON.stringify(

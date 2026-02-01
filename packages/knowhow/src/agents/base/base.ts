@@ -41,7 +41,7 @@ export abstract class BaseAgent implements IAgent {
   abstract name: string;
   abstract description: string;
 
-  private status = "in_progress";
+  private status = "not_started";
   private lastHealthCheckTime: number = 0;
   protected provider = "openai";
   protected modelName: string = Models.openai.GPT_4o;
@@ -70,11 +70,14 @@ export abstract class BaseAgent implements IAgent {
     costUpdate: "cost_update",
     toolCall: "tool:pre_call",
     toolUsed: "tool:post_call",
+    notStarted: "not_started",
+    inProgress: "in_progress",
     done: "done",
     pause: "pause",
     kill: "kill",
     unpause: "unpause",
     agentMsg: "agent:msg",
+    userSay: "user:say",
     agentSay: "agent:say",
     agentNewTask: "agent:newTask",
     agentTaskComplete: "agent:taskComplete",
@@ -103,11 +106,16 @@ export abstract class BaseAgent implements IAgent {
 
     // Subscribe to "agent:msg" events for dynamic context loading
     this.events.on(this.eventTypes.agentMsg, (eventData: any) => {
-      const message = {
-        role: "user",
-        content: JSON.stringify(eventData),
-      } as Message;
-      this.addPendingUserMessage(message);
+      if (
+        this.status === this.eventTypes.inProgress ||
+        this.status === this.eventTypes.pause
+      ) {
+        const message = {
+          role: "user",
+          content: JSON.stringify(eventData),
+        } as Message;
+        this.addPendingMessage(message);
+      }
     });
   }
 
@@ -129,7 +137,7 @@ export abstract class BaseAgent implements IAgent {
     this.taskBreakdown = "";
     this.summaries = [];
     this.totalCostUsd = 0;
-    this.status = "in_progress";
+    this.status = this.eventTypes.inProgress;
     this.turnCount = 0;
     this.startTimeMs = Date.now();
     this.currentTaskId = taskId || this.startTimeMs.toString();
@@ -437,7 +445,7 @@ export abstract class BaseAgent implements IAgent {
   unpause() {
     console.log("Unpausing agent");
     this.agentEvents.emit(this.eventTypes.unpause, this);
-    this.status = "in_progress";
+    this.status = this.eventTypes.inProgress;
   }
 
   async unpaused() {
@@ -465,6 +473,10 @@ export abstract class BaseAgent implements IAgent {
   }
 
   async call(userInput: string, _messages?: Message[]) {
+    if (this.status === this.eventTypes.notStarted) {
+      this.status = this.eventTypes.inProgress;
+    }
+
     if (this.status === this.eventTypes.pause) {
       await this.unpaused();
     }
@@ -568,6 +580,8 @@ export abstract class BaseAgent implements IAgent {
             "pre_tools"
           );
 
+          this.updateCurrentThread(messages);
+
           for (const toolCall of toolCalls) {
             const toolMessages = await this.processToolMessages(toolCall);
             // Add the tool responses to the thread
@@ -662,41 +676,13 @@ export abstract class BaseAgent implements IAgent {
 
       if (["assistant", "tool"].includes(messages[messages.length - 1].role)) {
         // sometimes the agent just says a message and doesn't call a tool, or compression ends on a tool message
-        console.log(
-          "Agent continuing to the next iteration, reminding agent how to terminate"
-        );
 
-        const remainingTime =
-          this.maxRunTimeMs && this.startTimeMs
-            ? this.maxRunTimeMs - (Date.now() - this.startTimeMs)
-            : null;
-
-        const remainingTurns = this.maxTurns
-          ? this.maxTurns - this.turnCount
-          : null;
-
-        const timeRemainsingMsg = remainingTime
-          ? `You have approximately ${Math.floor(
-              remainingTime / 1000
-            )} seconds remaining for this task. `
-          : "";
-
-        const turnsRemainingMsg = remainingTurns
-          ? `You have ${remainingTurns} turns remaining. `
-          : "";
-
-        const remainingBudget = this.maxSpend
-          ? this.maxSpend - this.totalCostUsd
-          : null;
-        const budgetRemainingMsg = remainingBudget
-          ? `You have $${remainingBudget.toFixed(4)} remaining in your budget.`
-          : "";
+        const statusMessage = this.getStatusMessage();
+        this.logStatus();
 
         const continuation = `<Workflow>
         workflow continues until you call one of ${this.requiredToolNames}.\n
-        ${timeRemainsingMsg}
-        ${turnsRemainingMsg}
-        ${budgetRemainingMsg}
+        ${statusMessage}
         </Workflow>`;
 
         messages.push({
@@ -727,7 +713,47 @@ export abstract class BaseAgent implements IAgent {
     }
   }
 
-  addPendingUserMessage(message: Message) {
+  getStatusMessage() {
+    const remainingTime =
+      this.maxRunTimeMs && this.startTimeMs
+        ? this.maxRunTimeMs - (Date.now() - this.startTimeMs)
+        : null;
+
+    const remainingTurns = this.maxTurns
+      ? this.maxTurns - this.turnCount
+      : null;
+
+    const timeRemainingMsg = remainingTime
+      ? `You have approximately ${Math.floor(
+          remainingTime / 1000
+        )} seconds remaining for this task. `
+      : "";
+
+    const turnsRemainingMsg = remainingTurns
+      ? `You have ${remainingTurns} turns remaining. `
+      : "";
+
+    const remainingBudget = this.maxSpend
+      ? this.maxSpend - this.totalCostUsd
+      : null;
+    const budgetRemainingMsg = remainingBudget
+      ? `You have $${remainingBudget.toFixed(4)} remaining in your budget.`
+      : "";
+
+    const statusMessage = `${timeRemainingMsg}\n${turnsRemainingMsg}\n${budgetRemainingMsg}`;
+    return statusMessage;
+  }
+
+  logStatus() {
+    const statusMessage = this.getStatusMessage();
+    console.log(
+      `\n● ${this.name} status: $${this.getTotalCostUsd().toPrecision(
+        3
+      )}\n${statusMessage}`
+    );
+  }
+
+  addPendingMessage(message: Message) {
     if (this.status === this.eventTypes.done) {
       console.warn("Agent is done, cannot take more messages");
     } else {
@@ -738,6 +764,11 @@ export abstract class BaseAgent implements IAgent {
       }
       this.pendingUserMessages.push(message);
     }
+  }
+
+  addPendingUserMessage(message: Message) {
+    this.addPendingMessage(message);
+    this.events.emit(this.eventTypes.userSay, message.content);
   }
 
   getMessagesLength(messages: Message[]) {

@@ -769,6 +769,7 @@ Please continue from where you left off and complete the original request.
         agent.agentEvents.once(agent.eventTypes.done, (doneMsg) => {
           // Capture the agent's final output
           agentFinalOutput = doneMsg || "No response from the AI";
+          console.log("Finished", taskId, `$${agent.getTotalCostUsd()}`);
           finished = true;
           resolve("done");
         });

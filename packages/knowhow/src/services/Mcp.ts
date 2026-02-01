@@ -203,7 +203,7 @@ export class McpService {
     return this.clients[index];
   }
 
-  getFunction(toolName: string) {
+  getFunction(toolName: string, timeout?: number) {
     const client = this.getToolClient(toolName);
 
     // Handle unwrapped tool names if we have 1 client
@@ -227,8 +227,8 @@ export class McpService {
         },
         CallToolResultSchema,
         {
-          timeout: 10 * 60 * 1000,
-          maxTotalTimeout: 10 * 60 * 1000,
+          timeout: timeout || 10 * 60 * 1000,
+          maxTotalTimeout: timeout || 10 * 60 * 1000,
         }
       );
       return tool;
