@@ -3,7 +3,7 @@ import { IAgent } from "../agents/interface";
 import { EventService } from "./EventService";
 import { ToolsService } from "./Tools";
 import { ConfigAgent } from "../agents/configurable/ConfigAgent";
-import { AgentContext } from "src/agents/base/base";
+import { AgentContext } from "../agents/base/base";
 
 export class AgentService {
   private agents: Map<string, IAgent> = new Map();

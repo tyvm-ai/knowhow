@@ -24,7 +24,7 @@ import {
 } from "../../processors/index";
 import { TaskInfo, ChatSession } from "../types";
 import { agents } from "../../agents";
-import { ToolCallEvent } from "src/agents/base/base";
+import { ToolCallEvent } from "../../agents/base/base";
 
 export class AgentModule extends BaseChatModule {
   name = "agent";

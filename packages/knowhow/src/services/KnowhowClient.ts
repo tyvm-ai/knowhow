@@ -7,7 +7,7 @@ import {
   CompletionResponse,
   EmbeddingOptions,
   EmbeddingResponse,
-} from "src/clients";
+} from "../clients";
 import { Config } from "../types";
 
 // Chat Task interfaces

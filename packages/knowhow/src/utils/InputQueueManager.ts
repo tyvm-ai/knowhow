@@ -150,21 +150,6 @@ export class InputQueueManager {
         this.savedLineBeforeHistory = "";
       }
 
-      if (key?.name === "escape") {
-        // Cancel only the current (top) question
-        const cancelled = this.stack.pop();
-        cancelled?.resolve("");
-
-        this.currentLine = "";
-        this.historyIndex = -1;
-        this.savedLineBeforeHistory = "";
-
-        // clear the current input in readline and redraw
-        this.replaceLine("");
-        this.renderTopOrClose();
-        return;
-      }
-
       // Custom Up/Down history navigation using only passed-in history
       if (key?.name === "up") {
         const history = this.getHistory();

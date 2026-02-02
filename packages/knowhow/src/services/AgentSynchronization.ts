@@ -9,7 +9,7 @@ import {
   PendingMessage,
 } from "./KnowhowClient";
 import { BaseAgent } from "../agents/base/base";
-import { wait } from "src/utils";
+import { wait } from "../utils";
 
 export interface SyncOptions {
   messageId?: string;
