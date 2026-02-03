@@ -595,6 +595,12 @@ Please continue from where you left off and complete the original request.
         new HarmonyToolProcessor().createProcessor(),
       ]);
 
+      agent.messageProcessor.setProcessors("post_tools", [
+        new TokenCompressor(agent.tools).createProcessor((msg) =>
+          Boolean(msg.role === "tool" && msg.tool_call_id)
+        ),
+      ]);
+
       // Set up event listeners
       if (!agent.agentEvents.listenerCount(agent.eventTypes.toolCall)) {
         agent.agentEvents.on(

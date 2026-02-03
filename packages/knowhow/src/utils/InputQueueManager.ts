@@ -18,6 +18,11 @@ export class InputQueueManager {
   // (so typing is preserved when questions change)
   private currentLine = "";
 
+  // Paste detection - buffer lines during paste operations
+  private pasteBuffer: string[] = [];
+  private pasteTimeout: NodeJS.Timeout | null = null;
+  private readonly PASTE_DELAY_MS = 10; // Time to wait for more paste lines
+
   // History navigation state - uses only the history passed to ask()
   private historyIndex = -1;
   private savedLineBeforeHistory = "";
@@ -68,30 +73,32 @@ export class InputQueueManager {
       },
     });
 
-    // When user presses Enter, resolve ONLY the top question
+    // When user presses Enter, buffer the line for paste detection
     this.rl.on("line", (line) => {
       const current = this.peek();
       if (!current) return;
 
-      // IMPORTANT: do not allow embedded newlines in history / answers
-      const answer = this.sanitizeHistoryEntry(line);
-
-      // Pop & resolve current question
-      const resolved = this.stack.pop();
-      resolved?.resolve(answer);
-
-      // Notify caller about new entry so they can update their history source
-      if (answer && this.onNewEntry) {
-        this.onNewEntry(answer);
+      // Detect paste operation: if we receive a line while already processing lines,
+      // it's likely part of a paste. Buffer it and wait for more.
+      if (this.pasteTimeout) {
+        // Already in paste mode, add to buffer
+        this.pasteBuffer.push(line);
+        clearTimeout(this.pasteTimeout);
+        this.pasteTimeout = setTimeout(() => this.flushPasteBuffer(), this.PASTE_DELAY_MS);
+        return;
       }
 
-      // Reset preserved buffer + history nav state for the next question
-      this.currentLine = "";
-      this.historyIndex = -1;
-      this.savedLineBeforeHistory = "";
+      // Start paste detection mode - buffer this line and wait to see if more come
+      this.pasteBuffer.push(line);
+      this.pasteTimeout = setTimeout(() => this.flushPasteBuffer(), this.PASTE_DELAY_MS);
+    });
 
-      // Update prompt for next stacked question (if any)
-      this.renderTopOrClose();
+    this.rl.on("close", () => {
+      // Flush any remaining paste buffer on close
+      if (this.pasteTimeout) {
+        clearTimeout(this.pasteTimeout);
+        this.flushPasteBuffer();
+      }
     });
 
     // Handle Ctrl+C (readline SIGINT)
@@ -198,6 +205,34 @@ export class InputQueueManager {
     });
 
     return this.rl;
+  }
+
+  private flushPasteBuffer(): void {
+    if (this.pasteBuffer.length === 0) return;
+
+    const answer = this.pasteBuffer.join("\n");
+    this.pasteBuffer = [];
+    this.pasteTimeout = null;
+
+    const current = this.peek();
+    if (!current) return;
+
+    // Pop & resolve current question with the combined paste content (or single line)
+    const resolved = this.stack.pop();
+    resolved?.resolve(answer);
+
+    // Notify caller about new entry
+    if (answer && this.onNewEntry) {
+      this.onNewEntry(answer);
+    }
+
+    // Reset preserved buffer + history nav state for the next question
+    this.currentLine = "";
+    this.historyIndex = -1;
+    this.savedLineBeforeHistory = "";
+
+    // Update prompt for next stacked question (if any)
+    this.renderTopOrClose();
   }
 
   async ask(question: string, options: string[] = [], history: string[] = []) {

@@ -6,6 +6,14 @@ import { join, resolve, dirname } from 'path';
 import { existsSync } from 'fs';
 import { SwaggerMcpGenerator } from './generator';
 
+// Export core runtime modules
+export * from './core/core';
+
+// Export proxy-runtime with a namespace to avoid conflicts
+import * as ProxyRuntime from './proxy-runtime';
+export { ProxyRuntime };
+export { statelessProxy } from './proxy-runtime';
+
 function generateDomainBasedDir(swaggerSource: string, packageDir: string): string {
   try {
     // Try to parse as URL first
