@@ -75,10 +75,17 @@ export function generateToolsFromSwagger(swaggerSpec: SwaggerSpec): Tool[] {
         }
       }
 
-      // Add query parameters
+      // Add query parameters (excluding header parameters which are provided separately)
       if (operation.parameters) {
         for (const param of operation.parameters) {
+          // Only include query parameters; skip header and path parameters
           if (param.in === 'query') {
+            // Skip common authentication parameters - these are injected by the proxy layer
+            const excludedAuthParams = ["token", "api_key", "apikey", "access_token", "auth", "authorization"];
+            if (excludedAuthParams.includes(param.name.toLowerCase())) {
+              continue;
+            }
+
             let schema = param.schema || param;
             if (schema && schema.$ref) {
               schema = resolveSchemaRef(schema.$ref, swaggerSpec);
@@ -109,7 +116,8 @@ export function generateToolsFromSwagger(swaggerSpec: SwaggerSpec): Tool[] {
         if (!content) {
           console.warn(`Operation ${operationId} has requestBody but no content`);
         } else {
-          const jsonContent = content['application/json'];
+          // Support both JSON and form-encoded content types
+          const jsonContent = content['application/json'] || content['application/x-www-form-urlencoded'];
 
           if (jsonContent && jsonContent.schema) {
           let schema = jsonContent.schema;
