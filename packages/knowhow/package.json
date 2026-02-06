@@ -10,7 +10,7 @@
     "test": "jest --testTimeout 300000",
     "test:debug": "node --inspect-brk ../../node_modules/jest/bin/jest.js --detectOpenHandles --forceExit --testTimeout 300000",
     "compile": "tsc",
-    "start": "npm run compile && node ts_build/src/server/index.js",
+    "start": "npm run compile && node --no-node-snapshot ts_build/src/server/index.js",
     "dataset:diffs:generate": "ts-node src/dataset/diffs/generate.ts",
     "dataset:diffs:jsonl": "ts-node src/dataset/diffs/jsonl.ts",
     "prepublishOnly": "npm run compile",

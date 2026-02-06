@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env node --no-node-snapshot
 import "source-map-support/register";
 import * as fs from "fs";
 import * as path from "path";
