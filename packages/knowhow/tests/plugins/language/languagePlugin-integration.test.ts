@@ -146,7 +146,9 @@ test("should calculate sum correctly", () => {
     // Verify agent:msg was emitted
     expect(mockEventService.emit).toHaveBeenCalledWith(
       "agent:msg",
-      expect.stringContaining("language_context_trigger")
+      expect.stringMatching(
+        /<Workflow>[\s\S]*language_context_trigger[\s\S]*<\/Workflow>/
+      )
     );
   });
 
@@ -198,7 +200,9 @@ describe('User service', () => {
     // Should trigger on 'test(' pattern
     expect(mockEventService.emit).toHaveBeenCalledWith(
       "agent:msg",
-      expect.stringContaining("Testing context")
+      expect.stringMatching(
+        /<Workflow>[\s\S]*Testing context[\s\S]*<\/Workflow>/
+      )
     );
   });
 
@@ -267,7 +271,9 @@ test('should get user data', () => {
     // Should now trigger on the edited content
     expect(mockEventService.emit).toHaveBeenCalledWith(
       "agent:msg",
-      expect.stringContaining("Testing context")
+      expect.stringMatching(
+        /<Workflow>[\s\S]*Testing context[\s\S]*<\/Workflow>/
+      )
     );
   });
 
@@ -336,7 +342,9 @@ test('should query database correctly', async () => {
     // Should emit agent:msg for the triggered terms
     expect(mockEventService.emit).toHaveBeenCalledWith(
       "agent:msg",
-      expect.stringContaining("language_context_trigger")
+      expect.stringMatching(
+        /<Workflow>[\s\S]*language_context_trigger[\s\S]*<\/Workflow>/
+      )
     );
 
     // Check that the emitted message contains both contexts
@@ -345,7 +353,10 @@ test('should query database correctly', async () => {
     );
     expect(emitCalls.length).toBeGreaterThan(0);
 
-    const eventData = JSON.parse(emitCalls[0][1]);
+    // Extract JSON from <Workflow> tags
+    const workflowContent = emitCalls[0][1].match(/<Workflow>\s*(\{[\s\S]*?\})\s*<\/Workflow>/);
+    expect(workflowContent).toBeDefined();
+    const eventData = JSON.parse(workflowContent[1]);
     expect(eventData.matchingTerms).toEqual(
       expect.arrayContaining(["test(", "database"])
     );
@@ -393,7 +404,9 @@ test('sum function works', () => {
 
     expect(mockEventService.emit).toHaveBeenCalledWith(
       "agent:msg",
-      expect.stringContaining("Testing context")
+      expect.stringMatching(
+        /<Workflow>[\s\S]*Testing context[\s\S]*<\/Workflow>/
+      )
     );
 
     // Clean up
@@ -447,7 +460,9 @@ test('performance test', () => {
     // Should still trigger correctly
     expect(mockEventService.emit).toHaveBeenCalledWith(
       "agent:msg",
-      expect.stringContaining("Testing context")
+      expect.stringMatching(
+        /<Workflow>[\s\S]*Testing context[\s\S]*<\/Workflow>/
+      )
     );
 
     // Should process reasonably quickly (less than 1 second)

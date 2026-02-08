@@ -20,6 +20,11 @@ export interface Tool {
 }
 
 export interface SwaggerSpec {
+  swagger?: string; // Swagger 2.0 version
+  openapi?: string; // OpenAPI 3.x version
+  host?: string; // Swagger 2.0 host
+  basePath?: string; // Swagger 2.0 basePath
+  schemes?: string[]; // Swagger 2.0 schemes
   info: {
     title: string;
     version: string;
@@ -51,6 +56,7 @@ export interface SwaggerSpec {
             };
           };
         };
+        responses?: any; // Swagger 2.0 responses
       };
     };
   };

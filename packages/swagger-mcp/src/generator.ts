@@ -4,6 +4,7 @@ import { join, isAbsolute, resolve } from "path";
 import { Tool, ToolProp, SwaggerSpec } from "./types";
 import { ClientGenerator } from "./client-generator";
 import { ServerGenerator } from "./server-generator";
+import { generateToolsFromSwagger } from "./core";
 
 export class SwaggerMcpGenerator {
   private swaggerSpec!: SwaggerSpec;
@@ -119,253 +120,9 @@ export class SwaggerMcpGenerator {
     return baseUrl + serverPath;
   }
 
-  private convertSwaggerTypeToToolProp(swaggerType: any): ToolProp {
-    if (!swaggerType) {
-      return { type: "string" };
-    }
-
-    // Handle $ref references
-    if (swaggerType.$ref) {
-      const resolvedSchema = this.resolveSchemaRef(swaggerType.$ref);
-      return this.convertSwaggerTypeToToolProp(resolvedSchema);
-    }
-
-    // Handle anyOf/oneOf/allOf schemas
-    if (swaggerType.anyOf || swaggerType.oneOf || swaggerType.allOf) {
-      const schemas =
-        swaggerType.anyOf || swaggerType.oneOf || swaggerType.allOf;
-      // For now, use the first schema in the array
-      if (schemas.length > 0) {
-        return this.convertSwaggerTypeToToolProp(schemas[0]);
-      }
-    }
-
-    const toolProp: ToolProp = {
-      type: swaggerType.type || "string",
-      description: swaggerType.description,
-    };
-
-    if (swaggerType.enum) {
-      toolProp.enum = swaggerType.enum;
-    }
-
-    if (swaggerType.type === "array" && swaggerType.items) {
-      toolProp.items = {
-        type: swaggerType.items.type || "string",
-      };
-
-      if (swaggerType.items.properties) {
-        toolProp.items.properties = {};
-        for (const [key, value] of Object.entries(
-          swaggerType.items.properties
-        )) {
-          toolProp.items.properties[key] =
-            this.convertSwaggerTypeToToolProp(value);
-        }
-      } else if (swaggerType.items.$ref) {
-        toolProp.items = this.convertSwaggerTypeToToolProp(swaggerType.items);
-      }
-    }
-
-    if (swaggerType.type === "object" && swaggerType.properties) {
-      toolProp.properties = {};
-      for (const [key, value] of Object.entries(swaggerType.properties)) {
-        toolProp.properties[key] = this.convertSwaggerTypeToToolProp(value);
-      }
-    }
-
-    return toolProp;
-  }
-
-  private resolveSchemaRef(ref: string): any {
-    if (!ref.startsWith("#/")) {
-      return {}; // Only handle local refs for now
-    }
-
-    const path = ref.substring(2).split("/");
-    let current: any = this.swaggerSpec;
-
-    for (const segment of path) {
-      if (!current || typeof current !== "object") {
-        return {};
-      }
-      current = current[segment];
-    }
-
-    if (!current) {
-      return {};
-    }
-
-    // Handle allOf by merging all schemas
-    if (current.allOf) {
-      const merged = {
-        type: "object",
-        properties: {},
-        required: [] as string[],
-      };
-
-      for (const item of current.allOf) {
-        let resolvedItem;
-        if (item.$ref) {
-          // Recursively resolve $ref items within allOf
-          resolvedItem = this.resolveSchemaRef(item.$ref);
-        } else {
-          resolvedItem = item;
-        }
-
-        // Merge properties
-        if (resolvedItem.properties) {
-          Object.assign(merged.properties, resolvedItem.properties);
-        }
-
-        // Merge required fields
-        if (resolvedItem.required) {
-          merged.required = [...merged.required, ...resolvedItem.required];
-        }
-
-        // Merge other properties (type, etc.)
-        if (resolvedItem.type && resolvedItem.type !== "object") {
-          merged.type = resolvedItem.type;
-        }
-      }
-
-      return merged;
-    }
-
-    // Handle direct $ref
-    if (current.$ref) {
-      return this.resolveSchemaRef(current.$ref);
-    }
-
-    return current;
-  }
-
-  private resolveSchemaRefOnce(ref: string): any {
-    // Handle OpenAPI 3.0 format
-    if (ref.startsWith("#/components/schemas/")) {
-      const schemaName = ref.replace("#/components/schemas/", "");
-      return (
-        this.swaggerSpec.components?.schemas?.[schemaName] || { type: "string" }
-      );
-    }
-
-    // Handle Swagger 2.0 format
-    if (ref.startsWith("#/definitions/")) {
-      const schemaName = ref.replace("#/definitions/", "");
-      return (
-        (this.swaggerSpec as any).definitions?.[schemaName] || {
-          type: "string",
-        }
-      );
-    }
-
-    return { type: "string" };
-  }
-
   generateTools(): Tool[] {
-    const tools: Tool[] = [];
-
-    for (const [path, pathItem] of Object.entries(this.swaggerSpec.paths)) {
-      for (const [method, operation] of Object.entries(pathItem)) {
-        if (typeof operation !== "object" || !operation) continue;
-
-        const operationId =
-          operation.operationId ||
-          `${method}_${path.replace(/[^a-zA-Z0-9]/g, "_")}`;
-        const summary = operation.summary || `${method.toUpperCase()} ${path}`;
-        const description = operation.description || summary;
-
-        const properties: { [key: string]: ToolProp } = {};
-        const required: string[] = [];
-
-        // Add path parameters
-        const pathParams = path.match(/{([^}]+)}/g);
-        if (pathParams) {
-          for (const param of pathParams) {
-            const paramName = param.slice(1, -1); // Remove { and }
-            properties[paramName] = {
-              type: "string",
-              description: `Path parameter: ${paramName}`,
-            };
-            required.push(paramName);
-          }
-        }
-
-        // Add query parameters
-        if (operation.parameters) {
-          for (const param of operation.parameters) {
-            if (param.in === "query") {
-              // Handle OpenAPI 3.0 format (has schema property)
-              let schema = param.schema || param;
-              if (schema && schema.$ref) {
-                schema = this.resolveSchemaRef(schema.$ref);
-              } else if (!schema || !schema.type) {
-                // Swagger 2.0 format (properties directly on param)
-                schema = {
-                  type: param.type || "string",
-                  description: param.description,
-                };
-              }
-
-              properties[param.name] =
-                this.convertSwaggerTypeToToolProp(schema);
-              if (!properties[param.name].description) {
-                properties[param.name].description =
-                  param.description || `Query parameter: ${param.name}`;
-              }
-
-              if (param.required) {
-                required.push(param.name);
-              }
-            }
-          }
-        }
-
-        // Add request body properties
-        if (operation.requestBody) {
-          const content = operation.requestBody.content;
-          const jsonContent = content["application/json"];
-
-          if (jsonContent && jsonContent.schema) {
-            let schema = jsonContent.schema;
-
-            // Resolve $ref if present
-            if (schema.$ref) {
-              schema = this.resolveSchemaRef(schema.$ref);
-            }
-
-            if (schema.properties) {
-              for (const [key, value] of Object.entries(schema.properties)) {
-                const propSchema = this.convertSwaggerTypeToToolProp(value);
-                properties[key] = propSchema;
-              }
-
-              if (schema.required) {
-                required.push(...schema.required);
-              }
-            } else if (schema.type === "object" && !schema.properties) {
-              // Handle case where schema is an object but properties are not defined
-              // This can happen with generic object types
-              // For now, we'll skip adding specific properties
-            }
-          }
-        }
-
-        const tool: Tool = {
-          name: operationId,
-          description: description,
-          inputSchema: {
-            type: "object",
-            properties,
-            required: Array.from(new Set(required)),
-          },
-        };
-
-        tools.push(tool);
-      }
-    }
-
-    return tools;
+    // Use shared tool generation logic from core module
+    return generateToolsFromSwagger(this.swaggerSpec);
   }
 
   generateClientFunctions(): string {
@@ -510,5 +267,11 @@ if (require.main === module) {
     console.log(`- src/mcp-server.ts: Complete MCP server implementation`);
     console.log(`- src/express-app.ts: Express app composition functions`);
     console.log(`- mcp-server.ts: Complete MCP server implementation`);
+  }
+
+  generateProxyComposition(): string {
+    // Import and use the proxy template generator
+    const { generateProxyTemplate } = require("./proxy-template-generator");
+    return generateProxyTemplate();
   }
 }

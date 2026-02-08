@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env node --no-node-snapshot
 import "source-map-support/register";
 import * as fs from "fs";
 import * as path from "path";
@@ -11,7 +11,7 @@ import { init } from "./config";
 import { download, purge } from ".";
 import { includedTools } from "./agents/tools/list";
 import * as allTools from "./agents/tools";
-import { services } from "./services";
+import { LazyToolsService, services } from "./services";
 import { login } from "./login";
 import { worker } from "./worker";
 import {
@@ -35,8 +35,14 @@ import { SetupModule } from "./chat/modules/SetupModule";
 import { CliChatService } from "./chat/CliChatService";
 
 async function setupServices() {
-  const { Tools, Agents, Mcp, Clients } = services();
-  const { Researcher, Developer, Patcher, Setup } = agents();
+  const { Agents, Mcp, Clients } = services();
+  const Tools = new LazyToolsService();
+
+  const { Researcher, Developer, Patcher, Setup } = agents({
+    ...services(),
+    Tools,
+  });
+
   Agents.registerAgent(Researcher);
   Agents.registerAgent(Patcher);
   Agents.registerAgent(Developer);
@@ -44,6 +50,9 @@ async function setupServices() {
   Agents.loadAgentsFromConfig(services());
 
   Tools.defineTools(includedTools, allTools);
+
+  // Add Mcp service to tool context directly so MCP management tools can access it
+  Tools.addContext("Mcp", Mcp);
 
   await Promise.all([
     Mcp.connectToConfigured(Tools),
@@ -81,9 +90,6 @@ async function main() {
     .description("AI CLI with plugins and agents")
     .version(version);
 
-  // Initialize services for all commands
-  await setupServices();
-
   program
     .command("init")
     .description("Initialize knowhow configuration")
@@ -103,6 +109,7 @@ async function main() {
     .command("generate")
     .description("Generate documentation")
     .action(async () => {
+      await setupServices();
       await generate();
     });
 
@@ -110,6 +117,7 @@ async function main() {
     .command("embed")
     .description("Create embeddings")
     .action(async () => {
+      await setupServices();
       await embed();
     });
 
@@ -139,6 +147,7 @@ async function main() {
     .command("chat")
     .description("Start new chat interface")
     .action(async () => {
+      await setupServices();
       await startChat();
     });
 
@@ -166,6 +175,7 @@ async function main() {
     .option("--input <text>", "Task input (fallback to stdin if not provided)")
     .action(async (options) => {
       try {
+        await setupServices();
         let input = options.input;
         if (!input) {
           input = await readStdin();
@@ -204,6 +214,7 @@ async function main() {
     .option("--prompt-file <path>", "Custom prompt template file")
     .action(async (options) => {
       try {
+        await setupServices();
         let input = options.input;
         if (!input) {
           input = await readStdin();
@@ -235,6 +246,7 @@ async function main() {
     .description("Ask the agent to configure knowhow")
     .action(async (options) => {
       try {
+        await setupServices();
         const setupModule = new SetupModule();
         await setupModule.initialize(chatService);
         await setupModule.handleSetupCommand([]);
@@ -258,6 +270,7 @@ async function main() {
     )
     .action(async (options) => {
       try {
+        await setupServices();
         let input = options.input;
         if (!input) {
           input = await readStdin();
@@ -292,13 +305,22 @@ async function main() {
 
   program
     .command("worker")
-    .description("Start worker process and optionally register current directory")
+    .description(
+      "Start worker process and optionally register current directory"
+    )
     .option("--register", "Register current directory as a worker path")
-    .option("--share", "Share this worker with your organization (allows other users to use it)")
+    .option(
+      "--share",
+      "Share this worker with your organization (allows other users to use it)"
+    )
     .option("--unshare", "Make this worker private (only you can use it)")
     .option("--sandbox", "Run worker in a Docker container for isolation")
-    .option("--no-sandbox", "Run worker directly on host (disable sandbox mode)")
+    .option(
+      "--no-sandbox",
+      "Run worker directly on host (disable sandbox mode)"
+    )
     .action(async (options) => {
+      await setupServices();
       await worker(options);
     });
 
@@ -337,6 +359,7 @@ async function main() {
         }
 
         // Default action: start all workers
+        await setupServices();
         await startAllWorkers();
       } catch (error) {
         console.error("Error managing workers:", error);

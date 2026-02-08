@@ -79,6 +79,7 @@ export type Assistant = {
 
 export type McpConfig = {
   name: string;
+  autoConnect?: boolean; // Default: true - connect at startup. Set to false for on-demand connection
   command?: string;
   url?: string;
   args?: string[];

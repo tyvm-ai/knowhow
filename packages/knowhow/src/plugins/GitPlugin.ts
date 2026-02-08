@@ -19,6 +19,7 @@ export class GitPlugin extends PluginBase {
   private projectHasGit: boolean = false;
   private eventService: EventService;
   private currentTask: string | null = null;
+  static isListening = false;
 
   constructor(context: PluginContext = {}) {
     super(context);
@@ -96,9 +97,7 @@ Your modifications are automatically tracked separately and won't affect the use
         // since HEAD doesn't exist yet
         try {
           this.gitCommand("add -A");
-          this.gitCommand(
-            'commit -m "Initial commit for agent tracking"'
-          );
+          this.gitCommand('commit -m "Initial commit for agent tracking"');
         } catch (error) {
           // If there's nothing to commit, create an empty commit
           this.gitCommand(
@@ -150,26 +149,30 @@ Your modifications are automatically tracked separately and won't affect the use
 
   private setupEventListeners(): void {
     // Listen for file:post-edit events to auto-commit
-    this.eventService.on("file:post-edit", async (data: any) => {
-      if (this.isEnabled()) {
-        await this.autoCommit(data);
-      }
-    });
+    if (!GitPlugin.isListening) {
+      this.eventService.on("file:post-edit", async (data: any) => {
+        if (this.isEnabled()) {
+          await this.autoCommit(data);
+        }
+      });
 
-    // Listen for agent newTask events to create new branches
-    this.eventService.on("agent:newTask", async (data: any) => {
-      if (this.isEnabled()) {
-        await this.ensureCleanState(data);
-        await this.handleNewTask(data);
-      }
-    });
+      // Listen for agent newTask events to create new branches
+      this.eventService.on("agent:newTask", async (data: any) => {
+        if (this.isEnabled()) {
+          await this.ensureCleanState(data);
+          await this.handleNewTask(data);
+        }
+      });
 
-    // Listen for task completion events to squash merge
-    this.eventService.on("agent:taskComplete", async (data: any) => {
-      if (this.isEnabled()) {
-        await this.handleTaskComplete(data);
-      }
-    });
+      // Listen for task completion events to squash merge
+      this.eventService.on("agent:taskComplete", async (data: any) => {
+        if (this.isEnabled()) {
+          await this.handleTaskComplete(data);
+        }
+      });
+
+      GitPlugin.isListening = true;
+    }
   }
 
   /**
@@ -306,8 +309,8 @@ Your modifications are automatically tracked separately and won't affect the use
     this.ensureValidHead();
 
     // Commit the changes
-    const escapedMessage = message.replace(/\n/g, '\\n');
-    this.gitCommand(`commit -m "${escapedMessage}"`);
+    const escapedMessage = message.replace(/\n/g, "\\n");
+    this.gitCommand(`commit --allow-empty -m "${escapedMessage}"`);
   }
 
   async commitAll(message: string): Promise<void> {
@@ -356,11 +359,14 @@ Your modifications are automatically tracked separately and won't affect the use
 
       this.eventService.emit(
         "agent:msg",
-        `GitPlugin::Commit: ${enhancedMessage} on branch: ${this.getCurrentBranch()}
+        `
+        <Workflow>
+        GitPlugin::Commit: ${enhancedMessage} on branch: ${this.getCurrentBranch()}
         You can access your change history via git --git-dir ${
           this.knowhowGitPath
         } log or other commands
         This can be used to revert changes, or compare against previous states during a task.
+        </Workflow>
         `
       );
     } catch (error) {

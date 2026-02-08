@@ -10,6 +10,9 @@ import { S3Service } from "./S3";
 import { ToolsService } from "./Tools";
 import { PluginService } from "../plugins/plugins";
 import { DockerService } from "./DockerService";
+import { AgentSynchronization } from "./AgentSynchronization";
+import { SessionManager } from "./SessionManager";
+import { TaskRegistry } from "./TaskRegistry";
 
 export * from "./AgentService";
 export * from "./EventService";
@@ -17,9 +20,13 @@ export * from "./flags";
 export * from "./GitHub";
 export * from "./S3";
 export * from "./Tools";
+export * from "./LazyToolsService";
 export * as MCP from "./Mcp";
 export * from "./EmbeddingService";
 export * from "./DockerService";
+export * from "./AgentSynchronization";
+export * from "./SessionManager";
+export * from "./TaskRegistry";
 export { Clients } from "../clients";
 
 let Singletons = {} as {

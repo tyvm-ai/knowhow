@@ -2,6 +2,13 @@
 
 Generate MCP (Model Context Protocol) servers from Swagger/OpenAPI specifications.
 
+## Two Ways to Use
+
+1. **Code Generation** - Generate a standalone MCP server package for deployment
+2. **Stateless Proxy** - Dynamically serve MCP tools from any Swagger spec at runtime (see [PROXY.md](PROXY.md))
+
+## Code Generation Mode
+
 ## Usage
 
 ```bash

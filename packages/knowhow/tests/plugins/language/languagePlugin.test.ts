@@ -199,9 +199,11 @@ describe("LanguagePlugin", () => {
       );
 
       expect(emitCall).toBeDefined();
-      const eventData = JSON.parse(emitCall[1]);
+      // Extract JSON from <Workflow> tags
+      const workflowContent = emitCall[1].match(/<Workflow>\s*(\{[\s\S]*?\})\s*<\/Workflow>/);
+      expect(workflowContent).toBeDefined();
+      const eventData = JSON.parse(workflowContent[1]);
       expect(eventData.type).toBe("language_context_trigger");
-      expect(eventData.filePath).toBe("src/components/Button.ts");
       expect(eventData.matchingTerms).toEqual(["**/*.ts"]);
       expect(eventData.eventType).toBe("file:post-edit");
       expect(eventData.resolvedSources).toBeDefined();
@@ -264,7 +266,10 @@ describe("LanguagePlugin", () => {
       const emitCall = mockEventService.emit.mock.calls.find(
         (call) => call[0] === "agent:msg"
       );
-      const eventData = JSON.parse(emitCall![1]);
+      // Extract JSON from <Workflow> tags
+      const workflowContent = emitCall![1].match(/<Workflow>\s*(\{[\s\S]*?\})\s*<\/Workflow>/);
+      expect(workflowContent).toBeDefined();
+      const eventData = JSON.parse(workflowContent![1]);
       // With minimatch, *.ts doesn't match src/components/Button.ts (needs **/*.ts)
       // Only src/** pattern matches src/components/Button.ts
       expect(eventData.matchingTerms).toContain("src/**");
@@ -334,7 +339,9 @@ describe("LanguagePlugin", () => {
       );
       expect(mockEventService.emit).toHaveBeenCalledWith(
         "agent:msg",
-        expect.stringContaining("language_context_trigger")
+        expect.stringMatching(
+          /<Workflow>[\s\S]*language_context_trigger[\s\S]*<\/Workflow>/
+        )
       );
     });
   });

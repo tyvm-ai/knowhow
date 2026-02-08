@@ -6,6 +6,7 @@ import * as github from "./github/definitions";
 import * as asana from "./asana/definitions";
 import * as ycmd from "./ycmd/definitions";
 import * as language from "./language/definitions";
+import * as mcp from "./mcp/definitions";
 import { googleSearchDefinition } from "./googleSearch";
 import { executeScriptDefinition } from "./executeScript/definition";
 import { startAgentTaskDefinition } from "./startAgentTask";
@@ -795,4 +796,5 @@ export const includedTools = [
   ...ycmd.definitions,
   ...github.definitions,
   ...language.definitions,
+  ...mcp.definitions,
 ] as Tool[];

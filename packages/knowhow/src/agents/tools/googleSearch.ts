@@ -154,6 +154,7 @@ function transformGoogleSearchResponseForLLM(
     searchQuery,
     totalResults,
     results: relevantItems,
+    usd_cost: 0.005,
   };
 }
 

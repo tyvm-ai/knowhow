@@ -29,6 +29,17 @@ export const ask = async (
   return inputQueue.ask(question, options, history);
 };
 
+/**
+ * Set a callback to be notified when user enters a new history entry.
+ * This allows the caller to update their history source immediately,
+ * ensuring the next ask() call has the updated history.
+ */
+export const setOnNewHistoryEntry = (
+  callback: ((entry: string) => void) | undefined
+): void => {
+  inputQueue.setOnNewEntry(callback);
+};
+
 export const Marked = marked;
 
 export function dotp(x, y) {

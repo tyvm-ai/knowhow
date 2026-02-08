@@ -55,16 +55,18 @@ export class ScriptExecutor {
       
       if (!hasNoNodeSnapshot) {
         const errorMessage = [
-          `Node.js ${nodeVersion} detected. The --no-node-snapshot flag is required for isolated-vm compatibility.`,
+          `Node.js ${nodeVersion} detected. The executeScript tool requires the --no-node-snapshot flag for isolated-vm compatibility.`,
           '',
-          'To fix this issue:',
-          '1. Restart your application with: node --no-node-snapshot your-app.js',
-          '2. Or update your package.json scripts:',
+          'This flag is automatically included when running knowhow commands via the CLI (e.g., `knowhow agent`, `knowhow chat`).',
+          '',
+          'If you are programmatically using knowhow or running custom scripts:',
+          '1. Start your application with: node --no-node-snapshot your-app.js',
+          '2. Or update your package.json scripts to include the flag:',
           '   "scripts": {',
           '     "start": "node --no-node-snapshot dist/index.js"',
           '   }',
           '',
-          'This flag is necessary for the executeScript tool to function properly with isolated-vm.'
+          'Note: This flag is required for Node.js 20+ to ensure isolated-vm works correctly.'
         ].join('\n');
         
         throw new Error(errorMessage);

@@ -122,11 +122,173 @@ export class McpService {
 
   async connectTo(mcpServers: McpConfig[] = [], tools?: ToolsService) {
     const clients = await this.createStdioClients(mcpServers);
-    await this.connectAll();
+    await this.connectAutoServers();
 
     if (tools) {
       await this.addTools(tools);
     }
+  }
+
+  // Connect only servers with autoConnect !== false
+  async connectAutoServers() {
+    await Promise.all(
+      this.clients.map(async (client, index) => {
+        const config = this.config[index];
+        const shouldAutoConnect = config.autoConnect !== false;
+
+        if (shouldAutoConnect && !this.connected[index]) {
+          console.log(`Connecting to MCP server: ${config.name}`);
+          await client.connect(this.transports[index]);
+          this.connected[index] = true;
+        } else if (!shouldAutoConnect) {
+          console.log(
+            `Skipping auto-connect for MCP server: ${config.name} (autoConnect: false)`
+          );
+        }
+      })
+    );
+  }
+
+  // Connect to a specific MCP server by name
+  async connectSingle(
+    serverName: string,
+    timeout: number = 30000
+  ): Promise<{
+    success: boolean;
+    toolsAdded: string[];
+    error?: string;
+  }> {
+    const index = this.getClientIndex(serverName);
+
+    if (index < 0) {
+      return {
+        success: false,
+        toolsAdded: [],
+        error: `MCP server '${serverName}' not found in configuration`,
+      };
+    }
+
+    if (this.connected[index]) {
+      return {
+        success: true,
+        toolsAdded: [],
+        error: `MCP server '${serverName}' already connected`,
+      };
+    }
+
+    try {
+      const client = this.clients[index];
+      const transport = this.transports[index];
+
+      // Connect with timeout
+      await Promise.race([
+        client.connect(transport),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Connection timeout")), timeout)
+        ),
+      ]);
+
+      this.connected[index] = true;
+
+      // Get tools from this server
+      const clientTools = await client.listTools();
+      const toolNames: string[] = [];
+
+      for (const tool of clientTools.tools) {
+        const transformed = this.toOpenAiTool(index, tool as any);
+        if (transformed.function.name !== tool.name) {
+          this.toolAliases[transformed.function.name] = tool.name;
+        }
+        toolNames.push(transformed.function.name);
+
+        // Add to cache if not already present
+        if (
+          !this.tools.find((t) => t.function.name === transformed.function.name)
+        ) {
+          this.tools.push(transformed);
+        }
+      }
+
+      return {
+        success: true,
+        toolsAdded: toolNames,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        toolsAdded: [],
+        error: error.message,
+      };
+    }
+  }
+
+  // Disconnect a specific MCP server
+  async disconnectSingle(serverName: string): Promise<{
+    success: boolean;
+    toolsRemoved: string[];
+    error?: string;
+  }> {
+    const index = this.getClientIndex(serverName);
+
+    if (index < 0) {
+      return {
+        success: false,
+        toolsRemoved: [],
+        error: `MCP server '${serverName}' not found`,
+      };
+    }
+
+    if (!this.connected[index]) {
+      return {
+        success: true,
+        toolsRemoved: [],
+        error: `MCP server '${serverName}' not connected`,
+      };
+    }
+
+    try {
+      const toolsToRemove = this.tools
+        .filter((t) => this.getToolClientIndex(t.function.name) === index)
+        .map((t) => t.function.name);
+
+      // Close connection
+      await this.transports[index]?.close();
+      this.connected[index] = false;
+
+      // Remove tools from cache
+      this.tools = this.tools.filter(
+        (t) => this.getToolClientIndex(t.function.name) !== index
+      );
+
+      return {
+        success: true,
+        toolsRemoved: toolsToRemove,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        toolsRemoved: [],
+        error: error.message,
+      };
+    }
+  }
+
+  // Get available servers (connected and disconnected)
+  getAvailableServers() {
+    return this.config.map((config, index) => {
+      const toolCount = this.connected[index]
+        ? this.tools.filter(
+            (t) => this.getToolClientIndex(t.function.name) === index
+          ).length
+        : 0;
+
+      return {
+        name: config.name,
+        connected: this.connected[index] || false,
+        autoConnect: config.autoConnect !== false,
+        toolCount,
+      };
+    });
   }
 
   async addTools(tools: ToolsService) {
@@ -203,7 +365,7 @@ export class McpService {
     return this.clients[index];
   }
 
-  getFunction(toolName: string) {
+  getFunction(toolName: string, timeout?: number) {
     const client = this.getToolClient(toolName);
 
     // Handle unwrapped tool names if we have 1 client
@@ -227,8 +389,8 @@ export class McpService {
         },
         CallToolResultSchema,
         {
-          timeout: 10 * 60 * 1000,
-          maxTotalTimeout: 10 * 60 * 1000,
+          timeout: timeout || 10 * 60 * 1000,
+          maxTotalTimeout: timeout || 10 * 60 * 1000,
         }
       );
       return tool;
@@ -314,6 +476,11 @@ export class McpService {
     for (let i = 0; i < this.config.length; i++) {
       const config = this.config[i];
       const client = this.clients[i];
+
+      if (!this.connected[i]) {
+        // skip adding tools for unconnected clients
+        continue;
+      }
       const clientTools = await client.listTools();
 
       for (const tool of clientTools.tools) {

@@ -2,9 +2,10 @@
  * Agent Chat Module - Handles agent interactions
  */
 import {
-  KnowhowSimpleClient,
-  KNOWHOW_API_URL,
-} from "../../services/KnowhowClient";
+  AgentSynchronization,
+  SessionManager,
+  TaskRegistry,
+} from "../../services/index";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -23,24 +24,22 @@ import {
 } from "../../processors/index";
 import { TaskInfo, ChatSession } from "../types";
 import { agents } from "../../agents";
-import { ToolCallEvent } from "src/agents/base/base";
+import { ToolCallEvent } from "../../agents/base/base";
 
 export class AgentModule extends BaseChatModule {
   name = "agent";
   description = "Agent interaction functionality";
 
-  // Enhanced task registry for managing agents with metadata
-  private taskRegistry = new Map<string, TaskInfo>();
-
-  // Sessions directory path
-  private sessionsDir = "./.knowhow/chats/sessions";
+  // Service instances for task management, session management, and synchronization
+  private taskRegistry: TaskRegistry;
+  private sessionManager: SessionManager;
+  private agentSync: AgentSynchronization;
 
   constructor() {
     super();
-    // Ensure sessions directory exists
-    if (!fs.existsSync(this.sessionsDir)) {
-      fs.mkdirSync(this.sessionsDir, { recursive: true });
-    }
+    this.taskRegistry = new TaskRegistry();
+    this.sessionManager = new SessionManager();
+    this.agentSync = new AgentSynchronization();
   }
 
   getCommands(): ChatCommand[] {
@@ -113,9 +112,14 @@ export class AgentModule extends BaseChatModule {
       if (allAgents && allAgents[agentName]) {
         // Set selected agent in context and enable agent mode
         if (context) {
-          context.selectedAgent = allAgents[agentName];
+          const selectedAgent = allAgents[agentName];
+          context.selectedAgent = selectedAgent;
           context.agentMode = true;
           context.currentAgent = agentName;
+          // Update context's model/provider to reflect the agent's settings
+          // so /model and /provider commands show accurate information
+          context.currentModel = selectedAgent.getModel();
+          context.currentProvider = selectedAgent.getProvider();
         }
         console.log(
           `Agent mode enabled. Selected agent: ${agentName}. Type your task to get started.`
@@ -133,43 +137,15 @@ export class AgentModule extends BaseChatModule {
   async handleAttachCommand(args: string[]): Promise<void> {
     if (args.length === 0) {
       // Get both running tasks and saved sessions
-      const runningTasks = Array.from(this.taskRegistry.values());
-      const savedSessions = await this.listAvailableSessions();
+      const runningTasks = this.taskRegistry.getAll();
+      const savedSessions = this.sessionManager.listAvailableSessions();
 
       if (runningTasks.length === 0 && savedSessions.length === 0) {
         console.log("No active tasks or saved sessions found to attach to.");
         return;
       }
 
-      // Show available options for selection
-      console.log("\n📋 Available Sessions & Tasks:");
-      console.log("─".repeat(80));
-      console.log(
-        "ID".padEnd(25) + "Agent".padEnd(15) + "Status".padEnd(12) + "Type"
-      );
-      console.log("─".repeat(80));
-
-      // Show saved sessions
-      savedSessions.forEach((session) => {
-        console.log(
-          session.sessionId.padEnd(25) +
-            session.agentName.padEnd(15) +
-            session.status.padEnd(12) +
-            "saved"
-        );
-      });
-
-      // Show running tasks
-      runningTasks.forEach((task) => {
-        console.log(
-          task.taskId.padEnd(25) +
-            task.agentName.padEnd(15) +
-            task.status.padEnd(12) +
-            "running"
-        );
-      });
-
-      console.log("─".repeat(80));
+      await this.sessionManager.logRunningTasks(runningTasks, savedSessions);
 
       // Interactive selection for both types
       const allIds = [
@@ -200,24 +176,7 @@ export class AgentModule extends BaseChatModule {
    * Display single task details
    */
   private displaySingleTask(task: TaskInfo): void {
-    console.log(`\n📋 Task Details: ${task.taskId}`);
-    console.log("─".repeat(50));
-    console.log(`Agent: ${task.agentName}`);
-    console.log(`Status: ${task.status}`);
-    console.log(`Initial Input: ${task.initialInput}`);
-    console.log(`Start Time: ${new Date(task.startTime).toLocaleString()}`);
-    if (task.endTime) {
-      console.log(`End Time: ${new Date(task.endTime).toLocaleString()}`);
-      console.log(
-        `Duration: ${Math.round((task.endTime - task.startTime) / 1000)}s`
-      );
-    } else {
-      console.log(
-        `Running for: ${Math.round((Date.now() - task.startTime) / 1000)}s`
-      );
-    }
-    console.log(`Total Cost: $${task.totalCost.toFixed(3)}`);
-    console.log("─".repeat(50));
+    this.taskRegistry.displaySingleTask(task);
   }
 
   async handleAgentsCommand(args: string[]): Promise<void> {
@@ -259,63 +218,16 @@ export class AgentModule extends BaseChatModule {
   }
 
   async logSessionTable() {
-    // Display unified table
-    const runningTasks = Array.from(this.taskRegistry.values());
-    const savedSessions = await this.listAvailableSessions();
-    console.log("\n📋 Sessions & Tasks:");
-
-    const data = [];
-    // Display saved sessions first (historical)
-    savedSessions.forEach((session) => {
-      const lastUpdated = new Date(session.lastUpdated).toLocaleString();
-      const inputPreview =
-        session.initialInput && session.initialInput.length > 30
-          ? session.initialInput.substring(0, 27) + "..."
-          : session.initialInput || "[No input]";
-      const cost = session.totalCost
-        ? `$${session.totalCost.toFixed(3)}`
-        : "$0.000";
-
-      data.push({
-        ID: session.sessionId,
-        Agent: session.agentName,
-        Status: session.status,
-        Type: "saved",
-        Time: lastUpdated,
-        Cost: cost,
-        "Initial Input": inputPreview,
-      });
-    });
-
-    // Display running tasks at the bottom
-    runningTasks.forEach((task) => {
-      const elapsed = task.endTime
-        ? `${Math.round((task.endTime - task.startTime) / 1000)}s`
-        : `${Math.round((Date.now() - task.startTime) / 1000)}s`;
-      const cost = `$${task.totalCost.toFixed(3)}`;
-      const inputPreview =
-        task.initialInput.length > 30
-          ? task.initialInput.substring(0, 27) + "..."
-          : task.initialInput;
-      data.push({
-        ID: task.taskId,
-        Agent: task.agentName,
-        Status: task.status,
-        Type: "running",
-        Time: elapsed,
-        Cost: cost,
-        "Initial Input": inputPreview,
-      });
-    });
-
-    console.table(data);
+    const runningTasks = this.taskRegistry.getAll();
+    const savedSessions = this.sessionManager.listAvailableSessions();
+    this.sessionManager.logSessionTable(runningTasks, savedSessions);
   }
 
   async handleSessionsCommand(args: string[]): Promise<void> {
     try {
       // Get both running tasks and saved sessions
-      const runningTasks = Array.from(this.taskRegistry.values());
-      const savedSessions = await this.listAvailableSessions();
+      const runningTasks = this.taskRegistry.getAll();
+      const savedSessions = this.sessionManager.listAvailableSessions();
 
       if (runningTasks.length === 0 && savedSessions.length === 0) {
         console.log("No active tasks or saved sessions found.");
@@ -366,6 +278,10 @@ export class AgentModule extends BaseChatModule {
           context.selectedAgent = selectedAgent;
           context.agentMode = true;
           context.currentAgent = taskInfo.agentName;
+          // Update context's model/provider to reflect the agent's settings
+          // so /model and /provider commands show accurate information
+          context.currentModel = selectedAgent.getModel();
+          context.currentProvider = selectedAgent.getProvider();
           console.log(`🔄 Switched to agent mode with ${taskInfo.agentName}`);
           console.log(`📋 Attached to running task: ${id}`);
           console.log(`Task: ${taskInfo.initialInput}`);
@@ -379,12 +295,10 @@ export class AgentModule extends BaseChatModule {
 
     // Check if it's a saved session
     try {
-      const sessionPath = path.join(this.sessionsDir, `${id}.json`);
-      if (fs.existsSync(sessionPath)) {
+      const session = this.sessionManager.loadSession(id);
+      if (session) {
         console.log(Marked.parse(`**Resuming saved session: ${id}**`));
         // Read session to get agent information
-        const content = fs.readFileSync(sessionPath, "utf-8");
-        const session: ChatSession = JSON.parse(content);
 
         // Switch to agent mode and set the selected agent
         const context = this.chatService?.getContext();
@@ -394,6 +308,10 @@ export class AgentModule extends BaseChatModule {
         if (context && selectedAgent) {
           context.selectedAgent = selectedAgent;
           context.agentMode = true;
+          // Update context's model/provider to reflect the agent's settings
+          // so /model and /provider commands show accurate information
+          context.currentModel = selectedAgent.getModel();
+          context.currentProvider = selectedAgent.getProvider();
           console.log(`🔄 Switched to agent mode with ${session.agentName}`);
           console.log(`📋 Resuming saved session: ${id}`);
           console.log(`Original task: ${session.initialInput}`);
@@ -417,52 +335,7 @@ export class AgentModule extends BaseChatModule {
    * List available session files
    */
   public async listAvailableSessions(): Promise<ChatSession[]> {
-    try {
-      const files = fs.readdirSync(this.sessionsDir);
-      const sessionFiles = files.filter((f) => f.endsWith(".json"));
-
-      const sessions: ChatSession[] = [];
-      const thresholdTime = 15 * 60 * 1000; // 15 minutes
-      for (const file of sessionFiles) {
-        const filePath = path.join(this.sessionsDir, file);
-        try {
-          const content = fs.readFileSync(filePath, "utf8");
-          const session = JSON.parse(content) as ChatSession;
-
-          // Cleanup check: mark stale running sessions as failed
-          const isStale = Date.now() - session.lastUpdated > thresholdTime;
-          const isRunningAndNotInRegistry =
-            session.status === "running" &&
-            !this.taskRegistry.has(session.sessionId);
-
-          if (isRunningAndNotInRegistry && isStale) {
-            console.log(
-              `🧹 Marking stale session ${
-                session.sessionId
-              } as failed (last updated: ${new Date(
-                session.lastUpdated
-              ).toLocaleString()})`
-            );
-            session.status = "failed";
-            session.lastUpdated = Date.now();
-            // Update the session file with failed status
-            fs.writeFileSync(filePath, JSON.stringify(session, null, 2));
-          }
-
-          sessions.push(session);
-        } catch (error) {
-          console.warn(
-            `Failed to read session file ${file}:`,
-            (error as Error).message
-          );
-        }
-      }
-
-      return sessions.sort((a, b) => b.lastUpdated - a.lastUpdated);
-    } catch (error) {
-      console.warn("Failed to list sessions:", (error as Error).message);
-      return [];
-    }
+    return this.sessionManager.listAvailableSessions();
   }
 
   /**
@@ -472,8 +345,8 @@ export class AgentModule extends BaseChatModule {
     runningTasks: TaskInfo[];
     savedSessions: ChatSession[];
   }> {
-    const runningTasks = Array.from(this.taskRegistry.values());
-    const savedSessions = await this.listAvailableSessions();
+    const runningTasks = this.taskRegistry.getAll();
+    const savedSessions = this.sessionManager.listAvailableSessions();
     return {
       runningTasks,
       savedSessions,
@@ -483,7 +356,7 @@ export class AgentModule extends BaseChatModule {
   /**
    * Get the task registry for CLI access
    */
-  public getTaskRegistry(): Map<string, TaskInfo> {
+  public getTaskRegistry(): TaskRegistry {
     return this.taskRegistry;
   }
 
@@ -495,9 +368,11 @@ export class AgentModule extends BaseChatModule {
     resumeReason?: string
   ): Promise<void> {
     try {
-      const sessionPath = path.join(this.sessionsDir, `${sessionId}.json`);
-      const content = fs.readFileSync(sessionPath, "utf-8");
-      const session: ChatSession = JSON.parse(content);
+      const session = this.sessionManager.loadSession(sessionId);
+      if (!session) {
+        console.error(`Session ${sessionId} not found.`);
+        return;
+      }
       const lastThread = session.threads[session.threads.length - 1];
       console.log(`\n🔄 Resuming session: ${sessionId}`);
       console.log(`Agent: ${session.agentName}`);
@@ -511,17 +386,17 @@ export class AgentModule extends BaseChatModule {
       // Create resume prompt
       const resumePrompt = `You are resuming a previously started task. Here's the context:
 ORIGINAL REQUEST:
-${session.initialInput}
+      ${session.initialInput}
 
 LAST Progress State:
-${JSON.stringify(lastThread)}
+      ${JSON.stringify(lastThread)}
 
 Please continue from where you left off and complete the original request.
-${reason}
+        ${reason}
 
 `;
 
-      console.log("🚀 Session resumption would restart the agent here...");
+      console.log("🚀 Session resuming...");
       const context = this.chatService?.getContext() || {};
       const allAgents = agents();
       const selectedAgent =
@@ -608,7 +483,7 @@ ${reason}
 
     let done = false;
     let output = "Done";
-    const taskId = this.generateTaskId(input);
+    const taskId = this.sessionManager.generateTaskId(input);
     let knowhowTaskId: string | undefined;
 
     try {
@@ -638,32 +513,25 @@ ${reason}
       };
 
       // Add to task registry
-      this.taskRegistry.set(taskId, taskInfo);
+      this.taskRegistry.register(taskId, taskInfo);
 
       // Save initial session
       this.saveSession(taskId, taskInfo, []);
 
       // Create Knowhow chat task if messageId provided
-      const baseUrl = KNOWHOW_API_URL;
-      console.log(
-        `Base URL for Knowhow API: ${baseUrl}, Message ID: ${options.messageId}`
-      );
-      const client = new KnowhowSimpleClient(baseUrl);
-      if (options.messageId && !options.existingKnowhowTaskId && baseUrl) {
-        try {
-          const response = await client.createChatTask({
-            messageId: options.messageId,
-            prompt: input,
-          });
-          knowhowTaskId = response.data.id;
-          console.log(`✅ Created Knowhow chat task: ${knowhowTaskId}`);
+      if (options.messageId && !options.existingKnowhowTaskId) {
+        knowhowTaskId = await this.agentSync.createChatTask({
+          messageId: options.messageId,
+          prompt: input,
+        });
 
+        if (knowhowTaskId) {
           // Update TaskInfo with the created knowhowTaskId
           taskInfo.knowhowTaskId = knowhowTaskId;
-          this.taskRegistry.set(taskId, taskInfo);
-        } catch (error) {
-          console.error(`❌ Failed to create Knowhow chat task:`, error);
-          // Continue execution even if task creation fails
+          this.taskRegistry.register(taskId, taskInfo);
+
+          // Set up event-based synchronization with Knowhow API
+          await this.agentSync.setupAgentSync(agent, knowhowTaskId);
         }
       }
 
@@ -671,23 +539,8 @@ ${reason}
       agent.agentEvents.on(
         agent.eventTypes.threadUpdate,
         async (threadState) => {
-          // Update task cost from agent's current total cost
-          taskInfo.totalCost = agent.getTotalCostUsd();
           this.updateSession(taskId, threadState);
-
-          // Update Knowhow chat task if created
-          if (knowhowTaskId && options.messageId && baseUrl) {
-            await client
-              .updateChatTask(knowhowTaskId, {
-                threads: agent.getThreads(),
-                totalCostUsd: agent.getTotalCostUsd(),
-                inProgress: true,
-              })
-              .catch((error) => {
-                console.error(`❌ Failed to update Knowhow chat task:`, error);
-              });
-            console.log(`✅ Updated Knowhow chat task: ${knowhowTaskId}`);
-          }
+          taskInfo.totalCost = agent.getTotalCostUsd();
         }
       );
 
@@ -742,6 +595,12 @@ ${reason}
         new HarmonyToolProcessor().createProcessor(),
       ]);
 
+      agent.messageProcessor.setProcessors("post_tools", [
+        new TokenCompressor(agent.tools).createProcessor((msg) =>
+          Boolean(msg.role === "tool" && msg.tool_call_id)
+        ),
+      ]);
+
       // Set up event listeners
       if (!agent.agentEvents.listenerCount(agent.eventTypes.toolCall)) {
         agent.agentEvents.on(
@@ -781,27 +640,6 @@ ${reason}
             // Update session with final state
             this.updateSession(taskId, agent.getThreads());
             taskInfo.endTime = Date.now();
-
-            // Final update to Knowhow chat task
-            if (knowhowTaskId && options.messageId) {
-              console.log(
-                `Updating Knowhow chat task on completion..., ${knowhowTaskId}, ${options.messageId}`
-              );
-              await client
-                .updateChatTask(knowhowTaskId, {
-                  inProgress: false,
-                  threads: agent.getThreads(),
-                  totalCostUsd: agent.getTotalCostUsd(),
-                  result: output,
-                })
-                .catch((error) => {
-                  console.error(
-                    `❌ Failed to update Knowhow chat task on completion:`,
-                    error
-                  );
-                });
-              console.log(`✅ Completed Knowhow chat task: ${knowhowTaskId}`);
-            }
           }
           console.log(Marked.parse(output));
           resolve(doneMsg);
@@ -845,7 +683,7 @@ ${reason}
    * Get list of active agent tasks
    */
   getActiveTasks(): { taskId: string; agent: TaskInfo }[] {
-    return Array.from(this.taskRegistry.entries()).map(
+    return Array.from(this.taskRegistry.getEntries()).map(
       ([taskId, taskInfo]) => ({
         taskId,
         agent: taskInfo,
@@ -868,22 +706,6 @@ ${reason}
   }
 
   /**
-   * Generate human-readable task ID from initial input
-   */
-  private generateTaskId(initialInput: string): string {
-    const words = initialInput
-      .toLowerCase()
-      .replace(/[^\w\s]/g, "")
-      .split(/\s+/)
-      .filter((word) => word.length > 2)
-      .slice(0, 9);
-
-    const wordPart = words.join("-") || "task";
-    const epochSeconds = Math.floor(Date.now() / 1000);
-    return `${epochSeconds}-${wordPart}`;
-  }
-
-  /**
    * Save session to file
    */
   private saveSession(
@@ -891,60 +713,15 @@ ${reason}
     taskInfo: TaskInfo,
     threads: any[]
   ): void {
-    try {
-      const sessionPath = path.join(this.sessionsDir, `${taskId}.json`);
-      const session: ChatSession = {
-        sessionId: taskId,
-        knowhowMessageId: taskInfo.knowhowMessageId,
-        knowhowTaskId: taskInfo.knowhowTaskId,
-        taskId,
-        agentName: taskInfo.agentName,
-        initialInput: taskInfo.initialInput,
-        status: taskInfo.status,
-        startTime: taskInfo.startTime,
-        endTime: taskInfo.endTime,
-        totalCost: taskInfo.totalCost,
-        threads,
-        currentThread: 0,
-        lastUpdated: Date.now(),
-      };
-
-      fs.writeFileSync(sessionPath, JSON.stringify(session, null, 2));
-    } catch (error) {
-      console.error(`Error saving session ${taskId}:`, error);
-    }
+    this.sessionManager.saveSession(taskId, taskInfo, threads);
   }
 
   /**
    * Update existing session with new thread state
    */
   private updateSession(taskId: string, threads: any[]): void {
-    try {
-      const sessionPath = path.join(this.sessionsDir, `${taskId}.json`);
-      if (fs.existsSync(sessionPath)) {
-        const session: ChatSession = JSON.parse(
-          fs.readFileSync(sessionPath, "utf8")
-        );
-        const taskInfo = this.taskRegistry.get(taskId);
-
-        // Update session with current state
-        session.threads = threads;
-        session.lastUpdated = Date.now();
-        if (taskInfo) {
-          session.status = taskInfo.status;
-          session.endTime = taskInfo.endTime;
-          session.totalCost = taskInfo.totalCost;
-
-          // Update Knowhow task fields if they exist in TaskInfo
-          session.knowhowMessageId = taskInfo.knowhowMessageId;
-          session.knowhowTaskId = taskInfo.knowhowTaskId;
-        }
-
-        fs.writeFileSync(sessionPath, JSON.stringify(session, null, 2));
-      }
-    } catch (error) {
-      console.error(`Error updating session ${taskId}:`, error);
-    }
+    const taskInfo = this.taskRegistry.get(taskId);
+    this.sessionManager.updateSession(taskId, taskInfo, threads);
   }
 
   /**
@@ -994,6 +771,7 @@ ${reason}
         agent.agentEvents.once(agent.eventTypes.done, (doneMsg) => {
           // Capture the agent's final output
           agentFinalOutput = doneMsg || "No response from the AI";
+          console.log("Finished", taskId, `$${agent.getTotalCostUsd()}`);
           finished = true;
           resolve("done");
         });

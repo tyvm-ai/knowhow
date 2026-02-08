@@ -10,7 +10,7 @@ import {
   InputMethod,
 } from "./types";
 import { ChatHistory } from "./types";
-import { ask } from "../utils/index";
+import { ask, setOnNewHistoryEntry } from "../utils/index";
 import { ChatModule } from "./types";
 import { ChatInteraction } from "../types";
 import { recordAudio, voiceToText } from "../microphone";
@@ -42,6 +42,12 @@ export class CliChatService implements ChatService {
       plugins,
     };
     this.loadInputHistory();
+
+    // Set up callback to add entries to inputHistory immediately when user presses Enter
+    // This ensures the next ask() call has the updated history for navigation
+    setOnNewHistoryEntry((entry: string) => {
+      this.addToInputHistory(entry);
+    });
   }
 
   getModuleByName(name: string) {
@@ -147,8 +153,7 @@ export class CliChatService implements ChatService {
   }
 
   async processInput(input: string): Promise<boolean> {
-    // Add input to history (if not a command)
-    this.addToInputHistory(input);
+    // Note: Input is added to history via setOnNewHistoryEntry callback when user presses Enter
 
     // Check if input is a command
     if (input.startsWith("/")) {

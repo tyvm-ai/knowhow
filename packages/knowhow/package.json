@@ -1,6 +1,6 @@
 {
   "name": "@tyvm/knowhow",
-  "version": "0.0.57",
+  "version": "0.0.58",
   "description": "ai cli with plugins and agents",
   "main": "ts_build/src/index.js",
   "bin": {
@@ -10,7 +10,7 @@
     "test": "jest --testTimeout 300000",
     "test:debug": "node --inspect-brk ../../node_modules/jest/bin/jest.js --detectOpenHandles --forceExit --testTimeout 300000",
     "compile": "tsc",
-    "start": "npm run compile && node ts_build/src/server/index.js",
+    "start": "npm run compile && node --no-node-snapshot ts_build/src/server/index.js",
     "dataset:diffs:generate": "ts-node src/dataset/diffs/generate.ts",
     "dataset:diffs:jsonl": "ts-node src/dataset/diffs/jsonl.ts",
     "prepublishOnly": "npm run compile",
@@ -62,7 +62,7 @@
     "jira-client": "^8.2.2",
     "marked": "^10.0.0",
     "marked-terminal": "^6.2.0",
-    "minimatch": "^10.0.3",
+    "minimatch": "^10.1.2",
     "morgan": "^1.10.0",
     "node-fetch": "^3.2.3",
     "node-jq": "^6.0.1",

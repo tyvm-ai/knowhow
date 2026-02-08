@@ -27,3 +27,4 @@ export * from "./executeScript";
 export * from "./ast";
 export * from "./startAgentTask";
 export * from "./ycmd";
+export * from "./mcp";
