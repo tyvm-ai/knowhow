@@ -62,7 +62,7 @@
     "jira-client": "^8.2.2",
     "marked": "^10.0.0",
     "marked-terminal": "^6.2.0",
-    "minimatch": "^10.0.3",
+    "minimatch": "^10.1.2",
     "morgan": "^1.10.0",
     "node-fetch": "^3.2.3",
     "node-jq": "^6.0.1",

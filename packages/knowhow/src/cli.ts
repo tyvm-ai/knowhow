@@ -11,7 +11,7 @@ import { init } from "./config";
 import { download, purge } from ".";
 import { includedTools } from "./agents/tools/list";
 import * as allTools from "./agents/tools";
-import { services } from "./services";
+import { LazyToolsService, services } from "./services";
 import { login } from "./login";
 import { worker } from "./worker";
 import {
@@ -35,8 +35,14 @@ import { SetupModule } from "./chat/modules/SetupModule";
 import { CliChatService } from "./chat/CliChatService";
 
 async function setupServices() {
-  const { Tools, Agents, Mcp, Clients } = services();
-  const { Researcher, Developer, Patcher, Setup } = agents();
+  const { Agents, Mcp, Clients } = services();
+  const Tools = new LazyToolsService();
+
+  const { Researcher, Developer, Patcher, Setup } = agents({
+    ...services(),
+    Tools,
+  });
+
   Agents.registerAgent(Researcher);
   Agents.registerAgent(Patcher);
   Agents.registerAgent(Developer);
@@ -44,6 +50,9 @@ async function setupServices() {
   Agents.loadAgentsFromConfig(services());
 
   Tools.defineTools(includedTools, allTools);
+
+  // Add Mcp service to tool context directly so MCP management tools can access it
+  Tools.addContext("Mcp", Mcp);
 
   await Promise.all([
     Mcp.connectToConfigured(Tools),

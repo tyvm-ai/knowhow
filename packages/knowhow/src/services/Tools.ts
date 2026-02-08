@@ -13,6 +13,7 @@ import {
   createPatternMatcher,
 } from "./types";
 import { PluginService } from "../plugins/plugins";
+import { McpService } from "./Mcp";
 
 export interface ToolContext {
   Agents?: AgentService;
@@ -20,6 +21,7 @@ export interface ToolContext {
   Clients?: AIClient;
   Tools?: ToolsService;
   Plugins?: PluginService;
+  Mcp?: McpService;
   metadata?: { [key: string]: any };
 }
 

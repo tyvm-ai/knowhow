@@ -20,6 +20,7 @@ export * from "./flags";
 export * from "./GitHub";
 export * from "./S3";
 export * from "./Tools";
+export * from "./LazyToolsService";
 export * as MCP from "./Mcp";
 export * from "./EmbeddingService";
 export * from "./DockerService";

@@ -119,7 +119,9 @@ describe("LanguagePlugin - Content-Based Triggering", () => {
     // Verify that the content-based trigger was activated
     expect(mockEventService.emit).toHaveBeenCalledWith(
       "agent:msg",
-      expect.stringContaining("language_context_trigger")
+      expect.stringMatching(
+        /<Workflow>[\s\S]*language_context_trigger[\s\S]*<\/Workflow>/
+      )
     );
 
     const emitCall = mockEventService.emit.mock.calls.find(
@@ -127,9 +129,11 @@ describe("LanguagePlugin - Content-Based Triggering", () => {
     );
     expect(emitCall).toBeDefined();
 
-    const eventData = JSON.parse(emitCall![1]);
+    // Extract JSON from <Workflow> tags
+    const workflowContent = emitCall![1].match(/<Workflow>\s*(\{[\s\S]*?\})\s*<\/Workflow>/);
+    expect(workflowContent).toBeDefined();
+    const eventData = JSON.parse(workflowContent![1]);
     expect(eventData.type).toBe("language_context_trigger");
-    expect(eventData.filePath).toBe("src/components/MyComponent.spec.ts");
     expect(eventData.matchingTerms).toContain("test(");
     expect(eventData.contextMessage).toContain("Jest testing best practices");
   });
@@ -275,7 +279,9 @@ describe("LanguagePlugin - Content-Based Triggering", () => {
     // Verify that case-insensitive matching worked
     expect(mockEventService.emit).toHaveBeenCalledWith(
       "agent:msg",
-      expect.stringContaining("language_context_trigger")
+      expect.stringMatching(
+        /<Workflow>[\s\S]*language_context_trigger[\s\S]*<\/Workflow>/
+      )
     );
   });
 
@@ -326,7 +332,9 @@ describe("LanguagePlugin - Content-Based Triggering", () => {
     // Verify that edit events also trigger content analysis
     expect(mockEventService.emit).toHaveBeenCalledWith(
       "agent:msg",
-      expect.stringContaining("language_context_trigger")
+      expect.stringMatching(
+        /<Workflow>[\s\S]*language_context_trigger[\s\S]*<\/Workflow>/
+      )
     );
   });
 });

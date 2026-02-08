@@ -310,7 +310,7 @@ Your modifications are automatically tracked separately and won't affect the use
 
     // Commit the changes
     const escapedMessage = message.replace(/\n/g, "\\n");
-    this.gitCommand(`commit -m "${escapedMessage}"`);
+    this.gitCommand(`commit --allow-empty -m "${escapedMessage}"`);
   }
 
   async commitAll(message: string): Promise<void> {
