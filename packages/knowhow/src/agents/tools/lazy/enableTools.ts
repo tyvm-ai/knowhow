@@ -3,7 +3,7 @@ import { ToolsService } from "../../../services/Tools";
 
 export async function enableTools(
   this: ToolsService,
-  patterns: string | string[]
+  patterns: string[]
 ) {
   if (!(this instanceof LazyToolsService)) {
     return {

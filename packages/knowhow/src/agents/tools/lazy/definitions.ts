@@ -20,15 +20,16 @@ export const enableToolsDefinition: Tool = {
   function: {
     name: "enableTools",
     description:
-      "Enable tools matching glob patterns. Examples: 'read*' enables all tools starting with 'read', 'mcp_*_browser_*' enables all browser MCP tools, '*File' enables all tools ending with 'File'. You can pass a single pattern string or an array of patterns.",
+      "Enable tools matching glob patterns. Examples: ['read*'] enables all tools starting with 'read', ['mcp_*_browser_*'] enables all browser MCP tools, ['*File'] enables all tools ending with 'File'. Pass an array of pattern strings.",
     parameters: {
       type: "object",
       positional: true,
       properties: {
         patterns: {
-          type: "string",
+          type: "array",
+          items: { type: "string" },
           description:
-            "Glob pattern(s) to match tool names. Can be a single pattern or array of patterns.",
+            "Array of glob patterns to match tool names.",
         },
       },
       required: ["patterns"],
@@ -41,14 +42,15 @@ export const disableToolsDefinition: Tool = {
   function: {
     name: "disableTools",
     description:
-      "Disable tools matching glob patterns. This removes tools from the available tool list to stay within provider limits.",
+      "Disable tools matching glob patterns. This removes tools from the available tool list to stay within provider limits. Pass an array of pattern strings.",
     parameters: {
       type: "object",
       positional: true,
       properties: {
         patterns: {
-          type: "string",
-          description: "Glob pattern(s) to match tool names for disabling.",
+          type: "array",
+          items: { type: "string" },
+          description: "Array of glob patterns to match tool names for disabling.",
         },
       },
       required: ["patterns"],

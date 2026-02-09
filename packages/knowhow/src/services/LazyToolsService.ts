@@ -62,10 +62,8 @@ export class LazyToolsService extends ToolsService {
   }
 
   // Enable tools matching glob patterns
-  enableTools(patterns: string | string[]) {
-    const patternArray = Array.isArray(patterns) ? patterns : [patterns];
-
-    for (const pattern of patternArray) {
+  enableTools(patterns: string[]) {
+    for (const pattern of patterns) {
       if (!this.enabledPatterns.includes(pattern)) {
         this.enabledPatterns.push(pattern);
       }
@@ -81,10 +79,8 @@ export class LazyToolsService extends ToolsService {
   }
 
   // Disable tools matching glob patterns
-  disableTools(patterns: string | string[]) {
-    const patternArray = Array.isArray(patterns) ? patterns : [patterns];
-
-    for (const pattern of patternArray) {
+  disableTools(patterns: string[]) {
+    for (const pattern of patterns) {
       if (!this.disabledPatterns.includes(pattern)) {
         this.disabledPatterns.push(pattern);
       }
