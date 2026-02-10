@@ -28,7 +28,7 @@ export class SystemModule extends BaseChatModule {
       },
       {
         name: "clear",
-        description: "Clear chat history",
+        description: "Clear chat history - AI will not remember previous messages",
         handler: this.handleClearCommand.bind(this),
       },
     ];

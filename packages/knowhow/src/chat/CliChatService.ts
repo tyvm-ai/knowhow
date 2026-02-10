@@ -61,8 +61,8 @@ export class CliChatService implements ChatService {
     try {
       if (fs.existsSync(this.historyFile)) {
         const historyData = fs.readFileSync(this.historyFile, "utf8");
-        const chatHistory: ChatHistory = JSON.parse(historyData);
-        this.inputHistory = chatHistory.inputs || [];
+        const parsedHistory: ChatHistory = JSON.parse(historyData);
+        this.inputHistory = parsedHistory.inputs || [];
       }
     } catch (error) {
       console.error("Error loading input history:", error);
@@ -81,11 +81,11 @@ export class CliChatService implements ChatService {
         fs.mkdirSync(dir, { recursive: true });
       }
 
-      const chatHistory: ChatHistory = {
+      const inputHistory: ChatHistory = {
         inputs: this.inputHistory,
       };
 
-      fs.writeFileSync(this.historyFile, JSON.stringify(chatHistory, null, 2));
+      fs.writeFileSync(this.historyFile, JSON.stringify(inputHistory, null, 2));
     } catch (error) {
       console.error("Error saving input history:", error);
     }
@@ -154,6 +154,7 @@ export class CliChatService implements ChatService {
 
   async processInput(input: string): Promise<boolean> {
     // Note: Input is added to history via setOnNewHistoryEntry callback when user presses Enter
+    // Note: this actually sends all commands to modules, first to service takes it
 
     // Check if input is a command
     if (input.startsWith("/")) {
@@ -198,7 +199,6 @@ export class CliChatService implements ChatService {
   async getInput(
     prompt: string = "> ",
     options: string[] = [],
-    chatHistory: any[] = []
   ): Promise<string> {
     if (this.context.inputMethod) {
       return await this.context.inputMethod.getInput(prompt);
@@ -277,7 +277,6 @@ export class CliChatService implements ChatService {
         const input = await this.getInput(
           promptText,
           commandNames,
-          this.chatHistory
         );
 
         if (input.trim() === "") {
