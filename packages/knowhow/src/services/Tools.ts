@@ -348,7 +348,7 @@ export class ToolsService {
 
     const originalFunc = this.originalFunctions[name];
 
-    // Check for overrides first
+    // Overrides basically replace the function entirely
     const matchingOverride = this.findMatchingOverride(name);
     if (matchingOverride) {
       // Create a wrapper function that calls the override with correct arguments
@@ -361,7 +361,9 @@ export class ToolsService {
       return;
     }
 
-    // Check for wrappers
+    // Wrappers are like russian dolls,
+    // each wrapper gets the previous function as its "inner" function to call, and can modify arguments and return value as needed
+    // the first wrapper gets the original function, the second wrapper gets the first wrapper as its inner function, etc
     const wrappers = this.findMatchingWrappers(name);
     if (wrappers.length > 0) {
       let wrappedFunction = originalFunc;
@@ -369,7 +371,7 @@ export class ToolsService {
       // Apply wrappers in priority order
       for (const wrapperReg of wrappers) {
         const innerFunc = wrappedFunction;
-        wrappedFunction = ((args: any) => {
+        wrappedFunction = ((...args: any[]) => {
           const toolDefinition = this.getTool(name);
           return wrapperReg.wrapper(innerFunc, args, toolDefinition);
         }).bind(this);
