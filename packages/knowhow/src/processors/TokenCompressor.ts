@@ -1,53 +1,69 @@
 import { Message, Tool } from "../clients/types";
 import { MessageProcessorFunction } from "../services/MessageProcessor";
 import { ToolsService } from "../services";
+import { JsonCompressor, JsonSchema, CompressionMetadata, JsonCompressorStorage } from "./JsonCompressor";
+
+export interface KeyInfo {
+  key: string;
+  size: number;
+  preview: string;
+  tokens?: number;
+  type?: string;
+  depth?: number;
+  childKeys?: string[];
+  nextChunkKey?: string;
+}
 
 interface TokenCompressorStorage {
   [key: string]: string;
 }
 
-export class TokenCompressor {
+export class TokenCompressor implements JsonCompressorStorage {
   private storage: TokenCompressorStorage = {};
   private keyPrefix: string = "compressed_";
   private toolName: string = expandTokensDefinition.function.name;
-
+  
   // Threshold for compression - if content exceeds this size, we compress it
   private compressionThreshold: number = 4000;
   private characterLimit: number = this.compressionThreshold * 4;
 
   // Largest size retrievable without re-compressing
-  private maxTokens: number = this.compressionThreshold * 2;
+  public maxTokens: number = this.compressionThreshold * 2;
+  
+  // JSON compression handler
+  private jsonCompressor: JsonCompressor;
 
   constructor(toolsService?: ToolsService) {
+    this.jsonCompressor = new JsonCompressor(this, this.compressionThreshold, this.maxTokens, this.toolName);
     this.registerTool(toolsService);
   }
 
   // Rough token estimation (4 chars per token average)
-  private estimateTokens(text: string): number {
+  public estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);
   }
 
   public setCompressionThreshold(threshold: number): void {
     this.compressionThreshold = threshold;
     this.characterLimit = threshold * 4; // Update character limit based on new threshold
+    this.jsonCompressor.updateSettings(threshold, this.maxTokens);
   }
 
   // Internally adjust to ensure we can always retrieve data
   private setMaxTokens(maxTokens: number): void {
     if (maxTokens > this.maxTokens) {
       this.maxTokens = maxTokens;
+      this.jsonCompressor.updateSettings(this.compressionThreshold, maxTokens);
     }
   }
 
   /**
-   * Attempts to parse content as JSON and returns parsed object if successful
+   * Attempts to parse content as JSON and returns parsed object if successful.
+   * Also handles MCP tool response format where actual data is in content[0].text
    */
-  private tryParseJson(content: string): any | null {
-    try {
-      return JSON.parse(content);
-    } catch {
-      return null;
-    }
+
+  public tryParseJson(content: string): any | null {
+    return this.jsonCompressor.tryParseJson(content);
   }
 
   /**
@@ -123,16 +139,41 @@ export class TokenCompressor {
       return content;
     }
 
-    // Try to parse as JSON first
+    // Try to parse as JSON and generate schema
     const jsonObj = this.tryParseJson(content);
     if (jsonObj) {
-      // For JSON objects, compress individual properties
-      const compressedObj = this.compressJsonProperties(jsonObj, path);
-      const compressedContent = JSON.stringify(compressedObj, null, 2);
+      // For MCP format, work with the actual data
+      const dataToCompress = jsonObj._mcp_format ? jsonObj.data : jsonObj;
 
-      // If compression reduced size significantly, return compressed version
+      // Generate and store schema
+      const schema = this.jsonCompressor.generateSchema(jsonObj);
+      const schemaKey = this.generateKey();
+      this.storeString(schemaKey, JSON.stringify(schema));
+
+      // For JSON objects, compress individual properties
+      // Use a non-empty path to ensure compression logic is applied
+      const compressedObj = this.compressJsonProperties(dataToCompress, path || "data");
+
+      // If this was MCP format, wrap the result back
+      const finalCompressedObj = jsonObj._mcp_format
+        ? { _mcp_format: true, _raw_structure: jsonObj._raw_structure, _data: compressedObj }
+        : compressedObj;
+
+      // Add schema reference to the compressed result
+      const resultWithSchema = typeof finalCompressedObj === 'object' && !Array.isArray(finalCompressedObj)
+        ? { ...finalCompressedObj, _schema_key: schemaKey }
+        : { _schema_key: schemaKey, data: finalCompressedObj };
+      const compressedContent = JSON.stringify(resultWithSchema, null, 2);
+
+      // Check compression effectiveness
       const compressedTokens = this.estimateTokens(compressedContent);
-      if (compressedTokens < tokens * 0.8) {
+      
+      // For MCP format, we've successfully extracted and compressed the data
+      // The wrapper overhead is acceptable because we provide schema + structured access
+      // For non-MCP format, use the standard 80% threshold
+      const compressionThreshold = jsonObj._mcp_format ? 0.95 : 0.8;
+      
+      if (compressedTokens < tokens * compressionThreshold) {
         return compressedContent;
       }
     }
@@ -146,118 +187,10 @@ export class TokenCompressor {
    * Implements an efficient backward-iterating chunking strategy for large arrays.
    */
   public compressJsonProperties(obj: any, path: string = ""): any {
-    if (
-      path === "" &&
-      this.estimateTokens(JSON.stringify(obj)) <= this.maxTokens
-    ) {
-      return obj;
-    }
-
-    if (Array.isArray(obj)) {
-      // Step 1: Recursively compress all items first (depth-first).
-      const processedItems = obj.map((item, index) =>
-        this.compressJsonProperties(item, `${path}[${index}]`)
-      );
-
-      // Step 2: Early exit if the whole array is already small enough.
-      // maxTokens allows us to fetch objects from the store without recompressing
-
-      // Step 3: Iterate backwards, building chunks from the end.
-      const finalArray: any[] = [];
-      let currentChunk: any[] = [];
-
-      for (let i = processedItems.length - 1; i >= 0; i--) {
-        const item = processedItems[i];
-        currentChunk.unshift(item); // Add item to the front of the current chunk
-
-        const chunkString = JSON.stringify(currentChunk);
-        const chunkTokens = this.estimateTokens(chunkString);
-
-        if (chunkTokens > this.compressionThreshold) {
-          const key = this.generateKey();
-          this.storeString(key, chunkString);
-
-          const stub = `[COMPRESSED_JSON_ARRAY_CHUNK - ${chunkTokens} tokens, ${
-            currentChunk.length
-          } items]\nKey: ${key}\nPath: ${path}[${i}...${
-            i + currentChunk.length - 1
-          }]\nPreview: ${chunkString.substring(0, 100)}...\n[Use ${
-            this.toolName
-          } tool with key "${key}" to retrieve this chunk]`;
-          finalArray.unshift(stub); // Add stub to the start of our final result.
-
-          currentChunk = [];
-        }
-      }
-
-      // Step 4: After the loop, add any remaining items from the start of the
-      // array that did not form a full chunk.
-      if (currentChunk.length > 0) {
-        finalArray.unshift(...currentChunk);
-      }
-      return finalArray;
-    }
-
-    // Handle objects - process all properties first (depth-first)
-    if (obj && typeof obj === "object") {
-      const result: any = {};
-      for (const [key, value] of Object.entries(obj)) {
-        const newPath = path ? `${path}.${key}` : key;
-        result[key] = this.compressJsonProperties(value, newPath);
-      }
-
-      // After processing children, check if the entire object should be compressed
-      const objectAsString = JSON.stringify(result);
-      const tokens = this.estimateTokens(objectAsString);
-      if (tokens > this.compressionThreshold) {
-        const key = this.generateKey();
-        this.storeString(key, objectAsString);
-
-        return `[COMPRESSED_JSON_OBJECT - ${tokens} tokens]\nKey: ${key}\nPath: ${path}\nKeys: ${Object.keys(
-          result
-        ).join(", ")}\nPreview: ${objectAsString.substring(0, 200)}...\n[Use ${
-          this.toolName
-        } tool with key "${key}" to retrieve full content]`;
-      }
-      return result;
-    }
-
-    // Handle primitive values (strings, numbers, booleans, null)
-    if (typeof obj === "string") {
-      // First, check if this string contains JSON that we can parse and compress more granularly
-      const parsedJson = this.tryParseJson(obj);
-      if (parsedJson) {
-        const compressedJson = this.compressJsonProperties(parsedJson, path);
-        const compressedJsonString = JSON.stringify(compressedJson, null, 2);
-
-        const originalTokens = this.estimateTokens(obj);
-        const compressedTokens = this.estimateTokens(compressedJsonString);
-
-        if (compressedTokens < originalTokens * 0.8) {
-          return compressedJsonString;
-        }
-      }
-
-      // If not JSON or compression wasn't effective, handle as regular string
-      const tokens = this.estimateTokens(obj);
-      if (tokens > this.compressionThreshold) {
-        const key = this.generateKey();
-        this.storeString(key, obj);
-
-        return `[COMPRESSED_JSON_PROPERTY - ${tokens} tokens]\nKey: ${key}\nPath: ${path}\nPreview: ${obj.substring(
-          0,
-          200
-        )}...\n[Use ${
-          this.toolName
-        } tool with key "${key}" to retrieve full content]`;
-      }
-      return obj;
-    }
-
-    return obj;
+    return this.jsonCompressor.compressJsonProperties(obj, path);
   }
 
-  private generateKey(): string {
+  public generateKey(): string {
     return `${this.keyPrefix}${Date.now()}_${Math.random()
       .toString(36)
       .substr(2, 9)}`;
@@ -310,6 +243,7 @@ export class TokenCompressor {
 
   clearStorage(): void {
     this.storage = {};
+    this.jsonCompressor.clearDeduplication();
   }
 
   getStorageKeys(): string[] {
@@ -336,6 +270,90 @@ export class TokenCompressor {
         },
       });
     }
+  }
+
+  /**
+   * Get the schema for a compressed object
+   */
+  getSchema(key: string): JsonSchema | null {
+    const schemaKey = `${key}_schema`;
+    const schemaStr = this.storage[schemaKey];
+    if (!schemaStr) {
+      return null;
+    }
+    try {
+      return JSON.parse(schemaStr);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * Get compressed properties for an object
+   */
+  getCompressedProperties(key: string): any | null {
+    const content = this.storage[key];
+    if (!content) {
+      return null;
+    }
+    try {
+      const metadata = JSON.parse(content) as CompressionMetadata;
+      return metadata.compressed_properties || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /**
+   * Get full object by merging high-signal and compressed properties
+   */
+  getFullObject(mainObj: any, compressedKey: string): any {
+    if (!mainObj || typeof mainObj !== 'object') {
+      return mainObj;
+    }
+
+    const compressed = this.getCompressedProperties(compressedKey);
+    if (!compressed) {
+      return mainObj;
+    }
+
+    const { _compressed_properties_key, _compressed_property_names, _compression_info, ...highSignal } = mainObj;
+    return { ...highSignal, ...compressed };
+  }
+
+  /**
+   * Extract all keys from compressed content
+   */
+  extractKeys(content: string): string[] {
+    const keys: string[] = [];
+    const keyPattern = /\$expandTokens\[([^\]]+)\]|Key:\s*([^\s\n]+)/g;
+    let match;
+    while ((match = keyPattern.exec(content)) !== null) {
+      const key = match[1] || match[2];
+      if (key && !keys.includes(key)) {
+        keys.push(key);
+      }
+    }
+    return keys;
+  }
+
+  /**
+   * Get the chain of keys for a given key (following NEXT_CHUNK_KEY references)
+   */
+  getKeyChain(key: string): KeyInfo[] {
+    const chain: KeyInfo[] = [];
+    let currentKey: string | null = key;
+
+    while (currentKey) {
+      const content = this.storage[currentKey];
+      if (!content) break;
+
+      chain.push({ key: currentKey, size: content.length, preview: content.substring(0, 100) });
+
+      const nextMatch = content.match(/NEXT_CHUNK_KEY:\s*([^\s\n]+)/);
+      currentKey = nextMatch ? nextMatch[1] : null;
+    }
+    return chain;
   }
 }
 

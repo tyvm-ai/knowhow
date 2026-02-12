@@ -161,7 +161,9 @@ export class DynamicSwaggerClient {
         const opId =
           operation.operationId ||
           `${method}_${path.replace(/[^a-zA-Z0-9]/g, "_")}`;
-        if (opId === operationId) {
+
+        const sanitized = opId.replace(/[^a-zA-Z0-9_]/g, "_");
+        if (opId === operationId || operationId === sanitized) {
           foundOperation = {
             operationId: opId,
             path,
@@ -179,6 +181,8 @@ export class DynamicSwaggerClient {
     if (!foundOperation) {
       throw new Error(`Operation ${operationId} not found in swagger spec`);
     }
+
+    console.log(`Executing operation: ${foundOperation.operationId} (${foundOperation.method.toUpperCase()} ${foundOperation.path})`);
 
     const result = await executeOperation(this.swaggerSpec, foundOperation, {
       baseUrl: this.baseUrl,
