@@ -1,6 +1,7 @@
 import { readFile } from "../../src/utils";
 import { TokenCompressor, KeyInfo } from "../../src/processors/TokenCompressor";
 import { services } from "../../src/services";
+import { Message } from "../../src/clients/types";
 
 describe("TokenCompressor - Large File Test", () => {
   let tokenCompressor: TokenCompressor;
@@ -381,5 +382,69 @@ describe("TokenCompressor - Large File Test", () => {
     expect(totalKeys).toBeGreaterThan(5); // Should have multiple compression keys
 
     console.log(`\n✓ Compression improvements verified!`);
+  });
+
+  test("should not double-compress already compressed content", async () => {
+    // Load the githubjson.txt which contains a Message object
+    const fileBuffer = await readFile(jsonPath);
+    const fileContents = fileBuffer.toString();
+
+    console.log(`\n=== Testing Double Compression Prevention ===`);
+    console.log(`Original file size: ${fileContents.length} characters`);
+
+    // Parse the message from the file
+    const message = JSON.parse(fileContents) as Message;
+
+    // Create a copy of the message to compress
+    const messageToCompress: Message = JSON.parse(JSON.stringify(message));
+
+    // First compression
+    await tokenCompressor.compressMessage(messageToCompress);
+
+    const firstCompression = (messageToCompress.content as any[])[0].text;
+    console.log(`\nAfter first compression: ${firstCompression.length} characters`);
+    console.log(`First compression preview:\n${firstCompression.substring(0, 300)}...`);
+
+    // Parse the first compression result
+    const firstParsed = tokenCompressor.tryParseJson(firstCompression);
+    expect(firstParsed).toBeTruthy();
+    expect(firstParsed._schema_key).toBeDefined();
+    expect(firstParsed.data).toBeDefined();
+
+    // Second compression - this should NOT compress again
+    await tokenCompressor.compressMessage(messageToCompress);
+
+    const secondCompression = (messageToCompress.content as any[])[0].text;
+    console.log(`\nAfter second compression: ${secondCompression.length} characters`);
+    console.log(`Second compression preview:\n${secondCompression.substring(0, 300)}...`);
+
+    // Parse the second compression result
+    const secondParsed = tokenCompressor.tryParseJson(secondCompression);
+    expect(secondParsed).toBeTruthy();
+    
+    console.log(`\nSecond parsed structure keys:`, Object.keys(secondParsed));
+    console.log(`Full structure:`, JSON.stringify(secondParsed, null, 2).substring(0, 500));
+    
+    // Check if we get the over-compressed bug: only metadata, no data
+    const isOverCompressed = 
+      Object.keys(secondParsed).length === 3 &&
+      secondParsed._mcp_format === true &&
+      secondParsed._raw_structure !== undefined &&
+      secondParsed._schema_key !== undefined;
+    
+    console.log(`\nIs over-compressed: ${isOverCompressed}`);
+
+    // After the fix, second compression should be identical to first (no re-compression)
+    expect(secondCompression).toBe(firstCompression);
+    
+    // Both should have the same structure with data
+    expect(secondParsed).toEqual(firstParsed);
+    expect(secondParsed.data).toBeDefined();
+    expect(Array.isArray(secondParsed.data)).toBe(true);
+    
+    // Should NOT be over-compressed
+    expect(isOverCompressed).toBe(false);
+    
+    console.log(`\n✓ Double compression prevention verified!`);
   });
 });

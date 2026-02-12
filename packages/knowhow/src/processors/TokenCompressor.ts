@@ -1,7 +1,12 @@
 import { Message, Tool } from "../clients/types";
 import { MessageProcessorFunction } from "../services/MessageProcessor";
 import { ToolsService } from "../services";
-import { JsonCompressor, JsonSchema, CompressionMetadata, JsonCompressorStorage } from "./JsonCompressor";
+import {
+  JsonCompressor,
+  JsonSchema,
+  CompressionMetadata,
+  JsonCompressorStorage,
+} from "./JsonCompressor";
 
 export interface KeyInfo {
   key: string;
@@ -22,19 +27,24 @@ export class TokenCompressor implements JsonCompressorStorage {
   private storage: TokenCompressorStorage = {};
   private keyPrefix: string = "compressed_";
   private toolName: string = expandTokensDefinition.function.name;
-  
+
   // Threshold for compression - if content exceeds this size, we compress it
   private compressionThreshold: number = 4000;
   private characterLimit: number = this.compressionThreshold * 4;
 
   // Largest size retrievable without re-compressing
   public maxTokens: number = this.compressionThreshold * 2;
-  
+
   // JSON compression handler
   private jsonCompressor: JsonCompressor;
 
   constructor(toolsService?: ToolsService) {
-    this.jsonCompressor = new JsonCompressor(this, this.compressionThreshold, this.maxTokens, this.toolName);
+    this.jsonCompressor = new JsonCompressor(
+      this,
+      this.compressionThreshold,
+      this.maxTokens,
+      this.toolName
+    );
     this.registerTool(toolsService);
   }
 
@@ -125,9 +135,32 @@ export class TokenCompressor implements JsonCompressorStorage {
   }
 
   /**
+   * Check if content is already compressed
+   */
+  private isAlreadyCompressed(content: string): boolean {
+    // Check for compressed string markers
+    if (content.includes("[COMPRESSED_STRING")) {
+      return true;
+    }
+    
+    // Check for compressed JSON structure with schema key
+    const parsed = this.tryParseJson(content);
+    if (parsed && parsed._schema_key && typeof parsed._schema_key === "string") {
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
    * Enhanced content compression that handles both JSON and string chunking
    */
   public compressContent(content: string, path: string = ""): string {
+    // Check if already compressed - don't compress again
+    if (this.isAlreadyCompressed(content)) {
+      return content;
+    }
+
     const tokens = this.estimateTokens(content);
 
     // For nested properties (path !== ""), use maxTokens to avoid recompressing stored data
@@ -152,27 +185,36 @@ export class TokenCompressor implements JsonCompressorStorage {
 
       // For JSON objects, compress individual properties
       // Use a non-empty path to ensure compression logic is applied
-      const compressedObj = this.compressJsonProperties(dataToCompress, path || "data");
+      const compressedObj = this.compressJsonProperties(
+        dataToCompress,
+        path || "data"
+      );
 
       // If this was MCP format, wrap the result back
       const finalCompressedObj = jsonObj._mcp_format
-        ? { _mcp_format: true, _raw_structure: jsonObj._raw_structure, _data: compressedObj }
+        ? {
+            _mcp_format: true,
+            _raw_structure: jsonObj._raw_structure,
+            _data: compressedObj,
+          }
         : compressedObj;
 
       // Add schema reference to the compressed result
-      const resultWithSchema = typeof finalCompressedObj === 'object' && !Array.isArray(finalCompressedObj)
-        ? { ...finalCompressedObj, _schema_key: schemaKey }
-        : { _schema_key: schemaKey, data: finalCompressedObj };
+      const resultWithSchema =
+        typeof finalCompressedObj === "object" &&
+        !Array.isArray(finalCompressedObj)
+          ? { ...finalCompressedObj, _schema_key: schemaKey }
+          : { _schema_key: schemaKey, data: finalCompressedObj };
       const compressedContent = JSON.stringify(resultWithSchema, null, 2);
 
       // Check compression effectiveness
       const compressedTokens = this.estimateTokens(compressedContent);
-      
+
       // For MCP format, we've successfully extracted and compressed the data
       // The wrapper overhead is acceptable because we provide schema + structured access
-      // For non-MCP format, use the standard 80% threshold
-      const compressionThreshold = jsonObj._mcp_format ? 0.95 : 0.8;
-      
+      // For non-MCP format, use the standard 60% threshold
+      const compressionThreshold = 0.6;
+
       if (compressedTokens < tokens * compressionThreshold) {
         return compressedContent;
       }
@@ -308,7 +350,7 @@ export class TokenCompressor implements JsonCompressorStorage {
    * Get full object by merging high-signal and compressed properties
    */
   getFullObject(mainObj: any, compressedKey: string): any {
-    if (!mainObj || typeof mainObj !== 'object') {
+    if (!mainObj || typeof mainObj !== "object") {
       return mainObj;
     }
 
@@ -317,7 +359,12 @@ export class TokenCompressor implements JsonCompressorStorage {
       return mainObj;
     }
 
-    const { _compressed_properties_key, _compressed_property_names, _compression_info, ...highSignal } = mainObj;
+    const {
+      _compressed_properties_key,
+      _compressed_property_names,
+      _compression_info,
+      ...highSignal
+    } = mainObj;
     return { ...highSignal, ...compressed };
   }
 
@@ -348,7 +395,11 @@ export class TokenCompressor implements JsonCompressorStorage {
       const content = this.storage[currentKey];
       if (!content) break;
 
-      chain.push({ key: currentKey, size: content.length, preview: content.substring(0, 100) });
+      chain.push({
+        key: currentKey,
+        size: content.length,
+        preview: content.substring(0, 100),
+      });
 
       const nextMatch = content.match(/NEXT_CHUNK_KEY:\s*([^\s\n]+)/);
       currentKey = nextMatch ? nextMatch[1] : null;
