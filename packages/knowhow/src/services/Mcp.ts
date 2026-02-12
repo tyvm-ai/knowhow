@@ -84,6 +84,7 @@ export class McpService {
           const token = fs.readFileSync(mcp.authorization_token_file, "utf-8");
           mcp.authorization_token = token.trim();
         }
+
         return new StreamableHTTPClientTransport(new URL(mcp.url), {
           requestInit: {
             headers: {

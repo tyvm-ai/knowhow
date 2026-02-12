@@ -96,6 +96,10 @@ export class LanguagePlugin extends PluginBase implements Plugin {
         if (!exists) {
           return { filePath, content: `File ${filePath} does not exist` };
         }
+        const stat = await fileStat(filePath);
+        if (stat.isDirectory()) {
+          throw new Error(`Cannot read directories: ${filePath}`);
+        }
         const content = (await readFile(filePath, "utf8")).toString();
         return { filePath, content };
       })

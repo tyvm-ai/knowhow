@@ -52,6 +52,11 @@ const defaultConfig = {
       prompt: "BasicEmbeddingExplainer",
       chunkSize: 2000,
     },
+    {
+      input: "src/**/*.ts",
+      output: ".knowhow/embeddings/code.json",
+      chunkSize: 2000,
+    },
   ],
   embeddingModel: EmbeddingModels.openai.EmbeddingAda2,
 

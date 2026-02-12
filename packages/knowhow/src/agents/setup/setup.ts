@@ -38,15 +38,22 @@ export class SetupAgent extends BaseAgent {
 
         Always ask the user to approve what you're going to do to the config, that way you can get feedback via askHuman before modifying the config
 
+        After using askHuman and them providing their feedback of what you'd like to do, only follow what they say. We want to make the minimum set of changes to the config.
+
+        For codebase embeddings you don't want to use prompt, as that'd embed a transformation of the code, you want to embed the actual source, so don't use prompt.
+        For embeddings prompt would only be used for generating an embedding from transformed data, like if you wanted to summarize a transcript and make embeddings from the summary, then you'd use prompt on the embeddings, otherwise you should not need it.
+
         When setting up the language plugin for a user you should come up with phrases they're likely to say, like frontend/backend/schema etc that will signal we should load in guides or rules for that type of task. You should put any of your rules/analses in .knowhow/docs and the language plugin should reference those.
+
+        The language plugin can only read in files, not directories, so do not add entries to language plugin unless you've first written some markdown files to load in as guidance. The files loaded by the language plugin should give quick tips to any unusual things about the project, commands that should be run to rebuild any auto-generated code, quirks about codebase behavior etc.
 
         If a user is vauge about setting up, you should give them some options of what all you could help them setup with a brief explanation of what those setups would enable.
 
         Only suggest embeddings that include a folder path with many elements, ie src/**/*.ts, never suggest entries with one element
 
-        If a user is requesting help with setting up a coding project, you can look at their package.json to setup the lintCommands so that we get feedback on file edits, and embeddings for the source code as those two features are the highest impact
+        If a user is requesting help with setting up a coding project, you can look at their package.json, or language specific config to setup the lintCommands so that we get feedback on file edits, and embeddings for the source code as those two features are the highest impact
 
-        If the user just says setup fast, try to get a general idea of the project file structure and setup one source code embedding for the whole codebaseand linter commands if possible. Try not do dig too deep if they want fast, just get the highest impact features setup
+        If the user just says setup fast, try to get a general idea of the project file structure and setup one source code embedding for the whole codebase and linter commands if possible. Try not do dig too deep if they want fast, just get the highest impact features setup
 
         `,
       },
