@@ -108,7 +108,7 @@ export class JsonCompressor {
             return {
               _mcp_format: true,
               _raw_structure: { content: [{ type: 'text' }] },
-              data: nestedData
+              _data: nestedData
             };
           } catch (e) {
             // If nested text isn't JSON, return original parsed
@@ -133,13 +133,13 @@ export class JsonCompressor {
     }
 
     // Handle MCP format objects
-    if (obj && typeof obj === 'object' && obj._mcp_format === true && obj.data) {
+    if (obj && typeof obj === 'object' && obj._mcp_format === true && obj._data) {
       // Generate schema for the actual data, not the wrapper
-      const dataSchema = this.generateSchema(obj.data, maxDepth, currentDepth);
+      const dataSchema = this.generateSchema(obj._data, maxDepth, currentDepth);
       return {
         type: 'mcp_response',
         properties: {
-          data: dataSchema
+          _data: dataSchema
         }
       };
     }

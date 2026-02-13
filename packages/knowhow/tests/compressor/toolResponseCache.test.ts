@@ -31,8 +31,8 @@ describe("ToolResponseCache - MCP Format Support", () => {
       // Verify the stored data is normalized JSON
       const parsed = JSON.parse(stored!);
       expect(parsed._mcp_format).toBe(true);
-      expect(parsed.data).toBeDefined();
-      expect(Array.isArray(parsed.data)).toBe(true);
+      expect(parsed._data).toBeDefined();
+      expect(Array.isArray(parsed._data)).toBe(true);
     });
 
     it("should preserve the data array in normalized structure", () => {
@@ -41,12 +41,12 @@ describe("ToolResponseCache - MCP Format Support", () => {
       const parsed = JSON.parse(stored!);
 
       // Verify the data array is present and has the expected structure
-      expect(parsed.data).toBeDefined();
-      expect(Array.isArray(parsed.data)).toBe(true);
-      expect(parsed.data.length).toBeGreaterThan(0);
+      expect(parsed._data).toBeDefined();
+      expect(Array.isArray(parsed._data)).toBe(true);
+      expect(parsed._data.length).toBeGreaterThan(0);
       
       // Verify first item has expected GitHub repo structure
-      const firstRepo = parsed.data[0];
+      const firstRepo = parsed._data[0];
       expect(firstRepo).toHaveProperty("id");
       expect(firstRepo).toHaveProperty("name");
       expect(firstRepo).toHaveProperty("full_name");
@@ -70,8 +70,8 @@ describe("ToolResponseCache - MCP Format Support", () => {
       cache.storeToolResponse(githubJsonContent, "github-repos");
     });
 
-    it("should query the data array length with .data | length", async () => {
-      const result = await cache.queryToolResponse("github-repos", ".data | length");
+    it("should query the data array length with ._data | length", async () => {
+      const result = await cache.queryToolResponse("github-repos", "._data | length");
       
       // Parse the result to verify it's a number
       const length = JSON.parse(result);
@@ -79,8 +79,8 @@ describe("ToolResponseCache - MCP Format Support", () => {
       expect(length).toBeGreaterThan(0);
     });
 
-    it("should query first item in data array with .data[0]", async () => {
-      const result = await cache.queryToolResponse("github-repos", ".data[0]");
+    it("should query first item in data array with ._data[0]", async () => {
+      const result = await cache.queryToolResponse("github-repos", "._data[0]");
       
       // Parse and verify it's an object with GitHub repo structure
       const firstItem = JSON.parse(result);
@@ -89,8 +89,8 @@ describe("ToolResponseCache - MCP Format Support", () => {
       expect(firstItem).toHaveProperty("full_name");
     });
 
-    it("should query specific field in first item with .data[0].name", async () => {
-      const result = await cache.queryToolResponse("github-repos", ".data[0].name");
+    it("should query specific field in first item with ._data[0].name", async () => {
+      const result = await cache.queryToolResponse("github-repos", "._data[0].name");
       
       // Parse and verify it's a string (repo name)
       const name = JSON.parse(result);
@@ -98,8 +98,8 @@ describe("ToolResponseCache - MCP Format Support", () => {
       expect(name.length).toBeGreaterThan(0);
     });
 
-    it("should map over data array with .data | map(.name)", async () => {
-      const result = await cache.queryToolResponse("github-repos", ".data | map(.name)");
+    it("should map over data array with ._data | map(.name)", async () => {
+      const result = await cache.queryToolResponse("github-repos", "._data | map(.name)");
       
       // Parse and verify it's an array of strings
       const names = JSON.parse(result);
@@ -108,10 +108,10 @@ describe("ToolResponseCache - MCP Format Support", () => {
       expect(typeof names[0]).toBe("string");
     });
 
-    it("should filter data array with .data | map(select(.private == true))", async () => {
+    it("should filter data array with ._data | map(select(.private == true))", async () => {
       const result = await cache.queryToolResponse(
         "github-repos",
-        ".data | map(select(.private == true))"
+        "._data | map(select(.private == true))"
       );
       
       // Parse and verify filtering worked
@@ -124,8 +124,8 @@ describe("ToolResponseCache - MCP Format Support", () => {
       });
     });
 
-    it("should access nested properties with .data[0].owner.login", async () => {
-      const result = await cache.queryToolResponse("github-repos", ".data[0].owner.login");
+    it("should access nested properties with ._data[0].owner.login", async () => {
+      const result = await cache.queryToolResponse("github-repos", "._data[0].owner.login");
       
       // Parse and verify it's a string (owner login)
       const login = JSON.parse(result);
@@ -160,7 +160,7 @@ describe("ToolResponseCache - MCP Format Support", () => {
       
       expect(stored).toBe(plainObject);
       
-      // Should not have MCP format markers
+      // Should not have MCP format markers (note: plain objects may have a "data" field which is fine)
       const parsed = JSON.parse(stored!);
       expect(parsed._mcp_format).toBeUndefined();
       expect(parsed.status).toBe("success");
@@ -216,9 +216,9 @@ describe("ToolResponseCache - MCP Format Support", () => {
       const parsed = JSON.parse(stored!);
 
       expect(parsed._mcp_format).toBe(true);
-      expect(parsed.data).toBeDefined();
-      expect(Array.isArray(parsed.data)).toBe(true);
-      expect(parsed.data[0].value).toBe("test");
+      expect(parsed._data).toBeDefined();
+      expect(Array.isArray(parsed._data)).toBe(true);
+      expect(parsed._data[0].value).toBe("test");
     });
 
     it("should handle empty MCP content array", () => {

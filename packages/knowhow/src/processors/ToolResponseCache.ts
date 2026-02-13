@@ -108,14 +108,14 @@ export class ToolResponseCache {
     // Try to parse the content
     const parsed = this.jsonCompressor.tryParseJson(content);
 
-    if (parsed && typeof parsed === 'object' && parsed._mcp_format === true && parsed.data) {
+    if (parsed && typeof parsed === 'object' && parsed._mcp_format === true && parsed._data) {
       // For MCP format responses, store the data in a normalized structure
       // This allows JQ queries to work directly against the data array
       // Store as JSON string to maintain compatibility with existing query methods
       this.storage[toolCallId] = JSON.stringify({
         _mcp_format: true,
         _raw_structure: parsed._raw_structure,
-        data: parsed.data
+        _data: parsed._data
       });
     } else if (parsed !== null) {
       // Check if content is double-encoded by trying to parse again

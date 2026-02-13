@@ -176,7 +176,7 @@ export class TokenCompressor implements JsonCompressorStorage {
     const jsonObj = this.tryParseJson(content);
     if (jsonObj) {
       // For MCP format, work with the actual data
-      const dataToCompress = jsonObj._mcp_format ? jsonObj.data : jsonObj;
+      const dataToCompress = jsonObj._mcp_format ? jsonObj._data : jsonObj;
 
       // Generate and store schema
       const schema = this.jsonCompressor.generateSchema(jsonObj);
