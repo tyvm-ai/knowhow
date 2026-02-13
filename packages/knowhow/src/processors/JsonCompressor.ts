@@ -101,8 +101,8 @@ export class JsonCompressor {
         // Check if it has type: "text" and a text field
         if (firstContent.type === 'text' && typeof firstContent.text === 'string') {
           try {
-            // Try to parse the nested text as JSON
-            const nestedData = JSON.parse(firstContent.text);
+            // Try to parse the nested text as JSON (recursively to handle double-encoding)
+            const nestedData = this.tryParseJson(firstContent.text);
 
             // Return a structured object that preserves the MCP format but exposes the data
             return {
