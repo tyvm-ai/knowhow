@@ -25,6 +25,7 @@ import {
 import { TaskInfo, ChatSession } from "../types";
 import { agents } from "../../agents";
 import { ToolCallEvent } from "../../agents/base/base";
+import { $Command } from "@aws-sdk/client-s3";
 
 export class AgentModule extends BaseChatModule {
   name = "agent";
@@ -582,11 +583,14 @@ Please continue from where you left off and complete the original request.
         10 // Priority level
       );
 
-      agent.messageProcessor.setProcessors("pre_call", [
+      const caching = [
         new ToolResponseCache(agent.tools).createProcessor(),
         new TokenCompressor(agent.tools).createProcessor((msg) =>
           Boolean(msg.role === "tool" && msg.tool_call_id)
         ),
+      ];
+      agent.messageProcessor.setProcessors("pre_call", [
+        ...caching,
         new CustomVariables(agent.tools).createProcessor(),
       ]);
 
@@ -595,11 +599,7 @@ Please continue from where you left off and complete the original request.
         new HarmonyToolProcessor().createProcessor(),
       ]);
 
-      agent.messageProcessor.setProcessors("post_tools", [
-        new TokenCompressor(agent.tools).createProcessor((msg) =>
-          Boolean(msg.role === "tool" && msg.tool_call_id)
-        ),
-      ]);
+      agent.messageProcessor.setProcessors("post_tools", caching);
 
       // Set up event listeners
       if (!agent.agentEvents.listenerCount(agent.eventTypes.toolCall)) {
