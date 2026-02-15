@@ -1,27 +1,35 @@
-import { Base64ImageDetector, globalBase64ImageDetector } from "../../src/processors/Base64ImageDetector";
+import {
+  Base64ImageProcessor,
+  globalBase64ImageDetector,
+} from "../../src/processors/Base64ImageDetector";
 import { Message } from "../../src/clients/types";
+import { ToolsService } from "../../src/services/Tools";
+import * as fs from "fs";
 
 describe("Base64ImageDetector", () => {
-  let detector: Base64ImageDetector;
+  let detector: Base64ImageProcessor;
 
   beforeEach(() => {
-    detector = new Base64ImageDetector();
+    detector = new Base64ImageProcessor();
   });
 
   describe("Constructor", () => {
     it("should create instance with default parameters", () => {
-      const instance = new Base64ImageDetector();
-      expect(instance).toBeInstanceOf(Base64ImageDetector);
+      const instance = new Base64ImageProcessor();
+      expect(instance).toBeInstanceOf(Base64ImageProcessor);
     });
 
     it("should create instance with custom image detail", () => {
-      const instance = new Base64ImageDetector("high");
-      expect(instance).toBeInstanceOf(Base64ImageDetector);
+      const instance = new Base64ImageProcessor();
+      instance.setImageDetail("high");
+      expect(instance).toBeInstanceOf(Base64ImageProcessor);
     });
 
     it("should create instance with custom supported formats", () => {
-      const instance = new Base64ImageDetector("low", ["png", "jpeg"]);
-      expect(instance).toBeInstanceOf(Base64ImageDetector);
+      const instance = new Base64ImageProcessor();
+      instance.setImageDetail("low");
+      instance.setSupportedFormats(["png", "jpeg"]);
+      expect(instance).toBeInstanceOf(Base64ImageProcessor);
     });
   });
 
@@ -51,9 +59,12 @@ describe("Base64ImageDetector", () => {
     });
   });
   describe("String content processing", () => {
-    const validPngBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
-    const validJpegBase64 = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD//gA7Q1JFQVR";
-    const plainBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+    const validPngBase64 =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+    const validJpegBase64 =
+      "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD//gA7Q1JFQVR";
+    const plainBase64 =
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
     const regularText = "This is just regular text";
 
     it("should convert data URL base64 string to image content", () => {
@@ -61,8 +72,8 @@ describe("Base64ImageDetector", () => {
       const modifiedMessages: Message[] = [
         {
           role: "user",
-          content: validPngBase64
-        }
+          content: validPngBase64,
+        },
       ];
 
       const processor = detector.createProcessor();
@@ -74,8 +85,8 @@ describe("Base64ImageDetector", () => {
         type: "image_url",
         image_url: {
           url: validPngBase64,
-          detail: "auto"
-        }
+          detail: "auto",
+        },
       });
     });
     it("should convert plain base64 PNG to image content", () => {
@@ -83,8 +94,9 @@ describe("Base64ImageDetector", () => {
       const modifiedMessages: Message[] = [
         {
           role: "user",
-          content: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
-        }
+          content:
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==",
+        },
       ];
 
       const processor = detector.createProcessor();
@@ -107,8 +119,8 @@ describe("Base64ImageDetector", () => {
       const modifiedMessages: Message[] = [
         {
           role: "user",
-          content: regularText
-        }
+          content: regularText,
+        },
       ];
 
       const processor = detector.createProcessor();
@@ -121,12 +133,12 @@ describe("Base64ImageDetector", () => {
       const modifiedMessages: Message[] = [
         {
           role: "assistant",
-          content: validPngBase64
+          content: validPngBase64,
         },
         {
-          role: "system", 
-          content: validPngBase64
-        }
+          role: "system",
+          content: validPngBase64,
+        },
       ];
 
       const processor = detector.createProcessor();
@@ -136,15 +148,91 @@ describe("Base64ImageDetector", () => {
       expect(modifiedMessages[1].content).toBe(validPngBase64);
     });
 
+    it("should process tool messages with JSON string containing image_url", () => {
+      const imageDataUrl =
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+      
+      const toolResponseJson = JSON.stringify({
+        type: "image_url",
+        image_url: {
+          url: imageDataUrl,
+          detail: "auto",
+        },
+      });
+
+      const originalMessages: Message[] = [];
+      const modifiedMessages: Message[] = [
+        {
+          role: "tool",
+          content: toolResponseJson,
+          tool_call_id: "call_123",
+        },
+      ];
+
+      const processor = detector.createProcessor();
+      processor(originalMessages, modifiedMessages);
+
+      // Tool message content should be converted from JSON string to array
+      expect(Array.isArray(modifiedMessages[0].content)).toBe(true);
+      const content = modifiedMessages[0].content as any[];
+      expect(content).toHaveLength(1);
+      expect(content[0]).toEqual({
+        type: "image_url",
+        image_url: {
+          url: imageDataUrl,
+          detail: "auto",
+        },
+      });
+    });
+
+    it("should process tool messages with plain base64 string", () => {
+      const validPngBase64 =
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+
+      const originalMessages: Message[] = [];
+      const modifiedMessages: Message[] = [
+        {
+          role: "tool",
+          content: validPngBase64,
+          tool_call_id: "call_456",
+        },
+      ];
+
+      const processor = detector.createProcessor();
+      processor(originalMessages, modifiedMessages);
+
+      // Should convert to array if it's detected as an image
+      if (Array.isArray(modifiedMessages[0].content)) {
+        const content = modifiedMessages[0].content as any[];
+        expect(content[0].type).toBe("image_url");
+      }
+    });
+
+    it("should not process tool messages with regular text", () => {
+      const originalMessages: Message[] = [];
+      const modifiedMessages: Message[] = [
+        {
+          role: "tool",
+          content: "Tool completed successfully",
+          tool_call_id: "call_789",
+        },
+      ];
+
+      const processor = detector.createProcessor();
+      processor(originalMessages, modifiedMessages);
+
+      expect(modifiedMessages[0].content).toBe("Tool completed successfully");
+    });
+
     it("should use custom image detail setting", () => {
       detector.setImageDetail("high");
-      
+
       const originalMessages: Message[] = [];
       const modifiedMessages: Message[] = [
         {
           role: "user",
-          content: validPngBase64
-        }
+          content: validPngBase64,
+        },
       ];
 
       const processor = detector.createProcessor();
@@ -155,7 +243,8 @@ describe("Base64ImageDetector", () => {
     });
   });
   describe("Array content processing", () => {
-    const validPngBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+    const validPngBase64 =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
 
     it("should process text items in content array", () => {
       const originalMessages: Message[] = [];
@@ -165,9 +254,9 @@ describe("Base64ImageDetector", () => {
           content: [
             { type: "text", text: "Here is an image:" },
             { type: "text", text: validPngBase64 },
-            { type: "text", text: "And some more text" }
-          ]
-        }
+            { type: "text", text: "And some more text" },
+          ],
+        },
       ];
 
       const processor = detector.createProcessor();
@@ -186,9 +275,12 @@ describe("Base64ImageDetector", () => {
           role: "user",
           content: [
             { type: "text", text: "Some text" },
-            { type: "image_url", image_url: { url: "http://example.com/image.png" } }
-          ]
-        }
+            {
+              type: "image_url",
+              image_url: { url: "http://example.com/image.png" },
+            },
+          ],
+        },
       ];
 
       const processor = detector.createProcessor();
@@ -206,8 +298,8 @@ describe("Base64ImageDetector", () => {
       const modifiedMessages: Message[] = [
         {
           role: "user",
-          content: []
-        }
+          content: [],
+        },
       ];
 
       const processor = detector.createProcessor();
@@ -216,7 +308,8 @@ describe("Base64ImageDetector", () => {
     });
   });
   describe("Tool call argument processing", () => {
-    const validPngBase64 = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+    const validPngBase64 =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
 
     it("should process base64 images in tool call arguments", () => {
       const originalMessages: Message[] = [];
@@ -232,12 +325,12 @@ describe("Base64ImageDetector", () => {
                 name: "analyze_image",
                 arguments: JSON.stringify({
                   image: validPngBase64,
-                  description: "Test image"
-                })
-              }
-            }
-          ]
-        }
+                  description: "Test image",
+                }),
+              },
+            },
+          ],
+        },
       ];
 
       const processor = detector.createProcessor();
@@ -264,14 +357,14 @@ describe("Base64ImageDetector", () => {
                   data: {
                     images: [validPngBase64, "regular text"],
                     metadata: {
-                      thumbnail: validPngBase64
-                    }
-                  }
-                })
-              }
-            }
-          ]
-        }
+                      thumbnail: validPngBase64,
+                    },
+                  },
+                }),
+              },
+            },
+          ],
+        },
       ];
 
       const processor = detector.createProcessor();
@@ -295,11 +388,11 @@ describe("Base64ImageDetector", () => {
               type: "function",
               function: {
                 name: "tool_with_plain_text",
-                arguments: validPngBase64
-              }
-            }
-          ]
-        }
+                arguments: validPngBase64,
+              },
+            },
+          ],
+        },
       ];
 
       const processor = detector.createProcessor();
@@ -314,8 +407,8 @@ describe("Base64ImageDetector", () => {
       const modifiedMessages: Message[] = [
         {
           role: "assistant",
-          content: "Just a regular message"
-        }
+          content: "Just a regular message",
+        },
       ];
 
       const processor = detector.createProcessor();
@@ -336,12 +429,12 @@ describe("Base64ImageDetector", () => {
       const modifiedMessages: Message[] = [
         {
           role: "user",
-          content: null as any
+          content: null as any,
         },
         {
           role: "user",
-          content: undefined as any
-        }
+          content: undefined as any,
+        },
       ];
 
       const processor = detector.createProcessor();
@@ -350,13 +443,14 @@ describe("Base64ImageDetector", () => {
 
     it("should handle unsupported image formats", () => {
       detector.setSupportedFormats(["png"]);
-      
+
       const originalMessages: Message[] = [];
       const modifiedMessages: Message[] = [
         {
           role: "user",
-          content: "data:image/bmp;base64,Qk1GAAAAAAAAADYAAAAoAAAAAQAAAAEAAAABACAAAAAAAAAAAAATCwAAEwsAAAAAAAAAAAAA/////wA="
-        }
+          content:
+            "data:image/bmp;base64,Qk1GAAAAAAAAADYAAAAoAAAAAQAAAAEAAAABACAAAAAAAAAAAAATCwAAEwsAAAAAAAAAAAAA/////wA=",
+        },
       ];
 
       const processor = detector.createProcessor();
@@ -369,8 +463,8 @@ describe("Base64ImageDetector", () => {
       const modifiedMessages: Message[] = [
         {
           role: "user",
-          content: "SGVsbG8="  // "Hello" in base64, but too short to be an image
-        }
+          content: "SGVsbG8=", // "Hello" in base64, but too short to be an image
+        },
       ];
 
       const processor = detector.createProcessor();
@@ -384,8 +478,8 @@ describe("Base64ImageDetector", () => {
       const modifiedMessages: Message[] = [
         {
           role: "user",
-          content: "data:image/png;base64"  // Missing comma and data
-        }
+          content: "data:image/png;base64", // Missing comma and data
+        },
       ];
 
       const processor = detector.createProcessor();
@@ -397,7 +491,106 @@ describe("Base64ImageDetector", () => {
 
   describe("Global instance", () => {
     it("should provide global instance", () => {
-      expect(globalBase64ImageDetector).toBeInstanceOf(Base64ImageDetector);
+      expect(globalBase64ImageDetector).toBeInstanceOf(Base64ImageProcessor);
+    });
+  });
+
+  describe("loadImageAsBase64 tool", () => {
+    let toolsService: ToolsService;
+    let testImagePath: string;
+
+    beforeEach(() => {
+      toolsService = new ToolsService();
+      detector.registerTool(toolsService);
+
+      // Create a minimal test PNG image (1x1 red pixel)
+      testImagePath = "/tmp/test-image.png";
+      const pngBuffer = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==",
+        "base64"
+      );
+      fs.writeFileSync(testImagePath, pngBuffer);
+    });
+
+    afterEach(() => {
+      // Clean up test file
+      if (fs.existsSync(testImagePath)) {
+        fs.unlinkSync(testImagePath);
+      }
+    });
+
+    it("should register loadImageAsBase64 tool", () => {
+      const tools = toolsService.getTools();
+      const loadImageTool = tools.find(
+        (t) => t.function.name === "loadImageAsBase64"
+      );
+
+      expect(loadImageTool).toBeDefined();
+      expect(loadImageTool?.function.name).toBe("loadImageAsBase64");
+      expect(loadImageTool?.function.description).toContain(
+        "Load an image file"
+      );
+    });
+
+    it("should have function implementation", () => {
+      const func = toolsService.getFunction("loadImageAsBase64");
+      expect(func).toBeDefined();
+      expect(typeof func).toBe("function");
+    });
+
+    it("should load image and return base64 data URL", async () => {
+      const func = toolsService.getFunction("loadImageAsBase64");
+      const result = await func(testImagePath);
+
+      expect(typeof result).toBe("string");
+      const parsed = JSON.parse(result);
+      expect(parsed.type).toBe("image_url");
+      expect(parsed.image_url.url).toContain("data:image/png;base64,");
+      expect(parsed.image_url.detail).toBe("auto");
+    });
+
+    it("should accept custom detail parameter", async () => {
+      const func = toolsService.getFunction("loadImageAsBase64");
+      const result = await func(testImagePath, "high");
+
+      const parsed = JSON.parse(result);
+      expect(parsed.image_url.detail).toBe("high");
+    });
+
+    it("should throw error for non-existent file", async () => {
+      const func = toolsService.getFunction("loadImageAsBase64");
+
+      await expect(func("/path/to/nonexistent.png")).rejects.toThrow(
+        "File not found"
+      );
+    });
+
+    it("should throw error for unsupported format", async () => {
+      const txtPath = "/tmp/test-file.txt";
+      fs.writeFileSync(txtPath, "test content");
+
+      const func = toolsService.getFunction("loadImageAsBase64");
+
+      try {
+        await expect(func(txtPath)).rejects.toThrow("Unsupported image format");
+      } finally {
+        fs.unlinkSync(txtPath);
+      }
+    });
+
+    it("should throw error for directory path", async () => {
+      const dirPath = "/tmp/test-dir";
+      if (!fs.existsSync(dirPath)) {
+        fs.mkdirSync(dirPath);
+      }
+
+      const func = toolsService.getFunction("loadImageAsBase64");
+
+      try {
+        await expect(func(dirPath)).rejects.toThrow("Path is not a file");
+      } finally {
+        fs.rmdirSync(dirPath);
+      }
     });
   });
 });

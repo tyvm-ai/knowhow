@@ -184,12 +184,44 @@ export class GenericAnthropicClient implements GenericClient {
             });
           }
 
+          // Convert tool message content to appropriate format
+          let toolResultContent: string | (Anthropic.TextBlockParam | Anthropic.ImageBlockParam)[];
+          
+          if (typeof msg.content === "string") {
+            toolResultContent = msg.content;
+          } else if (Array.isArray(msg.content)) {
+            // Transform image_url format to Anthropic's image format
+            toolResultContent = msg.content.map((item): Anthropic.TextBlockParam | Anthropic.ImageBlockParam => {
+              if (item.type === "image_url") {
+                const url = item.image_url.url;
+                const isDataUrl = url.startsWith("data:");
+                const base64Data = isDataUrl ? url.split(",")[1] : url;
+                const mediaType = isDataUrl ? url.match(/data:([^;]+);/)?.[1] || "image/jpeg" : "image/jpeg";
+                
+                return {
+                  type: "image" as const,
+                  source: {
+                    type: "base64" as const,
+                    media_type: mediaType as any,
+                    data: base64Data,
+                  },
+                };
+              } else if (item.type === "text") {
+                return { type: "text" as const, text: item.text };
+              }
+              // Fallback for unknown types
+              return { type: "text" as const, text: String(item) };
+            }) as (Anthropic.TextBlockParam | Anthropic.ImageBlockParam)[];
+          } else {
+            toolResultContent = String(msg.content);
+          }
+
           toolMessages.push({
             role: "user",
             content: [
               {
                 type: "tool_result",
-                content: msg.content as string,
+                content: toolResultContent,
                 tool_use_id: msg.tool_call_id,
               },
             ],

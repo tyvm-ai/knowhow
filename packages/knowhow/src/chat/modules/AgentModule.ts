@@ -21,6 +21,7 @@ import {
   CustomVariables,
   XmlToolCallProcessor,
   HarmonyToolProcessor,
+  Base64ImageProcessor,
 } from "../../processors/index";
 import { TaskInfo, ChatSession } from "../types";
 import { agents } from "../../agents";
@@ -589,7 +590,9 @@ Please continue from where you left off and complete the original request.
           Boolean(msg.role === "tool" && msg.tool_call_id)
         ),
       ];
+
       agent.messageProcessor.setProcessors("pre_call", [
+        new Base64ImageProcessor(agent.tools).createProcessor(),
         ...caching,
         new CustomVariables(agent.tools).createProcessor(),
       ]);
@@ -599,7 +602,10 @@ Please continue from where you left off and complete the original request.
         new HarmonyToolProcessor().createProcessor(),
       ]);
 
-      agent.messageProcessor.setProcessors("post_tools", caching);
+      agent.messageProcessor.setProcessors("post_tools", [
+        new Base64ImageProcessor(agent.tools).createProcessor(),
+        ...caching,
+      ]);
 
       // Set up event listeners
       if (!agent.agentEvents.listenerCount(agent.eventTypes.toolCall)) {

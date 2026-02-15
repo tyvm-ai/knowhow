@@ -1,4 +1,4 @@
-export { Base64ImageDetector } from "./Base64ImageDetector";
+export { Base64ImageProcessor } from "./Base64ImageDetector";
 export { CustomVariables } from "./CustomVariables";
 export { TokenCompressor } from "./TokenCompressor";
 export { JsonCompressor, JsonSchema, CompressionMetadata, JsonCompressorStorage } from "./JsonCompressor";
