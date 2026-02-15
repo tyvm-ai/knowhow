@@ -606,8 +606,9 @@ describe("ToolsService", () => {
       const originalFunction = jest.fn().mockResolvedValue("original result");
       const wrapperFunction = jest
         .fn()
-        .mockImplementation(async (originalFn, args) => {
-          const result = await originalFn(args);
+        .mockImplementation(async (originalFn, args, tool) => {
+          // args is now an array of arguments
+          const result = await originalFn(...args);
           return `wrapped: ${result}`;
         });
 
@@ -1311,8 +1312,9 @@ describe("ToolsService", () => {
           }
 
           const wrapper = (originalFunc: Function, args: any, tool: Tool) => {
-            // The wrapper should preserve the binding
-            const result = originalFunc.call(toolsService, args);
+            // The wrapper should preserve the binding, args is now an array
+            // We need to spread the args array when calling the function
+            const result = originalFunc.call(toolsService, ...args);
             return `Wrapped: ${result}`;
           };
 
