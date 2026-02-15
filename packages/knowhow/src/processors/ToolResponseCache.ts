@@ -1,6 +1,7 @@
 import { Message } from "../clients/types";
 import { MessageProcessorFunction } from "../services/MessageProcessor";
 import { ToolsService } from "../services";
+import { JsonCompressor } from "./JsonCompressor";
 import {
   jqToolResponseDefinition,
   executeJqQuery,
@@ -32,20 +33,34 @@ export class ToolResponseCache {
   private storage: ToolResponseStorage = {};
   private metadataStorage: ToolResponseMetadataStorage = {};
   private toolNameMap: { [toolCallId: string]: string } = {};
+  private jsonCompressor: JsonCompressor;
 
-  constructor(toolsService: ToolsService) {
+  constructor(toolsService: ToolsService, jsonCompressor?: JsonCompressor) {
+    // Use provided JsonCompressor or create a minimal storage adapter
+    this.jsonCompressor = jsonCompressor || this.createMinimalJsonCompressor();
     this.registerTool(toolsService);
   }
 
   /**
-   * Attempts to parse content as JSON and returns parsed object if successful
+   * Creates a minimal JsonCompressor instance for JSON parsing utilities
+   * This is used when no JsonCompressor is provided to the constructor
    */
-  private tryParseJson(content: string): any | null {
-    try {
-      return JSON.parse(content);
-    } catch {
-      return null;
-    }
+  private createMinimalJsonCompressor(): JsonCompressor {
+    // Create a minimal storage adapter that satisfies JsonCompressorStorage interface
+    const minimalStorage = {
+      storeString: (key: string, value: string) => {
+        // No-op for ToolResponseCache's internal use
+      },
+      generateKey: () => {
+        return `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      },
+      estimateTokens: (text: string) => {
+        return Math.ceil(text.length / 4);
+      },
+    };
+
+    // Return a JsonCompressor instance with minimal settings
+    return new JsonCompressor(minimalStorage, 4000, 8000, "expandTokens");
   }
 
   /**
@@ -53,7 +68,7 @@ export class ToolResponseCache {
    */
   public parseNestedJsonStrings(obj: any): any {
     if (typeof obj === "string") {
-      const parsed = this.tryParseJson(obj);
+      const parsed = this.jsonCompressor.tryParseJson(obj);
       if (parsed) {
         return this.parseNestedJsonStrings(parsed);
       }
@@ -90,8 +105,46 @@ export class ToolResponseCache {
       return;
     }
 
-    // Store the original content for later JQ/grep manipulation
-    this.storage[toolCallId] = content;
+    // Try to parse the content
+    const parsed = this.jsonCompressor.tryParseJson(content);
+
+    if (parsed && typeof parsed === 'object' && parsed._mcp_format === true && parsed._data) {
+      // For MCP format responses, store the data in a normalized structure
+      // This allows JQ queries to work directly against the data array
+      // Store as JSON string to maintain compatibility with existing query methods
+      this.storage[toolCallId] = JSON.stringify({
+        _mcp_format: true,
+        _raw_structure: parsed._raw_structure,
+        _data: parsed._data
+      });
+    } else if (parsed !== null) {
+      // Check if content is double-encoded by trying to parse again
+      // Only re-stringify if we detected and handled double-encoding
+      try {
+        const outerParse = JSON.parse(content);
+        if (typeof outerParse === 'string') {
+          // This is double-encoded JSON, store the fully parsed result
+          if (typeof parsed === 'object') {
+            this.storage[toolCallId] = JSON.stringify(parsed);
+          } else if (typeof parsed === 'string') {
+            // Parsed to a string, store it as-is
+            this.storage[toolCallId] = parsed;
+          } else {
+            // Store the original if we couldn't parse further
+            this.storage[toolCallId] = content;
+          }
+        } else {
+          // Not double-encoded, store original to preserve formatting
+          this.storage[toolCallId] = content;
+        }
+      } catch {
+        // Not valid JSON, store as-is
+        this.storage[toolCallId] = content;
+      }
+    } else {
+      // Could not parse as JSON, store as-is
+      this.storage[toolCallId] = content;
+    }
 
     // Store metadata for reference
     this.metadataStorage[toolCallId] = {

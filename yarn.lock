@@ -2383,7 +2383,7 @@
     "@types/node" "*"
 
 "@tyvm/knowhow@file:/Users/micah/dev/knowhow/packages/knowhow":
-  version "0.0.61"
+  version "0.0.63"
   resolved "file:packages/knowhow"
   dependencies:
     "@anthropic-ai/sdk" "^0.39.0"
@@ -2436,7 +2436,7 @@
     zod "^3.24.2"
 
 "@tyvm/swagger-mcp@file:/Users/micah/dev/knowhow/packages/swagger-mcp":
-  version "0.0.17"
+  version "0.0.18"
   resolved "file:packages/swagger-mcp"
   dependencies:
     "@modelcontextprotocol/sdk" "^1.13.3"

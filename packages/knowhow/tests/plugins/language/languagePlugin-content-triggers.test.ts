@@ -7,7 +7,11 @@ import { getConfig, getLanguageConfig } from "../../../src/config";
 jest.mock("../../../src/utils", () => ({
   readFile: jest.fn(),
   fileExists: jest.fn().mockReturnValue(true),
-  fileStat: jest.fn(),
+  fileStat: jest.fn().mockResolvedValue({
+    isDirectory: jest.fn().mockReturnValue(false),
+    isFile: jest.fn().mockReturnValue(true),
+    size: 1024,
+  }),
 }));
 
 jest.mock("../../../src/services/EventService", () => ({
