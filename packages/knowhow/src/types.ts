@@ -66,6 +66,15 @@ export type Config = {
     sandbox?: boolean;
     volumes?: string[];
     envFile?: string;
+    tunnel?: {
+      enabled?: boolean;
+      allowedPorts?: number[];
+      maxConcurrentStreams?: number;
+      portMapping?: {
+        [containerPort: number]: number; // containerPort -> hostPort
+      };
+      localHost?: string; // Default: "127.0.0.1", can be "host.docker.internal" for Docker
+    };
   };
 };
 

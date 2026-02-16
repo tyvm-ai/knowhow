@@ -87,6 +87,13 @@ const defaultConfig = {
     logLevel: "info",
     completionTimeout: 5000,
   },
+
+  worker: {
+    tunnel: {
+      enabled: false,
+      allowedPorts: [],
+    },
+  },
 } as Config;
 
 const defaultLanguage = {

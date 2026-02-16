@@ -1,5 +1,6 @@
 import os from "os";
 import { WebSocket } from "ws";
+import { createTunnelHandler, TunnelHandler } from "@tyvm/knowhow-tunnel";
 import { includedTools } from "./agents/tools/list";
 import { loadJwt } from "./login";
 import { services } from "./services";
@@ -181,6 +182,48 @@ export async function worker(options?: {
   mcpServer.createServer(clientName, clientVersion).withTools(toolsToUse);
 
   let connected = false;
+  let tunnelHandler: TunnelHandler | null = null;
+
+  // Check if tunnel is enabled
+  const tunnelEnabled = config.worker?.tunnel?.enabled ?? false;
+
+  // Determine localHost based on environment
+  let tunnelLocalHost = config.worker?.tunnel?.localHost;
+  if (!tunnelLocalHost) {
+    // Auto-detect based on Docker environment
+    if (isInsideDocker) {
+      tunnelLocalHost = "host.docker.internal";
+      console.log(
+        "🐳 Docker detected: tunnel will use host.docker.internal to reach host services"
+      );
+    } else {
+      tunnelLocalHost = "127.0.0.1";
+    }
+  }
+
+  // Check for port mapping configuration
+  const portMapping = config.worker?.tunnel?.portMapping || {};
+  if (Object.keys(portMapping).length > 0) {
+    console.log("🔀 Port mapping configured:");
+    for (const [containerPort, hostPort] of Object.entries(portMapping)) {
+      console.log(`   Container port ${containerPort} → Host port ${hostPort}`);
+    }
+  }
+
+  if (tunnelEnabled) {
+    const tunnelPorts = config.worker?.tunnel?.allowedPorts || [];
+    if (tunnelPorts.length === 0) {
+      console.warn(
+        "⚠️  Tunnel enabled but no allowedPorts configured. Add tunnel.allowedPorts to knowhow.json"
+      );
+    } else {
+      console.log(`🌐 Tunnel enabled for ports: ${tunnelPorts.join(", ")}`);
+    }
+  } else {
+    console.log(
+      "🚫 Tunnel disabled (enable in knowhow.json: worker.tunnel.enabled = true)"
+    );
+  }
 
   async function connectWebSocket() {
     const jwt = await loadJwt();
@@ -219,6 +262,19 @@ export async function worker(options?: {
     ws.on("open", () => {
       console.log("Connected to the server");
       connected = true;
+
+      // Initialize tunnel handler if enabled
+      if (tunnelEnabled) {
+        tunnelHandler = createTunnelHandler(ws, {
+          allowedPorts: config.worker?.tunnel?.allowedPorts || [],
+          maxConcurrentStreams:
+            config.worker?.tunnel?.maxConcurrentStreams || 50,
+          localHost: tunnelLocalHost,
+          portMapping,
+          logLevel: "info",
+        });
+        console.log("🌐 Tunnel handler initialized");
+      }
     });
 
     ws.on("close", async (code, reason) => {
@@ -226,6 +282,12 @@ export async function worker(options?: {
         `WebSocket closed. Code: ${code}, Reason: ${reason.toString()}`
       );
       console.log("Attempting to reconnect...");
+
+      // Cleanup tunnel handler
+      if (tunnelHandler) {
+        tunnelHandler = null;
+      }
+
       connected = false;
     });
 
