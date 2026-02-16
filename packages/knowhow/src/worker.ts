@@ -88,9 +88,11 @@ export async function worker(options?: {
 
   // Check if we're already running inside a Docker container
   const isInsideDocker = process.env.KNOWHOW_DOCKER === "true";
-  
+
   if (isInsideDocker) {
-    console.log("🐳 Already running inside Docker container, skipping sandbox mode");
+    console.log(
+      "🐳 Already running inside Docker container, skipping sandbox mode"
+    );
     // Force sandbox mode off when inside Docker to prevent nested containers
     if (options) {
       options.sandbox = false;
@@ -145,6 +147,7 @@ export async function worker(options?: {
   }
 
   const { Tools } = services();
+  Tools.defineTools(includedTools, allTools);
   const mcpServer = new McpServerService(Tools);
   const clientName = "knowhow-worker";
   const clientVersion = "1.1.1";
@@ -176,6 +179,7 @@ export async function worker(options?: {
 
   const toolsToUse = Tools.getToolsByNames(config.worker.allowedTools);
   mcpServer.createServer(clientName, clientVersion).withTools(toolsToUse);
+  console.log("creating mcp server");
 
   let connected = false;
 
@@ -185,10 +189,12 @@ export async function worker(options?: {
 
     const dir = process.cwd();
     const homedir = os.homedir();
-    
+
     // Use environment variables if available (set by Docker), otherwise compute defaults
     const hostname = process.env.WORKER_HOSTNAME || os.hostname();
-    const root = process.env.WORKER_ROOT || (dir === homedir ? "~" : dir.replace(homedir, "~"));
+    const root =
+      process.env.WORKER_ROOT ||
+      (dir === homedir ? "~" : dir.replace(homedir, "~"));
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${jwt}`,
@@ -211,6 +217,7 @@ export async function worker(options?: {
       headers,
     });
 
+    console.log("Connecting with ws");
     ws.on("open", () => {
       console.log("Connected to the server");
       connected = true;
