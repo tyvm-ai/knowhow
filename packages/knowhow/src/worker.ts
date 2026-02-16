@@ -179,7 +179,6 @@ export async function worker(options?: {
 
   const toolsToUse = Tools.getToolsByNames(config.worker.allowedTools);
   mcpServer.createServer(clientName, clientVersion).withTools(toolsToUse);
-  console.log("creating mcp server");
 
   let connected = false;
 
@@ -217,7 +216,6 @@ export async function worker(options?: {
       headers,
     });
 
-    console.log("Connecting with ws");
     ws.on("open", () => {
       console.log("Connected to the server");
       connected = true;
