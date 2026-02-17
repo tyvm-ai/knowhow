@@ -231,6 +231,23 @@ export async function worker(options?: {
     );
   }
 
+  // Extract tunnel domain from API_URL
+  // e.g., "https://api.knowhow.tyvm.ai" -> "knowhow.tyvm.ai"
+  // e.g., "http://localhost:4000" -> "localhost:4000"
+  function extractTunnelDomain(apiUrl: string): string {
+    try {
+      const url = new URL(apiUrl);
+      // For localhost, include port; for production, just use hostname
+      if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+        return `${url.hostname}:${url.port || '80'}`;
+      }
+      return url.hostname;
+    } catch (err) {
+      console.error("Failed to parse API_URL for tunnel domain:", err);
+      return "worker.localhost:4000"; // fallback
+    }
+  }
+
   async function connectWebSocket() {
     const jwt = await loadJwt();
     console.log(`Connecting to ${API_URL}`);
@@ -261,6 +278,8 @@ export async function worker(options?: {
       console.log("🔒 Worker is private (only you can use it)");
     }
 
+    const tunnelDomain = extractTunnelDomain(API_URL);
+
     const ws = new WebSocket(`${API_URL}/ws/worker`, {
       headers,
     });
@@ -281,6 +300,8 @@ export async function worker(options?: {
           maxConcurrentStreams:
             config.worker?.tunnel?.maxConcurrentStreams || 50,
           localHost: tunnelLocalHost,
+          tunnelDomain,
+          enableUrlRewriting: config.worker?.tunnel?.enableUrlRewriting !== false,
           portMapping,
           logLevel: "info",
         });

@@ -74,6 +74,7 @@ export type Config = {
         [containerPort: number]: number; // containerPort -> hostPort
       };
       localHost?: string; // Default: "127.0.0.1", can be "host.docker.internal" for Docker
+      enableUrlRewriting?: boolean; // Enable URL rewriting for localhost URLs (default: true)
     };
   };
 };

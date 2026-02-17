@@ -33,7 +33,7 @@ import {
  * Handles incoming tunnel requests and proxies them to local services
  */
 export class TunnelProxy {
-  private config: Required<Omit<TunnelConfig, 'workerId'>> & { workerId?: string };
+  private config: Required<Omit<TunnelConfig, 'workerId' | 'tunnelDomain'>> & { workerId?: string; tunnelDomain?: string };
   private logger: Logger;
   private activeStreams: Map<string, StreamState>;
   private sendMessage: (message: string) => void;
@@ -54,6 +54,7 @@ export class TunnelProxy {
       portMapping: config.portMapping || {},
       workerId: config.workerId,
       enableUrlRewriting: config.enableUrlRewriting !== false,
+      tunnelDomain: config.tunnelDomain,
     };
 
     this.logger = new Logger(this.config.logLevel);
@@ -294,7 +295,7 @@ export class TunnelProxy {
         const urlRewriterConfig = createRewriterConfig(
           streamState.workerId,
           this.config.allowedPorts,
-          { enabled: true }
+          { enabled: true, tunnelDomain: this.config.tunnelDomain }
         );
 
         const originalSize = chunk.length;

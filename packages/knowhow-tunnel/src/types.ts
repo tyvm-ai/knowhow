@@ -139,6 +139,8 @@ export interface TunnelConfig {
   workerId?: string;
   /** Enable URL rewriting of localhost URLs */
   enableUrlRewriting?: boolean;
+  /** Tunnel domain for URL rewriting (e.g., "knowhow.tyvm.ai" or "localhost:4000") */
+  tunnelDomain?: string;
 }
 
 /**
