@@ -27,3 +27,10 @@ export {
   isPortAllowed,
 } from "./protocol";
 export { Logger } from "./utils";
+export {
+  UrlRewriterConfig,
+  createRewriterConfig,
+  rewriteUrls,
+  rewriteBuffer,
+  isRewritableContentType,
+} from "./url-rewriter";

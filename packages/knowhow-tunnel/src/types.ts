@@ -21,6 +21,7 @@ export enum TunnelMessageType {
 export interface TunnelRequest {
   type: TunnelMessageType.REQUEST;
   streamId: string;
+  workerId?: string; // Worker ID for URL rewriting
   port: number;
   method: string;
   path: string;
@@ -134,6 +135,10 @@ export interface TunnelConfig {
   portMapping?: {
     [remotePort: number]: number; // remotePort -> localPort
   };
+  /** Worker ID for URL rewriting */
+  workerId?: string;
+  /** Enable URL rewriting of localhost URLs */
+  enableUrlRewriting?: boolean;
 }
 
 /**
@@ -142,6 +147,7 @@ export interface TunnelConfig {
 export interface StreamState {
   streamId: string;
   port: number;
+  workerId?: string; // Worker ID for URL rewriting
   method: string;
   path: string;
   startTime: number;

@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "lib": ["es5", "es6", "es2022", "dom"],
+    "lib": ["es5", "es6", "es2021", "es2022", "dom"],
     "skipLibCheck": true,
     "noImplicitAny": false,
     "removeComments": true,

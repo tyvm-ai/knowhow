@@ -1,5 +1,6 @@
 import http from "http";
 import https from "https";
+import * as fs from "fs";
 import WebSocket from "ws";
 import {
   TunnelConfig,
@@ -20,13 +21,19 @@ import {
   isPortAllowed,
 } from "./protocol";
 import { Logger, clearTimeoutSafe, formatBytes, formatDuration } from "./utils";
+import {
+  createRewriterConfig,
+  rewriteBuffer,
+  isRewritableContentType,
+  UrlRewriterConfig,
+} from "./url-rewriter";
 
 /**
  * HTTP Proxy Handler
  * Handles incoming tunnel requests and proxies them to local services
  */
 export class TunnelProxy {
-  private config: Required<TunnelConfig>;
+  private config: Required<Omit<TunnelConfig, 'workerId'>> & { workerId?: string };
   private logger: Logger;
   private activeStreams: Map<string, StreamState>;
   private sendMessage: (message: string) => void;
@@ -45,8 +52,10 @@ export class TunnelProxy {
       localHost: config.localHost || "127.0.0.1",
       logLevel: config.logLevel || "info",
       portMapping: config.portMapping || {},
+      workerId: config.workerId,
+      enableUrlRewriting: config.enableUrlRewriting !== false,
     };
-    
+
     this.logger = new Logger(this.config.logLevel);
     this.activeStreams = new Map();
     this.sendMessage = sendMessage;
@@ -77,9 +86,15 @@ export class TunnelProxy {
   async handleRequest(request: TunnelRequest): Promise<void> {
     const { streamId, port, method, path, headers, scheme = "http", deadlineMs } = request;
 
+    const logMsg = `[${new Date().toISOString()}] WORKER: handleRequest ${method} ${path} port=${port} streamId=${streamId}\n`;
+    fs.appendFileSync('/tmp/tunnel-worker-debug.log', logMsg);
+
     this.logger.info(
       `New request: ${method} ${path} on port ${port} (stream: ${streamId})`
     );
+
+    const logMsg2 = `[${new Date().toISOString()}] WORKER: After logger.info\n`;
+    fs.appendFileSync('/tmp/tunnel-worker-debug.log', logMsg2);
 
     // Check if port is allowed
     if (!isPortAllowed(port, this.config.allowedPorts)) {
@@ -101,6 +116,7 @@ export class TunnelProxy {
     // Create stream state
     const streamState: StreamState = {
       streamId,
+      workerId: request.workerId,
       port,
       method,
       path,
@@ -127,6 +143,10 @@ export class TunnelProxy {
 
     // Create HTTP client
     const client = scheme === "https" ? https : http;
+
+    this.logger.info(
+      `Attempting to connect to ${this.config.localHost}:${localPort} for stream ${streamId}`
+    );
 
     try {
       const req = client.request(
@@ -172,22 +192,22 @@ export class TunnelProxy {
    */
   handleData(streamId: string, data: Buffer): void {
     const streamState = this.activeStreams.get(streamId);
-    
+
     if (!streamState || !streamState.request) {
       this.logger.warn(`Received data for unknown stream: ${streamId}`);
       return;
     }
 
     streamState.bytesReceived += data.length;
-    
+
     // Write data to local request
     const canWrite = streamState.request.write(data);
-    
+
     if (!canWrite) {
       // Backpressure: pause reading from tunnel
       streamState.isPaused = true;
       this.logger.debug(`Backpressure on stream ${streamId}, pausing`);
-      
+
       // Resume when drained
       streamState.request.once("drain", () => {
         streamState.isPaused = false;
@@ -204,7 +224,7 @@ export class TunnelProxy {
    */
   handleEnd(streamId: string): void {
     const streamState = this.activeStreams.get(streamId);
-    
+
     if (!streamState || !streamState.request) {
       this.logger.warn(`Received end for unknown stream: ${streamId}`);
       return;
@@ -219,7 +239,7 @@ export class TunnelProxy {
    */
   private handleResponse(streamId: string, res: http.IncomingMessage): void {
     const streamState = this.activeStreams.get(streamId);
-    
+
     if (!streamState) {
       this.logger.warn(`Received response for unknown stream: ${streamId}`);
       res.destroy();
@@ -228,13 +248,25 @@ export class TunnelProxy {
 
     streamState.response = res;
 
+    const contentType = Array.isArray(res.headers['content-type']) ? res.headers['content-type'][0] : res.headers['content-type'];
+
+    // If URL rewriting is enabled and content type is rewritable, remove content-length
+    // header to allow dynamic content size changes
+    const headers = { ...res.headers };
+    if (streamState.workerId && this.config.enableUrlRewriting !== false) {
+      if (isRewritableContentType(contentType)) {
+        delete headers['content-length'];
+        this.logger.debug(`Removed content-length header for stream ${streamId} (URL rewriting enabled)`);
+      }
+    }
+
     // Send response metadata
     const response: TunnelResponse = {
       type: TunnelMessageType.RESPONSE,
       streamId,
       statusCode: res.statusCode || 500,
       statusMessage: res.statusMessage,
-      headers: res.headers,
+      headers: headers,
     };
 
     this.sendMessage(serializeTunnelMessage(response));
@@ -256,11 +288,29 @@ export class TunnelProxy {
         return;
       }
 
+      // Apply URL rewriting if enabled
+      let dataToSend = chunk;
+      if (streamState.workerId && this.config.enableUrlRewriting !== false) {
+        const urlRewriterConfig = createRewriterConfig(
+          streamState.workerId,
+          this.config.allowedPorts,
+          { enabled: true }
+        );
+
+        const originalSize = chunk.length;
+        dataToSend = rewriteBuffer(chunk, contentType, urlRewriterConfig);
+
+        if (dataToSend.length !== originalSize) {
+          this.logger.debug(`URL rewriting applied for stream ${streamId}: ${originalSize} -> ${dataToSend.length} bytes`);
+        }
+      }
+
       const dataMsg: TunnelData = {
         type: TunnelMessageType.DATA,
         streamId,
-        data: chunk,
+        data: dataToSend,
       };
+      streamState.bytesSent += dataToSend.length - chunk.length; // Adjust for size difference
 
       this.sendMessage(serializeTunnelMessage(dataMsg));
 
@@ -346,7 +396,7 @@ export class TunnelProxy {
 
       ws.on("message", (data: Buffer, isBinary: boolean) => {
         streamState.bytesSent += data.length;
-        
+
         const wsData: TunnelWsData = {
           type: TunnelMessageType.WS_DATA,
           streamId,
@@ -360,7 +410,7 @@ export class TunnelProxy {
 
       ws.on("close", (code, reason) => {
         this.logger.info(`WebSocket closed for stream ${streamId}: ${code} ${reason}`);
-        
+
         const wsClose: TunnelWsClose = {
           type: TunnelMessageType.WS_CLOSE,
           streamId,
@@ -389,7 +439,7 @@ export class TunnelProxy {
    */
   handleWsData(streamId: string, data: Buffer, isBinary: boolean): void {
     const streamState = this.activeStreams.get(streamId);
-    
+
     if (!streamState || !streamState.wsClient) {
       this.logger.warn(`Received WS data for unknown stream: ${streamId}`);
       return;
@@ -405,7 +455,7 @@ export class TunnelProxy {
    */
   handleWsClose(streamId: string, code?: number, reason?: string): void {
     const streamState = this.activeStreams.get(streamId);
-    
+
     if (!streamState || !streamState.wsClient) {
       this.logger.warn(`Received WS close for unknown stream: ${streamId}`);
       return;
@@ -435,7 +485,7 @@ export class TunnelProxy {
    */
   private resetIdleTimer(streamState: StreamState): void {
     clearTimeoutSafe(streamState.idleTimer);
-    
+
     streamState.idleTimer = setTimeout(() => {
       this.logger.warn(`Stream ${streamState.streamId} idle timeout`);
       this.cleanupStream(streamState.streamId, "Idle timeout");
@@ -447,7 +497,7 @@ export class TunnelProxy {
    */
   private cleanupStream(streamId: string, reason?: string): void {
     const streamState = this.activeStreams.get(streamId);
-    
+
     if (!streamState) {
       return;
     }
@@ -481,7 +531,7 @@ export class TunnelProxy {
    */
   cleanup(): void {
     this.logger.info(`Cleaning up ${this.activeStreams.size} active streams`);
-    
+
     for (const streamId of this.activeStreams.keys()) {
       this.cleanupStream(streamId, "Proxy shutdown");
     }
