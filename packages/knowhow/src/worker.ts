@@ -6,6 +6,7 @@ import { loadJwt } from "./login";
 import { services } from "./services";
 import { McpServerService } from "./services/Mcp";
 import * as allTools from "./agents/tools";
+import  workerTools from "./workers/tools";
 import { wait } from "./utils";
 import { getConfig, updateConfig } from "./config";
 import { KNOWHOW_API_URL } from "./services/KnowhowClient";
@@ -148,7 +149,11 @@ export async function worker(options?: {
   }
 
   const { Tools } = services();
-  Tools.defineTools(includedTools, allTools);
+  // Combine agent tools and worker-specific tools
+  const combinedTools = { ...allTools, ...workerTools.tools };
+  Tools.defineTools(includedTools, combinedTools);
+  Tools.defineTools(workerTools.definitions, workerTools.tools);
+
   const mcpServer = new McpServerService(Tools);
   const clientName = "knowhow-worker";
   const clientVersion = "1.1.1";
@@ -331,8 +336,11 @@ export async function worker(options?: {
   }
 
   while (true) {
-    let connection: { ws: WebSocket; mcpServer: McpServerService; tunnelWs: WebSocket | null } | null =
-      null;
+    let connection: {
+      ws: WebSocket;
+      mcpServer: McpServerService;
+      tunnelWs: WebSocket | null;
+    } | null = null;
 
     if (!connected) {
       console.log("Attempting to connect...");
