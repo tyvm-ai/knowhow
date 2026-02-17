@@ -183,6 +183,7 @@ export async function worker(options?: {
 
   let connected = false;
   let tunnelHandler: TunnelHandler | null = null;
+  let tunnelWs: WebSocket | null = null;
 
   // Check if tunnel is enabled
   const tunnelEnabled = config.worker?.tunnel?.enabled ?? false;
@@ -259,13 +260,18 @@ export async function worker(options?: {
       headers,
     });
 
-    ws.on("open", () => {
-      console.log("Connected to the server");
-      connected = true;
+    // Create separate WebSocket connection for tunnel if enabled
+    let tunnelConnection: WebSocket | null = null;
+    if (tunnelEnabled) {
+      tunnelConnection = new WebSocket(`${API_URL}/ws/tunnel`, {
+        headers,
+      });
 
-      // Initialize tunnel handler if enabled
-      if (tunnelEnabled) {
-        tunnelHandler = createTunnelHandler(ws, {
+      tunnelConnection.on("open", () => {
+        console.log("Tunnel WebSocket connected");
+
+        // Initialize tunnel handler with the tunnel-specific WebSocket
+        tunnelHandler = createTunnelHandler(tunnelConnection!, {
           allowedPorts: config.worker?.tunnel?.allowedPorts || [],
           maxConcurrentStreams:
             config.worker?.tunnel?.maxConcurrentStreams || 50,
@@ -274,7 +280,31 @@ export async function worker(options?: {
           logLevel: "info",
         });
         console.log("🌐 Tunnel handler initialized");
-      }
+      });
+
+      tunnelConnection.on("close", (code, reason) => {
+        console.log(
+          `Tunnel WebSocket closed. Code: ${code}, Reason: ${reason.toString()}`
+        );
+
+        // Cleanup tunnel handler
+        if (tunnelHandler) {
+          tunnelHandler.cleanup();
+          tunnelHandler = null;
+        }
+        tunnelWs = null;
+      });
+
+      tunnelConnection.on("error", (error) => {
+        console.error("Tunnel WebSocket error:", error);
+      });
+
+      tunnelWs = tunnelConnection;
+    }
+
+    ws.on("open", () => {
+      console.log("Worker WebSocket connected");
+      connected = true;
     });
 
     ws.on("close", async (code, reason) => {
@@ -297,11 +327,11 @@ export async function worker(options?: {
 
     mcpServer.runWsServer(ws);
 
-    return { ws, mcpServer };
+    return { ws, mcpServer, tunnelWs };
   }
 
   while (true) {
-    let connection: { ws: WebSocket; mcpServer: McpServerService } | null =
+    let connection: { ws: WebSocket; mcpServer: McpServerService; tunnelWs: WebSocket | null } | null =
       null;
 
     if (!connected) {
