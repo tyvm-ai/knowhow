@@ -186,7 +186,7 @@ export class GenericAnthropicClient implements GenericClient {
 
           // Convert tool message content to appropriate format
           let toolResultContent: string | (Anthropic.TextBlockParam | Anthropic.ImageBlockParam)[];
-          
+
           if (typeof msg.content === "string") {
             toolResultContent = msg.content;
           } else if (Array.isArray(msg.content)) {
@@ -197,7 +197,7 @@ export class GenericAnthropicClient implements GenericClient {
                 const isDataUrl = url.startsWith("data:");
                 const base64Data = isDataUrl ? url.split(",")[1] : url;
                 const mediaType = isDataUrl ? url.match(/data:([^;]+);/)?.[1] || "image/jpeg" : "image/jpeg";
-                
+
                 return {
                   type: "image" as const,
                   source: {
@@ -359,9 +359,19 @@ export class GenericAnthropicClient implements GenericClient {
     return {
       [Models.anthropic.Opus4_6]: {
         input: 5.0,
+        input_gt_200k: 10.0,
         cache_write: 6.25,
         cache_hit: 0.5,
         output: 25.0,
+        output_gt_200k: 37.5,
+      },
+      [Models.anthropic.Sonnet4_6]: {
+        input: 3.0,
+        input_gt_200k: 6.0,
+        cache_write: 3.75,
+        cache_hit: 0.3,
+        output: 15.0,
+        output_gt_200k: 22.5,
       },
       [Models.anthropic.Opus4_5]: {
         input: 5.0,
@@ -383,15 +393,19 @@ export class GenericAnthropicClient implements GenericClient {
       },
       [Models.anthropic.Sonnet4]: {
         input: 3.0,
+        input_gt_200k: 6.0,
         cache_write: 3.75,
         cache_hit: 0.3,
         output: 15.0,
+        output_gt_200k: 22.5,
       },
       [Models.anthropic.Sonnet4_5]: {
         input: 3.0,
+        input_gt_200k: 6.0,
         cache_write: 3.75,
         cache_hit: 0.3,
         output: 15.0,
+        output_gt_200k: 22.5,
       },
       [Models.anthropic.Haiku4_5]: {
         input: 1,
@@ -439,19 +453,36 @@ export class GenericAnthropicClient implements GenericClient {
       return undefined;
     }
 
+    // Calculate total input tokens (excluding cached tokens)
+    const inputTokens = usage.input_tokens;
+
     const cachedInputTokens = usage.cache_creation_input_tokens;
     const cachedInputCost = (cachedInputTokens * pricing.cache_write) / 1e6;
 
     const cachedReadTokens = usage.cache_read_input_tokens;
     const cachedReadCost = (cachedReadTokens * pricing.cache_hit) / 1e6;
 
-    const inputTokens = usage.input_tokens;
-    const inputCost = ((inputTokens - cachedInputCost) * pricing.input) / 1e6;
+    // Calculate input cost with >200K input token pricing if applicable
+    let inputCost = 0;
+    const totalInputTokens = inputTokens + cachedInputTokens + cachedReadTokens;
+
+    if (totalInputTokens > 200000 && pricing.input_gt_200k) {
+      inputCost = (totalInputTokens * pricing.input_gt_200k) / 1e6;
+    } else {
+      inputCost = (totalInputTokens * pricing.input) / 1e6;
+    }
 
     const outputTokens = usage.output_tokens;
-    const outputCost = (outputTokens * pricing.output) / 1e6;
 
-    const total = cachedInputCost + inputCost + outputCost;
+    // Calculate output cost with >200K input token pricing if applicable
+    let outputCost = 0;
+    if (totalInputTokens > 200000 && pricing.output_gt_200k) {
+      outputCost = (outputTokens * pricing.output_gt_200k) / 1e6;
+    } else {
+      outputCost = (outputTokens * pricing.output) / 1e6;
+    }
+
+    const total = cachedInputCost + cachedReadCost + inputCost + outputCost;
     return total;
   }
 
