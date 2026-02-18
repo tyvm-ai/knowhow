@@ -21,6 +21,9 @@ export interface UrlRewriterConfig {
   /** Tunnel domain (default: worker.localhost:4000) */
   tunnelDomain?: string;
 
+  /** Whether to use HTTPS for rewritten URLs */
+  useHttps?: boolean;
+
   /** Whether to rewrite URLs (can be disabled for debugging) */
   enabled?: boolean;
 }
@@ -67,19 +70,35 @@ export function rewriteUrls(
     workerId,
     allowedPorts,
     tunnelDomain = "worker.localhost:4000",
+    useHttps = false,
   } = config;
 
-  // Simple approach: just replace "localhost:PORT" with "WORKERID-pPORT.worker.localhost:4000"
-  // This works for all cases: regular URLs, escaped URLs, etc.
+  // Replace localhost URLs with tunnel proxy URLs
+  // If useHttps is true, also upgrade http:// to https:// for security
   let result = content;
   let replacementCount = 0;
 
   for (const port of allowedPorts) {
     const replacement = `${workerId}\-p${port}\.${tunnelDomain}`;
 
-    // Use a regex that matches "localhost:PORT" but NOT "worker.localhost:PORT" or "subdomain.localhost:PORT"
-    // This uses a negative lookbehind to ensure there's no "." before "localhost"
-    const pattern = new RegExp(`localhost:${port}`, "g");
+    // Replace http://localhost:PORT with https://... if tunnel uses HTTPS
+    if (useHttps) {
+      const httpPattern = new RegExp(`http://localhost:${port}`, "g");
+      const httpMatches = result.match(httpPattern);
+      const httpCount = httpMatches ? httpMatches.length : 0;
+
+      if (httpCount > 0) {
+        result = result.replaceAll(`http://localhost:${port}`, `https://${replacement}`);
+        replacementCount += httpCount;
+        console.log(
+          `[URL_REWRITE] Upgraded ${httpCount} occurrences of "http://localhost:${port}" to "https://${replacement}"`
+        );
+      }
+    }
+
+    // Replace remaining localhost:PORT patterns (for https://, //, or bare references)
+    // Match "localhost:PORT" but NOT "worker.localhost:PORT" or other subdomains
+    const pattern = new RegExp(`(?<!\\.)localhost:${port}`, "g");
 
     // Count and replace using the pattern
     const matches = result.match(pattern);
@@ -226,12 +245,13 @@ export function rewriteBuffer(
 export function createRewriterConfig(
   workerId: string,
   allowedPorts: number[],
-  options: { enabled?: boolean; tunnelDomain?: string } = {}
+  options: { enabled?: boolean; tunnelDomain?: string; useHttps?: boolean } = {}
 ): UrlRewriterConfig {
   return {
     workerId,
     allowedPorts,
     tunnelDomain: options.tunnelDomain || "worker.localhost:4000",
+    useHttps: options.useHttps || false,
     enabled: options.enabled !== false, // Default to enabled
   };
 }

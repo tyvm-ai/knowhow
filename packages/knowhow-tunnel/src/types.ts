@@ -141,6 +141,8 @@ export interface TunnelConfig {
   enableUrlRewriting?: boolean;
   /** Tunnel domain for URL rewriting (e.g., "knowhow.tyvm.ai" or "localhost:4000") */
   tunnelDomain?: string;
+  /** Whether the tunnel domain uses HTTPS (for URL rewriting) */
+  tunnelUseHttps?: boolean;
 }
 
 /**

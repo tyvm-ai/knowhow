@@ -32,6 +32,7 @@ export class AgentSynchronization {
   private baseUrl: string;
   private knowhowTaskId: string | undefined;
   private eventHandlersSetup: boolean = false;
+  private finalizationPromise: Promise<void> | null = null;
 
   constructor(baseUrl: string = KNOWHOW_API_URL) {
     this.baseUrl = baseUrl;
@@ -248,20 +249,35 @@ export class AgentSynchronization {
     // Listen to completion event to finalize task
     agent.agentEvents.on(agent.eventTypes.done, async (result: string) => {
       if (!this.knowhowTaskId || !this.baseUrl) {
+        console.warn(`⚠️ [AgentSync] Cannot finalize: knowhowTaskId=${this.knowhowTaskId}, baseUrl=${this.baseUrl}`);
         return;
       }
 
-      try {
-        await wait(200);
-        console.log(
-          `Updating Knowhow chat task on completion..., ${this.knowhowTaskId}`
-        );
-        await this.updateChatTask(this.knowhowTaskId, agent, false, result);
-        console.log(`✅ Completed Knowhow chat task: ${this.knowhowTaskId}`);
-      } catch (error) {
-        console.error(`❌ Error finalizing task:`, error);
-      }
+      console.log(`🎯 [AgentSync] Done event received for task: ${this.knowhowTaskId}`);
+      
+      // Create a promise that tracks finalization
+      this.finalizationPromise = (async () => {
+        try {
+          console.log(
+            `Updating Knowhow chat task on completion..., ${this.knowhowTaskId}`
+          );
+          await this.updateChatTask(this.knowhowTaskId!, agent, false, result);
+          console.log(`✅ Completed Knowhow chat task: ${this.knowhowTaskId}`);
+        } catch (error) {
+          console.error(`❌ Error finalizing task:`, error);
+          throw error; // Re-throw so CLI can handle it
+        }
+      })();
     });
+  }
+
+  /**
+   * Wait for finalization to complete (for CLI usage)
+   */
+  async waitForFinalization(): Promise<void> {
+    if (this.finalizationPromise) {
+      await this.finalizationPromise;
+    }
   }
 
   /**
@@ -270,6 +286,7 @@ export class AgentSynchronization {
   reset(): void {
     this.knowhowTaskId = undefined;
     this.eventHandlersSetup = false;
+    this.finalizationPromise = null;
   }
 
   /**

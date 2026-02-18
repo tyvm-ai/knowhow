@@ -55,6 +55,7 @@ export class TunnelProxy {
       workerId: config.workerId,
       enableUrlRewriting: config.enableUrlRewriting !== false,
       tunnelDomain: config.tunnelDomain,
+      tunnelUseHttps: config.tunnelUseHttps || false,
     };
 
     this.logger = new Logger(this.config.logLevel);
@@ -195,7 +196,19 @@ export class TunnelProxy {
     const streamState = this.activeStreams.get(streamId);
 
     if (!streamState || !streamState.request) {
-      this.logger.warn(`Received data for unknown stream: ${streamId}`);
+      this.logger.debug(
+        `Received data for unknown stream: ${streamId} (likely from before reconnection)`
+      );
+      
+      // Send END or ERROR to tell server to stop sending data for this stream
+      const errorMsg: TunnelError = {
+        type: TunnelMessageType.ERROR,
+        streamId,
+        error: "Stream not found on worker",
+        statusCode: 404,
+      };
+      
+      this.sendMessage(serializeTunnelMessage(errorMsg));
       return;
     }
 
@@ -227,7 +240,19 @@ export class TunnelProxy {
     const streamState = this.activeStreams.get(streamId);
 
     if (!streamState || !streamState.request) {
-      this.logger.warn(`Received end for unknown stream: ${streamId}`);
+      this.logger.debug(
+        `Received end for unknown stream: ${streamId} (likely from before reconnection)`
+      );
+      
+      // Send ERROR to tell server this stream doesn't exist
+      const errorMsg: TunnelError = {
+        type: TunnelMessageType.ERROR,
+        streamId,
+        error: "Stream not found on worker",
+        statusCode: 404,
+      };
+      
+      this.sendMessage(serializeTunnelMessage(errorMsg));
       return;
     }
 
@@ -295,7 +320,7 @@ export class TunnelProxy {
         const urlRewriterConfig = createRewriterConfig(
           streamState.workerId,
           this.config.allowedPorts,
-          { enabled: true, tunnelDomain: this.config.tunnelDomain }
+          { enabled: true, tunnelDomain: this.config.tunnelDomain, useHttps: this.config.tunnelUseHttps }
         );
 
         const originalSize = chunk.length;
@@ -442,7 +467,19 @@ export class TunnelProxy {
     const streamState = this.activeStreams.get(streamId);
 
     if (!streamState || !streamState.wsClient) {
-      this.logger.warn(`Received WS data for unknown stream: ${streamId}`);
+      this.logger.debug(
+        `Received WS data for unknown stream: ${streamId} (likely from before reconnection)`
+      );
+      
+      // Send WS_CLOSE to tell server to stop sending data for this stream
+      const wsClose: TunnelWsClose = {
+        type: TunnelMessageType.WS_CLOSE,
+        streamId,
+        code: 1000,
+        reason: "Stream not found on worker",
+      };
+      
+      this.sendMessage(serializeTunnelMessage(wsClose));
       return;
     }
 
@@ -458,7 +495,19 @@ export class TunnelProxy {
     const streamState = this.activeStreams.get(streamId);
 
     if (!streamState || !streamState.wsClient) {
-      this.logger.warn(`Received WS close for unknown stream: ${streamId}`);
+      this.logger.debug(
+        `Received WS close for unknown stream: ${streamId} (likely from before reconnection)`
+      );
+      
+      // Acknowledge the close even if we don't have the stream
+      const wsClose: TunnelWsClose = {
+        type: TunnelMessageType.WS_CLOSE,
+        streamId,
+        code: code || 1000,
+        reason: reason || "Stream not found on worker",
+      };
+      
+      this.sendMessage(serializeTunnelMessage(wsClose));
       return;
     }
 

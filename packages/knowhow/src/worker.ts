@@ -6,7 +6,7 @@ import { loadJwt } from "./login";
 import { services } from "./services";
 import { McpServerService } from "./services/Mcp";
 import * as allTools from "./agents/tools";
-import  workerTools from "./workers/tools";
+import workerTools from "./workers/tools";
 import { wait } from "./utils";
 import { getConfig, updateConfig } from "./config";
 import { KNOWHOW_API_URL } from "./services/KnowhowClient";
@@ -234,17 +234,25 @@ export async function worker(options?: {
   // Extract tunnel domain from API_URL
   // e.g., "https://api.knowhow.tyvm.ai" -> "knowhow.tyvm.ai"
   // e.g., "http://localhost:4000" -> "localhost:4000"
-  function extractTunnelDomain(apiUrl: string): string {
+  function extractTunnelDomain(apiUrl: string): {
+    domain: string;
+    useHttps: boolean;
+  } {
     try {
       const url = new URL(apiUrl);
+      const useHttps = url.protocol === "https:";
+
       // For localhost, include port; for production, just use hostname
-      if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
-        return `${url.hostname}:${url.port || '80'}`;
+      if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+        return {
+          domain: `worker.${url.hostname}:${url.port || "80"}`,
+          useHttps,
+        };
       }
-      return url.hostname;
+      return { domain: `worker.${url.hostname}`, useHttps };
     } catch (err) {
       console.error("Failed to parse API_URL for tunnel domain:", err);
-      return "worker.localhost:4000"; // fallback
+      return { domain: "worker.localhost:4000", useHttps: false }; // fallback
     }
   }
 
@@ -278,7 +286,8 @@ export async function worker(options?: {
       console.log("🔒 Worker is private (only you can use it)");
     }
 
-    const tunnelDomain = extractTunnelDomain(API_URL);
+    const { domain: tunnelDomain, useHttps: tunnelUseHttps } =
+      extractTunnelDomain(API_URL);
 
     const ws = new WebSocket(`${API_URL}/ws/worker`, {
       headers,
@@ -301,7 +310,9 @@ export async function worker(options?: {
             config.worker?.tunnel?.maxConcurrentStreams || 50,
           localHost: tunnelLocalHost,
           tunnelDomain,
-          enableUrlRewriting: config.worker?.tunnel?.enableUrlRewriting !== false,
+          tunnelUseHttps,
+          enableUrlRewriting:
+            config.worker?.tunnel?.enableUrlRewriting !== false,
           portMapping,
           logLevel: "info",
         });
