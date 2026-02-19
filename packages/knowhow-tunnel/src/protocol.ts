@@ -16,16 +16,16 @@ import {
  */
 export function parseTunnelMessage(json: string): TunnelMessage {
   const obj = JSON.parse(json);
-  
+
   // Validate required fields based on type
   if (!obj.type) {
     throw new Error("Missing 'type' field in tunnel message");
   }
-  
+
   if (!obj.streamId) {
     throw new Error("Missing 'streamId' field in tunnel message");
   }
-  
+
   switch (obj.type) {
     case TunnelMessageType.REQUEST:
       validateRequest(obj);
@@ -46,7 +46,7 @@ export function parseTunnelMessage(json: string): TunnelMessage {
       validateWsData(obj);
       break;
   }
-  
+
   return obj as TunnelMessage;
 }
 
@@ -119,7 +119,7 @@ export function serializeTunnelMessage(message: TunnelMessage): string {
       _isBase64: true,
     });
   }
-  
+
   if (message.type === TunnelMessageType.WS_DATA && Buffer.isBuffer(message.data)) {
     return JSON.stringify({
       ...message,
@@ -127,7 +127,7 @@ export function serializeTunnelMessage(message: TunnelMessage): string {
       _isBase64: true,
     });
   }
-  
+
   return JSON.stringify(message);
 }
 
@@ -147,15 +147,15 @@ export function stripHopByHopHeaders(
     "transfer-encoding",
     "upgrade",
   ]);
-  
+
   const result: Record<string, string | string[]> = {};
-  
+
   for (const [key, value] of Object.entries(headers)) {
     if (!hopByHopHeaders.has(key.toLowerCase())) {
       result[key] = value;
     }
   }
-  
+
   return result;
 }
 
@@ -167,16 +167,16 @@ export function normalizeHeadersForLocal(
   options: { forceIdentityEncoding?: boolean } = {}
 ): Record<string, string | string[]> {
   const normalized = stripHopByHopHeaders(headers);
-  
+
   // Remove host header to avoid confusion
   delete normalized.host;
   delete normalized.Host;
-  
+
   // Force identity encoding if configured
   if (options.forceIdentityEncoding) {
     normalized["accept-encoding"] = "identity";
   }
-  
+
   return normalized;
 }
 
@@ -185,7 +185,16 @@ export function normalizeHeadersForLocal(
  */
 export function isPortAllowed(port: number, allowedPorts?: number[]): boolean {
   if (!allowedPorts || allowedPorts.length === 0) {
+    console.log(`[isPortAllowed] No restrictions, allowing port ${port}`);
     return true; // No restrictions
   }
-  return allowedPorts.includes(port);
+
+  // Use a more lenient comparison that handles potential type mismatches
+  // Compare both direct match and string/number coercion
+  const result = allowedPorts.some(allowedPort =>
+    allowedPort === port || Number(allowedPort) === Number(port)
+  );
+
+  console.log(`[isPortAllowed] Result: ${result}`);
+  return result;
 }

@@ -261,7 +261,7 @@ export abstract class BaseAgent implements IAgent {
 
     // Check runtime limit
     if (this.maxRunTimeMs !== null && this.startTimeMs !== null) {
-      const currentRunTimeMs = Date.now() - this.startTimeMs;
+      const currentRunTimeMs = this.runTime();
       if (currentRunTimeMs >= this.maxRunTimeMs) {
         console.log(
           `Runtime limit reached: ${currentRunTimeMs}ms/${this.maxRunTimeMs}ms`
@@ -271,6 +271,13 @@ export abstract class BaseAgent implements IAgent {
     }
 
     return false;
+  }
+
+  public runTime() {
+    if (this.startTimeMs) {
+      return Date.now() - this.startTimeMs;
+    }
+    return 0;
   }
 
   private shouldTerminateFromLimits(): boolean {
@@ -714,6 +721,10 @@ export abstract class BaseAgent implements IAgent {
   }
 
   getStatusMessage() {
+    const baseMessage = `$${this.getTotalCostUsd().toPrecision(
+      3
+    )}\nElapsed: ${Math.floor(this.runTime() / 1000)}s\n`;
+
     const remainingTime =
       this.maxRunTimeMs && this.startTimeMs
         ? this.maxRunTimeMs - (Date.now() - this.startTimeMs)
@@ -740,7 +751,7 @@ export abstract class BaseAgent implements IAgent {
       ? `You have $${remainingBudget.toFixed(4)} remaining in your budget.`
       : "";
 
-    const statusMessage = `${timeRemainingMsg}\n${turnsRemainingMsg}\n${budgetRemainingMsg}`;
+    const statusMessage = `${baseMessage}\n${timeRemainingMsg}\n${turnsRemainingMsg}\n${budgetRemainingMsg}`;
     return statusMessage;
   }
 

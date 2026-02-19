@@ -199,7 +199,7 @@ export class TunnelProxy {
       this.logger.debug(
         `Received data for unknown stream: ${streamId} (likely from before reconnection)`
       );
-      
+
       // Send END or ERROR to tell server to stop sending data for this stream
       const errorMsg: TunnelError = {
         type: TunnelMessageType.ERROR,
@@ -207,7 +207,7 @@ export class TunnelProxy {
         error: "Stream not found on worker",
         statusCode: 404,
       };
-      
+
       this.sendMessage(serializeTunnelMessage(errorMsg));
       return;
     }
@@ -243,7 +243,7 @@ export class TunnelProxy {
       this.logger.debug(
         `Received end for unknown stream: ${streamId} (likely from before reconnection)`
       );
-      
+
       // Send ERROR to tell server this stream doesn't exist
       const errorMsg: TunnelError = {
         type: TunnelMessageType.ERROR,
@@ -251,7 +251,7 @@ export class TunnelProxy {
         error: "Stream not found on worker",
         statusCode: 404,
       };
-      
+
       this.sendMessage(serializeTunnelMessage(errorMsg));
       return;
     }
@@ -470,7 +470,7 @@ export class TunnelProxy {
       this.logger.debug(
         `Received WS data for unknown stream: ${streamId} (likely from before reconnection)`
       );
-      
+
       // Send WS_CLOSE to tell server to stop sending data for this stream
       const wsClose: TunnelWsClose = {
         type: TunnelMessageType.WS_CLOSE,
@@ -478,7 +478,7 @@ export class TunnelProxy {
         code: 1000,
         reason: "Stream not found on worker",
       };
-      
+
       this.sendMessage(serializeTunnelMessage(wsClose));
       return;
     }
@@ -498,7 +498,7 @@ export class TunnelProxy {
       this.logger.debug(
         `Received WS close for unknown stream: ${streamId} (likely from before reconnection)`
       );
-      
+
       // Acknowledge the close even if we don't have the stream
       const wsClose: TunnelWsClose = {
         type: TunnelMessageType.WS_CLOSE,
@@ -506,7 +506,7 @@ export class TunnelProxy {
         code: code || 1000,
         reason: reason || "Stream not found on worker",
       };
-      
+
       this.sendMessage(serializeTunnelMessage(wsClose));
       return;
     }

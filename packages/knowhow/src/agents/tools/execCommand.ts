@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 
-const execAsync = promisify(exec);
+export const execAsync = promisify(exec);
 
 export interface ExecCommandOptions {
   timeout?: number; // ms; -1 = wait indefinitely

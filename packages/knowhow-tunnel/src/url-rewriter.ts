@@ -88,7 +88,10 @@ export function rewriteUrls(
       const httpCount = httpMatches ? httpMatches.length : 0;
 
       if (httpCount > 0) {
-        result = result.replaceAll(`http://localhost:${port}`, `https://${replacement}`);
+        result = result.replaceAll(
+          `http://localhost:${port}`,
+          `https://${replacement}`
+        );
         replacementCount += httpCount;
         console.log(
           `[URL_REWRITE] Upgraded ${httpCount} occurrences of "http://localhost:${port}" to "https://${replacement}"`
@@ -171,16 +174,18 @@ export function rewriteBuffer(
       return buffer;
     }
 
-    if (hasLocalhost) {
-      console.log("[URL_REWRITE] Before rewrite:", {
-        hasLocalhost,
-        contentLength: content.length,
-        allowedPorts: config.allowedPorts,
-        workerId: config.workerId,
-        enabled: config.enabled,
-      });
-    }
-
+/*
+ *    if (hasLocalhost) {
+ *      console.log("[URL_REWRITE] Before rewrite:", {
+ *        hasLocalhost,
+ *        contentLength: content.length,
+ *        allowedPorts: config.allowedPorts,
+ *        workerId: config.workerId,
+ *        enabled: config.enabled,
+ *      });
+ *    }
+ *
+ */
     // Show a sample of localhost URLs found - use a broader pattern to see what's actually there
     if (hasLocalhost) {
       // Find all occurrences of "localhost" and show surrounding context (like grep -B5 -A5)
@@ -209,27 +214,19 @@ export function rewriteBuffer(
           JSON.stringify(`${before}[LOCALHOST]${after}`)
         );
       }
-
-      // Check specifically for our allowed ports
-      const allowedPortMatches = content.match(
-        new RegExp(`localhost:(${config.allowedPorts.join("|")})`, "g")
-      );
-      console.log(
-        "[URL_REWRITE] Localhost with allowed ports:",
-        allowedPortMatches?.slice(0, 5),
-        `(Found ${allowedPortMatches?.length || 0} matches)`
-      );
     }
 
     // Rewrite URLs
     const rewritten = rewriteUrls(content, config);
 
-    if (hasLocalhost) {
-      console.log("[URL_REWRITE] After rewrite:", {
-        hasLocalhost: rewritten.includes("localhost"),
-      });
-    }
-
+    /*
+     *    if (hasLocalhost) {
+     *      console.log("[URL_REWRITE] After rewrite:", {
+     *        hasLocalhost: rewritten.includes("localhost"),
+     *      });
+     *    }
+     *
+     */
     // Encode back to buffer
     return Buffer.from(rewritten, encoding);
   } catch (err) {

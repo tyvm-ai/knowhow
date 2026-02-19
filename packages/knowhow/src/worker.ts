@@ -303,9 +303,12 @@ export async function worker(options?: {
       tunnelConnection.on("open", () => {
         console.log("Tunnel WebSocket connected");
 
+        // Get the allowedPorts configuration
+        const allowedPorts = config.worker?.tunnel?.allowedPorts || [];
+
         // Initialize tunnel handler with the tunnel-specific WebSocket
         tunnelHandler = createTunnelHandler(tunnelConnection!, {
-          allowedPorts: config.worker?.tunnel?.allowedPorts || [],
+          allowedPorts,
           maxConcurrentStreams:
             config.worker?.tunnel?.maxConcurrentStreams || 50,
           localHost: tunnelLocalHost,
@@ -314,7 +317,7 @@ export async function worker(options?: {
           enableUrlRewriting:
             config.worker?.tunnel?.enableUrlRewriting !== false,
           portMapping,
-          logLevel: "info",
+          logLevel: "debug",
         });
         console.log("🌐 Tunnel handler initialized");
       });
@@ -323,6 +326,9 @@ export async function worker(options?: {
         console.log(
           `Tunnel WebSocket closed. Code: ${code}, Reason: ${reason.toString()}`
         );
+        console.log(
+          "Tunnel connection will reconnect on next connection cycle..."
+        );
 
         // Cleanup tunnel handler
         if (tunnelHandler) {
@@ -330,10 +336,16 @@ export async function worker(options?: {
           tunnelHandler = null;
         }
         tunnelWs = null;
+
+        // Mark as disconnected to trigger reconnection
+        // The tunnel websocket is separate but we should reconnect both
+        connected = false;
       });
 
       tunnelConnection.on("error", (error) => {
         console.error("Tunnel WebSocket error:", error);
+        // Mark as disconnected on error to trigger reconnection
+        connected = false;
       });
 
       tunnelWs = tunnelConnection;
