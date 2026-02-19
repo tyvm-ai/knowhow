@@ -125,24 +125,14 @@ export class GenericAnthropicClient implements GenericClient {
   handleMessageCaching(groupedMessages: MessageParam[]) {
     this.handleClearingCache(groupedMessages);
 
-    const hasTwoUserMesages =
-      groupedMessages.filter((m) => m.role === "user").length >= 2;
+    // find the last two messages and mark them as ephemeral
+    const lastTwoUserMessages = groupedMessages
+      .filter((m) => m.role === "user")
+      .slice(-2);
 
-    const firstUserMessage = groupedMessages.find((m) => m.role === "user");
-    if (firstUserMessage) {
-      this.cacheLastContent(firstUserMessage);
-    }
-
-    if (hasTwoUserMesages) {
-      // find the last two messages and mark them as ephemeral
-      const lastTwoUserMessages = groupedMessages
-        .filter((m) => m.role === "user")
-        .slice(-2);
-
-      for (const m of lastTwoUserMessages) {
-        if (Array.isArray(m.content)) {
-          this.cacheLastContent(m);
-        }
+    for (const m of lastTwoUserMessages) {
+      if (Array.isArray(m.content)) {
+        this.cacheLastContent(m);
       }
     }
   }
@@ -185,33 +175,39 @@ export class GenericAnthropicClient implements GenericClient {
           }
 
           // Convert tool message content to appropriate format
-          let toolResultContent: string | (Anthropic.TextBlockParam | Anthropic.ImageBlockParam)[];
-          
+          let toolResultContent:
+            | string
+            | (Anthropic.TextBlockParam | Anthropic.ImageBlockParam)[];
+
           if (typeof msg.content === "string") {
             toolResultContent = msg.content;
           } else if (Array.isArray(msg.content)) {
             // Transform image_url format to Anthropic's image format
-            toolResultContent = msg.content.map((item): Anthropic.TextBlockParam | Anthropic.ImageBlockParam => {
-              if (item.type === "image_url") {
-                const url = item.image_url.url;
-                const isDataUrl = url.startsWith("data:");
-                const base64Data = isDataUrl ? url.split(",")[1] : url;
-                const mediaType = isDataUrl ? url.match(/data:([^;]+);/)?.[1] || "image/jpeg" : "image/jpeg";
-                
-                return {
-                  type: "image" as const,
-                  source: {
-                    type: "base64" as const,
-                    media_type: mediaType as any,
-                    data: base64Data,
-                  },
-                };
-              } else if (item.type === "text") {
-                return { type: "text" as const, text: item.text };
+            toolResultContent = msg.content.map(
+              (item): Anthropic.TextBlockParam | Anthropic.ImageBlockParam => {
+                if (item.type === "image_url") {
+                  const url = item.image_url.url;
+                  const isDataUrl = url.startsWith("data:");
+                  const base64Data = isDataUrl ? url.split(",")[1] : url;
+                  const mediaType = isDataUrl
+                    ? url.match(/data:([^;]+);/)?.[1] || "image/jpeg"
+                    : "image/jpeg";
+
+                  return {
+                    type: "image" as const,
+                    source: {
+                      type: "base64" as const,
+                      media_type: mediaType as any,
+                      data: base64Data,
+                    },
+                  };
+                } else if (item.type === "text") {
+                  return { type: "text" as const, text: item.text };
+                }
+                // Fallback for unknown types
+                return { type: "text" as const, text: String(item) };
               }
-              // Fallback for unknown types
-              return { type: "text" as const, text: String(item) };
-            }) as (Anthropic.TextBlockParam | Anthropic.ImageBlockParam)[];
+            ) as (Anthropic.TextBlockParam | Anthropic.ImageBlockParam)[];
           } else {
             toolResultContent = String(msg.content);
           }
@@ -293,7 +289,7 @@ export class GenericAnthropicClient implements GenericClient {
           ? [
               {
                 text: systemMessage,
-                // cache_control: { type: "ephemeral" },
+                cache_control: { type: "ephemeral" },
                 type: "text",
               },
             ]
@@ -359,9 +355,19 @@ export class GenericAnthropicClient implements GenericClient {
     return {
       [Models.anthropic.Opus4_6]: {
         input: 5.0,
+        input_gt_200k: 10.0,
         cache_write: 6.25,
         cache_hit: 0.5,
         output: 25.0,
+        output_gt_200k: 37.5,
+      },
+      [Models.anthropic.Sonnet4_6]: {
+        input: 3.0,
+        input_gt_200k: 6.0,
+        cache_write: 3.75,
+        cache_hit: 0.3,
+        output: 15.0,
+        output_gt_200k: 22.5,
       },
       [Models.anthropic.Opus4_5]: {
         input: 5.0,
@@ -383,15 +389,19 @@ export class GenericAnthropicClient implements GenericClient {
       },
       [Models.anthropic.Sonnet4]: {
         input: 3.0,
+        input_gt_200k: 6.0,
         cache_write: 3.75,
         cache_hit: 0.3,
         output: 15.0,
+        output_gt_200k: 22.5,
       },
       [Models.anthropic.Sonnet4_5]: {
         input: 3.0,
+        input_gt_200k: 6.0,
         cache_write: 3.75,
         cache_hit: 0.3,
         output: 15.0,
+        output_gt_200k: 22.5,
       },
       [Models.anthropic.Haiku4_5]: {
         input: 1,
@@ -413,8 +423,8 @@ export class GenericAnthropicClient implements GenericClient {
       },
       [Models.anthropic.Haiku3_5]: {
         input: 0.8,
-        cache_write: 1.25,
-        cache_hit: 0.1,
+        cache_write: 1.0,
+        cache_hit: 0.08,
         output: 4.0,
       },
       [Models.anthropic.Opus3]: {
@@ -425,34 +435,45 @@ export class GenericAnthropicClient implements GenericClient {
       },
       [Models.anthropic.Haiku3]: {
         input: 0.25,
-        cache_write: 0.3,
-        cache_hit: 0.03,
+        cache_write: 0.3125,
+        cache_hit: 0.025,
         output: 1.25,
       },
     };
   }
 
   calculateCost(model: string, usage: Usage): number | undefined {
-    const pricing = this.pricesPerMillion()[model];
+    const p = this.pricesPerMillion()[model];
+    if (!p) return undefined;
 
-    if (!pricing) {
-      return undefined;
-    }
+    const inputTokens = usage.input_tokens ?? 0;
+    const cacheWriteTokens = usage.cache_creation_input_tokens ?? 0;
+    const cacheReadTokens = usage.cache_read_input_tokens ?? 0;
+    const outputTokens = usage.output_tokens ?? 0;
 
-    const cachedInputTokens = usage.cache_creation_input_tokens;
-    const cachedInputCost = (cachedInputTokens * pricing.cache_write) / 1e6;
+    const totalInputTokens = inputTokens + cacheWriteTokens + cacheReadTokens;
 
-    const cachedReadTokens = usage.cache_read_input_tokens;
-    const cachedReadCost = (cachedReadTokens * pricing.cache_hit) / 1e6;
+    const useLongContextTier = totalInputTokens > 200_000 && !!p.input_gt_200k;
+    const inputRate = useLongContextTier
+      ? (p.input_gt_200k as number)
+      : p.input;
+    const outputRate =
+      useLongContextTier && p.output_gt_200k ? p.output_gt_200k : p.output;
 
-    const inputTokens = usage.input_tokens;
-    const inputCost = ((inputTokens - cachedInputCost) * pricing.input) / 1e6;
+    // Prefer modeling cache pricing as multipliers, but if you keep absolute numbers,
+    // you MUST scale them when usingLongContextTier.
+    //
+    // Anthropic docs describe cache read/write as multipliers of the base input rate. :contentReference[oaicite:7]{index=7}
+    // If your `cache_write` + `cache_hit` are absolute $/MTok at base tier, scale them:
+    const cacheWriteRate = (p.cache_write / p.input) * inputRate; // preserves your multiplier
+    const cacheReadRate = (p.cache_hit / p.input) * inputRate; // preserves your multiplier
 
-    const outputTokens = usage.output_tokens;
-    const outputCost = (outputTokens * pricing.output) / 1e6;
+    const nonCachedInputCost = (inputTokens * inputRate) / 1e6;
+    const cacheWriteCost = (cacheWriteTokens * cacheWriteRate) / 1e6;
+    const cacheReadCost = (cacheReadTokens * cacheReadRate) / 1e6;
+    const outputCost = (outputTokens * outputRate) / 1e6;
 
-    const total = cachedInputCost + inputCost + outputCost;
-    return total;
+    return nonCachedInputCost + cacheWriteCost + cacheReadCost + outputCost;
   }
 
   async getModels() {
