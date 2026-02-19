@@ -2266,11 +2266,11 @@
     form-data "^4.0.0"
 
 "@types/node@*", "@types/node@^20.6.3", "@types/node@>=18":
-  version "18.19.123"
-  resolved "https://registry.npmjs.org/@types/node/-/node-18.19.123.tgz"
-  integrity sha512-K7DIaHnh0mzVxreCR9qwgNxp3MH9dltPNIEddW9MYUlcKAzm+3grKNSTe2vCJHI1FaLpvpL5JGJrz1UZDKYvDg==
+  version "20.19.33"
+  resolved "https://registry.npmjs.org/@types/node/-/node-20.19.33.tgz"
+  integrity sha512-Rs1bVAIdBs5gbTIKza/tgpMuG1k3U/UMJLWecIMxNdJFDMzcM5LOiLVRYh3PilWEYDIeUDv7bpiHPLPsbydGcw==
   dependencies:
-    undici-types "~5.26.4"
+    undici-types "~6.21.0"
 
 "@types/node@^18.11.18":
   version "18.19.123"
@@ -2382,8 +2382,14 @@
   dependencies:
     "@types/node" "*"
 
+"@tyvm/knowhow-tunnel@^0.0.1", "@tyvm/knowhow-tunnel@file:/Users/micah/dev/knowhow/packages/knowhow-tunnel":
+  version "0.0.1"
+  resolved "file:packages/knowhow-tunnel"
+  dependencies:
+    ws "^8.18.1"
+
 "@tyvm/knowhow@file:/Users/micah/dev/knowhow/packages/knowhow":
-  version "0.0.64"
+  version "0.0.65"
   resolved "file:packages/knowhow"
   dependencies:
     "@anthropic-ai/sdk" "^0.39.0"
@@ -2395,6 +2401,7 @@
     "@notionhq/client" "^2.2.14"
     "@octokit/rest" "^20.0.2"
     "@types/react" "^19.1.8"
+    "@tyvm/knowhow-tunnel" "^0.0.1"
     asana "^3.0.16"
     axios "^1.5.0"
     cheerio "^1.0.0"

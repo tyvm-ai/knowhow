@@ -54,10 +54,11 @@ async function setupServices() {
   // Add Mcp service to tool context directly so MCP management tools can access it
   Tools.addContext("Mcp", Mcp);
 
-  await Promise.all([
-    Mcp.connectToConfigured(Tools),
-    Clients.registerConfiguredModels(),
-  ]);
+  console.log("🔌 Connecting to MCP...");
+  await Mcp.connectToConfigured(Tools);
+  console.log("Connecting to clients...");
+  await Clients.registerConfiguredModels();
+  console.log("✓ Services are set up and ready to go!");
 }
 
 // Utility function to read from stdin

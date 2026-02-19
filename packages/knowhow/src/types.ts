@@ -66,6 +66,16 @@ export type Config = {
     sandbox?: boolean;
     volumes?: string[];
     envFile?: string;
+    tunnel?: {
+      enabled?: boolean;
+      allowedPorts?: number[];
+      maxConcurrentStreams?: number;
+      portMapping?: {
+        [containerPort: number]: number; // containerPort -> hostPort
+      };
+      localHost?: string; // Default: "127.0.0.1", can be "host.docker.internal" for Docker
+      enableUrlRewriting?: boolean; // Enable URL rewriting for localhost URLs (default: true)
+    };
   };
 };
 
@@ -143,6 +153,7 @@ export type ChatInteraction = {
 export const Models = {
   anthropic: {
     Opus4_6: "claude-opus-4-6",
+    Sonnet4_6: "claude-sonnet-4-6",
     Opus4_5: "claude-opus-4-5-20251101",
     Opus4: "claude-opus-4-20250514",
     Opus4_1: "claude-opus-4-1-20250805",

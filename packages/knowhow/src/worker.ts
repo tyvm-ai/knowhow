@@ -1,10 +1,12 @@
 import os from "os";
 import { WebSocket } from "ws";
+import { createTunnelHandler, TunnelHandler } from "@tyvm/knowhow-tunnel";
 import { includedTools } from "./agents/tools/list";
 import { loadJwt } from "./login";
 import { services } from "./services";
 import { McpServerService } from "./services/Mcp";
 import * as allTools from "./agents/tools";
+import workerTools from "./workers/tools";
 import { wait } from "./utils";
 import { getConfig, updateConfig } from "./config";
 import { KNOWHOW_API_URL } from "./services/KnowhowClient";
@@ -88,9 +90,11 @@ export async function worker(options?: {
 
   // Check if we're already running inside a Docker container
   const isInsideDocker = process.env.KNOWHOW_DOCKER === "true";
-  
+
   if (isInsideDocker) {
-    console.log("🐳 Already running inside Docker container, skipping sandbox mode");
+    console.log(
+      "🐳 Already running inside Docker container, skipping sandbox mode"
+    );
     // Force sandbox mode off when inside Docker to prevent nested containers
     if (options) {
       options.sandbox = false;
@@ -145,6 +149,11 @@ export async function worker(options?: {
   }
 
   const { Tools } = services();
+  // Combine agent tools and worker-specific tools
+  const combinedTools = { ...allTools, ...workerTools.tools };
+  Tools.defineTools(includedTools, combinedTools);
+  Tools.defineTools(workerTools.definitions, workerTools.tools);
+
   const mcpServer = new McpServerService(Tools);
   const clientName = "knowhow-worker";
   const clientVersion = "1.1.1";
@@ -178,6 +187,74 @@ export async function worker(options?: {
   mcpServer.createServer(clientName, clientVersion).withTools(toolsToUse);
 
   let connected = false;
+  let tunnelHandler: TunnelHandler | null = null;
+  let tunnelWs: WebSocket | null = null;
+
+  // Check if tunnel is enabled
+  const tunnelEnabled = config.worker?.tunnel?.enabled ?? false;
+
+  // Determine localHost based on environment
+  let tunnelLocalHost = config.worker?.tunnel?.localHost;
+  if (!tunnelLocalHost) {
+    // Auto-detect based on Docker environment
+    if (isInsideDocker) {
+      tunnelLocalHost = "host.docker.internal";
+      console.log(
+        "🐳 Docker detected: tunnel will use host.docker.internal to reach host services"
+      );
+    } else {
+      tunnelLocalHost = "127.0.0.1";
+    }
+  }
+
+  // Check for port mapping configuration
+  const portMapping = config.worker?.tunnel?.portMapping || {};
+  if (Object.keys(portMapping).length > 0) {
+    console.log("🔀 Port mapping configured:");
+    for (const [containerPort, hostPort] of Object.entries(portMapping)) {
+      console.log(`   Container port ${containerPort} → Host port ${hostPort}`);
+    }
+  }
+
+  if (tunnelEnabled) {
+    const tunnelPorts = config.worker?.tunnel?.allowedPorts || [];
+    if (tunnelPorts.length === 0) {
+      console.warn(
+        "⚠️  Tunnel enabled but no allowedPorts configured. Add tunnel.allowedPorts to knowhow.json"
+      );
+    } else {
+      console.log(`🌐 Tunnel enabled for ports: ${tunnelPorts.join(", ")}`);
+    }
+  } else {
+    console.log(
+      "🚫 Tunnel disabled (enable in knowhow.json: worker.tunnel.enabled = true)"
+    );
+  }
+
+  // Extract tunnel domain from API_URL
+  // e.g., "https://api.knowhow.tyvm.ai" -> "knowhow.tyvm.ai"
+  // e.g., "http://localhost:4000" -> "localhost:4000"
+  function extractTunnelDomain(apiUrl: string): {
+    domain: string;
+    useHttps: boolean;
+  } {
+    try {
+      const url = new URL(apiUrl);
+      const useHttps = url.protocol === "https:";
+
+      // For localhost, include port; for production, just use hostname
+      if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+        return {
+          domain: `worker.${url.hostname}:${url.port || "80"}`,
+          useHttps,
+        };
+      }
+      return { domain: `worker.${url.hostname}`, useHttps };
+    } catch (err) {
+      console.error("Failed to parse API_URL for tunnel domain:", err);
+      return { domain: "worker.localhost:4000", useHttps: false }; // fallback
+    }
+  }
 
   async function connectWebSocket() {
     const jwt = await loadJwt();
@@ -185,10 +262,12 @@ export async function worker(options?: {
 
     const dir = process.cwd();
     const homedir = os.homedir();
-    
+
     // Use environment variables if available (set by Docker), otherwise compute defaults
     const hostname = process.env.WORKER_HOSTNAME || os.hostname();
-    const root = process.env.WORKER_ROOT || (dir === homedir ? "~" : dir.replace(homedir, "~"));
+    const root =
+      process.env.WORKER_ROOT ||
+      (dir === homedir ? "~" : dir.replace(homedir, "~"));
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${jwt}`,
@@ -207,12 +286,61 @@ export async function worker(options?: {
       console.log("🔒 Worker is private (only you can use it)");
     }
 
+    const { domain: tunnelDomain, useHttps: tunnelUseHttps } =
+      extractTunnelDomain(API_URL);
+
     const ws = new WebSocket(`${API_URL}/ws/worker`, {
       headers,
     });
 
+    // Create separate WebSocket connection for tunnel if enabled
+    let tunnelConnection: WebSocket | null = null;
+    if (tunnelEnabled) {
+      tunnelConnection = new WebSocket(`${API_URL}/ws/tunnel`, {
+        headers,
+      });
+
+      tunnelConnection.on("open", () => {
+        console.log("Tunnel WebSocket connected");
+
+        // Initialize tunnel handler with the tunnel-specific WebSocket
+        tunnelHandler = createTunnelHandler(tunnelConnection!, {
+          allowedPorts: config.worker?.tunnel?.allowedPorts || [],
+          maxConcurrentStreams:
+            config.worker?.tunnel?.maxConcurrentStreams || 50,
+          localHost: tunnelLocalHost,
+          tunnelDomain,
+          tunnelUseHttps,
+          enableUrlRewriting:
+            config.worker?.tunnel?.enableUrlRewriting !== false,
+          portMapping,
+          logLevel: "info",
+        });
+        console.log("🌐 Tunnel handler initialized");
+      });
+
+      tunnelConnection.on("close", (code, reason) => {
+        console.log(
+          `Tunnel WebSocket closed. Code: ${code}, Reason: ${reason.toString()}`
+        );
+
+        // Cleanup tunnel handler
+        if (tunnelHandler) {
+          tunnelHandler.cleanup();
+          tunnelHandler = null;
+        }
+        tunnelWs = null;
+      });
+
+      tunnelConnection.on("error", (error) => {
+        console.error("Tunnel WebSocket error:", error);
+      });
+
+      tunnelWs = tunnelConnection;
+    }
+
     ws.on("open", () => {
-      console.log("Connected to the server");
+      console.log("Worker WebSocket connected");
       connected = true;
     });
 
@@ -221,6 +349,12 @@ export async function worker(options?: {
         `WebSocket closed. Code: ${code}, Reason: ${reason.toString()}`
       );
       console.log("Attempting to reconnect...");
+
+      // Cleanup tunnel handler
+      if (tunnelHandler) {
+        tunnelHandler = null;
+      }
+
       connected = false;
     });
 
@@ -230,12 +364,15 @@ export async function worker(options?: {
 
     mcpServer.runWsServer(ws);
 
-    return { ws, mcpServer };
+    return { ws, mcpServer, tunnelWs };
   }
 
   while (true) {
-    let connection: { ws: WebSocket; mcpServer: McpServerService } | null =
-      null;
+    let connection: {
+      ws: WebSocket;
+      mcpServer: McpServerService;
+      tunnelWs: WebSocket | null;
+    } | null = null;
 
     if (!connected) {
       console.log("Attempting to connect...");

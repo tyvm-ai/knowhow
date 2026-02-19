@@ -634,11 +634,19 @@ Please continue from where you left off and complete the original request.
 
       const taskCompleted = new Promise<string>((resolve) => {
         agent.agentEvents.once(agent.eventTypes.done, async (doneMsg) => {
-          console.log("Agent has completed the task.");
+          console.log("🎯 [AgentModule] Task Completed");
           done = true;
           output = doneMsg || "No response from the AI";
           // Update task info
           taskInfo = this.taskRegistry.get(taskId);
+
+          // Wait for AgentSync to finish before resolving
+          if (knowhowTaskId) {
+            console.log("🎯 [AgentModule] Waiting for sync finalization...");
+            await this.agentSync.waitForFinalization();
+            console.log("🎯 [AgentModule] Sync finalization complete");
+          }
+
           if (taskInfo) {
             taskInfo.status = "completed";
             // Update final cost from agent
@@ -647,7 +655,9 @@ Please continue from where you left off and complete the original request.
             this.updateSession(taskId, agent.getThreads());
             taskInfo.endTime = Date.now();
           }
+
           console.log(Marked.parse(output));
+          console.log("🎯 [AgentModule] Task Complete");
           resolve(doneMsg);
         });
       });

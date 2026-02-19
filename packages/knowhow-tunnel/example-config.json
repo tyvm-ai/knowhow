@@ -1,0 +1,75 @@
+{
+  "// EXAMPLE KNOWHOW CONFIGURATION WITH TUNNEL": "",
+  "// Copy relevant sections to your .knowhow/knowhow.json": "",
+  
+  "worker": {
+    "allowedTools": [
+      "readFile",
+      "writeFile",
+      "patchFile",
+      "execCommand"
+    ],
+    
+    "// EXAMPLE 1: Basic tunnel for local dev server": "",
+    "tunnel": {
+      "enabled": true,
+      "allowedPorts": [3000],
+      "maxConcurrentStreams": 50
+    },
+    
+    "// EXAMPLE 2: Multiple services": "",
+    "tunnel_example_2": {
+      "enabled": true,
+      "allowedPorts": [3000, 8080, 5173],
+      "maxConcurrentStreams": 100
+    },
+    
+    "// EXAMPLE 3: Docker sandbox with host.docker.internal": "",
+    "sandbox": false,
+    "tunnel_example_3": {
+      "enabled": true,
+      "allowedPorts": [3000],
+      "localHost": "host.docker.internal"
+    },
+    
+    "// EXAMPLE 4: Docker with bridge network": "",
+    "tunnel_example_4": {
+      "enabled": true,
+      "allowedPorts": [3000],
+      "localHost": "172.17.0.1"
+    },
+    
+    "// EXAMPLE 5: Port mapping (remote port 3000 -> local port 8080)": "",
+    "tunnel_example_5": {
+      "enabled": true,
+      "allowedPorts": [3000],
+      "portMapping": {
+        "3000": 8080
+      }
+    },
+    
+    "// EXAMPLE 6: Full configuration": "",
+    "tunnel_example_6": {
+      "enabled": true,
+      "allowedPorts": [3000, 3001, 3002],
+      "maxConcurrentStreams": 100,
+      "localHost": "127.0.0.1",
+      "portMapping": {
+        "3000": 4000,
+        "3001": 4001,
+        "3002": 4002
+      }
+    }
+  },
+  
+  "// TESTING INSTRUCTIONS": "",
+  "// 1. Start a test server:": "",
+  "//    node packages/knowhow-tunnel/test-server.js 3000": "",
+  "//": "",
+  "// 2. Configure tunnel in your .knowhow/knowhow.json (use example 1 above)": "",
+  "//": "",
+  "// 3. Start the worker:": "",
+  "//    knowhow worker": "",
+  "//": "",
+  "// 4. The remote server can now access your localhost:3000": ""
+}
