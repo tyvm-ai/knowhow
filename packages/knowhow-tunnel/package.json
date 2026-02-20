@@ -1,17 +1,21 @@
 {
   "name": "@tyvm/knowhow-tunnel",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "HTTP tunnel implementation for knowhow worker",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "test": "jest --passWithNoTests",
-    "test:integration": "ts-node test-tunnel.ts",
     "test": "jest",
+    "test:integration": "ts-node test-tunnel.ts",
     "prepublishOnly": "npm run build"
   },
-  "keywords": ["tunnel", "proxy", "http", "websocket"],
+  "keywords": [
+    "tunnel",
+    "proxy",
+    "http",
+    "websocket"
+  ],
   "author": "Tyvm AI",
   "license": "MIT",
   "devDependencies": {
