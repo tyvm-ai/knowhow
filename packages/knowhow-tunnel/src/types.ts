@@ -116,7 +116,7 @@ export type TunnelMessage =
  * Configuration for tunnel handler
  */
 export interface TunnelConfig {
-  /** Allowed ports for tunneling */
+  /** Allowed ports for tunneling. Empty array or undefined = no ports allowed (safe default) */
   allowedPorts?: number[];
   /** Maximum concurrent streams */
   maxConcurrentStreams?: number;

@@ -64,7 +64,7 @@ const tunnel = createTunnelHandler(ws, {
 
 ```typescript
 interface TunnelConfig {
-  // Allowed ports for tunneling (empty = all allowed)
+  // Allowed ports for tunneling (empty = none allowed, safe default)
   allowedPorts?: number[];
   
   // Maximum concurrent streams

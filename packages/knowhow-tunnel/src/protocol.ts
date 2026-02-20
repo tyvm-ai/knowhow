@@ -185,8 +185,8 @@ export function normalizeHeadersForLocal(
  */
 export function isPortAllowed(port: number, allowedPorts?: number[]): boolean {
   if (!allowedPorts || allowedPorts.length === 0) {
-    console.log(`[isPortAllowed] No restrictions, allowing port ${port}`);
-    return true; // No restrictions
+    console.log(`[isPortAllowed] No allowed ports configured, blocking port ${port}`);
+    return false; // Block all ports by default (safe default)
   }
 
   // Use a more lenient comparison that handles potential type mismatches
