@@ -306,14 +306,31 @@ export async function worker(options?: {
         // Get the allowedPorts configuration
         const allowedPorts = config.worker?.tunnel?.allowedPorts || [];
 
+        // Create URL rewriter callback that can customize URL replacement logic
+        // This receives port and metadata from the tunnel request
+        const urlRewriter = (port: number, metadata?: any) => {
+          const workerId = metadata?.workerId;
+          const secret = metadata?.secret;
+          
+          // Build the replacement URL based on metadata
+          // Examples:
+          // - https://workerId-p.tunnelDomain
+          // - https://secret.workerId-p.tunnelDomain
+          const subdomain = secret 
+            ? `${secret}.${workerId}-${port}` 
+            : `${workerId}-${port}`;
+          
+          const protocol = tunnelUseHttps ? "https" : "http";
+          return `${protocol}://${subdomain}.${tunnelDomain}`;
+        };
+
         // Initialize tunnel handler with the tunnel-specific WebSocket
         tunnelHandler = createTunnelHandler(tunnelConnection!, {
           allowedPorts,
           maxConcurrentStreams:
             config.worker?.tunnel?.maxConcurrentStreams || 50,
           localHost: tunnelLocalHost,
-          tunnelDomain,
-          tunnelUseHttps,
+          urlRewriter,
           enableUrlRewriting:
             config.worker?.tunnel?.enableUrlRewriting !== false,
           portMapping,
