@@ -9,9 +9,6 @@ export class DeveloperAgent extends BaseAgent {
   constructor(context: AgentContext) {
     super(context);
     this.disableTool("patchFile");
-    this.disableTool("openFileInVim");
-    this.disableTool("sendVimInput");
-    this.disableTool("saveVimFile");
 
     this.setModelPreferences([
       {

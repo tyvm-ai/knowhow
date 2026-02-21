@@ -208,6 +208,64 @@ export class GenericGeminiClient implements GenericClient {
   }
 
   /**
+   * Recursively cleans a JSON schema to remove properties not supported by Gemini API.
+   * Removes: additionalProperties, $ref, and other unsupported fields.
+   * Converts type strings to uppercase as required by Gemini.
+   * @param schema The schema object to clean
+   * @returns A cleaned schema object compatible with Gemini API
+   */
+  private cleanSchemaForGemini(schema: any): any {
+    if (!schema || typeof schema !== 'object') {
+      return schema;
+    }
+
+    // Handle arrays
+    if (Array.isArray(schema)) {
+      return schema.map(item => this.cleanSchemaForGemini(item));
+    }
+
+    const cleaned: any = {};
+
+    for (const key in schema) {
+      if (!Object.prototype.hasOwnProperty.call(schema, key)) {
+        continue;
+      }
+
+      // Skip unsupported properties:
+      // - additionalProperties: not supported by Gemini
+      // - $ref: JSON Schema references not supported
+      // - $defs: JSON Schema definitions not supported
+      // - positional: internal knowhow property, not part of JSON Schema
+      if (key === 'additionalProperties' || key === '$ref' || key === '$defs' || key === 'positional') {
+        continue;
+      }
+
+      const value = schema[key];
+
+      // Convert type to uppercase if it's a string
+      if (key === 'type' && typeof value === 'string') {
+        cleaned[key] = value.toUpperCase();
+      }
+      // Handle type arrays (e.g., ["string", "null"])
+      else if (key === 'type' && Array.isArray(value)) {
+        cleaned[key] = value.map((t: string) => 
+          typeof t === 'string' ? t.toUpperCase() : t
+        );
+      }
+      // Recursively clean nested objects
+      else if (typeof value === 'object' && value !== null) {
+        cleaned[key] = this.cleanSchemaForGemini(value);
+      }
+      // Copy primitive values as-is
+      else {
+        cleaned[key] = value;
+      }
+    }
+
+    return cleaned;
+  }
+
+  /**
    * Transforms generic Tool array into Google GenAI tools format.
    * @param tools The generic tool array.
    * @returns An array of Google GenAI Tool objects, or undefined if no tools.
@@ -218,28 +276,13 @@ export class GenericGeminiClient implements GenericClient {
     }
 
     const functionDeclarations: FunctionDeclaration[] = tools.map((tool) => {
-      for (const key in tool.function.parameters.properties) {
-        if (
-          !Object.prototype.hasOwnProperty.call(
-            tool.function.parameters.properties,
-            key
-          )
-        ) {
-          continue;
-        }
-
-        tool.function.parameters.properties[key].type =
-          tool.function.parameters.properties[key].type.toUpperCase();
-      }
+      // Clean the entire parameters schema to remove unsupported fields
+      const cleanedParameters = this.cleanSchemaForGemini(tool.function.parameters);
+      
       return {
         name: tool.function.name,
         description: tool.function.description || "",
-        // Parameters mapping - need to map your ToolProp structure to Google's OpenAPI subset
-        parameters: {
-          type: "OBJECT",
-          properties: tool.function.parameters.properties, // Assume direct compatibility for properties structure
-          required: tool.function.parameters.required || [],
-        } as any,
+        parameters: cleanedParameters as any,
       };
     });
 

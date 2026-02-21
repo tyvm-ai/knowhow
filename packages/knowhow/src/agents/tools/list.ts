@@ -390,40 +390,6 @@ export const includedTools = [
       description: "Create a completion using the knowhow AI client",
       parameters: {
         type: "object",
-        positional: true,
-        additionalProperties: false,
-        $defs: {
-          message: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              role: {
-                type: "string",
-                enum: ["system", "user", "assistant", "tool"],
-              },
-              content: { type: "string" },
-            },
-            required: ["role", "content"],
-          },
-          toolLite: {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              type: { type: "string", enum: ["function"] },
-              function: {
-                type: "object",
-                additionalProperties: false,
-                properties: {
-                  name: { type: "string" },
-                  description: { type: "string" },
-                  parameters: { type: "object" },
-                },
-                required: ["name", "parameters"],
-              },
-            },
-            required: ["type", "function"],
-          },
-        },
         properties: {
           provider: {
             type: "string",
@@ -432,14 +398,27 @@ export const includedTools = [
           },
           options: {
             type: "object",
-            additionalProperties: false,
             description: "Provider-specific completion options",
             properties: {
               model: { type: "string", description: "The model to use" },
               messages: {
                 type: "array",
                 description: "The chat history for the completion",
-                items: { $ref: "#/$defs/message" },
+                items: {
+                  type: "object",
+                  properties: {
+                    role: {
+                      type: "string",
+                      enum: ["system", "user", "assistant", "tool"],
+                      description: "The role of the message sender",
+                    },
+                    content: {
+                      type: "string",
+                      description: "The content of the message",
+                    },
+                  },
+                  required: ["role", "content"],
+                },
                 minItems: 1,
               },
               max_tokens: {
@@ -450,7 +429,32 @@ export const includedTools = [
                 type: "array",
                 description:
                   "Tool definitions the model may call (non-recursive subset)",
-                items: { $ref: "#/$defs/toolLite" },
+                items: {
+                  type: "object",
+                  properties: {
+                    type: {
+                      type: "string",
+                      enum: ["function"],
+                      description: "The type of tool",
+                    },
+                    function: {
+                      type: "object",
+                      properties: {
+                        name: { type: "string", description: "Function name" },
+                        description: {
+                          type: "string",
+                          description: "Function description",
+                        },
+                        parameters: {
+                          type: "object",
+                          description: "Function parameters schema",
+                        },
+                      },
+                      required: ["name", "parameters"],
+                    },
+                  },
+                  required: ["type", "function"],
+                },
               },
             },
             required: ["model", "messages"],

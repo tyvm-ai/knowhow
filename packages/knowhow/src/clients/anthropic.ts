@@ -37,6 +37,52 @@ export class GenericAnthropicClient implements GenericClient {
     }
   }
 
+  /**
+   * Clean JSON Schema for Anthropic API compatibility.
+   * Removes unsupported fields like additionalProperties, $ref, $defs, positional.
+   */
+  private cleanSchemaForAnthropic(schema: any): any {
+    if (!schema || typeof schema !== 'object') {
+      return schema;
+    }
+
+    // Handle arrays
+    if (Array.isArray(schema)) {
+      return schema.map(item => this.cleanSchemaForAnthropic(item));
+    }
+
+    const cleaned: any = {};
+
+    for (const key in schema) {
+      if (!Object.prototype.hasOwnProperty.call(schema, key)) {
+        continue;
+      }
+
+      // Skip unsupported properties
+      if (
+        key === 'additionalProperties' ||
+        key === '$ref' ||
+        key === '$defs' ||
+        key === 'positional'
+      ) {
+        continue;
+      }
+
+      const value = schema[key];
+
+      // Recursively clean nested objects
+      if (typeof value === 'object' && value !== null) {
+        cleaned[key] = this.cleanSchemaForAnthropic(value);
+      }
+      // Copy primitive values as-is
+      else {
+        cleaned[key] = value;
+      }
+    }
+
+    return cleaned;
+  }
+
   transformTools(tools?: Tool[]): Anthropic.Tool[] {
     if (!tools) {
       return [];
@@ -44,7 +90,7 @@ export class GenericAnthropicClient implements GenericClient {
     const transformed = tools.map((tool) => ({
       name: tool.function.name || "",
       description: tool.function.description || "",
-      input_schema: tool.function.parameters as any,
+      input_schema: this.cleanSchemaForAnthropic(tool.function.parameters) as any,
     }));
 
     this.handleToolCaching(transformed);
