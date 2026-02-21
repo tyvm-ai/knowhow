@@ -14,9 +14,6 @@
 export type UrlRewriterCallback = (port: number, metadata?: any) => string;
 
 export interface UrlRewriterConfig {
-  /** Worker ID for generating proxy URLs */
-  workerId: string;
-
   /** Allowed ports that can be rewritten */
   allowedPorts: number[];
 
@@ -79,57 +76,34 @@ export function rewriteUrls(
   let result = content;
   let replacementCount = 0;
 
-  // If a custom urlRewriter callback is provided, use it
-  if (config.urlRewriter) {
-    const { allowedPorts, urlRewriter, metadata } = config;
-
-    for (const port of allowedPorts) {
-      // Get the replacement URL from the callback
-      const replacementUrl = urlRewriter(port, metadata);
-      
-      // Extract just the host part from the URL (without protocol)
-      const urlObj = new URL(replacementUrl);
-      const replacement = urlObj.host.replace(/\./g, '\\.');
-
-      // Replace localhost:PORT with the host from the callback URL
-      const pattern = new RegExp(`(?<!\\.)localhost:${port}`, "g");
-      const matches = result.match(pattern);
-      const matchCount = matches ? matches.length : 0;
-
-      if (matchCount > 0) {
-        result = result.replaceAll(`localhost:${port}`, urlObj.host);
-        replacementCount += matchCount;
-        console.log(
-          `[URL_REWRITE] Replaced ${matchCount} occurrences of "localhost:${port}" with "${urlObj.host}"`
-        );
-      }
-    }
-
-    return result;
-  }
-
-  // Default behavior: use workerId and tunnelDomain
-  const { workerId, allowedPorts, tunnelDomain = "worker.localhost:4000", useHttps = false } = config;
+  const {
+    allowedPorts,
+    tunnelDomain = "worker.localhost:4000",
+    useHttps = false,
+    urlRewriter,
+  } = config;
+  const { workerId } = config.metadata;
 
   for (const port of allowedPorts) {
-    const replacement = `${workerId}\-p${port}\.${tunnelDomain}`;
+    const protocol = useHttps ? "https" : "http";
+    const replacement = `${protocol}://${workerId}\-p${port}\.${tunnelDomain}`;
+    /*
+     *const replacement = urlRewriter
+     *  ? urlRewriter(port, config.metadata)
+     *  : `${protocol}://${workerId}-p${port}.${tunnelDomain}`;
+     */
 
     // Replace http://localhost:PORT with https://... if tunnel uses HTTPS
-    if (useHttps) {
-      const httpPattern = new RegExp(`http://localhost:${port}`, "g");
-      const httpMatches = result.match(httpPattern);
-      const httpCount = httpMatches ? httpMatches.length : 0;
+    const httpPattern = new RegExp(`http://localhost:${port}`, "g");
+    const httpMatches = result.match(httpPattern);
+    const httpCount = httpMatches ? httpMatches.length : 0;
 
-      if (httpCount > 0) {
-        result = result.replaceAll(
-          `http://localhost:${port}`,
-          `https://${replacement}`
-        );
-        replacementCount += httpCount;
-        console.log(
-          `[URL_REWRITE] Upgraded ${httpCount} occurrences of "http://localhost:${port}" to "https://${replacement}"`
-        );
-      }
+    if (httpCount > 0) {
+      result = result.replaceAll(`http://localhost:${port}`, replacement);
+      replacementCount += httpCount;
+      console.log(
+        `[URL_REWRITE] Upgraded ${httpCount} occurrences of "http://localhost:${port}" to "${replacement}"`
+      );
     }
 
     // Replace remaining localhost:PORT patterns (for https://, //, or bare references)
@@ -150,6 +124,77 @@ export function rewriteUrls(
     }
   }
 
+  /*
+   *  // If a custom urlRewriter callback is provided, use it
+   *  if (config.urlRewriter) {
+   *    const { allowedPorts, urlRewriter, metadata } = config;
+   *
+   *    for (const port of allowedPorts) {
+   *      // Get the replacement URL from the callback
+   *      const replacementUrl = urlRewriter(port, metadata);
+   *
+   *      // Replace localhost:PORT with the host from the callback URL
+   *      const pattern = new RegExp(`(?<!\\.)localhost:${port}`, "g");
+   *      const matches = result.match(pattern);
+   *      const matchCount = matches ? matches.length : 0;
+   *
+   *      if (matchCount > 0) {
+   *        result = result.replaceAll(`localhost:${port}`, replacementUrl);
+   *        replacementCount += matchCount;
+   *        console.log(
+   *          `[URL_REWRITE] Replaced ${matchCount} occurrences of "localhost:${port}" with "${replacementUrl}"`
+   *        );
+   *      }
+   *    }
+   *
+   *    return result;
+   *  }
+   */
+
+  /*
+   *  // Default behavior: use workerId and tunnelDomain
+   *  const { workerId, allowedPorts, tunnelDomain = "worker.localhost:4000", useHttps = false } = config;
+   *
+   *  for (const port of allowedPorts) {
+   *    const replacement = `${workerId}\-p${port}\.${tunnelDomain}`;
+   *
+   *    // Replace http://localhost:PORT with https://... if tunnel uses HTTPS
+   *    if (useHttps) {
+   *      const httpPattern = new RegExp(`http://localhost:${port}`, "g");
+   *      const httpMatches = result.match(httpPattern);
+   *      const httpCount = httpMatches ? httpMatches.length : 0;
+   *
+   *      if (httpCount > 0) {
+   *        result = result.replaceAll(
+   *          `http://localhost:${port}`,
+   *          `https://${replacement}`
+   *        );
+   *        replacementCount += httpCount;
+   *        console.log(
+   *          `[URL_REWRITE] Upgraded ${httpCount} occurrences of "http://localhost:${port}" to "https://${replacement}"`
+   *        );
+   *      }
+   *    }
+   *
+   *    // Replace remaining localhost:PORT patterns (for https://, //, or bare references)
+   *    // Match "localhost:PORT" but NOT "worker.localhost:PORT" or other subdomains
+   *    const pattern = new RegExp(`(?<!\\.)localhost:${port}`, "g");
+   *
+   *    // Count and replace using the pattern
+   *    const matches = result.match(pattern);
+   *    const beforeCount = matches ? matches.length : 0;
+   *
+   *    if (beforeCount > 0) {
+   *      result = result.replaceAll(`localhost:${port}`, replacement);
+   *      replacementCount += beforeCount;
+   *
+   *      console.log(
+   *        `[URL_REWRITE] Replaced ${beforeCount} occurrences of "localhost:${port}" with "${replacement}"`
+   *      );
+   *    }
+   *  }
+   *
+   */
   if (replacementCount === 0) {
     console.log("[URL_REWRITE] No replacements made");
   }
@@ -207,18 +252,18 @@ export function rewriteBuffer(
       return buffer;
     }
 
-/*
- *    if (hasLocalhost) {
- *      console.log("[URL_REWRITE] Before rewrite:", {
- *        hasLocalhost,
- *        contentLength: content.length,
- *        allowedPorts: config.allowedPorts,
- *        workerId: config.workerId,
- *        enabled: config.enabled,
- *      });
- *    }
- *
- */
+    /*
+     *    if (hasLocalhost) {
+     *      console.log("[URL_REWRITE] Before rewrite:", {
+     *        hasLocalhost,
+     *        contentLength: content.length,
+     *        allowedPorts: config.allowedPorts,
+     *        workerId: config.workerId,
+     *        enabled: config.enabled,
+     *      });
+     *    }
+     *
+     */
     // Show a sample of localhost URLs found - use a broader pattern to see what's actually there
     if (hasLocalhost) {
       // Find all occurrences of "localhost" and show surrounding context (like grep -B5 -A5)
@@ -278,7 +323,6 @@ export function createRewriterConfig(
   options: { enabled?: boolean; tunnelDomain?: string; useHttps?: boolean } = {}
 ): UrlRewriterConfig {
   return {
-    workerId,
     allowedPorts,
     tunnelDomain: options.tunnelDomain || "worker.localhost:4000",
     useHttps: options.useHttps || false,

@@ -311,17 +311,18 @@ export async function worker(options?: {
         const urlRewriter = (port: number, metadata?: any) => {
           const workerId = metadata?.workerId;
           const secret = metadata?.secret;
-          
+
           // Build the replacement URL based on metadata
           // Examples:
           // - https://workerId-p.tunnelDomain
           // - https://secret.workerId-p.tunnelDomain
-          const subdomain = secret 
-            ? `${secret}.${workerId}-${port}` 
-            : `${workerId}-${port}`;
-          
+          const subdomain = secret
+            ? `${secret}.${workerId}-p${port}`
+            : `${workerId}-p${port}`;
+
           const protocol = tunnelUseHttps ? "https" : "http";
-          return `${protocol}://${subdomain}.${tunnelDomain}`;
+          const replacementUrl = `${protocol}://${subdomain}.${tunnelDomain}`;
+          return replacementUrl;
         };
 
         // Initialize tunnel handler with the tunnel-specific WebSocket
