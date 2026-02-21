@@ -17,6 +17,7 @@ export {
   TunnelWsUpgrade,
   TunnelWsData,
   TunnelWsClose,
+  UrlRewriterCallback,
   StreamState,
 } from "./types";
 export {

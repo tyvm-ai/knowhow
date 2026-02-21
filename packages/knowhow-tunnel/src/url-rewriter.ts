@@ -11,6 +11,8 @@
  *   //localhost:8080/ws         → //WORKERID-p8080.worker.localhost:4000/ws
  */
 
+export type UrlRewriterCallback = (port: number, metadata?: any) => string;
+
 export interface UrlRewriterConfig {
   /** Worker ID for generating proxy URLs */
   workerId: string;
@@ -26,6 +28,12 @@ export interface UrlRewriterConfig {
 
   /** Whether to rewrite URLs (can be disabled for debugging) */
   enabled?: boolean;
+
+  /** Custom URL rewriter callback */
+  urlRewriter?: UrlRewriterCallback;
+
+  /** Metadata to pass to the URL rewriter callback */
+  metadata?: any;
 }
 
 /**
@@ -66,17 +74,42 @@ export function rewriteUrls(
     return content;
   }
 
-  const {
-    workerId,
-    allowedPorts,
-    tunnelDomain = "worker.localhost:4000",
-    useHttps = false,
-  } = config;
-
   // Replace localhost URLs with tunnel proxy URLs
   // If useHttps is true, also upgrade http:// to https:// for security
   let result = content;
   let replacementCount = 0;
+
+  // If a custom urlRewriter callback is provided, use it
+  if (config.urlRewriter) {
+    const { allowedPorts, urlRewriter, metadata } = config;
+
+    for (const port of allowedPorts) {
+      // Get the replacement URL from the callback
+      const replacementUrl = urlRewriter(port, metadata);
+      
+      // Extract just the host part from the URL (without protocol)
+      const urlObj = new URL(replacementUrl);
+      const replacement = urlObj.host.replace(/\./g, '\\.');
+
+      // Replace localhost:PORT with the host from the callback URL
+      const pattern = new RegExp(`(?<!\\.)localhost:${port}`, "g");
+      const matches = result.match(pattern);
+      const matchCount = matches ? matches.length : 0;
+
+      if (matchCount > 0) {
+        result = result.replaceAll(`localhost:${port}`, urlObj.host);
+        replacementCount += matchCount;
+        console.log(
+          `[URL_REWRITE] Replaced ${matchCount} occurrences of "localhost:${port}" with "${urlObj.host}"`
+        );
+      }
+    }
+
+    return result;
+  }
+
+  // Default behavior: use workerId and tunnelDomain
+  const { workerId, allowedPorts, tunnelDomain = "worker.localhost:4000", useHttps = false } = config;
 
   for (const port of allowedPorts) {
     const replacement = `${workerId}\-p${port}\.${tunnelDomain}`;

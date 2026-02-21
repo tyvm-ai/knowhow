@@ -21,7 +21,7 @@ export enum TunnelMessageType {
 export interface TunnelRequest {
   type: TunnelMessageType.REQUEST;
   streamId: string;
-  workerId?: string; // Worker ID for URL rewriting
+  metadata?: any; // Additional metadata for URL rewriting
   port: number;
   method: string;
   path: string;
@@ -112,6 +112,8 @@ export type TunnelMessage =
   | TunnelWsData
   | TunnelWsClose;
 
+export type UrlRewriterCallback = (port: number, metadata?: any) => string;
+
 /**
  * Configuration for tunnel handler
  */
@@ -143,6 +145,8 @@ export interface TunnelConfig {
   tunnelDomain?: string;
   /** Whether the tunnel domain uses HTTPS (for URL rewriting) */
   tunnelUseHttps?: boolean;
+  /** URL rewriter callback function for custom URL replacement logic */
+  urlRewriter?: UrlRewriterCallback;
 }
 
 /**
@@ -152,6 +156,7 @@ export interface StreamState {
   streamId: string;
   port: number;
   workerId?: string; // Worker ID for URL rewriting
+  metadata?: any; // Additional metadata for URL rewriting
   method: string;
   path: string;
   startTime: number;

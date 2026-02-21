@@ -5,6 +5,7 @@ import WebSocket from "ws";
 import {
   TunnelConfig,
   TunnelRequest,
+  UrlRewriterCallback,
   TunnelResponse,
   TunnelData,
   TunnelEnd,
@@ -33,7 +34,7 @@ import {
  * Handles incoming tunnel requests and proxies them to local services
  */
 export class TunnelProxy {
-  private config: Required<Omit<TunnelConfig, 'workerId' | 'tunnelDomain'>> & { workerId?: string; tunnelDomain?: string };
+  private config: Required<Omit<TunnelConfig, 'workerId' | 'tunnelDomain' | 'urlRewriter'>> & { workerId?: string; tunnelDomain?: string; urlRewriter?: UrlRewriterCallback };
   private logger: Logger;
   private activeStreams: Map<string, StreamState>;
   private sendMessage: (message: string) => void;
@@ -56,6 +57,7 @@ export class TunnelProxy {
       enableUrlRewriting: config.enableUrlRewriting !== false,
       tunnelDomain: config.tunnelDomain,
       tunnelUseHttps: config.tunnelUseHttps || false,
+      urlRewriter: config.urlRewriter,
     };
 
     this.logger = new Logger(this.config.logLevel);
@@ -118,7 +120,7 @@ export class TunnelProxy {
     // Create stream state
     const streamState: StreamState = {
       streamId,
-      workerId: request.workerId,
+      metadata: request.metadata,
       port,
       method,
       path,
@@ -316,11 +318,18 @@ export class TunnelProxy {
 
       // Apply URL rewriting if enabled
       let dataToSend = chunk;
-      if (streamState.workerId && this.config.enableUrlRewriting !== false) {
-        const urlRewriterConfig = createRewriterConfig(
-          streamState.workerId,
+      if (this.config.enableUrlRewriting !== false) {
+        // Use custom urlRewriter callback if provided, otherwise use default logic
+        const urlRewriterConfig = this.config.urlRewriter ? {
+          workerId: streamState.workerId || '',
+          allowedPorts: this.config.allowedPorts,
+          enabled: true,
+          urlRewriter: this.config.urlRewriter,
+          metadata: streamState.metadata,
+        } : createRewriterConfig(
+          streamState.workerId || '',
           this.config.allowedPorts,
-          { enabled: true, tunnelDomain: this.config.tunnelDomain, useHttps: this.config.tunnelUseHttps }
+          { enabled: !!streamState.workerId, tunnelDomain: this.config.tunnelDomain, useHttps: this.config.tunnelUseHttps }
         );
 
         const originalSize = chunk.length;
