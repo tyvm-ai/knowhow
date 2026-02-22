@@ -133,6 +133,7 @@ export class TunnelProxy {
     // Create stream state
     const streamState: StreamState = {
       streamId,
+      workerId: request.metadata?.workerId,
       metadata: request.metadata,
       port,
       method,
@@ -322,20 +323,6 @@ export class TunnelProxy {
 
     // Stream response body
     res.on("data", (chunk: Buffer) => {
-      streamState.bytesSent += chunk.length;
-
-      // Check max response size
-      if (streamState.bytesSent > this.config.maxResponseSize) {
-        this.logger.error(
-          `Stream ${streamId} exceeded max response size (${formatBytes(
-            this.config.maxResponseSize
-          )})`
-        );
-        this.sendError(streamId, "Response too large", 413);
-        this.cleanupStream(streamId);
-        return;
-      }
-
       // Apply URL rewriting if enabled
       let dataToSend = chunk;
       if (this.config.enableUrlRewriting !== false) {
@@ -373,7 +360,19 @@ export class TunnelProxy {
         streamId,
         data: dataToSend,
       };
-      streamState.bytesSent += dataToSend.length - chunk.length; // Adjust for size difference
+      streamState.bytesSent += dataToSend.length;
+
+      // Check max response size after rewriting
+      if (streamState.bytesSent > this.config.maxResponseSize) {
+        this.logger.error(
+          `Stream ${streamId} exceeded max response size (${formatBytes(
+            this.config.maxResponseSize
+          )})`
+        );
+        this.sendError(streamId, "Response too large", 413);
+        this.cleanupStream(streamId);
+        return;
+      }
 
       this.sendMessage(serializeTunnelMessage(dataMsg));
 

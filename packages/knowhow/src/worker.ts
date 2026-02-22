@@ -321,7 +321,7 @@ export async function worker(options?: {
             : `${workerId}-p${port}`;
 
           const protocol = tunnelUseHttps ? "https" : "http";
-          const replacementUrl = `${protocol}://${subdomain}.${tunnelDomain}`;
+          const replacementUrl = `${subdomain}.${tunnelDomain}`;
           return replacementUrl;
         };
 
