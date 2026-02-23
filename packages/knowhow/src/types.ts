@@ -46,7 +46,8 @@ export type Config = {
   embedSources: EmbedSource[];
   embeddingModel: string;
 
-  plugins: string[];
+  plugins: { enabled: string[]; disabled: string[] };
+
   modules: string[];
 
   agents: Assistant[];
@@ -233,6 +234,20 @@ export const EmbeddingModels = {
     Gemini_Embedding: "gemini-embedding-exp",
   },
 };
+
+export function getEnabledPlugins(
+  plugins: Config["plugins"] | undefined
+): string[] {
+  if (!plugins) return [];
+  return plugins.enabled ?? [];
+}
+
+export function getDisabledPlugins(
+  plugins: Config["plugins"] | undefined
+): string[] {
+  if (!plugins) return [];
+  return plugins.disabled ?? [];
+}
 
 export const Providers = Object.keys(Models).reduce((obj, key) => {
   obj[key] = key;

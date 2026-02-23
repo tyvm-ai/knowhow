@@ -4,6 +4,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { Command } from "commander";
+import { execSync } from "child_process";
 import { version } from "../package.json";
 import { generate, embed, upload } from "./index";
 import { init } from "./config";
@@ -25,6 +26,7 @@ import { startChat } from "./chat";
 import { askAI } from "./chat-old";
 import { getConfiguredEmbeddingMap, queryEmbedding } from "./embeddings";
 import { getConfig } from "./config";
+import { getEnabledPlugins } from "./types";
 import { marked } from "marked";
 import { BaseAgent } from "./agents/base/base";
 import { AskModule } from "./chat/modules/AskModule";
@@ -35,8 +37,13 @@ import { SetupModule } from "./chat/modules/SetupModule";
 import { CliChatService } from "./chat/CliChatService";
 
 async function setupServices() {
-  const { Agents, Mcp, Clients } = services();
+  const { Agents, Mcp, Clients, Tools: OldTools } = services();
   const Tools = new LazyToolsService();
+
+  // We need to wireup the LazyTools to be connected to the same singletons that are in services()
+  Tools.setContext({
+    ...OldTools.getContext(),
+  });
 
   const { Researcher, Developer, Patcher, Setup } = agents({
     ...services(),
@@ -84,7 +91,7 @@ async function readStdin(): Promise<string> {
 async function main() {
   const program = new Command();
   const config = await getConfig();
-  const chatService = new CliChatService(config.plugins);
+  const chatService = new CliChatService(getEnabledPlugins(config.plugins));
 
   program
     .name("knowhow")
@@ -104,6 +111,28 @@ async function main() {
     .option("--jwt", "Use manual JWT input instead of browser login")
     .action(async (opts) => {
       await login(opts.jwt);
+    });
+
+  program
+    .command("update")
+    .description("Update knowhow to the latest version from npm")
+    .action(async () => {
+      try {
+        console.log("🔄 Checking for knowhow updates...");
+        console.log(`Current version: ${version}`);
+
+        console.log("📦 Installing latest version from npm...");
+        execSync("npm install -g knowhow@latest", {
+          stdio: "inherit",
+          encoding: "utf-8",
+        });
+
+        console.log("✓ knowhow has been updated successfully!");
+        console.log("Run 'knowhow --version' to see the new version.");
+      } catch (error) {
+        console.error("Error updating knowhow:", error.message);
+        process.exit(1);
+      }
     });
 
   program
@@ -232,7 +261,7 @@ async function main() {
         const askModule = new AskModule();
         await askModule.initialize(chatService);
         await askModule.processAIQuery(input, {
-          plugins: config.plugins,
+          plugins: config.plugins.enabled,
           currentModel: options.model,
           currentProvider: options.provider,
         });

@@ -303,18 +303,44 @@ export async function worker(options?: {
       tunnelConnection.on("open", () => {
         console.log("Tunnel WebSocket connected");
 
+        // Get the allowedPorts configuration
+        const allowedPorts = config.worker?.tunnel?.allowedPorts || [];
+
+        // Create URL rewriter callback that returns the hostname (without protocol)
+        // The tunnel package will add the protocol based on the useHttps config
+        // This receives port and metadata from the tunnel request
+        const urlRewriter = (port: number, metadata?: any) => {
+          const workerId = metadata?.workerId;
+          const secret = metadata?.secret;
+
+          // Build the hostname/domain (without protocol) based on metadata
+          // The tunnel handler will add the protocol using the useHttps config
+          // Examples:
+          // - secret-p3000.worker.example.com
+          // - workerId-p3000.worker.example.com
+          const subdomain = secret
+            ? `${secret}-p${port}`
+            : `${workerId}-p${port}`;
+
+          // Return just the hostname - the tunnel package should add the protocol
+          // based on the useHttps configuration passed below
+          const replacementUrl = `${subdomain}.${tunnelDomain}`;
+          return replacementUrl;
+        };
+
         // Initialize tunnel handler with the tunnel-specific WebSocket
+        // Pass useHttps flag so the tunnel package can add the correct protocol
         tunnelHandler = createTunnelHandler(tunnelConnection!, {
-          allowedPorts: config.worker?.tunnel?.allowedPorts || [],
+          allowedPorts,
           maxConcurrentStreams:
             config.worker?.tunnel?.maxConcurrentStreams || 50,
+          tunnelUseHttps: tunnelUseHttps,
           localHost: tunnelLocalHost,
-          tunnelDomain,
-          tunnelUseHttps,
+          urlRewriter,
           enableUrlRewriting:
             config.worker?.tunnel?.enableUrlRewriting !== false,
           portMapping,
-          logLevel: "info",
+          logLevel: "debug",
         });
         console.log("🌐 Tunnel handler initialized");
       });
@@ -323,6 +349,9 @@ export async function worker(options?: {
         console.log(
           `Tunnel WebSocket closed. Code: ${code}, Reason: ${reason.toString()}`
         );
+        console.log(
+          "Tunnel connection will reconnect on next connection cycle..."
+        );
 
         // Cleanup tunnel handler
         if (tunnelHandler) {
@@ -330,10 +359,16 @@ export async function worker(options?: {
           tunnelHandler = null;
         }
         tunnelWs = null;
+
+        // Mark as disconnected to trigger reconnection
+        // The tunnel websocket is separate but we should reconnect both
+        connected = false;
       });
 
       tunnelConnection.on("error", (error) => {
         console.error("Tunnel WebSocket error:", error);
+        // Mark as disconnected on error to trigger reconnection
+        connected = false;
       });
 
       tunnelWs = tunnelConnection;

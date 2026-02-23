@@ -80,7 +80,9 @@ describe("LanguagePlugin", () => {
     mockPluginService.listPlugins = mockListPlugins;
     mockPluginService.call = mockCall;
 
-    mockedConfig.mockResolvedValue({ plugins: ["github", "asana"] } as Config);
+    mockedConfig.mockResolvedValue({
+      plugins: { enabled: ["github", "asana"], disabled: [] },
+    } as Config);
     mockedLanguageConfig.mockResolvedValue({
       test: {
         events: [],
@@ -162,7 +164,9 @@ describe("LanguagePlugin", () => {
     });
 
     test("should handle file:post-edit event and emit agent:msg when file pattern matches", async () => {
-      mockedConfig.mockResolvedValue({ plugins: ["github"] } as Config);
+      mockedConfig.mockResolvedValue({
+        plugins: { enabled: ["github"], disabled: [] },
+      } as Config);
       mockedLanguageConfig.mockResolvedValue({
         "**/*.ts": {
           events: ["file:post-edit"],
@@ -241,9 +245,11 @@ describe("LanguagePlugin", () => {
     });
 
     test("should handle multiple matching patterns for a single file", async () => {
-      mockedConfig.mockResolvedValue({ plugins: [] } as Config);
+      mockedConfig.mockResolvedValue({
+        plugins: { enabled: [], disabled: [] },
+      } as Config);
       mockedLanguageConfig.mockResolvedValue({
-        "*.ts": {
+        "**/*.ts": {
           events: ["file:post-edit"],
           sources: [{ kind: "text", data: ["TypeScript context"] }],
         },
@@ -308,9 +314,11 @@ describe("LanguagePlugin", () => {
     });
 
     test("should resolve different source types in event context", async () => {
-      mockedConfig.mockResolvedValue({ plugins: ["github"] } as Config);
+      mockedConfig.mockResolvedValue({
+        plugins: { enabled: ["github"], disabled: [] },
+      } as Config);
       mockedLanguageConfig.mockResolvedValue({
-        "*.json": {
+        "package.json": {
           events: ["file:post-edit"],
           sources: [
             { kind: "file", data: ["config/settings.json"] },
@@ -360,9 +368,10 @@ describe("LanguagePlugin", () => {
 
     mockPluginService.listPlugins = mockListPlugins;
 
-    mockedConfig.mockResolvedValue({ plugins: ["github"] } as Config);
+    mockedConfig.mockResolvedValue({
+      plugins: { enabled: ["github"], disabled: [] },
+    } as Config);
     mockedLanguageConfig.mockResolvedValue({});
-
     const languagePlugin = new LanguagePlugin({
       Events: mockEventService,
       Plugins: mockPluginService,

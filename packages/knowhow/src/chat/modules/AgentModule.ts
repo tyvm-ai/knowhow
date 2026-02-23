@@ -399,7 +399,7 @@ Please continue from where you left off and complete the original request.
 `;
 
       console.log("🚀 Session resuming...");
-      const context = this.chatService?.getContext() || {};
+      const context = this.chatService?.getContext();
       const allAgents = agents();
       const selectedAgent =
         allAgents[session.agentName] || allAgents[context.currentAgent];

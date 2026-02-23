@@ -5,6 +5,7 @@ import WebSocket from "ws";
 import {
   TunnelConfig,
   TunnelRequest,
+  UrlRewriterCallback,
   TunnelResponse,
   TunnelData,
   TunnelEnd,
@@ -33,15 +34,18 @@ import {
  * Handles incoming tunnel requests and proxies them to local services
  */
 export class TunnelProxy {
-  private config: Required<Omit<TunnelConfig, 'workerId' | 'tunnelDomain'>> & { workerId?: string; tunnelDomain?: string };
+  private config: Required<
+    Omit<TunnelConfig, "workerId" | "tunnelDomain" | "urlRewriter">
+  > & {
+    workerId?: string;
+    tunnelDomain?: string;
+    urlRewriter?: UrlRewriterCallback;
+  };
   private logger: Logger;
   private activeStreams: Map<string, StreamState>;
   private sendMessage: (message: string) => void;
 
-  constructor(
-    config: TunnelConfig,
-    sendMessage: (message: string) => void
-  ) {
+  constructor(config: TunnelConfig, sendMessage: (message: string) => void) {
     this.config = {
       allowedPorts: config.allowedPorts || [],
       maxConcurrentStreams: config.maxConcurrentStreams || 50,
@@ -56,6 +60,7 @@ export class TunnelProxy {
       enableUrlRewriting: config.enableUrlRewriting !== false,
       tunnelDomain: config.tunnelDomain,
       tunnelUseHttps: config.tunnelUseHttps || false,
+      urlRewriter: config.urlRewriter,
     };
 
     this.logger = new Logger(this.config.logLevel);
@@ -86,17 +91,25 @@ export class TunnelProxy {
    * Handle incoming tunnel request
    */
   async handleRequest(request: TunnelRequest): Promise<void> {
-    const { streamId, port, method, path, headers, scheme = "http", deadlineMs } = request;
+    const {
+      streamId,
+      port,
+      method,
+      path,
+      headers,
+      scheme = "http",
+      deadlineMs,
+    } = request;
 
     const logMsg = `[${new Date().toISOString()}] WORKER: handleRequest ${method} ${path} port=${port} streamId=${streamId}\n`;
-    fs.appendFileSync('/tmp/tunnel-worker-debug.log', logMsg);
+    fs.appendFileSync("/tmp/tunnel-worker-debug.log", logMsg);
 
     this.logger.info(
       `New request: ${method} ${path} on port ${port} (stream: ${streamId})`
     );
 
     const logMsg2 = `[${new Date().toISOString()}] WORKER: After logger.info\n`;
-    fs.appendFileSync('/tmp/tunnel-worker-debug.log', logMsg2);
+    fs.appendFileSync("/tmp/tunnel-worker-debug.log", logMsg2);
 
     // Check if port is allowed
     if (!isPortAllowed(port, this.config.allowedPorts)) {
@@ -110,7 +123,9 @@ export class TunnelProxy {
     const localPort = this.resolveLocalPort(port);
 
     if (this.activeStreams.size >= this.config.maxConcurrentStreams) {
-      this.logger.warn(`Max concurrent streams reached (${this.config.maxConcurrentStreams})`);
+      this.logger.warn(
+        `Max concurrent streams reached (${this.config.maxConcurrentStreams})`
+      );
       this.sendError(streamId, "Too many concurrent streams", 503);
       return;
     }
@@ -118,7 +133,8 @@ export class TunnelProxy {
     // Create stream state
     const streamState: StreamState = {
       streamId,
-      workerId: request.workerId,
+      workerId: request.metadata?.workerId,
+      metadata: request.metadata,
       port,
       method,
       path,
@@ -183,7 +199,10 @@ export class TunnelProxy {
       // Don't end the request yet - we'll receive body data chunks
       this.logger.debug(`Request initiated for stream ${streamId}`);
     } catch (err: any) {
-      this.logger.error(`Failed to create request for stream ${streamId}:`, err.message);
+      this.logger.error(
+        `Failed to create request for stream ${streamId}:`,
+        err.message
+      );
       this.sendError(streamId, err.message, 500);
       this.cleanupStream(streamId);
     }
@@ -199,7 +218,7 @@ export class TunnelProxy {
       this.logger.debug(
         `Received data for unknown stream: ${streamId} (likely from before reconnection)`
       );
-      
+
       // Send END or ERROR to tell server to stop sending data for this stream
       const errorMsg: TunnelError = {
         type: TunnelMessageType.ERROR,
@@ -207,7 +226,7 @@ export class TunnelProxy {
         error: "Stream not found on worker",
         statusCode: 404,
       };
-      
+
       this.sendMessage(serializeTunnelMessage(errorMsg));
       return;
     }
@@ -243,7 +262,7 @@ export class TunnelProxy {
       this.logger.debug(
         `Received end for unknown stream: ${streamId} (likely from before reconnection)`
       );
-      
+
       // Send ERROR to tell server this stream doesn't exist
       const errorMsg: TunnelError = {
         type: TunnelMessageType.ERROR,
@@ -251,7 +270,7 @@ export class TunnelProxy {
         error: "Stream not found on worker",
         statusCode: 404,
       };
-      
+
       this.sendMessage(serializeTunnelMessage(errorMsg));
       return;
     }
@@ -274,15 +293,19 @@ export class TunnelProxy {
 
     streamState.response = res;
 
-    const contentType = Array.isArray(res.headers['content-type']) ? res.headers['content-type'][0] : res.headers['content-type'];
+    const contentType = Array.isArray(res.headers["content-type"])
+      ? res.headers["content-type"][0]
+      : res.headers["content-type"];
 
     // If URL rewriting is enabled and content type is rewritable, remove content-length
     // header to allow dynamic content size changes
     const headers = { ...res.headers };
     if (streamState.workerId && this.config.enableUrlRewriting !== false) {
       if (isRewritableContentType(contentType)) {
-        delete headers['content-length'];
-        this.logger.debug(`Removed content-length header for stream ${streamId} (URL rewriting enabled)`);
+        delete headers["content-length"];
+        this.logger.debug(
+          `Removed content-length header for stream ${streamId} (URL rewriting enabled)`
+        );
       }
     }
 
@@ -296,38 +319,40 @@ export class TunnelProxy {
     };
 
     this.sendMessage(serializeTunnelMessage(response));
-    this.logger.info(
-      `Response ${response.statusCode} for stream ${streamId}`
-    );
+    this.logger.info(`Response ${response.statusCode} for stream ${streamId}`);
 
     // Stream response body
     res.on("data", (chunk: Buffer) => {
-      streamState.bytesSent += chunk.length;
-
-      // Check max response size
-      if (streamState.bytesSent > this.config.maxResponseSize) {
-        this.logger.error(
-          `Stream ${streamId} exceeded max response size (${formatBytes(this.config.maxResponseSize)})`
-        );
-        this.sendError(streamId, "Response too large", 413);
-        this.cleanupStream(streamId);
-        return;
-      }
-
       // Apply URL rewriting if enabled
       let dataToSend = chunk;
-      if (streamState.workerId && this.config.enableUrlRewriting !== false) {
-        const urlRewriterConfig = createRewriterConfig(
-          streamState.workerId,
-          this.config.allowedPorts,
-          { enabled: true, tunnelDomain: this.config.tunnelDomain, useHttps: this.config.tunnelUseHttps }
-        );
+      if (this.config.enableUrlRewriting !== false) {
+        // Use custom urlRewriter callback if provided, otherwise use default logic
+        const urlRewriterConfig = this.config.urlRewriter
+          ? {
+              workerId: streamState.workerId || "",
+              allowedPorts: this.config.allowedPorts,
+              useHttps: this.config.tunnelUseHttps,
+              enabled: true,
+              urlRewriter: this.config.urlRewriter,
+              metadata: streamState.metadata,
+            }
+          : createRewriterConfig(
+              streamState.workerId || "",
+              this.config.allowedPorts,
+              {
+                enabled: !!streamState.workerId,
+                tunnelDomain: this.config.tunnelDomain,
+                useHttps: this.config.tunnelUseHttps,
+              }
+            );
 
         const originalSize = chunk.length;
         dataToSend = rewriteBuffer(chunk, contentType, urlRewriterConfig);
 
         if (dataToSend.length !== originalSize) {
-          this.logger.debug(`URL rewriting applied for stream ${streamId}: ${originalSize} -> ${dataToSend.length} bytes`);
+          this.logger.debug(
+            `URL rewriting applied for stream ${streamId}: ${originalSize} -> ${dataToSend.length} bytes`
+          );
         }
       }
 
@@ -336,7 +361,19 @@ export class TunnelProxy {
         streamId,
         data: dataToSend,
       };
-      streamState.bytesSent += dataToSend.length - chunk.length; // Adjust for size difference
+      streamState.bytesSent += dataToSend.length;
+
+      // Check max response size after rewriting
+      if (streamState.bytesSent > this.config.maxResponseSize) {
+        this.logger.error(
+          `Stream ${streamId} exceeded max response size (${formatBytes(
+            this.config.maxResponseSize
+          )})`
+        );
+        this.sendError(streamId, "Response too large", 413);
+        this.cleanupStream(streamId);
+        return;
+      }
 
       this.sendMessage(serializeTunnelMessage(dataMsg));
 
@@ -347,7 +384,9 @@ export class TunnelProxy {
     res.on("end", () => {
       const duration = Date.now() - streamState.startTime;
       this.logger.info(
-        `Stream ${streamId} complete: ${formatBytes(streamState.bytesSent)} sent, ${formatDuration(duration)}`
+        `Stream ${streamId} complete: ${formatBytes(
+          streamState.bytesSent
+        )} sent, ${formatDuration(duration)}`
       );
 
       const endMsg: TunnelEnd = {
@@ -372,7 +411,9 @@ export class TunnelProxy {
   async handleWsUpgrade(upgrade: TunnelWsUpgrade): Promise<void> {
     const { streamId, port, path, headers } = upgrade;
 
-    this.logger.info(`WebSocket upgrade request: ${path} on port ${port} (stream: ${streamId})`);
+    this.logger.info(
+      `WebSocket upgrade request: ${path} on port ${port} (stream: ${streamId})`
+    );
 
     // Check if port is allowed
     if (!isPortAllowed(port, this.config.allowedPorts)) {
@@ -435,7 +476,9 @@ export class TunnelProxy {
       });
 
       ws.on("close", (code, reason) => {
-        this.logger.info(`WebSocket closed for stream ${streamId}: ${code} ${reason}`);
+        this.logger.info(
+          `WebSocket closed for stream ${streamId}: ${code} ${reason}`
+        );
 
         const wsClose: TunnelWsClose = {
           type: TunnelMessageType.WS_CLOSE,
@@ -449,12 +492,18 @@ export class TunnelProxy {
       });
 
       ws.on("error", (err) => {
-        this.logger.error(`WebSocket error for stream ${streamId}:`, err.message);
+        this.logger.error(
+          `WebSocket error for stream ${streamId}:`,
+          err.message
+        );
         this.sendError(streamId, err.message, 502);
         this.cleanupStream(streamId);
       });
     } catch (err: any) {
-      this.logger.error(`Failed to create WebSocket for stream ${streamId}:`, err.message);
+      this.logger.error(
+        `Failed to create WebSocket for stream ${streamId}:`,
+        err.message
+      );
       this.sendError(streamId, err.message, 500);
       this.cleanupStream(streamId);
     }
@@ -470,7 +519,7 @@ export class TunnelProxy {
       this.logger.debug(
         `Received WS data for unknown stream: ${streamId} (likely from before reconnection)`
       );
-      
+
       // Send WS_CLOSE to tell server to stop sending data for this stream
       const wsClose: TunnelWsClose = {
         type: TunnelMessageType.WS_CLOSE,
@@ -478,7 +527,7 @@ export class TunnelProxy {
         code: 1000,
         reason: "Stream not found on worker",
       };
-      
+
       this.sendMessage(serializeTunnelMessage(wsClose));
       return;
     }
@@ -498,7 +547,7 @@ export class TunnelProxy {
       this.logger.debug(
         `Received WS close for unknown stream: ${streamId} (likely from before reconnection)`
       );
-      
+
       // Acknowledge the close even if we don't have the stream
       const wsClose: TunnelWsClose = {
         type: TunnelMessageType.WS_CLOSE,
@@ -506,7 +555,7 @@ export class TunnelProxy {
         code: code || 1000,
         reason: reason || "Stream not found on worker",
       };
-      
+
       this.sendMessage(serializeTunnelMessage(wsClose));
       return;
     }
@@ -519,7 +568,11 @@ export class TunnelProxy {
   /**
    * Send error message
    */
-  private sendError(streamId: string, error: string, statusCode: number = 500): void {
+  private sendError(
+    streamId: string,
+    error: string,
+    statusCode: number = 500
+  ): void {
     const errorMsg: TunnelError = {
       type: TunnelMessageType.ERROR,
       streamId,

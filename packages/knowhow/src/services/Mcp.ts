@@ -132,14 +132,22 @@ export class McpService {
 
   // Connect only servers with autoConnect !== false
   async connectAutoServers() {
-    await Promise.all(
+    const results = await Promise.allSettled(
       this.clients.map(async (client, index) => {
         const config = this.config[index];
         const shouldAutoConnect = config.autoConnect !== false;
 
         if (shouldAutoConnect && !this.connected[index]) {
           console.log(`Connecting to MCP server: ${config.name}`);
-          await client.connect(this.transports[index]);
+          try {
+            await client.connect(this.transports[index]);
+          } catch (error) {
+            console.error(
+              `Failed to connect to MCP server '${config.name}':`,
+              error.message || error
+            );
+            throw error; // Re-throw to mark as rejected in Promise.allSettled
+          }
           this.connected[index] = true;
         } else if (!shouldAutoConnect) {
           console.log(
@@ -148,6 +156,15 @@ export class McpService {
         }
       })
     );
+
+    // Log summary of auto-connection results
+    const successful = results.filter((r) => r.status === "fulfilled").length;
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed > 0) {
+      console.warn(
+        `Auto-connected ${successful}/${this.clients.length} MCP servers (${failed} failed)`
+      );
+    }
   }
 
   // Connect to a specific MCP server by name
@@ -159,6 +176,7 @@ export class McpService {
     toolsAdded: string[];
     error?: string;
   }> {
+
     const index = this.getClientIndex(serverName);
 
     if (index < 0) {
@@ -446,15 +464,33 @@ export class McpService {
   }
 
   async connectAll() {
-    await Promise.all(
+    const results = await Promise.allSettled(
       this.clients.map(async (client, index) => {
+        const config = this.config[index];
         if (this.connected[index]) {
           return;
         }
-        await client.connect(this.transports[index]);
+        try {
+          await client.connect(this.transports[index]);
+        } catch (error) {
+          console.error(
+            `Failed to connect to MCP server '${config?.name || `index ${index}`}':`,
+            error.message || error
+          );
+          throw error; // Re-throw to mark as rejected in Promise.allSettled
+        }
         this.connected[index] = true;
       })
     );
+
+    // Log summary of connection results
+    const successful = results.filter((r) => r.status === "fulfilled").length;
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed > 0) {
+      console.warn(
+        `Connected ${successful}/${this.clients.length} MCP servers (${failed} failed)`
+      );
+    }
   }
 
   async getClient() {

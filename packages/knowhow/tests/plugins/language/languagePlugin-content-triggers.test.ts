@@ -82,7 +82,7 @@ describe("LanguagePlugin - Content-Based Triggering", () => {
 
     mockedReadFile.mockResolvedValue(Buffer.from(fileContentWithTests));
     mockedConfig.mockResolvedValue({
-      plugins: [],
+      plugins: { enabled: [], disabled: [] },
       modules: [],
       promptsDir: ".knowhow/prompts",
       sources: [],
@@ -153,7 +153,7 @@ describe("LanguagePlugin - Content-Based Triggering", () => {
 
     mockedReadFile.mockResolvedValue(Buffer.from(fileContent));
     mockedConfig.mockResolvedValue({
-      plugins: [],
+      plugins: { enabled: [], disabled: [] },
       modules: [],
       promptsDir: ".knowhow/prompts",
       sources: [],
@@ -196,7 +196,7 @@ describe("LanguagePlugin - Content-Based Triggering", () => {
     // Mock readFile to throw an error
     mockedReadFile.mockRejectedValue(new Error("File not found"));
     mockedConfig.mockResolvedValue({
-      plugins: [],
+      plugins: { enabled: [], disabled: [] },
       modules: [],
       promptsDir: ".knowhow/prompts",
       sources: [],
@@ -245,7 +245,7 @@ describe("LanguagePlugin - Content-Based Triggering", () => {
 
     mockedReadFile.mockResolvedValue(Buffer.from(fileContent));
     mockedConfig.mockResolvedValue({
-      plugins: [],
+      plugins: { enabled: [], disabled: [] },
       modules: [],
       promptsDir: ".knowhow/prompts",
       sources: [],
@@ -298,7 +298,7 @@ describe("LanguagePlugin - Content-Based Triggering", () => {
 
     mockedReadFile.mockResolvedValue(Buffer.from(fileContent));
     mockedConfig.mockResolvedValue({
-      plugins: [],
+      plugins: { enabled: [], disabled: [] },
       modules: [],
       promptsDir: ".knowhow/prompts",
       sources: [],

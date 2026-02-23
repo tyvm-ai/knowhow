@@ -11,10 +11,9 @@
  *   //localhost:8080/ws         → //WORKERID-p8080.worker.localhost:4000/ws
  */
 
-export interface UrlRewriterConfig {
-  /** Worker ID for generating proxy URLs */
-  workerId: string;
+export type UrlRewriterCallback = (port: number, metadata?: any) => string;
 
+export interface UrlRewriterConfig {
   /** Allowed ports that can be rewritten */
   allowedPorts: number[];
 
@@ -26,6 +25,12 @@ export interface UrlRewriterConfig {
 
   /** Whether to rewrite URLs (can be disabled for debugging) */
   enabled?: boolean;
+
+  /** Custom URL rewriter callback */
+  urlRewriter?: UrlRewriterCallback;
+
+  /** Metadata to pass to the URL rewriter callback */
+  metadata?: any;
 }
 
 /**
@@ -66,20 +71,24 @@ export function rewriteUrls(
     return content;
   }
 
-  const {
-    workerId,
-    allowedPorts,
-    tunnelDomain = "worker.localhost:4000",
-    useHttps = false,
-  } = config;
-
   // Replace localhost URLs with tunnel proxy URLs
   // If useHttps is true, also upgrade http:// to https:// for security
   let result = content;
   let replacementCount = 0;
 
+  const {
+    allowedPorts,
+    tunnelDomain = "worker.localhost:4000",
+    useHttps = false,
+    urlRewriter,
+    metadata,
+  } = config;
+  const { workerId } = metadata;
+
   for (const port of allowedPorts) {
-    const replacement = `${workerId}\-p${port}\.${tunnelDomain}`;
+    const replacement = config.urlRewriter
+      ? config.urlRewriter(port, metadata)
+      : `${workerId}\\-p${port}\\.${tunnelDomain}`;
 
     // Replace http://localhost:PORT with https://... if tunnel uses HTTPS
     if (useHttps) {
@@ -88,7 +97,10 @@ export function rewriteUrls(
       const httpCount = httpMatches ? httpMatches.length : 0;
 
       if (httpCount > 0) {
-        result = result.replaceAll(`http://localhost:${port}`, `https://${replacement}`);
+        result = result.replaceAll(
+          `http://localhost:${port}`,
+          `https://${replacement}`
+        );
         replacementCount += httpCount;
         console.log(
           `[URL_REWRITE] Upgraded ${httpCount} occurrences of "http://localhost:${port}" to "https://${replacement}"`
@@ -171,16 +183,6 @@ export function rewriteBuffer(
       return buffer;
     }
 
-    if (hasLocalhost) {
-      console.log("[URL_REWRITE] Before rewrite:", {
-        hasLocalhost,
-        contentLength: content.length,
-        allowedPorts: config.allowedPorts,
-        workerId: config.workerId,
-        enabled: config.enabled,
-      });
-    }
-
     // Show a sample of localhost URLs found - use a broader pattern to see what's actually there
     if (hasLocalhost) {
       // Find all occurrences of "localhost" and show surrounding context (like grep -B5 -A5)
@@ -209,26 +211,10 @@ export function rewriteBuffer(
           JSON.stringify(`${before}[LOCALHOST]${after}`)
         );
       }
-
-      // Check specifically for our allowed ports
-      const allowedPortMatches = content.match(
-        new RegExp(`localhost:(${config.allowedPorts.join("|")})`, "g")
-      );
-      console.log(
-        "[URL_REWRITE] Localhost with allowed ports:",
-        allowedPortMatches?.slice(0, 5),
-        `(Found ${allowedPortMatches?.length || 0} matches)`
-      );
     }
 
     // Rewrite URLs
     const rewritten = rewriteUrls(content, config);
-
-    if (hasLocalhost) {
-      console.log("[URL_REWRITE] After rewrite:", {
-        hasLocalhost: rewritten.includes("localhost"),
-      });
-    }
 
     // Encode back to buffer
     return Buffer.from(rewritten, encoding);
@@ -248,7 +234,6 @@ export function createRewriterConfig(
   options: { enabled?: boolean; tunnelDomain?: string; useHttps?: boolean } = {}
 ): UrlRewriterConfig {
   return {
-    workerId,
     allowedPorts,
     tunnelDomain: options.tunnelDomain || "worker.localhost:4000",
     useHttps: options.useHttps || false,

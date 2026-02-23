@@ -9,14 +9,11 @@ export class DeveloperAgent extends BaseAgent {
   constructor(context: AgentContext) {
     super(context);
     this.disableTool("patchFile");
-    this.disableTool("openFileInVim");
-    this.disableTool("sendVimInput");
-    this.disableTool("saveVimFile");
 
     this.setModelPreferences([
       {
-        model: Models.google.Gemini_20_Flash,
-        provider: "google",
+        model: Models.anthropic.Sonnet4_6,
+        provider: "anthropic",
       },
     ]);
   }

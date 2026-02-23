@@ -40,7 +40,6 @@ export class EventService extends EventEmitter {
    */
   async emitBlocking(event: string, ...args: any[]): Promise<any[]> {
     const results: any[] = [];
-
     const handlers = this.blockingHandlers.get(event) || [];
 
     for (const { handler } of handlers) {
