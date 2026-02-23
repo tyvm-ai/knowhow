@@ -1,7 +1,7 @@
 /**
  * Core Types for Modular Chat System
  */
-import { ChatInteraction } from "../types";
+import { ChatInteraction, Config } from "../types";
 import { BaseAgent } from "../agents/base/base";
 
 export interface ChatContext {
@@ -15,6 +15,8 @@ export interface ChatContext {
   currentProvider?: string;
   inputMethod?: InputMethod;
   selectedAgent?: BaseAgent;
+  plugins: string[];
+
   [key: string]: any;
 }
 

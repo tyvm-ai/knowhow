@@ -3,6 +3,7 @@ import { minimatch } from "minimatch";
 import { EventService } from "../services/EventService";
 import { Language } from "../types";
 import { getConfig, getLanguageConfig } from "../config";
+import { getEnabledPlugins } from "../types";
 import { PluginBase, PluginMeta } from "./PluginBase";
 import { Plugin, PluginContext } from "./types";
 import { GitHubPlugin } from "./github";
@@ -115,7 +116,7 @@ export class LanguagePlugin extends PluginBase implements Plugin {
 
     const plugins = this.context.Plugins.listPlugins();
     for (const plugin of plugins) {
-      if (config.plugins.includes(plugin)) {
+      if (getEnabledPlugins(config.plugins).includes(plugin)) {
         const matchingSources = sources.filter((s) => s.kind === plugin);
         if (matchingSources.length === 0) {
           continue;
@@ -258,15 +259,18 @@ export class LanguagePlugin extends PluginBase implements Plugin {
     const terms = Object.keys(languageConfig);
 
     // Find all matching terms in the userPrompt using glob patterns
-    const matchingTerms = terms.filter((term) =>
-      term.split(",").some((pattern) => {
+    // Skip /command-style keys - those are only triggered explicitly via CustomCommandsModule
+    const matchingTerms = terms.filter((term) => {
+      // Skip keys that start with "/" - these are custom commands, not text patterns
+      if (term.trim().startsWith("/")) return false;
+      return term.split(",").some((pattern) => {
         const trimmedPattern = pattern.trim();
         // Use minimatch for file patterns, fallback to string contains for non-glob patterns
         return trimmedPattern.includes("*")
           ? minimatch(userPrompt, trimmedPattern)
           : userPrompt.toLowerCase().includes(trimmedPattern.toLowerCase());
-      })
-    );
+      });
+    });
     return matchingTerms;
   }
 

@@ -57,7 +57,7 @@ describe("LanguagePlugin - Integration Tests", () => {
 
     // Mock config functions
     (getConfig as jest.MockedFunction<typeof getConfig>).mockResolvedValue({
-      plugins: [],
+      plugins: { enabled: [], disabled: [] },
     } as Config);
 
     // Setup language configuration with testing term

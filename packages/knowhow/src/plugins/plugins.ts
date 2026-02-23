@@ -13,6 +13,9 @@ import { FigmaPlugin } from "./figma";
 import { UrlPlugin } from "./url";
 import { GitPlugin } from "./GitPlugin";
 import { TmuxPlugin } from "./tmux";
+import { AgentsMdPlugin } from "./AgentsMdPlugin";
+import { getConfig } from "../config";
+import { getDisabledPlugins } from "../types";
 
 export class PluginService {
   private pluginMap = new Map<string, Plugin>();
@@ -35,9 +38,7 @@ export class PluginService {
     this.pluginMap.set("url", new UrlPlugin(context));
     this.pluginMap.set("git", new GitPlugin(context));
     this.pluginMap.set("tmux", new TmuxPlugin(context));
-
-    // Keep legacy plugins for backward compatibility
-    // These will be removed once all consumers are updated
+    this.pluginMap.set("agents-md", new AgentsMdPlugin(context));
   }
 
   /* -------- lifecycle helpers ------------------------------------ */

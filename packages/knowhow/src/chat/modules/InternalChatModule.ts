@@ -7,6 +7,7 @@ import { SearchModule } from "./SearchModule";
 import { VoiceModule } from "./VoiceModule";
 import { SystemModule } from "./SystemModule";
 import { SetupModule } from "./SetupModule";
+import { CustomCommandsModule } from "./CustomCommandsModule";
 
 export class InternalChatModule implements ChatModule {
   private chatService?: CliChatService;
@@ -20,6 +21,7 @@ export class InternalChatModule implements ChatModule {
   private voiceModule = new VoiceModule();
   private systemModule = new SystemModule();
   private setupModule = new SetupModule();
+  private customCommandsModule = new CustomCommandsModule();
 
   async initialize(chatService: CliChatService): Promise<void> {
     this.chatService = chatService;
@@ -34,6 +36,7 @@ export class InternalChatModule implements ChatModule {
     await this.voiceModule.initialize(chatService);
     await this.systemModule.initialize(chatService);
     await this.setupModule.initialize(chatService);
+    await this.customCommandsModule.initialize(chatService);
 
     // Register our own commands (exit and multi) - not duplicated by BaseChatModule
     chatService.registerCommand({
@@ -62,6 +65,7 @@ export class InternalChatModule implements ChatModule {
       ...this.voiceModule.getCommands(),
       ...this.systemModule.getCommands(),
       ...this.setupModule.getCommands(),
+      ...this.customCommandsModule.getCommands(),
       {
         name: "exit",
         description: "Exit the chat",
@@ -84,6 +88,7 @@ export class InternalChatModule implements ChatModule {
       ...this.voiceModule.getModes(),
       ...this.systemModule.getModes(),
       ...this.setupModule.getModes(),
+      ...this.customCommandsModule.getModes(),
     ];
   }
 

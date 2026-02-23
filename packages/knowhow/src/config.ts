@@ -12,24 +12,29 @@ import {
   EmbeddingModels,
 } from "./types";
 import { mkdir, writeFile, readFile, fileExists } from "./utils";
+import { applyMigrations } from "./migrations";
 
 const defaultConfig = {
   promptsDir: ".knowhow/prompts",
   modules: [],
-  plugins: [
-    "embeddings",
-    "language",
-    "git",
-    "vim",
-    "github",
-    "asana",
-    "jira",
-    "linear",
-    "download",
-    "figma",
-    "url",
-    "tmux",
-  ],
+  plugins: {
+    enabled: [
+      "embeddings",
+      "language",
+      "git",
+      "vim",
+      "github",
+      "asana",
+      "jira",
+      "linear",
+      "download",
+      "figma",
+      "url",
+      "tmux",
+      "agents-md",
+    ],
+    disabled: [],
+  },
   lintCommands: {
     js: "eslint",
     ts: "tslint",
@@ -218,7 +223,14 @@ export function getConfigSync() {
     const config = JSON.parse(
       fs.readFileSync(".knowhow/knowhow.json", "utf8").toString()
     );
-    return config as Config;
+    
+    // Apply migrations synchronously
+    const { config: migratedConfig } = applyMigrations(config);
+    
+    // Note: We don't save here in sync mode to avoid blocking operations
+    // The async getConfig() will handle saving on next call
+    
+    return migratedConfig as Config;
   } catch (e) {
     return {} as Config;
   }
@@ -239,7 +251,17 @@ export async function getConfig() {
   }
   try {
     const config = await readFile(".knowhow/knowhow.json", "utf8");
-    return JSON.parse(config) as Config;
+    const parsedConfig = JSON.parse(config);
+    
+    // Apply migrations
+    const { modified, config: migratedConfig } = applyMigrations(parsedConfig);
+    
+    // If migrations were applied, save the updated config
+    if (modified) {
+      await updateConfig(migratedConfig);
+    }
+    
+    return migratedConfig as Config;
   } catch (error) {
     console.error("Error reading .knowhow/knowhow.json:", error);
     throw new Error("Failed to load KnowHow configuration.");

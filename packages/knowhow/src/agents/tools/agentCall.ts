@@ -1,5 +1,6 @@
 import { getConfig } from "../../config";
 import { services, ToolsService } from "../../services";
+import { getEnabledPlugins } from "../../types";
 
 export async function agentCall(agentName: string, userInput: string) {
   return new Promise(async (resolve, reject) => {
@@ -11,8 +12,9 @@ export async function agentCall(agentName: string, userInput: string) {
     const { Events, Plugins } = toolService.getContext();
 
     let fullPrompt = `${userInput}`;
-    if (config.plugins?.length) {
-      const pluginText = await Plugins.callMany(config.plugins, userInput);
+    const enabledPlugins = getEnabledPlugins(config.plugins);
+    if (enabledPlugins?.length) {
+      const pluginText = await Plugins.callMany(enabledPlugins, userInput);
       fullPrompt += `\n ${pluginText}`;
     }
 

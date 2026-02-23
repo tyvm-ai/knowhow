@@ -20,23 +20,26 @@ async function main() {
         configError
       );
       config = {
-        plugins: [
-          "embeddings",
-          "language",
-          "vim",
-          "github",
-          "asana",
-          "jira",
-          "linear",
-          "download",
-          "figma",
-          "url",
-        ],
+        plugins: {
+          enabled: [
+            "embeddings",
+            "language",
+            "vim",
+            "github",
+            "asana",
+            "jira",
+            "linear",
+            "download",
+            "figma",
+            "url",
+          ],
+          disabled: [],
+        },
       };
     }
 
     // Create chat service with plugins
-    const chatService = new CliChatService(config.plugins);
+    const chatService = new CliChatService(config.plugins.enabled);
 
     // Load internal chat module (includes all core functionality)
     const internalModule = new InternalChatModule();

@@ -15,7 +15,11 @@ export async function fileSearch(searchTerm) {
   });
 
   const embeddings = await getConfiguredEmbeddings();
-  const embeddingFiles = embeddings.filter((embedding) =>
+  
+  // Ensure embeddings is always an array
+  const embeddingsArray = Array.isArray(embeddings) ? embeddings : [];
+  
+  const embeddingFiles = embeddingsArray.filter((embedding) =>
     embedding.id.toLowerCase().includes(searchTermLower)
   );
 
