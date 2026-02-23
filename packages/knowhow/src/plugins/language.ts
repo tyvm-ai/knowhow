@@ -259,13 +259,10 @@ export class LanguagePlugin extends PluginBase implements Plugin {
     const terms = Object.keys(languageConfig);
 
     // Find all matching terms in the userPrompt using glob patterns
-    // Skip /command-style keys - those are only triggered explicitly via CustomCommandsModule
     const matchingTerms = terms.filter((term) => {
-      // Skip keys that start with "/" - these are custom commands, not text patterns
-      if (term.trim().startsWith("/")) return false;
       return term.split(",").some((pattern) => {
         const trimmedPattern = pattern.trim();
-        // Use minimatch for file patterns, fallback to string contains for non-glob patterns
+        // Use minimatch for glob patterns, fallback to string contains for simple patterns
         return trimmedPattern.includes("*")
           ? minimatch(userPrompt, trimmedPattern)
           : userPrompt.toLowerCase().includes(trimmedPattern.toLowerCase());
@@ -284,10 +281,6 @@ export class LanguagePlugin extends PluginBase implements Plugin {
 
     // Use the extracted resolveSources method
     const contexts = await this.resolveSources(matchingTerms);
-
-    if (!matchingTerms || !matchingTerms.length) {
-      return "LANGUAGE PLUGIN: No matching terms found";
-    }
 
     console.log("LANGUAGE PLUGIN: Matching terms found:", matchingTerms);
 

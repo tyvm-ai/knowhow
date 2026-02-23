@@ -37,7 +37,7 @@ export class InternalChatModule implements ChatModule {
     await this.systemModule.initialize(chatService);
     await this.setupModule.initialize(chatService);
     await this.customCommandsModule.initialize(chatService);
-
+    
     // Register our own commands (exit and multi) - not duplicated by BaseChatModule
     chatService.registerCommand({
       name: "exit",

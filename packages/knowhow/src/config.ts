@@ -175,6 +175,7 @@ export async function getLanguageConfig() {
     );
     return language as Language;
   } catch (e) {
+    console.error("Error reading .knowhow/language.json:", e);
     return {} as Language;
   }
 }
@@ -223,13 +224,13 @@ export function getConfigSync() {
     const config = JSON.parse(
       fs.readFileSync(".knowhow/knowhow.json", "utf8").toString()
     );
-    
+
     // Apply migrations synchronously
     const { config: migratedConfig } = applyMigrations(config);
-    
+
     // Note: We don't save here in sync mode to avoid blocking operations
     // The async getConfig() will handle saving on next call
-    
+
     return migratedConfig as Config;
   } catch (e) {
     return {} as Config;
@@ -252,15 +253,15 @@ export async function getConfig() {
   try {
     const config = await readFile(".knowhow/knowhow.json", "utf8");
     const parsedConfig = JSON.parse(config);
-    
+
     // Apply migrations
     const { modified, config: migratedConfig } = applyMigrations(parsedConfig);
-    
+
     // If migrations were applied, save the updated config
     if (modified) {
       await updateConfig(migratedConfig);
     }
-    
+
     return migratedConfig as Config;
   } catch (error) {
     console.error("Error reading .knowhow/knowhow.json:", error);

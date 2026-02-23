@@ -26,10 +26,16 @@ export interface ChatMode {
   active: boolean;
 }
 
+export interface CommandResult {
+  handled: boolean;
+  contents?: string;
+}
+
 export interface ChatCommand {
   name: string;
   description: string;
-  handler: (args: string[]) => Promise<void>;
+  handler: (args: string[]) => Promise<void | CommandResult>;
+  modes?: string[]; // Commands can specify which modes they're available in
 }
 
 export interface InputMethod {
@@ -46,6 +52,8 @@ export interface ChatService {
   registerCommand(command: ChatCommand): void;
   registerMode(mode: ChatMode): void;
   getCommands(): ChatCommand[];
+  getCommandsForMode(mode: string): ChatCommand[];
+  setMode(mode: string): void;
   getModes(): ChatMode[];
   getMode(name: string): ChatMode | undefined;
   enableMode(name: string): void;

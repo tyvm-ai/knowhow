@@ -95,6 +95,7 @@ export class AgentModule extends BaseChatModule {
           context.agentMode = false;
           context.selectedAgent = undefined;
           context.currentAgent = undefined;
+          this.chatService.disableMode("agent");
         }
         console.log("Agent mode disabled. Switched to chat mode.");
         return;
@@ -122,7 +123,9 @@ export class AgentModule extends BaseChatModule {
           // so /model and /provider commands show accurate information
           context.currentModel = selectedAgent.getModel();
           context.currentProvider = selectedAgent.getProvider();
+          this.chatService.setMode("agent");
         }
+
         console.log(
           `Agent mode enabled. Selected agent: ${agentName}. Type your task to get started.`
         );
@@ -778,7 +781,25 @@ Please continue from where you left off and complete the original request.
       let agentFinalOutput: string | undefined;
 
       // Define available commands
-      const commands = ["/pause", "/unpause", "/kill", "/detach", "/done"];
+      // Set mode to agent:attached so custom commands are available
+      if (this.chatService) {
+        this.chatService.setMode("agent:attached");
+      }
+
+      // Get mode-specific commands for autocomplete
+      const modeCommands =
+        this.chatService
+          ?.getCommandsForMode("agent:attached")
+          .map((cmd) => `/${cmd.name}`) || [];
+
+      const commands = [
+        ...modeCommands,
+        "/pause",
+        "/unpause",
+        "/kill",
+        "/detach",
+        "/done",
+      ];
       const history: string[] = [];
 
       // Set up the event listener BEFORE starting the agent to avoid race condition
@@ -836,11 +857,23 @@ Please continue from where you left off and complete the original request.
             break;
           case "/detach":
             console.log("Detached from agent");
+            // Reset mode back to default when detaching
+            if (this.chatService) {
+              this.chatService.setMode("default");
+            }
             return { result: true, finalOutput: agentFinalOutput };
           default:
+            // Format input through plugins before sending to agent
+            const context = this.chatService?.getContext();
+            const plugins = context?.plugins || [];
+            const formattedInput = await this.chatService?.formatChatInput(
+              input,
+              plugins,
+              []
+            );
             agent.addPendingUserMessage({
               role: "user",
-              content: input,
+              content: formattedInput || input,
             });
         }
 
@@ -850,6 +883,11 @@ Please continue from where you left off and complete the original request.
             commands
           );
         }
+      }
+
+      // Reset mode back to default when exiting loop
+      if (this.chatService) {
+        this.chatService.setMode("default");
       }
 
       // Update final task status and save session
