@@ -14,6 +14,7 @@ import { UrlPlugin } from "./url";
 import { GitPlugin } from "./GitPlugin";
 import { TmuxPlugin } from "./tmux";
 import { AgentsMdPlugin } from "./AgentsMdPlugin";
+import { ExecPlugin } from "./exec";
 import { getConfig } from "../config";
 import { getDisabledPlugins } from "../types";
 
@@ -39,6 +40,7 @@ export class PluginService {
     this.pluginMap.set("git", new GitPlugin(context));
     this.pluginMap.set("tmux", new TmuxPlugin(context));
     this.pluginMap.set("agents-md", new AgentsMdPlugin(context));
+    this.pluginMap.set("exec", new ExecPlugin(context));
   }
 
   /* -------- lifecycle helpers ------------------------------------ */

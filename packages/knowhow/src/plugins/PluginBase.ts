@@ -44,6 +44,14 @@ export abstract class PluginBase implements Plugin {
   }
 
   /* ------------------------------------------------------------------ */
+  /** Default callMany implementation - delegates to call ------------ */
+  /* ------------------------------------------------------------------ */
+  async callMany(input?: string): Promise<string> {
+    // Default behavior: callMany just calls call
+    return this.call(input);
+  }
+
+  /* ------------------------------------------------------------------ */
   /** Mandatory plugin actions ---------------------------------------- */
   /* ------------------------------------------------------------------ */
   abstract call(input?: string): Promise<string>;

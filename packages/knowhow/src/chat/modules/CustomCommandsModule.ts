@@ -1,6 +1,7 @@
 import { BaseChatModule } from "./BaseChatModule";
 import { ChatCommand, ChatService, CommandResult } from "../types";
 import { getLanguageConfig } from "../../config";
+import { services } from "../../services";
 
 /**
  * CustomCommandsModule - Loads `/command`-style keys from the language config
@@ -40,8 +41,24 @@ export class CustomCommandsModule extends BaseChatModule {
           description: `Custom command: ${commandKey}`,
           modes: ["agent:attached", "agent"],
           handler: async (args: string[]): Promise<CommandResult> => {
-            // Return unhandled with the original command so modules can process it
-            // The language plugin will expand it
+            const config = languageConfig[commandKey];
+            
+            // If handled is true, call the language plugin and display output but don't send to agent
+            if (config.handled === true) {
+              try {
+                const { Plugins } = services();
+                const result = await Plugins.call("language", commandKey);
+                console.log(result);
+                return {
+                  handled: true,
+                };
+              } catch (error) {
+                console.error(`Error executing command ${commandKey}:`, error);
+                return { handled: true };
+              }
+            }
+            
+            // By default (handled: false or undefined), return unhandled so agent module processes it
             return {
               handled: false,
               contents: commandKey,
