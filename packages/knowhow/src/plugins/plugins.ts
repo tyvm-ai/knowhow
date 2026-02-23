@@ -12,6 +12,7 @@ import { DownloaderPlugin } from "./downloader/plugin";
 import { FigmaPlugin } from "./figma";
 import { UrlPlugin } from "./url";
 import { GitPlugin } from "./GitPlugin";
+import { TmuxPlugin } from "./tmux";
 
 export class PluginService {
   private pluginMap = new Map<string, Plugin>();
@@ -33,6 +34,7 @@ export class PluginService {
     this.pluginMap.set("language", new LanguagePlugin(context));
     this.pluginMap.set("url", new UrlPlugin(context));
     this.pluginMap.set("git", new GitPlugin(context));
+    this.pluginMap.set("tmux", new TmuxPlugin(context));
 
     // Keep legacy plugins for backward compatibility
     // These will be removed once all consumers are updated

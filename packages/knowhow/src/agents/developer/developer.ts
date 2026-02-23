@@ -12,8 +12,8 @@ export class DeveloperAgent extends BaseAgent {
 
     this.setModelPreferences([
       {
-        model: Models.google.Gemini_20_Flash,
-        provider: "google",
+        model: Models.anthropic.Sonnet4_6,
+        provider: "anthropic",
       },
     ]);
   }

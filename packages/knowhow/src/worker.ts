@@ -306,30 +306,35 @@ export async function worker(options?: {
         // Get the allowedPorts configuration
         const allowedPorts = config.worker?.tunnel?.allowedPorts || [];
 
-        // Create URL rewriter callback that can customize URL replacement logic
+        // Create URL rewriter callback that returns the hostname (without protocol)
+        // The tunnel package will add the protocol based on the useHttps config
         // This receives port and metadata from the tunnel request
         const urlRewriter = (port: number, metadata?: any) => {
           const workerId = metadata?.workerId;
           const secret = metadata?.secret;
 
-          // Build the replacement URL based on metadata
+          // Build the hostname/domain (without protocol) based on metadata
+          // The tunnel handler will add the protocol using the useHttps config
           // Examples:
-          // - https://workerId-p.tunnelDomain
-          // - https://secret.workerId-p.tunnelDomain
+          // - secret-p3000.worker.example.com
+          // - workerId-p3000.worker.example.com
           const subdomain = secret
-            ? `${secret}.${workerId}-p${port}`
+            ? `${secret}-p${port}`
             : `${workerId}-p${port}`;
 
-          const protocol = tunnelUseHttps ? "https" : "http";
+          // Return just the hostname - the tunnel package should add the protocol
+          // based on the useHttps configuration passed below
           const replacementUrl = `${subdomain}.${tunnelDomain}`;
           return replacementUrl;
         };
 
         // Initialize tunnel handler with the tunnel-specific WebSocket
+        // Pass useHttps flag so the tunnel package can add the correct protocol
         tunnelHandler = createTunnelHandler(tunnelConnection!, {
           allowedPorts,
           maxConcurrentStreams:
             config.worker?.tunnel?.maxConcurrentStreams || 50,
+          tunnelUseHttps: tunnelUseHttps,
           localHost: tunnelLocalHost,
           urlRewriter,
           enableUrlRewriting:

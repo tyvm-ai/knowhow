@@ -331,6 +331,7 @@ export class TunnelProxy {
           ? {
               workerId: streamState.workerId || "",
               allowedPorts: this.config.allowedPorts,
+              useHttps: this.config.tunnelUseHttps,
               enabled: true,
               urlRewriter: this.config.urlRewriter,
               metadata: streamState.metadata,

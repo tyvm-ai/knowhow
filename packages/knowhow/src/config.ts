@@ -28,6 +28,7 @@ const defaultConfig = {
     "download",
     "figma",
     "url",
+    "tmux",
   ],
   lintCommands: {
     js: "eslint",
