@@ -27,7 +27,7 @@ export interface TaskSyncState {
  * AgentSynchronization handles all communication with the Knowhow API
  * for task creation, updates, status polling, and message synchronization
  */
-export class AgentSynchronization {
+export class AgentSyncKnowhowWeb {
   private client: KnowhowSimpleClient;
   private baseUrl: string;
   private knowhowTaskId: string | undefined;
@@ -254,7 +254,7 @@ export class AgentSynchronization {
       }
 
       console.log(`🎯 [AgentSync] Done event received for task: ${this.knowhowTaskId}`);
-      
+
       // Create a promise that tracks finalization
       this.finalizationPromise = (async () => {
         try {

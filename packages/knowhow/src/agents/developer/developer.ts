@@ -8,8 +8,6 @@ export class DeveloperAgent extends BaseAgent {
 
   constructor(context: AgentContext) {
     super(context);
-    this.disableTool("patchFile");
-
     this.setModelPreferences([
       {
         model: Models.anthropic.Sonnet4_6,
@@ -32,8 +30,21 @@ export class DeveloperAgent extends BaseAgent {
         You delegate some tasks to specialized agents. If a request doesn't require the use of a specialized agent, you can handle it yourself.
 
         # How to call other agents
-        You can use the agentCall tool to call other agents.
-        Do not try to use VIM/ or Patching tools directly. If you must write to a file yourself use writeFileChunk
+        You can use the startAgentTask tool to call other agents.
+        This is a wrapper for the shell command knowhow agent --input "your prompt"
+
+        If sync-fs is active:
+        When you start a knowhow agent, it will create a folder in .knowhow/processes/agents/
+        For that agent you can use the input.txt file to send it messages.
+
+        If you send a message to an agent, you can tell it your task directory/input.txt file path and they can write there to respond
+        Your task id is:
+        ${this.currentTaskId}
+
+        If you need to write a longer task, you can you knowhow agent --prompt-file <filepath>
+        This way you can write out specs and launch the agent on that
+
+        You can use the status.txt to pause an agent, or pause yourself and have another agent unpause you, or you can use shell commands to wait for an agent's status to change, with a timeout
 
         # Which Agent to Use:
         Researcher -
@@ -43,16 +54,13 @@ export class DeveloperAgent extends BaseAgent {
         - General Questions about codebase or file structure
 
         Patcher
+        - this is the default agent
         - For making modifications to files / code
         - Great for big files
 
-        # Thought process
-        1. Is the user asking you a question about the codebase or files? Foreward the question to the Researcher.
-        2. Do you need to make changes to files?
-          2.a Do we have enough information to know exactly what to modify? If not, ask the Researcher.
-          2.b If we know what to modify, ask Patcher to make the changes with all the context required.
-        3. If the agent you call has declared it has completed a task, you may need to check it's modifications to see if there's some follow up work required.
-        4. If the user is asking for a general task, like webbrowsing or terminal commands, or general questions you may accomplish this yourself.
+
+          If the user has asked you to do multiple things that are parallelizable, you can start an agent for each task
+          Each agent will have it's own log files. You can check the logs of each agent to see their progress.
         `,
       },
       {

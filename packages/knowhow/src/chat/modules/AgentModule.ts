@@ -2,7 +2,8 @@
  * Agent Chat Module - Handles agent interactions
  */
 import {
-  AgentSynchronization,
+  AgentSyncKnowhowWeb,
+  AgentSyncFs,
   SessionManager,
   TaskRegistry,
 } from "../../services/index";
@@ -35,13 +36,15 @@ export class AgentModule extends BaseChatModule {
   // Service instances for task management, session management, and synchronization
   private taskRegistry: TaskRegistry;
   private sessionManager: SessionManager;
-  private agentSync: AgentSynchronization;
+  private webSync: AgentSyncKnowhowWeb;
+  private fsSync: AgentSyncFs;
 
   constructor() {
     super();
     this.taskRegistry = new TaskRegistry();
     this.sessionManager = new SessionManager();
-    this.agentSync = new AgentSynchronization();
+    this.webSync = new AgentSyncKnowhowWeb();
+    this.fsSync = new AgentSyncFs();
   }
 
   getCommands(): ChatCommand[] {
@@ -465,6 +468,7 @@ Please continue from where you left off and complete the original request.
     agentName: string;
     input: string;
     messageId?: string;
+    syncFs?: boolean;
     existingKnowhowTaskId?: string;
     provider?: string;
     model?: string;
@@ -472,6 +476,7 @@ Please continue from where you left off and complete the original request.
     maxSpendLimit?: number; // in dollars
     chatHistory?: ChatInteraction[];
     run?: boolean; // whether to run immediately
+    taskId?: string; // optional pre-generated taskId
   }) {
     const allAgents = agents();
 
@@ -488,7 +493,7 @@ Please continue from where you left off and complete the original request.
 
     let done = false;
     let output = "Done";
-    const taskId = this.sessionManager.generateTaskId(input);
+    const taskId = options.taskId || this.sessionManager.generateTaskId(input);
     let knowhowTaskId: string | undefined;
 
     try {
@@ -524,8 +529,12 @@ Please continue from where you left off and complete the original request.
       this.saveSession(taskId, taskInfo, []);
 
       // Create Knowhow chat task if messageId provided
-      if (options.messageId && !options.existingKnowhowTaskId) {
-        knowhowTaskId = await this.agentSync.createChatTask({
+      if (
+        options.messageId &&
+        !options.existingKnowhowTaskId &&
+        !options.syncFs
+      ) {
+        knowhowTaskId = await this.webSync.createChatTask({
           messageId: options.messageId,
           prompt: input,
         });
@@ -536,8 +545,24 @@ Please continue from where you left off and complete the original request.
           this.taskRegistry.register(taskId, taskInfo);
 
           // Set up event-based synchronization with Knowhow API
-          await this.agentSync.setupAgentSync(agent, knowhowTaskId);
+          await this.webSync.setupAgentSync(agent, knowhowTaskId);
         }
+      } else if (!options.messageId || options.syncFs) {
+        // Use filesystem sync when no messageId is provided or syncFs is explicitly enabled
+        console.log(
+          `📁 Using filesystem-based synchronization for task: ${taskId}`
+        );
+
+        const fsTaskId = await this.fsSync.createTask({
+          taskId,
+          prompt: input,
+        });
+
+        // Update TaskInfo with the fs sync info
+        taskInfo.knowhowTaskId = fsTaskId;
+        this.taskRegistry.register(taskId, taskInfo);
+
+        await this.fsSync.setupAgentSync(agent, fsTaskId);
       }
 
       // Set up session update listener
@@ -645,10 +670,15 @@ Please continue from where you left off and complete the original request.
 
           // Wait for AgentSync to finish before resolving
           if (knowhowTaskId) {
-            console.log("🎯 [AgentModule] Waiting for sync finalization...");
-            await this.agentSync.waitForFinalization();
-            console.log("🎯 [AgentModule] Sync finalization complete");
+            console.log(
+              "🎯 [AgentModule] Waiting for web sync finalization..."
+            );
+            await this.webSync.waitForFinalization();
+            console.log("🎯 [AgentModule] Web sync finalization complete");
           }
+          console.log("🎯 [AgentModule] Waiting for fs sync finalization...");
+          await this.fsSync.waitForFinalization();
+          console.log("🎯 [AgentModule] Fs sync finalization complete");
 
           if (taskInfo) {
             taskInfo.status = "completed";
@@ -863,17 +893,9 @@ Please continue from where you left off and complete the original request.
             }
             return { result: true, finalOutput: agentFinalOutput };
           default:
-            // Format input through plugins before sending to agent
-            const context = this.chatService?.getContext();
-            const plugins = context?.plugins || [];
-            const formattedInput = await this.chatService?.formatChatInput(
-              input,
-              plugins,
-              []
-            );
             agent.addPendingUserMessage({
               role: "user",
-              content: formattedInput || input,
+              content: input,
             });
         }
 

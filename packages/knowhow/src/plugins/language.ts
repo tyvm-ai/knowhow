@@ -284,7 +284,9 @@ export class LanguagePlugin extends PluginBase implements Plugin {
 
     console.log("LANGUAGE PLUGIN: Matching terms found:", matchingTerms);
 
-    const output = contexts.every((c) => typeof c === "string") ? contexts.join(""): JSON.stringify(contexts);
+    const output = contexts.every((c) => typeof c === "string")
+      ? contexts.join("")
+      : JSON.stringify(contexts, null, 2);
     // Return the file contents in a format that can be added to the prompt context
     return `LANGUAGE PLUGIN: The user mentioned these terms triggering contextual expansions ${matchingTerms} expanded to: ${output}
     These terms are directly related to what the user is asking about so be sure to contextualize your response to this information.

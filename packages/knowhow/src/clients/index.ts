@@ -4,6 +4,20 @@ import {
   EmbeddingOptions,
   EmbeddingResponse,
   GenericClient,
+  AudioTranscriptionOptions,
+  AudioTranscriptionResponse,
+  AudioGenerationOptions,
+  AudioGenerationResponse,
+  ImageGenerationOptions,
+  ImageGenerationResponse,
+  VideoGenerationOptions,
+  VideoGenerationResponse,
+  VideoStatusOptions,
+  VideoStatusResponse,
+  FileUploadOptions,
+  FileUploadResponse,
+  FileDownloadOptions,
+  FileDownloadResponse,
 } from "./types";
 import { GenericOpenAiClient } from "./openai";
 import { GenericAnthropicClient } from "./anthropic";
@@ -312,6 +326,117 @@ export class AIClient {
       );
     }
     return client.createEmbedding({ ...options, model });
+  }
+
+  async createAudioTranscription(
+    provider: string,
+    options: AudioTranscriptionOptions
+  ): Promise<AudioTranscriptionResponse> {
+    const { client } = this.getClient(provider, options.model);
+    if (!client || !client.createAudioTranscription) {
+      throw new Error(
+        `Provider ${provider} does not support audio transcription.`
+      );
+    }
+    return client.createAudioTranscription(options);
+  }
+
+  async createAudioGeneration(
+    provider: string,
+    options: AudioGenerationOptions
+  ): Promise<AudioGenerationResponse> {
+    const { client, model } = this.getClient(provider, options.model);
+    if (!client || !client.createAudioGeneration) {
+      throw new Error(
+        `Provider ${provider} does not support audio generation.`
+      );
+    }
+    if (!model) {
+      throw new Error(
+        `Model ${options.model} not registered for provider ${provider}.`
+      );
+    }
+    return client.createAudioGeneration({ ...options, model });
+  }
+
+  async createImageGeneration(
+    provider: string,
+    options: ImageGenerationOptions
+  ): Promise<ImageGenerationResponse> {
+    const { client, model } = this.getClient(provider, options.model);
+    if (!client || !client.createImageGeneration) {
+      throw new Error(
+        `Provider ${provider} does not support image generation.`
+      );
+    }
+    if (!model) {
+      throw new Error(
+        `Model ${options.model} not registered for provider ${provider}.`
+      );
+    }
+    return client.createImageGeneration({ ...options, model });
+  }
+
+  async createVideoGeneration(
+    provider: string,
+    options: VideoGenerationOptions
+  ): Promise<VideoGenerationResponse> {
+    const { client, model } = this.getClient(provider, options.model);
+    if (!client || !client.createVideoGeneration) {
+      throw new Error(
+        `Provider ${provider} does not support video generation.`
+      );
+    }
+    if (!model) {
+      throw new Error(
+        `Model ${options.model} not registered for provider ${provider}.`
+      );
+    }
+    return client.createVideoGeneration({ ...options, model });
+  }
+
+  async getVideoStatus(
+    provider: string,
+    options: VideoStatusOptions
+  ): Promise<VideoStatusResponse> {
+    const { client } = this.getClient(provider, options.model);
+    if (!client || !client.getVideoStatus) {
+      throw new Error(`Provider ${provider} does not support getVideoStatus.`);
+    }
+    return client.getVideoStatus(options);
+  }
+
+  async downloadVideo(
+    provider: string,
+    options: FileDownloadOptions
+  ): Promise<FileDownloadResponse> {
+    const { client } = this.getClient(provider);
+    if (!client || !client.downloadVideo) {
+      throw new Error(`Provider ${provider} does not support downloadVideo.`);
+    }
+    return client.downloadVideo(options);
+  }
+
+  async uploadFile(
+    provider: string,
+    options: FileUploadOptions
+  ): Promise<FileUploadResponse> {
+    const { client } = this.getClient(provider);
+    if (!client || !client.uploadFile) {
+      throw new Error(`Provider ${provider} does not support uploadFile.`);
+    }
+    return client.uploadFile(options);
+  }
+
+  async downloadFile(
+    provider: string,
+    options: FileDownloadOptions
+  ): Promise<FileDownloadResponse> {
+    const { client } = this.getClient(provider);
+    if (!client || !client.downloadFile) {
+      throw new Error(`Provider ${provider} does not support downloadFile.`);
+    }
+    return client.downloadFile(options);
   }
 
   getRegisteredModels(provider: string): string[] {

@@ -3,6 +3,7 @@
  */
 import { ChatInteraction, Config } from "../types";
 import { BaseAgent } from "../agents/base/base";
+import { ToolsService } from "src/services";
 
 export interface ChatContext {
   debugMode?: boolean;
@@ -46,6 +47,7 @@ export interface InputMethod {
 
 export interface ChatService {
   getContext(): ChatContext;
+  getTools(): ToolsService | undefined;
   setContext(context: Partial<ChatContext>): void;
   setInputMethod(method: InputMethod): void;
   resetInputMethod(): void;

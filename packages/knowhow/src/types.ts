@@ -179,6 +179,8 @@ export const Models = {
     Grok3MiniFastBeta: "grok-3-mini-fast-beta",
     Grok21212: "grok-2-1212",
     Grok2Vision1212: "grok-2-vision-1212",
+    GrokImagineImage: "grok-imagine-image",
+    GrokImagineVideo: "grok-imagine-video",
   },
   openai: {
     GPT_5_2: "gpt-5.2",
@@ -205,6 +207,14 @@ export const Models = {
     o1_Mini: "o1-mini-2024-09-12",
     GPT_4o_Mini_Search: "gpt-4o-mini-search-preview-2025-03-11",
     GPT_4o_Search: "gpt-4o-search-preview-2025-03-11",
+
+    TTS_1: "tts-1",
+    Whisper_1: "whisper-1",
+    DALL_E_3: "dall-e-3",
+    DALL_E_2: "dall-e-2",
+    Sora: "sora",
+    Sora_2: "sora-2",
+    Sora_2_Pro: "sora-2-pro",
     // Computer_Use: "computer-use-preview-2025-03-11",
     // Codex_Mini: "codex-mini-latest",
   },
@@ -214,14 +224,17 @@ export const Models = {
     Gemini_25_Pro_Preview: "gemini-2.5-pro-preview-05-06",
     Gemini_20_Flash: "gemini-2.0-flash",
     Gemini_20_Flash_Preview_Image_Generation:
-      "gemini-2.0-flash-preview-image-generation",
+      "gemini-2.0-flash-exp-image-generation",
     Gemini_20_Flash_Lite: "gemini-2.0-flash-lite",
     Gemini_15_Flash: "gemini-1.5-flash",
     Gemini_15_Flash_8B: "gemini-1.5-flash-8b",
     Gemini_15_Pro: "gemini-1.5-pro",
-    Imagen_3: "imagen-3.0-generate-002",
+    Imagen_3: "imagen-4.0-generate-001",
     Veo_2: "veo-2.0-generate-001",
+    Veo_3_1: "veo-3.1-generate-preview",
     Gemini_20_Flash_Live: "gemini-2.0-flash-live-001",
+    Gemini_25_Flash_TTS: "gemini-2.5-flash-preview-tts",
+    Gemini_20_Flash_TTS: "gemini-2.0-flash-preview-tts",
   },
 };
 
@@ -291,6 +304,30 @@ export const GoogleImageModels = [
   Models.google.Imagen_3,
 ];
 
-export const GoogleVideoModels = [Models.google.Veo_2];
+export const OpenAiImageModels = [
+  Models.openai.DALL_E_3,
+  Models.openai.DALL_E_2,
+];
+
+export const OpenAiVideoModels = [
+  Models.openai.Sora,
+  Models.openai.Sora_2,
+  Models.openai.Sora_2_Pro,
+];
+
+export const OpenAiTTSModels = [Models.openai.TTS_1];
+
+export const OpenAiTranscriptionModels = [Models.openai.Whisper_1];
+
+export const XaiImageModels = [Models.xai.GrokImagineImage];
+
+export const XaiVideoModels = [Models.xai.GrokImagineVideo];
+
+export const GoogleTTSModels = [
+  Models.google.Gemini_25_Flash_TTS,
+  Models.google.Gemini_20_Flash_TTS,
+];
+
+export const GoogleVideoModels = [Models.google.Veo_2, Models.google.Veo_3_1];
 
 export const GoogleEmbeddingModels = [EmbeddingModels.google.Gemini_Embedding];

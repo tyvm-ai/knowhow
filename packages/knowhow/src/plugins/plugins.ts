@@ -101,7 +101,7 @@ export class PluginService {
       return "";
     }
     const calls = plugins.map(async (p) => {
-      return this.call(p, userInput);
+      return this.callManyForPlugin(p, userInput).catch();
     });
 
     const results = await Promise.all(calls);
@@ -122,6 +122,22 @@ export class PluginService {
       return "";
     }
     return newPlugin.call(userInput);
+  }
+
+  async callManyForPlugin(kind: string, userInput?: string) {
+    // Check new plugin system first
+    const newPlugin = this.pluginMap.get(kind);
+
+    if (!newPlugin) {
+      throw new Error(`Plugin ${kind} not found`);
+    }
+
+    const enabled = await newPlugin.isEnabled();
+    if (!enabled) {
+      console.log(`Plugin ${kind} is disabled, skipping`);
+      return "";
+    }
+    return newPlugin.callMany(userInput);
   }
 
   async embed(kind: string, userInput: string) {

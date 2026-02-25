@@ -27,3 +27,4 @@ dist
 **/src/dataset/**/test_files
 .next
 **/tsconfig.tsbuildinfo
+**/tests/manual/modalities/outputs

@@ -9,8 +9,12 @@ import {
   ToolConfig,
   UsageMetadata,
 } from "@google/genai";
+import * as os from "os";
+import * as fsSync from "fs";
+import * as pathSync from "path";
 import { wait } from "../utils";
 import { EmbeddingModels, Models } from "../types";
+import { GeminiTextPricing } from "./pricing";
 
 import {
   GenericClient,
@@ -23,6 +27,20 @@ import {
   MessageContent,
   ToolCall,
   OutputMessage,
+  AudioTranscriptionOptions,
+  AudioTranscriptionResponse,
+  AudioGenerationOptions,
+  AudioGenerationResponse,
+  ImageGenerationOptions,
+  ImageGenerationResponse,
+  VideoGenerationOptions,
+  VideoGenerationResponse,
+  VideoStatusOptions,
+  VideoStatusResponse,
+  FileUploadOptions,
+  FileUploadResponse,
+  FileDownloadOptions,
+  FileDownloadResponse,
 } from "./types";
 
 function getMimeTypeFromUrl(url: string): string {
@@ -30,6 +48,51 @@ function getMimeTypeFromUrl(url: string): string {
   if (url.endsWith(".gif")) return "image/gif";
   if (url.endsWith(".webp")) return "image/webp";
   return "image/jpeg";
+}
+
+function getVideoMimeTypeFromUrl(url: string): string {
+  if (url.endsWith(".mp4")) return "video/mp4";
+  if (url.endsWith(".webm")) return "video/webm";
+  if (url.endsWith(".mov")) return "video/quicktime";
+  if (url.endsWith(".avi")) return "video/x-msvideo";
+  return "video/mp4";
+}
+
+/**
+ * Converts raw PCM audio data to WAV format by prepending a WAV header.
+ * Gemini TTS returns raw 16-bit PCM (audio/L16) which needs a WAV header to be playable.
+ */
+function pcmToWav(
+  pcmData: Buffer,
+  sampleRate: number = 24000,
+  numChannels: number = 1,
+  bitsPerSample: number = 16
+): Buffer {
+  const dataSize = pcmData.length;
+  const headerSize = 44;
+  const wavBuffer = Buffer.alloc(headerSize + dataSize);
+
+  // RIFF header
+  wavBuffer.write("RIFF", 0);
+  wavBuffer.writeUInt32LE(36 + dataSize, 4); // file size - 8
+  wavBuffer.write("WAVE", 8);
+
+  // fmt chunk
+  wavBuffer.write("fmt ", 12);
+  wavBuffer.writeUInt32LE(16, 16); // chunk size
+  wavBuffer.writeUInt16LE(1, 20); // PCM format
+  wavBuffer.writeUInt16LE(numChannels, 22);
+  wavBuffer.writeUInt32LE(sampleRate, 24);
+  wavBuffer.writeUInt32LE(sampleRate * numChannels * (bitsPerSample / 8), 28); // byte rate
+  wavBuffer.writeUInt16LE(numChannels * (bitsPerSample / 8), 32); // block align
+  wavBuffer.writeUInt16LE(bitsPerSample, 34);
+
+  // data chunk
+  wavBuffer.write("data", 36);
+  wavBuffer.writeUInt32LE(dataSize, 40);
+  pcmData.copy(wavBuffer, 44);
+
+  return wavBuffer;
 }
 
 export class GenericGeminiClient implements GenericClient {
@@ -64,16 +127,33 @@ export class GenericGeminiClient implements GenericClient {
           return { text: part.text };
         }
         if (part.type === "image_url") {
-          // Google GenAI's fileData part type uses a URI.
-          // The example uses createPartFromUri which takes a uri string and mimeType.
-          // We assume the image_url.url can be used as the uri.
-          // Note: Google's example uploads files first and uses the resulting URI.
-          // Directly using a URL here might have limitations depending on the URL type
-          // (e.g., data URLs vs. public http URLs).
-          const mimeType = getMimeTypeFromUrl(part.image_url.url);
+          const url = part.image_url.url;
+          if (url.startsWith("data:")) {
+            const [header, base64Data] = url.split(",");
+            const mimeType = header.split(":")[1].split(";")[0];
+            return {
+              inlineData: {
+                data: base64Data,
+                mimeType,
+              },
+            };
+          }
+
+          // If it's a File API URI
+          if (url.startsWith("https://generativelanguage.googleapis.com")) {
+            return {
+              fileData: {
+                fileUri: url,
+                mimeType: getMimeTypeFromUrl(url),
+              },
+            };
+          }
+        }
+        if (part.type === "video_url") {
+          const mimeType = getVideoMimeTypeFromUrl(part.video_url.url);
           return {
             fileData: {
-              uri: part.image_url.url,
+              fileUri: part.video_url.url,
               mimeType,
             },
           };
@@ -81,9 +161,9 @@ export class GenericGeminiClient implements GenericClient {
         // Handle other potential generic message content types if necessary
         // For now, only text and image_url are explicitly handled.
         console.warn(
-          `Unsupported generic message content part type: ${(part as any).type}`
+          `Unsupported generic message content part type: ${part.type}`
         );
-        return { text: `[Unsupported content type: ${(part as any).type}]` };
+        return { text: `[Unsupported content type: ${part.type}]` };
       })
       .filter((part) => !!part); // Filter out any null/undefined parts if transformation fails
   }
@@ -119,7 +199,7 @@ export class GenericGeminiClient implements GenericClient {
             (systemInstruction ? systemInstruction + "\n" : "") +
             this.transformContentParts(msg.content)
               .filter((p) => "text" in p && typeof p.text === "string")
-              .map((p) => (p as any).text)
+              .map((p) => p.text)
               .join("\n");
         }
       } else if (msg.role === "user" || msg.role === "assistant") {
@@ -215,13 +295,13 @@ export class GenericGeminiClient implements GenericClient {
    * @returns A cleaned schema object compatible with Gemini API
    */
   private cleanSchemaForGemini(schema: any): any {
-    if (!schema || typeof schema !== 'object') {
+    if (!schema || typeof schema !== "object") {
       return schema;
     }
 
     // Handle arrays
     if (Array.isArray(schema)) {
-      return schema.map(item => this.cleanSchemaForGemini(item));
+      return schema.map((item) => this.cleanSchemaForGemini(item));
     }
 
     const cleaned: any = {};
@@ -236,24 +316,29 @@ export class GenericGeminiClient implements GenericClient {
       // - $ref: JSON Schema references not supported
       // - $defs: JSON Schema definitions not supported
       // - positional: internal knowhow property, not part of JSON Schema
-      if (key === 'additionalProperties' || key === '$ref' || key === '$defs' || key === 'positional') {
+      if (
+        key === "additionalProperties" ||
+        key === "$ref" ||
+        key === "$defs" ||
+        key === "positional"
+      ) {
         continue;
       }
 
       const value = schema[key];
 
       // Convert type to uppercase if it's a string
-      if (key === 'type' && typeof value === 'string') {
+      if (key === "type" && typeof value === "string") {
         cleaned[key] = value.toUpperCase();
       }
       // Handle type arrays (e.g., ["string", "null"])
-      else if (key === 'type' && Array.isArray(value)) {
-        cleaned[key] = value.map((t: string) => 
-          typeof t === 'string' ? t.toUpperCase() : t
+      else if (key === "type" && Array.isArray(value)) {
+        cleaned[key] = value.map((t: string) =>
+          typeof t === "string" ? t.toUpperCase() : t
         );
       }
       // Recursively clean nested objects
-      else if (typeof value === 'object' && value !== null) {
+      else if (typeof value === "object" && value !== null) {
         cleaned[key] = this.cleanSchemaForGemini(value);
       }
       // Copy primitive values as-is
@@ -277,12 +362,14 @@ export class GenericGeminiClient implements GenericClient {
 
     const functionDeclarations: FunctionDeclaration[] = tools.map((tool) => {
       // Clean the entire parameters schema to remove unsupported fields
-      const cleanedParameters = this.cleanSchemaForGemini(tool.function.parameters);
-      
+      const cleanedParameters = this.cleanSchemaForGemini(
+        tool.function.parameters
+      );
+
       return {
         name: tool.function.name,
         description: tool.function.description || "",
-        parameters: cleanedParameters as any,
+        parameters: cleanedParameters,
       };
     });
 
@@ -391,75 +478,16 @@ export class GenericGeminiClient implements GenericClient {
         usd_cost: usdCost,
       };
     } catch (error) {
-      console.error("Error calling Google GenAI generateContent:", error);
+      console.error(
+        "Error calling Google GenAI generateContent:",
+        error.message
+      );
       throw error;
     }
   }
 
-  pricesPerMillion(): { [key: string]: any } {
-    return {
-      [Models.google.Gemini_3_Preview]: {
-        input: 2,
-        input_gt_200k: 4,
-        output: 12,
-        output_gt_200k: 18,
-        context_caching: 0.2,
-        context_caching_gt_200k: 0.4,
-      },
-      [Models.google.Gemini_25_Flash_Preview]: {
-        input: 0.3,
-        output: 2.5,
-        thinking_output: 3.5,
-        context_caching: 0.0375,
-      },
-      [Models.google.Gemini_25_Pro_Preview]: {
-        input: 1.25,
-        input_gt_200k: 2.5,
-        output: 10.0,
-        output_gt_200k: 15.0,
-        context_caching: 0.125,
-        context_caching_gt_200k: 0.25,
-      },
-      [Models.google.Gemini_20_Flash]: {
-        input: 0.1,
-        output: 0.4,
-        context_caching: 0.025,
-      },
-      [Models.google.Gemini_20_Flash_Preview_Image_Generation]: {
-        input: 0.1,
-        output: 0.4,
-        image_generation: 0.039,
-      },
-      [Models.google.Gemini_20_Flash_Lite]: {
-        input: 0.075,
-        output: 0.3,
-      },
-      [Models.google.Gemini_15_Flash]: {
-        input: 0.075,
-        output: 0.3,
-        context_caching: 0.01875,
-      },
-      [Models.google.Gemini_15_Flash_8B]: {
-        input: 0.0375,
-        output: 0.15,
-        context_caching: 0.01,
-      },
-      [Models.google.Gemini_15_Pro]: {
-        input: 1.25,
-        output: 5.0,
-        context_caching: 0.3125,
-      },
-      [Models.google.Imagen_3]: {
-        image_generation: 0.03,
-      },
-      [Models.google.Veo_2]: {
-        video_generation: 0.35,
-      },
-      [EmbeddingModels.google.Gemini_Embedding]: {
-        input: 0, // Free of charge
-        output: 0, // Free of charge
-      },
-    };
+  pricesPerMillion() {
+    return GeminiTextPricing;
   }
 
   calculateCost(model: string, usage: UsageMetadata): number | undefined {
@@ -555,6 +583,336 @@ export class GenericGeminiClient implements GenericClient {
       };
     } catch (error) {
       console.error("Error calling Google GenAI embedContent:", error);
+      throw error;
+    }
+  }
+
+  async createAudioTranscription(
+    options: AudioTranscriptionOptions
+  ): Promise<AudioTranscriptionResponse> {
+    throw new Error(
+      "Audio transcription is not yet supported by the Gemini client. Use OpenAI client with Whisper model instead."
+    );
+  }
+
+  async createAudioGeneration(
+    options: AudioGenerationOptions
+  ): Promise<AudioGenerationResponse> {
+    try {
+      const response = await this.client.models.generateContent({
+        model: options.model,
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: options.input }],
+          },
+        ],
+        config: {
+          responseModalities: ["AUDIO"],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: {
+                voiceName: options.voice || "Puck",
+              },
+            },
+          },
+        },
+      });
+
+      // Extract audio data from the response
+      // Gemini returns inline audio data in the response parts
+      const audioPart = response.candidates?.[0]?.content?.parts?.find(
+        (part: any) => part.inlineData?.mimeType?.startsWith("audio/")
+      );
+
+      if (!audioPart || !audioPart.inlineData) {
+        throw new Error("No audio data returned from Gemini TTS");
+      }
+
+      // Convert base64 to buffer
+      const rawBuffer = Buffer.from(audioPart.inlineData.data, "base64");
+      const mimeType = audioPart.inlineData.mimeType || "audio/wav";
+
+      // Gemini returns raw PCM (audio/L16) - convert to WAV format for playability
+      let audioBuffer = rawBuffer;
+      if (mimeType.includes("L16") || mimeType.includes("pcm")) {
+        // Parse sample rate from mime type e.g. "audio/L16;codec=pcm;rate=24000"
+        const rateMatch = mimeType.match(/rate=(\d+)/);
+        const sampleRate = rateMatch ? parseInt(rateMatch[1], 10) : 24000;
+        audioBuffer = pcmToWav(rawBuffer, sampleRate);
+      }
+
+      return {
+        audio: audioBuffer,
+        format: "audio/wav",
+      };
+    } catch (error) {
+      console.error("Error calling Gemini TTS:", error);
+      throw error;
+    }
+  }
+
+  async createImageGeneration(
+    options: ImageGenerationOptions
+  ): Promise<ImageGenerationResponse> {
+    try {
+      // Check if using Imagen 3 model or Gemini Flash inline generation
+      const isImagen3 = options.model?.includes("imagen");
+
+      if (isImagen3) {
+        // Imagen 3 uses the generateImages endpoint
+        const response = await this.client.models.generateImages({
+          model: options.model,
+          prompt: options.prompt,
+          config: {
+            numberOfImages: options.n || 1,
+          },
+        });
+
+        // Convert response to ImageGenerationResponse format
+        const generatedImages = response.generatedImages || [];
+        const images = generatedImages.map((img) => ({
+          // imageBytes is already a base64-encoded string from the API
+          // Don't re-encode it, just use it directly
+          b64_json: img.image?.imageBytes
+            ? img.image.imageBytes
+            : "",
+          revised_prompt: options.prompt,
+        }));
+
+        return {
+          created: Math.floor(Date.now() / 1000),
+          data: images,
+          usd_cost: 0.03 * images.length,
+        };
+      } else {
+        // Use Gemini Flash inline image generation (e.g., gemini-2.0-flash-preview-image-generation)
+        const response = await this.client.models.generateContent({
+          model: options.model,
+          contents: [
+            {
+              role: "user",
+              parts: [{ text: options.prompt }],
+            },
+          ],
+          config: {
+            responseModalities: ["IMAGE", "TEXT"],
+          },
+        });
+
+        // Extract image data from the response
+        const imageParts =
+          response.candidates?.[0]?.content?.parts?.filter((part: any) =>
+            part.inlineData?.mimeType?.startsWith("image/")
+          ) || [];
+
+        if (imageParts.length === 0) {
+          throw new Error("No image data returned from Gemini");
+        }
+
+        const images = imageParts.map((part: any) => ({
+          b64_json: part.inlineData.data,
+          revised_prompt: options.prompt,
+        }));
+
+        const usageMetadata = response.usageMetadata;
+        const usdCost = usageMetadata
+          ? this.calculateCost(options.model, usageMetadata)
+          : undefined;
+
+        return {
+          created: Math.floor(Date.now() / 1000),
+          data: images,
+          usd_cost: usdCost,
+        };
+      }
+    } catch (error) {
+      console.error("Error calling Gemini image generation:", error);
+      throw error;
+    }
+  }
+
+  async createVideoGeneration(
+    options: VideoGenerationOptions
+  ): Promise<VideoGenerationResponse> {
+    try {
+      // Submit the video generation job – do NOT poll here.
+      // Use getVideoStatus() to poll and downloadFile() to fetch the result.
+      const operation = await this.client.models.generateVideos({
+        model: options.model,
+        prompt: options.prompt,
+        config: {
+          numberOfVideos: options.n || 1,
+          ...(options.duration && {
+            durationSeconds: Math.max(6, options.duration),
+          }),
+          ...(options.resolution && { resolution: options.resolution }),
+          ...(options.aspect_ratio && { aspectRatio: options.aspect_ratio }),
+        },
+      });
+
+      // Calculate estimated cost: $0.35 per second of video
+      const duration = options.duration || 5; // Default 5 seconds
+      const usdCost = (options.n || 1) * duration * 0.35;
+
+      // Return the operation name as jobId so callers can use getVideoStatus / downloadVideo
+      return {
+        created: Math.floor(Date.now() / 1000),
+        data: [],
+        jobId: operation.name,
+        usd_cost: usdCost,
+      };
+    } catch (error) {
+      console.error("Error calling Gemini video generation:", error);
+      throw error;
+    }
+  }
+
+  async getVideoStatus(options: VideoStatusOptions): Promise<VideoStatusResponse> {
+    try {
+      const operation = await this.client.operations.getVideosOperation({
+        operation: { name: options.jobId },
+      });
+
+      if (operation.error) {
+        return {
+          jobId: options.jobId,
+          status: "failed",
+          error: JSON.stringify(operation.error),
+        };
+      }
+
+      if (!operation.done) {
+        return {
+          jobId: options.jobId,
+          status: "in_progress",
+        };
+      }
+
+      // Completed – extract file URIs
+      const generatedVideos = operation.response?.generatedVideos || [];
+      const data = generatedVideos.map((vid) => {
+        const videoBytes: string | undefined = vid.video?.videoBytes;
+        const uri: string | undefined = vid.video?.uri;
+        return {
+          b64_json: videoBytes || undefined,
+          url: uri || undefined,
+          fileUri: uri || undefined,
+        };
+      });
+
+      return {
+        jobId: options.jobId,
+        status: "completed",
+        data,
+      };
+    } catch (error) {
+      console.error("Error checking Gemini video status:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Download a video (or any file) via the Google GenAI Files API.
+   * Pass either `fileId` (the files/* name) or `uri` (the full URI).
+   */
+  async downloadVideo(options: FileDownloadOptions): Promise<FileDownloadResponse> {
+    return this.downloadFile(options);
+  }
+
+  /**
+   * Upload a file to the Google GenAI Files API.
+   */
+  async uploadFile(options: FileUploadOptions): Promise<FileUploadResponse> {
+    try {
+      const blob = new Blob([options.data], { type: options.mimeType });
+      const uploadedFile = await this.client.files.upload({
+        file: blob,
+        config: {
+          mimeType: options.mimeType,
+          displayName: options.displayName,
+          name: options.fileName,
+        },
+      });
+
+      return {
+        fileId: uploadedFile.name,
+        uri: uploadedFile.uri,
+        url: uploadedFile.downloadUri || uploadedFile.uri,
+        mimeType: uploadedFile.mimeType,
+        sizeBytes: uploadedFile.sizeBytes ? Number(uploadedFile.sizeBytes) : undefined,
+      };
+    } catch (error) {
+      console.error("Error uploading file to Google GenAI Files API:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Download a file from the Google GenAI Files API.
+   *
+   * The SDK's `files.download()` writes to disk, so we use a temp file and
+   * read it back as a Buffer. Pass either:
+   *  - `fileId`: the files/* resource name (e.g. "files/abc-123") or a Video uri
+   *  - `uri`: the full Video.uri returned in GeneratedVideo (also accepted as fileId)
+   *
+   * For generated videos the `file` param accepts the Video object directly
+   * (uri + optional mimeType), which the SDK resolves to a download URL.
+   */
+  async downloadFile(options: FileDownloadOptions): Promise<FileDownloadResponse> {
+    const mimeMap: Record<string, string> = {
+      ".mp4": "video/mp4",
+      ".webm": "video/webm",
+      ".mov": "video/quicktime",
+      ".png": "image/png",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".gif": "image/gif",
+      ".wav": "audio/wav",
+      ".mp3": "audio/mpeg",
+    };
+
+    try {
+      // The Google GenAI SDK's files.download() uses an async pipe that is NOT
+      // properly awaited, so we fetch the file directly via HTTP instead.
+      // Build the download URL from the uri/fileId.
+      const rawUri = options.uri || options.fileId || "";
+
+      // If it's already a full https URL, use it directly (append API key).
+      // Otherwise construct the Files API download URL from the resource name.
+      let downloadUrl: string;
+      if (rawUri.startsWith("https://")) {
+        // Append API key if not already present
+        const sep = rawUri.includes("?") ? "&" : "?";
+        downloadUrl = `${rawUri}${sep}key=${this.apiKey}`;
+      } else {
+        // Strip leading "files/" if present to get just the file ID
+        const fileId = rawUri.replace(/^files\//, "");
+        downloadUrl = `https://generativelanguage.googleapis.com/v1beta/files/${fileId}:download?alt=media&key=${this.apiKey}`;
+      }
+
+      const response = await fetch(downloadUrl);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} ${response.statusText} downloading ${downloadUrl}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const data = Buffer.from(arrayBuffer);
+
+      // If caller supplied a filePath, write to it (creating dirs as needed)
+      if (options.filePath) {
+        fsSync.mkdirSync(pathSync.dirname(options.filePath), { recursive: true });
+        fsSync.writeFileSync(options.filePath, data);
+      }
+
+      // Infer mime type from the URI/fileId first (more reliable), then from the path
+      const sourceForExt = options.uri || options.fileId || options.filePath || "";
+      const ext = pathSync.extname(sourceForExt.split("?")[0]).toLowerCase();
+      const mimeType = mimeMap[ext] || "video/mp4";
+
+      return { data, mimeType };
+    } catch (error) {
+      console.error("Error downloading file from Google GenAI Files API:", error);
       throw error;
     }
   }
