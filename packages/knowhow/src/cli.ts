@@ -201,6 +201,8 @@ async function main() {
       "10"
     )
     .option("--message-id <messageId>", "Knowhow message ID for task tracking")
+    .option("--sync-fs", "Enable filesystem-based synchronization")
+    .option("--task-id <taskId>", "Pre-generated task ID (used with --sync-fs for predictable agent directory path)")
     .option("--prompt-file <path>", "Custom prompt template file with {text}")
     .option("--input <text>", "Task input (fallback to stdin if not provided)")
     .action(async (options) => {

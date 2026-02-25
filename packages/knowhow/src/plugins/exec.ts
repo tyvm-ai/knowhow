@@ -19,17 +19,29 @@ export class ExecPlugin extends PluginBase {
     super(context);
   }
 
+  async callMany(input?: string): Promise<string> {
+    // Only execute during callMany if input starts with ! or /!
+    if (!input) {
+      return "";
+    }
+    const trimmed = input.trim();
+    if (trimmed.startsWith("!") || trimmed.startsWith("/!")) {
+      return this.call(input);
+    }
+    return "";
+  }
+
   async call(input: string): Promise<string> {
     // Input should be the command to execute
     const command = input.trim();
-    
+
     if (!command) {
       return "EXEC PLUGIN: No command provided";
     }
 
     try {
       console.log(`EXEC PLUGIN: Executing: ${command}`);
-      
+
       // Execute the command
       const result = execSync(command, {
         encoding: "utf8",
@@ -37,14 +49,12 @@ export class ExecPlugin extends PluginBase {
         maxBuffer: 10 * 1024 * 1024, // 10MB buffer
       });
 
-      console.log(result);
-
       return `EXEC PLUGIN: Command output from \`${command}\`:\n\`\`\`\n${result}\n\`\`\``;
     } catch (error: any) {
       const errorMessage = error.message;
       const stderr = error.stderr || "";
       const stdout = error.stdout || "";
-      
+
       console.error(`EXEC PLUGIN: Command failed: ${errorMessage}`);
       if (stderr) {
         console.error(stderr);

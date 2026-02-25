@@ -113,6 +113,10 @@ export class CliChatService implements ChatService {
     return this.context;
   }
 
+  getTools() {
+    return this.context.selectedAgent?.tools;
+  }
+
   setContext(context: Partial<ChatContext>): void {
     this.context = { ...this.context, ...context };
     // Keep chatHistory reference synchronized

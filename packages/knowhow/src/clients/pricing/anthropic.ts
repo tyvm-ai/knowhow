@@ -1,0 +1,90 @@
+import { Models } from "../../types";
+
+export const AnthropicTextPricing = {
+  [Models.anthropic.Opus4_6]: {
+    input: 5.0,
+    input_gt_200k: 10.0,
+    cache_write: 6.25,
+    cache_hit: 0.5,
+    output: 25.0,
+    output_gt_200k: 37.5,
+  },
+  [Models.anthropic.Sonnet4_6]: {
+    input: 3.0,
+    input_gt_200k: 6.0,
+    cache_write: 3.75,
+    cache_hit: 0.3,
+    output: 15.0,
+    output_gt_200k: 22.5,
+  },
+  [Models.anthropic.Opus4_5]: {
+    input: 5.0,
+    cache_write: 6.25,
+    cache_hit: 0.5,
+    output: 25.0,
+  },
+  [Models.anthropic.Opus4_1]: {
+    input: 15.0,
+    cache_write: 18.75,
+    cache_hit: 1.5,
+    output: 75.0,
+  },
+  [Models.anthropic.Opus4]: {
+    input: 15.0,
+    cache_write: 18.75,
+    cache_hit: 1.5,
+    output: 75.0,
+  },
+  [Models.anthropic.Sonnet4]: {
+    input: 3.0,
+    input_gt_200k: 6.0,
+    cache_write: 3.75,
+    cache_hit: 0.3,
+    output: 15.0,
+    output_gt_200k: 22.5,
+  },
+  [Models.anthropic.Sonnet4_5]: {
+    input: 3.0,
+    input_gt_200k: 6.0,
+    cache_write: 3.75,
+    cache_hit: 0.3,
+    output: 15.0,
+    output_gt_200k: 22.5,
+  },
+  [Models.anthropic.Haiku4_5]: {
+    input: 1,
+    cache_write: 1.25,
+    cache_hit: 0.1,
+    output: 5,
+  },
+  [Models.anthropic.Sonnet3_7]: {
+    input: 3.0,
+    cache_write: 3.75,
+    cache_hit: 0.3,
+    output: 15.0,
+  },
+  [Models.anthropic.Sonnet3_5]: {
+    input: 3.0,
+    cache_write: 3.75,
+    cache_hit: 0.3,
+    output: 15.0,
+  },
+  [Models.anthropic.Haiku3_5]: {
+    input: 0.8,
+    cache_write: 1.0,
+    cache_hit: 0.08,
+    output: 4.0,
+  },
+  [Models.anthropic.Opus3]: {
+    input: 15.0,
+    cache_write: 18.75,
+    cache_hit: 1.5,
+    output: 75.0,
+  },
+  [Models.anthropic.Haiku3]: {
+    input: 0.25,
+    cache_write: 0.3125,
+    cache_hit: 0.025,
+    output: 1.25,
+  },
+};

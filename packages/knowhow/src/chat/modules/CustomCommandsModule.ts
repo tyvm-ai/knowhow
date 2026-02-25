@@ -18,6 +18,10 @@ export class CustomCommandsModule extends BaseChatModule {
     return [];
   }
 
+  getPlugins() {
+    return this.chatService.getTools()?.getContext()?.Plugins;
+  }
+
   async initialize(service: ChatService): Promise<void> {
     this.chatService = service;
 
@@ -42,26 +46,26 @@ export class CustomCommandsModule extends BaseChatModule {
           modes: ["agent:attached", "agent"],
           handler: async (args: string[]): Promise<CommandResult> => {
             const config = languageConfig[commandKey];
-            
+            const result = await this.getPlugins().call("language", commandKey);
+
             // If handled is true, call the language plugin and display output but don't send to agent
             if (config.handled === true) {
               try {
-                const { Plugins } = services();
-                const result = await Plugins.call("language", commandKey);
                 console.log(result);
                 return {
                   handled: true,
+                  contents: result,
                 };
               } catch (error) {
                 console.error(`Error executing command ${commandKey}:`, error);
                 return { handled: true };
               }
             }
-            
+
             // By default (handled: false or undefined), return unhandled so agent module processes it
             return {
               handled: false,
-              contents: commandKey,
+              contents: commandKey + " => " + result,
             };
           },
         };

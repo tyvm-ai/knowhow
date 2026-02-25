@@ -7,6 +7,20 @@ import {
   CompletionResponse,
   EmbeddingOptions,
   EmbeddingResponse,
+  AudioTranscriptionOptions,
+  AudioTranscriptionResponse,
+  AudioGenerationOptions,
+  AudioGenerationResponse,
+  ImageGenerationOptions,
+  ImageGenerationResponse,
+  VideoGenerationOptions,
+  VideoGenerationResponse,
+  VideoStatusOptions,
+  VideoStatusResponse,
+  FileUploadOptions,
+  FileUploadResponse,
+  FileDownloadOptions,
+  FileDownloadResponse,
 } from "../clients";
 import { Config } from "../types";
 
@@ -200,6 +214,98 @@ export class KnowhowSimpleClient {
     return axios.get(`${this.baseUrl}/api/proxy/v1/models?type=all`, {
       headers: this.headers,
     });
+  }
+
+  async createAudioTranscription(options: AudioTranscriptionOptions) {
+    await this.checkJwt();
+    const formData = new FormData();
+    // options.file can be a Buffer, ReadStream, Blob, or File
+    if (Buffer.isBuffer(options.file)) {
+      formData.append("file", new Blob([options.file]), options["fileName"] || "audio.mp3");
+    } else {
+      formData.append("file", options.file);
+    }
+    if (options.model) formData.append("model", options.model);
+    if (options.language) formData.append("language", options.language);
+    if (options.prompt) formData.append("prompt", options.prompt);
+    if (options.response_format) formData.append("response_format", options.response_format);
+    if (options.temperature != null) formData.append("temperature", String(options.temperature));
+
+    return axios.post<AudioTranscriptionResponse>(
+      `${this.baseUrl}/api/proxy/v1/audio/transcriptions`,
+      formData,
+      { headers: { ...this.headers } }
+    );
+  }
+
+  async createAudioGeneration(options: AudioGenerationOptions) {
+    await this.checkJwt();
+    return axios.post<AudioGenerationResponse>(
+      `${this.baseUrl}/api/proxy/v1/audio/generations`,
+      options,
+      { headers: this.headers }
+    );
+  }
+
+  async createImageGeneration(options: ImageGenerationOptions) {
+    await this.checkJwt();
+    return axios.post<ImageGenerationResponse>(
+      `${this.baseUrl}/api/proxy/v1/images/generations`,
+      options,
+      { headers: this.headers }
+    );
+  }
+
+  async createVideoGeneration(options: VideoGenerationOptions) {
+    await this.checkJwt();
+    return axios.post<VideoGenerationResponse>(
+      `${this.baseUrl}/api/proxy/v1/videos/generations`,
+      options,
+      { headers: this.headers }
+    );
+  }
+
+  async getVideoStatus(options: VideoStatusOptions) {
+    await this.checkJwt();
+    const { jobId, ...rest } = options;
+    return axios.get<VideoStatusResponse>(
+      `${this.baseUrl}/api/proxy/v1/videos/${jobId}/status`,
+      { headers: this.headers, params: rest }
+    );
+  }
+
+  async downloadVideo(options: FileDownloadOptions) {
+    await this.checkJwt();
+    const { fileId } = options;
+    return axios.get<ArrayBuffer>(
+      `${this.baseUrl}/api/proxy/v1/videos/${fileId}/content`,
+      { headers: this.headers, responseType: "arraybuffer" }
+    );
+  }
+
+  async uploadFile(options: FileUploadOptions) {
+    await this.checkJwt();
+    // Send as JSON with base64-encoded data
+    const body = {
+      data: options.data.toString("base64"),
+      mimeType: options.mimeType,
+      fileName: options.fileName,
+      displayName: options.displayName,
+    };
+    return axios.post<FileUploadResponse>(
+      `${this.baseUrl}/api/proxy/v1/files`,
+      body,
+      { headers: this.headers }
+    );
+  }
+
+  async downloadFile(options: FileDownloadOptions) {
+    await this.checkJwt();
+    const { fileId } = options;
+    return axios.get<ArrayBuffer>(
+      `${this.baseUrl}/api/proxy/v1/files/${fileId}/content`,
+      { headers: this.headers, responseType: "arraybuffer" }
+    );
   }
 
   async createChatTask(request: CreateMessageTaskRequest) {

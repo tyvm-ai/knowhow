@@ -5,10 +5,8 @@ import Logger from "progress-estimator";
 import { DownloadInfo, KeyframeInfo, TranscriptChunk } from "./types";
 import { visionTool } from "../../agents/tools/visionTool";
 import { execAsync, fileExists, readFile, mkdir } from "../../utils";
-import OpenAI from "openai";
 import { Clients } from "../../clients";
 import { Models } from "../../types";
-import { openai } from "../../ai";
 
 const logger = Logger();
 
@@ -132,7 +130,6 @@ export class DownloaderService {
     }
 
     const allTranscripts = [];
-    const openAi = openai();
     for (const file of files) {
       const chunkName = path.parse(file).name;
       const chunkTranscriptPath = path.join(
@@ -159,9 +156,11 @@ export class DownloaderService {
       }
 
       console.log("Transcribing", file);
-      const transcript = await openAi.audio.transcriptions
-        .create({
-          file: fs.createReadStream(file),
+      const fileBuffer = fs.readFileSync(file);
+      const transcript = await this.clients
+        .createAudioTranscription("openai", {
+          file: fileBuffer,
+          fileName: path.basename(file),
           model: "whisper-1",
         })
         .catch((e) => {

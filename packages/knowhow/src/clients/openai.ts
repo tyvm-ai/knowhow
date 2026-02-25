@@ -1,11 +1,26 @@
 import OpenAI from "openai";
 import { getConfigSync } from "../config";
+import { OpenAiTextPricing } from "./pricing";
 import {
   GenericClient,
   CompletionOptions,
   CompletionResponse,
   EmbeddingOptions,
   EmbeddingResponse,
+  AudioTranscriptionOptions,
+  AudioTranscriptionResponse,
+  AudioGenerationOptions,
+  AudioGenerationResponse,
+  ImageGenerationOptions,
+  ImageGenerationResponse,
+  VideoGenerationOptions,
+  VideoGenerationResponse,
+  VideoStatusOptions,
+  VideoStatusResponse,
+  FileUploadOptions,
+  FileUploadResponse,
+  FileDownloadOptions,
+  FileDownloadResponse,
 } from "./types";
 import {
   ChatCompletionMessageParam,
@@ -119,150 +134,7 @@ export class GenericOpenAiClient implements GenericClient {
   }
 
   pricesPerMillion() {
-    return {
-      [Models.openai.GPT_4o]: {
-        input: 2.5,
-        cached_input: 1.25,
-        output: 10.0,
-      },
-      [Models.openai.GPT_4o_Mini]: {
-        input: 0.15,
-        cached_input: 0.075,
-        output: 0.6,
-      },
-      [Models.openai.o1]: {
-        input: 15.0,
-        cached_input: 7.5,
-        output: 60.0,
-      },
-      [Models.openai.o1_Mini]: {
-        input: 1.1,
-        cached_input: 0.55,
-        output: 4.4,
-      },
-      [Models.openai.o3_Mini]: {
-        input: 1.1,
-        cached_input: 0.55,
-        output: 4.4,
-      },
-      [Models.openai.GPT_41]: {
-        input: 2.0,
-        cached_input: 0.5,
-        output: 8.0,
-      },
-      [Models.openai.GPT_41_Mini]: {
-        input: 0.4,
-        cached_input: 0.1,
-        output: 1.6,
-      },
-      [Models.openai.GPT_41_Nano]: {
-        input: 0.1,
-        cached_input: 0.025,
-        output: 0.4,
-      },
-      [Models.openai.GPT_45]: {
-        input: 75.0,
-        cached_input: 37.5,
-        output: 150.0,
-      },
-      [Models.openai.GPT_4o_Audio]: {
-        input: 2.5,
-        cached_input: 0,
-        output: 10.0,
-      },
-      [Models.openai.GPT_4o_Realtime]: {
-        input: 5.0,
-        cached_input: 2.5,
-        output: 20.0,
-      },
-      [Models.openai.GPT_4o_Mini_Audio]: {
-        input: 0.15,
-        cached_input: 0,
-        output: 0.6,
-      },
-      [Models.openai.GPT_4o_Mini_Realtime]: {
-        input: 0.6,
-        cached_input: 0.3,
-        output: 2.4,
-      },
-      [Models.openai.o1_Pro]: {
-        input: 150.0,
-        cached_input: 0,
-        output: 600.0,
-      },
-      [Models.openai.o3]: {
-        input: 2.0,
-        cached_input: 0.5,
-        output: 8.0,
-      },
-      [Models.openai.o4_Mini]: {
-        input: 1.1,
-        cached_input: 0.275,
-        output: 4.4,
-      },
-      [Models.openai.GPT_4o_Mini_Search]: {
-        input: 0.15,
-        cached_input: 0,
-        output: 0.6,
-      },
-      [Models.openai.GPT_4o_Search]: {
-        input: 2.5,
-        cached_input: 0,
-        output: 10.0,
-      },
-      [Models.openai.GPT_5_2]: {
-        input: 1.75,
-        cached_input: 0.175,
-        output: 14,
-      },
-      [Models.openai.GPT_5_1]: {
-        input: 1.25,
-        cached_input: 0.125,
-        output: 10,
-      },
-      [Models.openai.GPT_5]: {
-        input: 1.25,
-        cached_input: 0.125,
-        output: 10,
-      },
-      [Models.openai.GPT_5_Mini]: {
-        input: 0.25,
-        cached_input: 0.025,
-        output: 2,
-      },
-      [Models.openai.GPT_5_Nano]: {
-        input: 0.05,
-        cached_input: 0.005,
-        output: 0.4,
-      },
-      /*
-       *[Models.openai.Computer_Use]: {
-       *  input: 3.0,
-       *  cached_input: 0,
-       *  output: 12.0,
-       *},
-       *[Models.openai.Codex_Mini]: {
-       *  input: 1.5,
-       *  cached_input: 0.375,
-       *  output: 6.0,
-       *},
-       */
-      [EmbeddingModels.openai.EmbeddingAda2]: {
-        input: 0.1,
-        cached_input: 0,
-        output: 0,
-      },
-      [EmbeddingModels.openai.EmbeddingLarge3]: {
-        input: 0.13,
-        cached_input: 0,
-        output: 0,
-      },
-      [EmbeddingModels.openai.EmbeddingSmall3]: {
-        input: 0.02,
-        cached_input: 0,
-        output: 0,
-      },
-    };
+    return OpenAiTextPricing;
   }
 
   calculateCost(
@@ -271,7 +143,7 @@ export class GenericOpenAiClient implements GenericClient {
       | OpenAI.ChatCompletion["usage"]
       | OpenAI.CreateEmbeddingResponse["usage"]
   ): number | undefined {
-    const pricing = this.pricesPerMillion()[model];
+    const pricing = this.pricesPerMillion()[model] || OpenAiTextPricing[model];
 
     if (!pricing) {
       return undefined;
@@ -317,5 +189,237 @@ export class GenericOpenAiClient implements GenericClient {
       usage: openAiEmbedding.usage,
       usd_cost: this.calculateCost(options.model, openAiEmbedding.usage),
     };
+  }
+
+  async createAudioTranscription(
+    options: AudioTranscriptionOptions
+  ): Promise<AudioTranscriptionResponse> {
+    const response = await this.client.audio.transcriptions.create({
+      file: options.file,
+      model: options.model || "whisper-1",
+      language: options.language,
+      prompt: options.prompt,
+      response_format: options.response_format || "verbose_json",
+      temperature: options.temperature,
+    });
+
+    // Calculate cost: $0.006 per minute for Whisper
+    const duration = typeof response === "object" && "duration" in response && typeof response.duration === "number"
+      ? response.duration 
+      : undefined;
+    const usdCost = duration ? (duration / 60) * 0.006 : undefined;
+
+    if (typeof response === "string") {
+      return {
+        text: response,
+        usd_cost: usdCost,
+      };
+    }
+
+    // Cast to any to access verbose response properties
+    const verboseResponse = response as any;
+
+    return {
+      text: response.text,
+      language: verboseResponse.language,
+      duration: verboseResponse.duration,
+      segments: verboseResponse.segments,
+      usd_cost: usdCost,
+    };
+  }
+
+  async createAudioGeneration(
+    options: AudioGenerationOptions
+  ): Promise<AudioGenerationResponse> {
+    const response = await this.client.audio.speech.create({
+      model: options.model,
+      input: options.input,
+      voice: options.voice as any,
+      response_format: options.response_format || "mp3",
+      speed: options.speed,
+    });
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    // Calculate cost based on model and character count
+    // TTS: $15.00 / 1M characters, TTS HD: $30.00 / 1M characters
+    const isHD = options.model.includes("hd");
+    const pricePerMillion = isHD ? 30.0 : 15.0;
+    const usdCost = (options.input.length * pricePerMillion) / 1e6;
+
+    return {
+      audio: buffer,
+      format: options.response_format || "mp3",
+      usd_cost: usdCost,
+    };
+  }
+
+  async createImageGeneration(
+    options: ImageGenerationOptions
+  ): Promise<ImageGenerationResponse> {
+    const response = await this.client.images.generate({
+      model: options.model,
+      prompt: options.prompt,
+      n: options.n,
+      size: options.size,
+      quality: options.quality,
+      style: options.style,
+      response_format: options.response_format,
+      user: options.user,
+    });
+
+    // Cost calculation varies by model and settings
+    // DALL-E 3: $0.040-$0.120 per image depending on quality/size
+    // DALL-E 2: $0.016-$0.020 per image
+    const estimatedCostPerImage = options.quality === "hd" ? 0.08 : 0.04;
+    const usdCost = (options.n || 1) * estimatedCostPerImage;
+
+    return { ...response, usd_cost: usdCost };
+  }
+
+  async createVideoGeneration(
+    options: VideoGenerationOptions
+  ): Promise<VideoGenerationResponse> {
+    const apiKey = this.apiKey || process.env.OPENAI_KEY;
+    if (!apiKey) {
+      throw new Error("OpenAI API key is required for video generation");
+    }
+
+    const model = options.model || "sora-2";
+
+    // Step 1: Create the video job
+    const createPayload: any = {
+      model,
+      prompt: options.prompt,
+    };
+
+    if (options.duration) {
+      // OpenAI API requires seconds as a string: '4', '8', or '12'
+      // Round to nearest valid value
+      const validSeconds = [4, 8, 12];
+      const duration = options.duration as number;
+      const nearest = validSeconds.reduce((prev, curr) =>
+        Math.abs(curr - duration) < Math.abs(prev - duration) ? curr : prev
+      );
+      createPayload.seconds = String(nearest);
+    }
+    if (options.resolution) {
+      createPayload.size = options.resolution;
+    }
+    if (options.n) {
+      createPayload.n = options.n;
+    }
+
+    const createResponse = await fetch("https://api.openai.com/v1/videos", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(createPayload),
+    });
+
+    if (!createResponse.ok) {
+      const errorText = await createResponse.text();
+      throw new Error(
+        `OpenAI video generation failed: ${createResponse.status} ${errorText}`
+      );
+    }
+
+    const createData = await createResponse.json();
+    const videoId = createData.id;
+
+    if (!videoId) {
+      throw new Error("No video ID returned from OpenAI video generation");
+    }
+
+    // Return immediately with the jobId – do NOT poll here.
+    // Use getVideoStatus() to poll and downloadVideo() to fetch the result.
+    return {
+      created: createData.created_at || Math.floor(Date.now() / 1000),
+      data: [],
+      jobId: videoId,
+      usd_cost: undefined,
+    };
+  }
+
+  async getVideoStatus(options: VideoStatusOptions): Promise<VideoStatusResponse> {
+    const apiKey = this.apiKey || process.env.OPENAI_KEY;
+    if (!apiKey) throw new Error("OpenAI API key not set");
+    const response = await fetch(`https://api.openai.com/v1/videos/${options.jobId}`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenAI getVideoStatus failed: ${response.status} ${errorText}`);
+    }
+    const data = await response.json();
+    let status: VideoStatusResponse["status"] = "in_progress";
+    if (data.status === "completed") status = "completed";
+    else if (data.status === "failed") status = "failed";
+    else if (data.status === "queued") status = "queued";
+    else if (data.status === "in_progress") status = "in_progress";
+    return {
+      jobId: options.jobId,
+      status,
+      data: data.result?.url ? [{ url: data.result.url }] : undefined,
+      error: data.error?.message,
+    };
+  }
+
+  async downloadVideo(options: FileDownloadOptions): Promise<FileDownloadResponse> {
+    const apiKey = this.apiKey || process.env.OPENAI_KEY;
+    if (!apiKey) throw new Error("OpenAI API key not set");
+    const fileId = options.fileId;
+    if (!fileId) throw new Error("downloadVideo requires fileId (the jobId)");
+    const response = await fetch(`https://api.openai.com/v1/videos/${fileId}/content`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenAI downloadVideo failed: ${response.status} ${errorText}`);
+    }
+    const mimeType = response.headers.get("content-type") || "video/mp4";
+    return { data: Buffer.from(await response.arrayBuffer()), mimeType };
+  }
+
+  async uploadFile(options: FileUploadOptions): Promise<FileUploadResponse> {
+    const apiKey = this.apiKey || process.env.OPENAI_KEY;
+    if (!apiKey) throw new Error("OpenAI API key not set");
+    const formData = new FormData();
+    formData.append("purpose", "assistants");
+    const blob = new Blob([options.data], { type: options.mimeType || "application/octet-stream" });
+    formData.append("file", blob, options.fileName || "upload");
+    const response = await fetch("https://api.openai.com/v1/files", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: formData,
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenAI uploadFile failed: ${response.status} ${errorText}`);
+    }
+    const data = await response.json();
+    return { fileId: data.id, uri: data.uri };
+  }
+
+  async downloadFile(options: FileDownloadOptions): Promise<FileDownloadResponse> {
+    const apiKey = this.apiKey || process.env.OPENAI_KEY;
+    if (!apiKey) throw new Error("OpenAI API key not set");
+    const fileId = options.fileId;
+    if (!fileId) throw new Error("downloadFile requires fileId");
+    const response = await fetch(`https://api.openai.com/v1/files/${fileId}/content`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenAI downloadFile failed: ${response.status} ${errorText}`);
+    }
+    const mimeType = response.headers.get("content-type") || undefined;
+    const data = Buffer.from(await response.arrayBuffer());
+    return { data, mimeType };
   }
 }

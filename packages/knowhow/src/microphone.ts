@@ -77,7 +77,7 @@ export async function recordAudio() {
   const filePath = "/tmp/knowhow.wav";
   const audioFile = fs.createWriteStream(filePath, { encoding: "binary" });
   const defaultMic = getDefaultMic();
-  const hasSox = await execAsync("which sox");
+  const hasSox = await execAsync("which sox").catch(() => false);
 
   if (!hasSox && !defaultMic) {
     console.error("Sox is required to record audio");

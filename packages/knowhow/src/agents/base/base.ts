@@ -758,9 +758,7 @@ export abstract class BaseAgent implements IAgent {
   logStatus() {
     const statusMessage = this.getStatusMessage();
     console.log(
-      `\n● ${this.name} status: $${this.getTotalCostUsd().toPrecision(
-        3
-      )}\n${statusMessage}`
+      `\n● ${this.name} status: ${statusMessage}`
     );
   }
 

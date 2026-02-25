@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { wait } from "../utils";
+import { AnthropicTextPricing } from "./pricing";
 import { Models } from "../types";
 import {
   GenericClient,
@@ -9,6 +10,14 @@ import {
   Message,
   EmbeddingOptions,
   EmbeddingResponse,
+  AudioTranscriptionOptions,
+  AudioTranscriptionResponse,
+  AudioGenerationOptions,
+  AudioGenerationResponse,
+  ImageGenerationOptions,
+  ImageGenerationResponse,
+  VideoGenerationOptions,
+  VideoGenerationResponse,
 } from "./types";
 
 type MessageParam = Anthropic.MessageParam;
@@ -340,7 +349,7 @@ export class GenericAnthropicClient implements GenericClient {
               },
             ]
           : undefined,
-        max_tokens: options.max_tokens || 4096,
+        max_tokens: options.max_tokens || 8000,
         ...(tools.length && {
           tool_choice: { type: "auto" },
           tools,
@@ -398,98 +407,14 @@ export class GenericAnthropicClient implements GenericClient {
   }
 
   pricesPerMillion() {
-    return {
-      [Models.anthropic.Opus4_6]: {
-        input: 5.0,
-        input_gt_200k: 10.0,
-        cache_write: 6.25,
-        cache_hit: 0.5,
-        output: 25.0,
-        output_gt_200k: 37.5,
-      },
-      [Models.anthropic.Sonnet4_6]: {
-        input: 3.0,
-        input_gt_200k: 6.0,
-        cache_write: 3.75,
-        cache_hit: 0.3,
-        output: 15.0,
-        output_gt_200k: 22.5,
-      },
-      [Models.anthropic.Opus4_5]: {
-        input: 5.0,
-        cache_write: 6.25,
-        cache_hit: 0.5,
-        output: 25.0,
-      },
-      [Models.anthropic.Opus4_1]: {
-        input: 15.0,
-        cache_write: 18.75,
-        cache_hit: 1.5,
-        output: 75.0,
-      },
-      [Models.anthropic.Opus4]: {
-        input: 15.0,
-        cache_write: 18.75,
-        cache_hit: 1.5,
-        output: 75.0,
-      },
-      [Models.anthropic.Sonnet4]: {
-        input: 3.0,
-        input_gt_200k: 6.0,
-        cache_write: 3.75,
-        cache_hit: 0.3,
-        output: 15.0,
-        output_gt_200k: 22.5,
-      },
-      [Models.anthropic.Sonnet4_5]: {
-        input: 3.0,
-        input_gt_200k: 6.0,
-        cache_write: 3.75,
-        cache_hit: 0.3,
-        output: 15.0,
-        output_gt_200k: 22.5,
-      },
-      [Models.anthropic.Haiku4_5]: {
-        input: 1,
-        cache_write: 1.25,
-        cache_hit: 0.1,
-        output: 5,
-      },
-      [Models.anthropic.Sonnet3_7]: {
-        input: 3.0,
-        cache_write: 3.75,
-        cache_hit: 0.3,
-        output: 15.0,
-      },
-      [Models.anthropic.Sonnet3_5]: {
-        input: 3.0,
-        cache_write: 3.75,
-        cache_hit: 0.3,
-        output: 15.0,
-      },
-      [Models.anthropic.Haiku3_5]: {
-        input: 0.8,
-        cache_write: 1.0,
-        cache_hit: 0.08,
-        output: 4.0,
-      },
-      [Models.anthropic.Opus3]: {
-        input: 15.0,
-        cache_write: 18.75,
-        cache_hit: 1.5,
-        output: 75.0,
-      },
-      [Models.anthropic.Haiku3]: {
-        input: 0.25,
-        cache_write: 0.3125,
-        cache_hit: 0.025,
-        output: 1.25,
-      },
-    };
+    return AnthropicTextPricing;
   }
 
   calculateCost(model: string, usage: Usage): number | undefined {
-    const p = this.pricesPerMillion()[model];
+    const rawP = this.pricesPerMillion()[model];
+    // Fall back to pricing file for unknown/newer models
+    const fallback = AnthropicTextPricing[model as keyof typeof AnthropicTextPricing];
+    const p: any = rawP || fallback || undefined;
     if (!p) return undefined;
 
     const inputTokens = usage.input_tokens ?? 0;
@@ -531,5 +456,31 @@ export class GenericAnthropicClient implements GenericClient {
 
   async createEmbedding(options: EmbeddingOptions): Promise<EmbeddingResponse> {
     throw new Error("Provider does not support embeddings");
+  }
+
+  async createAudioTranscription(
+    options: AudioTranscriptionOptions
+  ): Promise<AudioTranscriptionResponse> {
+    throw new Error("Anthropic does not support audio transcription");
+  }
+
+  async createAudioGeneration(
+    options: AudioGenerationOptions
+  ): Promise<AudioGenerationResponse> {
+    throw new Error("Anthropic does not support audio generation");
+  }
+
+  async createImageGeneration(
+    options: ImageGenerationOptions
+  ): Promise<ImageGenerationResponse> {
+    throw new Error("Anthropic does not support image generation");
+  }
+
+  async createVideoGeneration(
+    options: VideoGenerationOptions
+  ): Promise<VideoGenerationResponse> {
+    throw new Error(
+      "Video generation is not supported by the Anthropic provider."
+    );
   }
 }
