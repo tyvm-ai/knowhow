@@ -141,6 +141,7 @@ export type Language = {
     events: string[];
     sources: IDatasource[];
     context?: string;
+    handled?: boolean;
   };
 };
 

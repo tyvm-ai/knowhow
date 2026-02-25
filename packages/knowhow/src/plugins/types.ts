@@ -11,6 +11,7 @@ export interface PluginMeta {
 }
 
 export interface Plugin {
+  callMany(userInput?: string): Promise<string>;
   call(userInput?: string): Promise<string>;
   embed(userInput?: string): Promise<MinimalEmbedding[]>;
   enable(): void;

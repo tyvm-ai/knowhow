@@ -32,6 +32,7 @@ const defaultConfig = {
       "url",
       "tmux",
       "agents-md",
+      "exec",
     ],
     disabled: [],
   },
@@ -175,6 +176,7 @@ export async function getLanguageConfig() {
     );
     return language as Language;
   } catch (e) {
+    console.error("Error reading .knowhow/language.json:", e);
     return {} as Language;
   }
 }
@@ -223,13 +225,13 @@ export function getConfigSync() {
     const config = JSON.parse(
       fs.readFileSync(".knowhow/knowhow.json", "utf8").toString()
     );
-    
+
     // Apply migrations synchronously
     const { config: migratedConfig } = applyMigrations(config);
-    
+
     // Note: We don't save here in sync mode to avoid blocking operations
     // The async getConfig() will handle saving on next call
-    
+
     return migratedConfig as Config;
   } catch (e) {
     return {} as Config;
@@ -252,15 +254,31 @@ export async function getConfig() {
   try {
     const config = await readFile(".knowhow/knowhow.json", "utf8");
     const parsedConfig = JSON.parse(config);
-    
+
     // Apply migrations
     const { modified, config: migratedConfig } = applyMigrations(parsedConfig);
-    
+
+    // After migrations, check if any plugins from defaultConfig are missing
+    let configModified = modified;
+    if (migratedConfig.plugins) {
+      const enabled = migratedConfig.plugins.enabled || [];
+      const disabled = migratedConfig.plugins.disabled || [];
+      const missingPlugins = defaultConfig.plugins.enabled.filter(
+        (plugin) => !enabled.includes(plugin) && !disabled.includes(plugin)
+      );
+      
+      if (missingPlugins.length > 0) {
+        console.log(`Adding missing plugins to enabled list: ${missingPlugins.join(", ")}`);
+        migratedConfig.plugins.enabled = [...enabled, ...missingPlugins];
+        configModified = true;
+      }
+    }
+
     // If migrations were applied, save the updated config
-    if (modified) {
+    if (configModified) {
       await updateConfig(migratedConfig);
     }
-    
+
     return migratedConfig as Config;
   } catch (error) {
     console.error("Error reading .knowhow/knowhow.json:", error);

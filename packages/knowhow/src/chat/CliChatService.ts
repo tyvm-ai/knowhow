@@ -5,6 +5,7 @@
 import {
   ChatService,
   ChatContext,
+  CommandResult,
   ChatCommand,
   ChatMode,
   InputMethod,
@@ -144,6 +145,37 @@ export class CliChatService implements ChatService {
     return this.commands;
   }
 
+  /**
+   * Get commands available in the current mode
+   */
+  getCommandsForMode(mode: string): ChatCommand[] {
+    return this.commands.filter(
+      (cmd) => !cmd.modes || cmd.modes.length === 0 || cmd.modes.includes(mode)
+    );
+  }
+
+  getCommandsForActiveModes(): ChatCommand[] {
+    const activeModes = this.modes
+      .filter((mode) => mode.active)
+      .map((mode) => mode.name);
+    return this.commands.filter(
+      (cmd) =>
+        !cmd.modes ||
+        cmd.modes.length === 0 ||
+        cmd.modes.some((mode) => activeModes.includes(mode))
+    );
+  }
+
+  setMode(mode: string): void {
+    this.modes.forEach((m) => {
+      if (m.name !== "default" && m.name !== mode) {
+        m.active = false;
+      } else if (m.name === mode) {
+        m.active = true;
+      }
+    });
+  }
+
   getModes(): ChatMode[] {
     return this.modes;
   }
@@ -154,16 +186,28 @@ export class CliChatService implements ChatService {
 
   async processInput(input: string): Promise<boolean> {
     // Note: Input is added to history via setOnNewHistoryEntry callback when user presses Enter
-    // Note: this actually sends all commands to modules, first to service takes it
+    // Note: this actually sends all commands to modules if not handled by a command
 
     // Check if input is a command
     if (input.startsWith("/")) {
       const [commandName, ...args] = input.slice(1).split(" ");
-      const command = this.commands.find((cmd) => cmd.name === commandName);
+      const availableCommands = this.getCommandsForActiveModes();
+      const command = availableCommands.find((cmd) => cmd.name === commandName);
 
       if (command) {
-        await command.handler(args);
-        return true;
+        const result = await command.handler(args);
+
+        // If handler returns a CommandResult and it's not handled, pass to modules
+        if (result && typeof result === "object" && "handled" in result) {
+          if (result.handled) {
+            return true;
+          }
+          // Not handled, use contents if provided or original input
+          input = result.contents || input;
+        } else {
+          // Old-style void handler, consider it handled
+          return true;
+        }
       }
     }
 
@@ -198,7 +242,7 @@ export class CliChatService implements ChatService {
 
   async getInput(
     prompt: string = "> ",
-    options: string[] = [],
+    options: string[] = []
   ): Promise<string> {
     if (this.context.inputMethod) {
       return await this.context.inputMethod.getInput(prompt);
@@ -264,8 +308,9 @@ export class CliChatService implements ChatService {
 
   async startChatLoop(): Promise<void> {
     // Display available commands like the original
-    const commandNames = this.commands.map((cmd) => `/${cmd.name}`);
-    console.log("Commands: ", commandNames.join(", "));
+    const availableCommands = this.getCommandsForActiveModes();
+    const commandNames = availableCommands.map((cmd) => `/${cmd.name}`);
+    console.log("Commands:", commandNames.join(", "));
 
     while (true) {
       const promptText =
@@ -274,10 +319,7 @@ export class CliChatService implements ChatService {
           : `\nAsk knowhow: `;
       try {
         // Pass command names as autocomplete options
-        const input = await this.getInput(
-          promptText,
-          commandNames,
-        );
+        const input = await this.getInput(promptText, commandNames);
 
         if (input.trim() === "") {
           continue;

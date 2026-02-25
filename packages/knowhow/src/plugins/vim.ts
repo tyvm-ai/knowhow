@@ -73,7 +73,20 @@ export class VimPlugin extends PluginBase {
   async call() {
     const vimFiles = await this.getVimFiles();
     const fileContents = await Promise.all(
-      vimFiles.map((f) => this.getFileContents(f))
+      vimFiles.map(async (f) => {
+        const loaded = await this.getFileContents(f);
+
+        const preview =
+          loaded.content.length > 1000
+            ? loaded.content.slice(0, 1000) +
+              "... file trimmed, read file for full content"
+            : loaded.content;
+
+        return {
+          sourceFile: loaded.filePath,
+          content: loaded.content.slice(0, 1000),
+        };
+      })
     );
     if (fileContents.length === 0) {
       return "VIM PLUGIN: No files open in vim";
