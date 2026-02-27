@@ -7,7 +7,7 @@ import {
 } from "../embeddings";
 
 import { PluginBase, PluginMeta } from "./PluginBase";
-import { embed as embedFunction } from "../index";
+import { spawn } from "child_process";
 
 export class EmbeddingPlugin extends PluginBase {
   static readonly meta: PluginMeta = {
@@ -30,17 +30,19 @@ export class EmbeddingPlugin extends PluginBase {
   }
 
   /**
-   * Handle file:post-edit events by triggering embedding
+   * Handle file:post-edit events by triggering embedding in a separate process
    * @param payload The event payload containing filePath
    * @returns Status message about embedding operation
    */
   async handleFilePostEdit(payload: { filePath: string }): Promise<string> {
-    try {
-      await embedFunction();
-      return "Embedding completed successfully";
-    } catch (error) {
-      return `Embedding failed: ${error.message}`;
-    }
+    const child = spawn("knowhow", ["embed"], {
+      detached: true,
+      stdio: "ignore",
+      cwd: process.cwd(),
+    });
+    child.unref();
+    console.log(`EMBEDDING PLUGIN: Started 'knowhow embed' in background (pid: ${child.pid})`);
+    return "Embedding started in background process";
   }
 
   async call(userPrompt: string): Promise<string> {
