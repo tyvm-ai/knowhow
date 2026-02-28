@@ -194,8 +194,15 @@ export class GenericOpenAiClient implements GenericClient {
   async createAudioTranscription(
     options: AudioTranscriptionOptions
   ): Promise<AudioTranscriptionResponse> {
+    // Convert Buffer to File if needed
+    let file = options.file;
+    if (Buffer.isBuffer(options.file)) {
+      const fileName = options.fileName || "audio.mp3";
+      file = await OpenAI.toFile(options.file, fileName);
+    }
+
     const response = await this.client.audio.transcriptions.create({
-      file: options.file,
+      file: file,
       model: options.model || "whisper-1",
       language: options.language,
       prompt: options.prompt,

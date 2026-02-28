@@ -27,7 +27,15 @@ export { cosineSimilarity };
 
 export async function loadEmbedding(filePath: string) {
   if (await fileExists(filePath)) {
-    return JSON.parse(await readFile(filePath, "utf8")) as Embeddable[];
+    try {
+      const parsed = JSON.parse(
+        await readFile(filePath, "utf8")
+      ) as Embeddable[];
+      return parsed;
+    } catch (e) {
+      console.error("Error loading embedding file", filePath, e);
+      return [];
+    }
   }
   return [];
 }
