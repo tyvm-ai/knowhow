@@ -255,34 +255,39 @@ export async function getConfig() {
     const config = await readFile(".knowhow/knowhow.json", "utf8");
     const parsedConfig = JSON.parse(config);
 
-    // Apply migrations
-    const { modified, config: migratedConfig } = applyMigrations(parsedConfig);
-
-    // After migrations, check if any plugins from defaultConfig are missing
-    let configModified = modified;
-    if (migratedConfig.plugins) {
-      const enabled = migratedConfig.plugins.enabled || [];
-      const disabled = migratedConfig.plugins.disabled || [];
-      const missingPlugins = defaultConfig.plugins.enabled.filter(
-        (plugin) => !enabled.includes(plugin) && !disabled.includes(plugin)
-      );
-      
-      if (missingPlugins.length > 0) {
-        console.log(`Adding missing plugins to enabled list: ${missingPlugins.join(", ")}`);
-        migratedConfig.plugins.enabled = [...enabled, ...missingPlugins];
-        configModified = true;
-      }
-    }
-
-    // If migrations were applied, save the updated config
-    if (configModified) {
-      await updateConfig(migratedConfig);
-    }
-
-    return migratedConfig as Config;
+    return parsedConfig as Config;
   } catch (error) {
     console.error("Error reading .knowhow/knowhow.json:", error);
     throw new Error("Failed to load KnowHow configuration.");
+  }
+}
+
+export async function migrateConfig() {
+  // Apply migrations, used to keep config structure up to date.
+  const parsedConfig = await getConfig();
+  const { modified, config: migratedConfig } = applyMigrations(parsedConfig);
+
+  // After migrations, check if any plugins from defaultConfig are missing
+  let configModified = modified;
+  if (migratedConfig.plugins) {
+    const enabled = migratedConfig.plugins.enabled || [];
+    const disabled = migratedConfig.plugins.disabled || [];
+    const missingPlugins = defaultConfig.plugins.enabled.filter(
+      (plugin) => !enabled.includes(plugin) && !disabled.includes(plugin)
+    );
+
+    if (missingPlugins.length > 0) {
+      console.log(
+        `Adding missing plugins to enabled list: ${missingPlugins.join(", ")}`
+      );
+      migratedConfig.plugins.enabled = [...enabled, ...missingPlugins];
+      configModified = true;
+    }
+  }
+
+  // If migrations were applied, save the updated config
+  if (configModified) {
+    await updateConfig(migratedConfig);
   }
 }
 

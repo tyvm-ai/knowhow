@@ -7,7 +7,7 @@ import { Command } from "commander";
 import { execSync } from "child_process";
 import { version } from "../package.json";
 import { generate, embed, upload } from "./index";
-import { init } from "./config";
+import { init, migrateConfig } from "./config";
 
 import { download, purge } from ".";
 import { includedTools } from "./agents/tools/list";
@@ -37,6 +37,8 @@ import { SetupModule } from "./chat/modules/SetupModule";
 import { CliChatService } from "./chat/CliChatService";
 
 async function setupServices() {
+  await migrateConfig();
+
   const { Agents, Mcp, Clients, Tools: OldTools } = services();
   const Tools = new LazyToolsService();
 
