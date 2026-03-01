@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import {
   GenericClient,
   Message,
+  MessageContent,
   OutputMessage,
   Tool,
   ToolCall,
@@ -318,7 +319,7 @@ export abstract class BaseAgent implements IAgent {
     return this.summaries;
   }
 
-  abstract getInitialMessages(userInput: string): Promise<Message[]>;
+  abstract getInitialMessages(userInput: string | MessageContent[]): Promise<Message[]>;
 
   async processToolMessages(toolCall: ToolCall) {
     this.agentEvents.emit(this.eventTypes.toolCall, { toolCall });
@@ -479,7 +480,7 @@ export abstract class BaseAgent implements IAgent {
     } as Message);
   }
 
-  async call(userInput: string, _messages?: Message[]) {
+  async call(userInput: string | MessageContent[], _messages?: Message[]) {
     if (this.status === this.eventTypes.notStarted) {
       this.status = this.eventTypes.inProgress;
     }

@@ -243,19 +243,29 @@ export class GenericAnthropicClient implements GenericClient {
                 if (item.type === "image_url") {
                   const url = item.image_url.url;
                   const isDataUrl = url.startsWith("data:");
-                  const base64Data = isDataUrl ? url.split(",")[1] : url;
-                  const mediaType = isDataUrl
-                    ? url.match(/data:([^;]+);/)?.[1] || "image/jpeg"
-                    : "image/jpeg";
-
-                  return {
-                    type: "image" as const,
-                    source: {
-                      type: "base64" as const,
-                      media_type: mediaType as any,
-                      data: base64Data,
-                    },
-                  };
+                  const isHttpUrl = url.startsWith("http");
+                  if (isHttpUrl) {
+                    return {
+                      type: "image" as const,
+                      source: {
+                        type: "url" as const,
+                        url,
+                      },
+                    } as Anthropic.ImageBlockParam;
+                  } else {
+                    const base64Data = isDataUrl ? url.split(",")[1] : url;
+                    const mediaType = isDataUrl
+                      ? url.match(/data:([^;]+);/)?.[1] || "image/jpeg"
+                      : "image/jpeg";
+                    return {
+                      type: "image" as const,
+                      source: {
+                        type: "base64" as const,
+                        media_type: mediaType as any,
+                        data: base64Data,
+                      },
+                    };
+                  }
                 } else if (item.type === "text") {
                   return { type: "text" as const, text: item.text };
                 }
@@ -308,15 +318,24 @@ export class GenericAnthropicClient implements GenericClient {
       }
       if (typeof e === "object" && e.type === "image_url") {
         const isUrl = e.image_url.url.startsWith("http");
-        return {
-          type: "image",
-          source: {
-            data: isUrl ? e.image_url.url : undefined,
-            media_type: "image/jpeg",
-            type: isUrl ? ("url" as const) : ("base64" as const),
-            url: isUrl ? e.image_url.url : undefined,
-          },
-        };
+        if (isUrl) {
+          return {
+            type: "image",
+            source: {
+              type: "url" as const,
+              url: e.image_url.url,
+            },
+          } as Anthropic.ContentBlockParam;
+        } else {
+          return {
+            type: "image",
+            source: {
+              type: "base64" as const,
+              media_type: "image/jpeg",
+              data: e.image_url.url,
+            },
+          } as Anthropic.ContentBlockParam;
+        }
       }
     };
 

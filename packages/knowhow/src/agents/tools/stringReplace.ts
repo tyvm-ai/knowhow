@@ -1,6 +1,5 @@
 import * as fs from "fs";
-import { embed } from "../../";
-import { lintFile } from ".";
+import { services, ToolsService } from "../../services";
 import { fileExists } from "../../utils";
 
 export async function stringReplace(
@@ -8,6 +7,12 @@ export async function stringReplace(
   replaceString: string,
   filePaths: string[]
 ): Promise<string> {
+  // Get context from bound ToolsService
+  const toolService = (
+    this instanceof ToolsService ? this : services().Tools
+  ) as ToolsService;
+  const context = toolService.getContext();
+
   if (
     !findString ||
     replaceString === undefined ||
@@ -41,6 +46,20 @@ export async function stringReplace(
         continue;
       }
 
+      // Emit pre-edit blocking event
+      const eventResults: any[] = [];
+      if (context.Events) {
+        eventResults.push(
+          ...(await context.Events.emitBlocking("file:pre-edit", {
+            filePath,
+            operation: "stringReplace",
+            findString,
+            replaceString,
+            originalContent,
+          }))
+        );
+      }
+
       // Perform the replacement
       const newContent = content.replace(
         new RegExp(findString.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"),
@@ -53,18 +72,29 @@ export async function stringReplace(
       totalReplacements += matches;
       results.push(`✅ Replaced ${matches} occurrence(s) in: ${filePath}`);
 
-      let lintResult = "";
-      try {
-        lintResult = await lintFile(filePath);
-        if (lintResult) {
-          results.push(`$Linting Result:\n" + ${lintResult}`);
-        }
-      } catch (lintError: any) {
-        console.warn("Linting failed after patching:", lintError);
-        lintResult = `Linting after patch failed: ${lintError.message}`;
+      // Emit post-edit blocking event to get event results
+      if (context.Events) {
+        eventResults.push(
+          ...(await context.Events.emitBlocking("file:post-edit", {
+            filePath,
+            operation: "stringReplace",
+            findString,
+            replaceString,
+            originalContent,
+            updatedContent: newContent,
+          }))
+        );
       }
 
-      await embed();
+      // Format event results if any
+      if (eventResults && eventResults.length > 0) {
+        const eventResultsText = eventResults
+          .filter((r) => r && typeof r === "string" && r.trim())
+          .join("\n");
+        if (eventResultsText) {
+          results.push(eventResultsText);
+        }
+      }
     } catch (error) {
       results.push(`❌ Error processing ${filePath}: ${error.message}`);
     }
