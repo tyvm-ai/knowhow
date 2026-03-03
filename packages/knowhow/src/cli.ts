@@ -38,7 +38,6 @@ import { SetupModule } from "./chat/modules/SetupModule";
 import { CliChatService } from "./chat/CliChatService";
 
 async function setupServices() {
-  await migrateConfig();
 
   const { Agents, Mcp, Clients, Tools: OldTools } = services();
   const Tools = new LazyToolsService();
@@ -93,6 +92,7 @@ async function readStdin(): Promise<string> {
 
 async function main() {
   const program = new Command();
+  await migrateConfig();
   const config = await getConfig();
   const chatService = new CliChatService(getEnabledPlugins(config.plugins));
 
