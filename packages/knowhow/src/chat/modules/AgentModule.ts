@@ -528,6 +528,10 @@ Please continue from where you left off and complete the original request.
       // Save initial session
       this.saveSession(taskId, taskInfo, []);
 
+      // Reset sync services before setting up new task (removes old listeners)
+      this.webSync.reset();
+      this.fsSync.reset();
+
       // Create Knowhow chat task if messageId provided
       if (
         options.messageId &&
@@ -566,13 +570,11 @@ Please continue from where you left off and complete the original request.
       }
 
       // Set up session update listener
-      agent.agentEvents.on(
-        agent.eventTypes.threadUpdate,
-        async (threadState) => {
-          this.updateSession(taskId, threadState);
-          taskInfo.totalCost = agent.getTotalCostUsd();
-        }
-      );
+      const threadUpdateHandler = async (threadState: any) => {
+        this.updateSession(taskId, threadState);
+        taskInfo.totalCost = agent.getTotalCostUsd();
+      };
+      agent.agentEvents.on(agent.eventTypes.threadUpdate, threadUpdateHandler);
 
       console.log(
         Marked.parse(`**Starting ${agent.name} with task ID: ${taskId}...**`)
@@ -665,6 +667,8 @@ Please continue from where you left off and complete the original request.
           console.log("🎯 [AgentModule] Task Completed");
           done = true;
           output = doneMsg || "No response from the AI";
+          // Remove threadUpdate listener to prevent cost sharing across tasks
+          agent.agentEvents.removeListener(agent.eventTypes.threadUpdate, threadUpdateHandler);
           // Update task info
           taskInfo = this.taskRegistry.get(taskId);
 

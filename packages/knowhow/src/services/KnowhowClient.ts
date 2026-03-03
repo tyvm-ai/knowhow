@@ -221,15 +221,21 @@ export class KnowhowSimpleClient {
     const formData = new FormData();
     // options.file can be a Buffer, ReadStream, Blob, or File
     if (Buffer.isBuffer(options.file)) {
-      formData.append("file", new Blob([options.file]), options["fileName"] || "audio.mp3");
+      formData.append(
+        "file",
+        new Blob([options.file]),
+        options.fileName || "audio.mp3"
+      );
     } else {
       formData.append("file", options.file);
     }
     if (options.model) formData.append("model", options.model);
     if (options.language) formData.append("language", options.language);
     if (options.prompt) formData.append("prompt", options.prompt);
-    if (options.response_format) formData.append("response_format", options.response_format);
-    if (options.temperature != null) formData.append("temperature", String(options.temperature));
+    if (options.response_format)
+      formData.append("response_format", options.response_format);
+    if (options.temperature != null)
+      formData.append("temperature", String(options.temperature));
 
     return axios.post<AudioTranscriptionResponse>(
       `${this.baseUrl}/api/proxy/v1/audio/transcriptions`,
@@ -377,7 +383,11 @@ export class KnowhowSimpleClient {
   /**
    * Send a message to a running agent task
    */
-  async sendMessageToAgent(taskId: string, message: string, role: "user" | "system" = "user") {
+  async sendMessageToAgent(
+    taskId: string,
+    message: string,
+    role: "user" | "system" = "user"
+  ) {
     await this.checkJwt();
     return axios.post<SendMessageResponse>(
       `${this.baseUrl}/api/org-agent-tasks/${taskId}/messages`,
@@ -428,5 +438,167 @@ export class KnowhowSimpleClient {
         headers: this.headers,
       }
     );
+  }
+
+  // ============================================
+  // File Sync Methods
+  // Uses existing org-files endpoints: list, text GET/PUT, and create
+  // ============================================
+
+  /**
+   * List all org files for the current user's org
+   */
+  async listOrgFiles() {
+    await this.checkJwt();
+    return axios.get<
+      { id: string; fileName: string; folderPath: string; name: string }[]
+    >(`${this.baseUrl}/api/org-files`, { headers: this.headers });
+  }
+
+  /**
+   * Create a new org file record
+   */
+  async createOrgFile(fileName: string, folderPath: string) {
+    await this.checkJwt();
+    return axios.post<{
+      id: string;
+      fileName: string;
+      folderPath: string;
+      name: string;
+    }>(
+      `${this.baseUrl}/api/org-files`,
+      { fileName, folderPath, name: fileName },
+      { headers: this.headers }
+    );
+  }
+
+  /**
+   * Get text content of an org file by id (returns streaming JSON array of strings)
+   */
+  async getOrgFileText(fileId: string) {
+    await this.checkJwt();
+    return axios.get<string>(`${this.baseUrl}/api/org-files/${fileId}/text`, {
+      headers: this.headers,
+      params: { reading: "true" },
+    });
+  }
+
+  /**
+   * Update text content of an org file by id
+   */
+  async updateOrgFileText(fileId: string, text: string) {
+    await this.checkJwt();
+    return axios.put(
+      `${this.baseUrl}/api/org-files/${fileId}/text`,
+      { text },
+      { headers: this.headers }
+    );
+  }
+
+  /**
+   * Find an org file by its full remote path (e.g. /test.md or /docs/readme.md)
+   * Returns null if not found
+   */
+  async findOrgFileByPath(
+    remotePath: string
+  ): Promise<{ id: string; fileName: string; folderPath: string } | null> {
+    const lastSlash = remotePath.lastIndexOf("/");
+    const rawFolder =
+      lastSlash >= 0 ? remotePath.substring(0, lastSlash + 1) : "/";
+    // Normalize: "/" and "" both mean root
+    const folderPath = rawFolder === "/" ? rawFolder : rawFolder;
+    const fileName =
+      lastSlash >= 0 ? remotePath.substring(lastSlash + 1) : remotePath;
+
+    const response = await this.listOrgFiles();
+    const files = response.data;
+    // DB may store root as "" or "/" - match both
+    const isRoot = folderPath === "/" || folderPath === "";
+    return (
+      files.find(
+        (f) =>
+          f.fileName === fileName &&
+          (f.folderPath === folderPath ||
+            (isRoot && (f.folderPath === "/" || f.folderPath === "")))
+      ) || null
+    );
+  }
+
+  /**
+   * Find or create an org file by path, returns the file record
+   */
+  async findOrCreateOrgFileByPath(
+    remotePath: string
+  ): Promise<{ id: string; fileName: string; folderPath: string }> {
+    const existing = await this.findOrgFileByPath(remotePath);
+    if (existing) return existing;
+
+    const lastSlash = remotePath.lastIndexOf("/");
+    const folderPath =
+      lastSlash >= 0 ? remotePath.substring(0, lastSlash + 1) || "/" : "/";
+    const fileName =
+      lastSlash >= 0 ? remotePath.substring(lastSlash + 1) : remotePath;
+
+    const response = await this.createOrgFile(fileName, folderPath);
+    return response.data;
+  }
+
+  /**
+   * Get presigned S3 URL for downloading a file from Knowhow FS.
+   * First finds or creates the file by path, then gets its download URL.
+   */
+  async getOrgFilePresignedDownloadUrl(filePath: string): Promise<string> {
+    await this.checkJwt();
+    
+    // Find the file by path
+    const file = await this.findOrgFileByPath(filePath);
+    if (!file) {
+      throw new Error(`File not found: ${filePath}`);
+    }
+    
+    // Get download URL using the file ID
+    const response = await axios.post<{ downloadUrl: string }>(
+      `${this.baseUrl}/api/org-files/download/${file.id}`,
+      {},
+      { headers: this.headers }
+    );
+    return response.data.downloadUrl;
+  }
+
+  /**
+   * Notify the backend that a file upload is complete, updating its updatedAt timestamp.
+   */
+  async markOrgFileUploadComplete(filePath: string): Promise<void> {
+    await this.checkJwt();
+    
+    const file = await this.findOrgFileByPath(filePath);
+    if (!file) {
+      throw new Error(`File not found: ${filePath}`);
+    }
+    
+    await axios.post(`${this.baseUrl}/api/org-files/upload/${file.id}/complete`, {}, { headers: this.headers });
+  }
+
+  /**
+   * Get presigned S3 URL for uploading a file to Knowhow FS.
+   * First finds or creates the file by path, then gets its upload URL.
+   */
+  async getOrgFilePresignedUploadUrl(filePath: string): Promise<string> {
+    await this.checkJwt();
+    
+    // Find or create the file by path
+    const file = await this.findOrCreateOrgFileByPath(filePath);
+    
+    // Extract just the filename from the path
+    const lastSlash = filePath.lastIndexOf("/");
+    const fileName = lastSlash >= 0 ? filePath.substring(lastSlash + 1) : filePath;
+    
+    // Get upload URL using the file ID
+    const response = await axios.post<{ uploadUrl: string }>(
+      `${this.baseUrl}/api/org-files/upload/${file.id}`,
+      { fileName },
+      { headers: this.headers }
+    );
+    return response.data.uploadUrl;
   }
 }

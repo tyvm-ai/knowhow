@@ -33,6 +33,9 @@ export class AgentSyncKnowhowWeb {
   private knowhowTaskId: string | undefined;
   private eventHandlersSetup: boolean = false;
   private finalizationPromise: Promise<void> | null = null;
+  private agent: BaseAgent | undefined;
+  private threadUpdateHandler: ((...args: any[]) => void) | undefined;
+  private doneHandler: ((...args: any[]) => void) | undefined;
 
   constructor(baseUrl: string = KNOWHOW_API_URL) {
     this.baseUrl = baseUrl;
@@ -228,8 +231,10 @@ export class AgentSyncKnowhowWeb {
    * Set up event handlers for automatic synchronization
    */
   private setupEventHandlers(agent: BaseAgent): void {
-    // Listen to thread updates to sync state and check for pending messages
-    agent.agentEvents.on(agent.eventTypes.threadUpdate, async () => {
+    this.agent = agent;
+
+    // Listen to thread updates to sync state and check for pending messages (store reference for cleanup)
+    this.threadUpdateHandler = async () => {
       if (!this.knowhowTaskId || !this.baseUrl) {
         return;
       }
@@ -244,10 +249,11 @@ export class AgentSyncKnowhowWeb {
         console.error(`❌ Error during threadUpdate sync:`, error);
         // Continue execution even if synchronization fails
       }
-    });
+    };
+    agent.agentEvents.on(agent.eventTypes.threadUpdate, this.threadUpdateHandler);
 
-    // Listen to completion event to finalize task
-    agent.agentEvents.on(agent.eventTypes.done, async (result: string) => {
+    // Listen to completion event to finalize task (store reference for cleanup)
+    this.doneHandler = async (result: string) => {
       if (!this.knowhowTaskId || !this.baseUrl) {
         console.warn(`⚠️ [AgentSync] Cannot finalize: knowhowTaskId=${this.knowhowTaskId}, baseUrl=${this.baseUrl}`);
         return;
@@ -268,7 +274,8 @@ export class AgentSyncKnowhowWeb {
           throw error; // Re-throw so CLI can handle it
         }
       })();
-    });
+    };
+    agent.agentEvents.on(agent.eventTypes.done, this.doneHandler);
   }
 
   /**
@@ -284,6 +291,18 @@ export class AgentSyncKnowhowWeb {
    * Reset synchronization state (useful for reusing the service)
    */
   reset(): void {
+    // Remove old event listeners from the agent before resetting
+    if (this.agent) {
+      if (this.threadUpdateHandler) {
+        this.agent.agentEvents.removeListener(this.agent.eventTypes.threadUpdate, this.threadUpdateHandler);
+        this.threadUpdateHandler = undefined;
+      }
+      if (this.doneHandler) {
+        this.agent.agentEvents.removeListener(this.agent.eventTypes.done, this.doneHandler);
+        this.doneHandler = undefined;
+      }
+      this.agent = undefined;
+    }
     this.knowhowTaskId = undefined;
     this.eventHandlersSetup = false;
     this.finalizationPromise = null;

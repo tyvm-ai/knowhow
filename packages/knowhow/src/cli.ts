@@ -15,6 +15,7 @@ import * as allTools from "./agents/tools";
 import { LazyToolsService, services } from "./services";
 import { login } from "./login";
 import { worker } from "./worker";
+import { fileSync } from "./fileSync";
 import {
   startAllWorkers,
   listWorkerPaths,
@@ -211,17 +212,22 @@ async function main() {
       try {
         await setupServices();
         let input = options.input;
-        if (!input) {
+
+        // Only read from stdin if we don't have input and don't have a standalone prompt file
+        if (!input && !options.promptFile) {
           input = await readStdin();
-          if (!input) {
-            console.error(
-              "Error: No input provided. Use --input flag or pipe input via stdin."
-            );
-            process.exit(1);
-          }
         }
 
+        // Read prompt file - it will handle cases where input is empty
         input = readPromptFile(options.promptFile, input);
+
+        // Only error if we have no prompt file and no input
+        if (!input) {
+          console.error(
+            "Error: No input provided. Use --input flag, pipe input via stdin, or provide --prompt-file."
+          );
+          process.exit(1);
+        }
 
         const agentModule = new AgentModule();
         await agentModule.initialize(chatService);
@@ -250,17 +256,22 @@ async function main() {
       try {
         await setupServices();
         let input = options.input;
-        if (!input) {
+
+        // Only read from stdin if we don't have input and don't have a standalone prompt file
+        if (!input && !options.promptFile) {
           input = await readStdin();
-          if (!input) {
-            console.error(
-              "Error: No question provided. Use --input flag or pipe input via stdin."
-            );
-            process.exit(1);
-          }
         }
 
+        // Read prompt file - it will handle cases where input is empty
         input = readPromptFile(options.promptFile, input);
+
+        // Only error if we have no prompt file and no input
+        if (!input) {
+          console.error(
+            "Error: No question provided. Use --input flag, pipe input via stdin, or provide --prompt-file."
+          );
+          process.exit(1);
+        }
 
         const askModule = new AskModule();
         await askModule.initialize(chatService);
@@ -356,6 +367,22 @@ async function main() {
     .action(async (options) => {
       await setupServices();
       await worker(options);
+    });
+
+  program
+    .command("files")
+    .description("Sync files between local filesystem and Knowhow FS (uses fileMounts config)")
+    .option("--upload", "Force upload direction for all mounts")
+    .option("--download", "Force download direction for all mounts")
+    .option("--config <path>", "Path to knowhow.json", "./knowhow.json")
+    .option("--dry-run", "Print what would be synced without doing it")
+    .action(async (options) => {
+      try {
+        await fileSync(options);
+      } catch (error) {
+        console.error("Error syncing files:", error);
+        process.exit(1);
+      }
     });
 
   program

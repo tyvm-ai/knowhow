@@ -62,6 +62,12 @@ export type Config = {
     completionTimeout?: number;
   };
 
+  files?: {
+    remotePath: string; // path in Knowhow FS, e.g. "/docs/readme.md" or "/configs/"
+    localPath: string; // local path to write to, e.g. "./docs/readme.md" or "./configs/"
+    direction?: "download" | "upload" | "sync"; // default: "download"
+  }[];
+
   worker?: {
     allowedTools?: string[];
     sandbox?: boolean;

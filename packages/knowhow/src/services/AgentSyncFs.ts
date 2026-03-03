@@ -25,6 +25,9 @@ export class AgentSyncFs {
   private lastInputContent: string = "";
   private cleanupInterval: NodeJS.Timeout | null = null;
   private finalizationPromise: Promise<void> | null = null;
+  private agent: BaseAgent | undefined;
+  private threadUpdateHandler: ((...args: any[]) => void) | undefined;
+  private doneHandler: ((...args: any[]) => void) | undefined;
 
   constructor() {
     // Start cleanup process when created
@@ -281,8 +284,10 @@ export class AgentSyncFs {
    * Set up event handlers for automatic synchronization
    */
   private setupEventHandlers(agent: BaseAgent): void {
-    // Listen to thread updates to sync state
-    agent.agentEvents.on(agent.eventTypes.threadUpdate, async () => {
+    this.agent = agent;
+
+    // Listen to thread updates to sync state (store reference for cleanup)
+    this.threadUpdateHandler = async () => {
       if (!this.taskId) return;
 
       try {
@@ -291,10 +296,11 @@ export class AgentSyncFs {
       } catch (error) {
         console.error(`❌ Error during threadUpdate sync:`, error);
       }
-    });
+    };
+    agent.agentEvents.on(agent.eventTypes.threadUpdate, this.threadUpdateHandler);
 
-    // Listen to completion event to finalize task
-    agent.agentEvents.on(agent.eventTypes.done, (result: string) => {
+    // Listen to completion event to finalize task (store reference for cleanup)
+    this.doneHandler = (result: string) => {
       if (!this.taskId) {
         console.warn(`⚠️ [AgentSyncFs] Cannot finalize: taskId=${this.taskId}`);
         return;
@@ -313,7 +319,8 @@ export class AgentSyncFs {
           throw error;
         }
       })();
-    });
+    };
+    agent.agentEvents.on(agent.eventTypes.done, this.doneHandler);
   }
 
   /**
@@ -407,6 +414,18 @@ export class AgentSyncFs {
    * Reset synchronization state
    */
   reset(): void {
+    // Remove old event listeners from the agent before resetting
+    if (this.agent) {
+      if (this.threadUpdateHandler) {
+        this.agent.agentEvents.removeListener(this.agent.eventTypes.threadUpdate, this.threadUpdateHandler);
+        this.threadUpdateHandler = undefined;
+      }
+      if (this.doneHandler) {
+        this.agent.agentEvents.removeListener(this.agent.eventTypes.done, this.doneHandler);
+        this.doneHandler = undefined;
+      }
+      this.agent = undefined;
+    }
     this.cleanup();
     this.taskId = undefined;
     this.taskPath = undefined;

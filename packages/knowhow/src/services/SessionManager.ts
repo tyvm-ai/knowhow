@@ -151,7 +151,7 @@ export class SessionManager {
               ).toLocaleString()})`
             );
             session.status = "failed";
-            session.lastUpdated = Date.now();
+            // Preserve original lastUpdated so sessions don't all get the same timestamp
             // Update the session file with failed status
             fs.writeFileSync(filePath, JSON.stringify(session, null, 2));
           }

@@ -139,12 +139,12 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
 
     const syncFsNote = syncFs
       ? `\nTask ID: ${taskId}\nAgent dir: ${agentTaskDir}\n` +
-        `To send follow-up messages, write to: ${agentTaskDir}/input.txt\n` +
+        `To send agent messages, write to: ${agentTaskDir}/input.txt\n` +
         `To check status, read: ${agentTaskDir}/status.txt\n`
       : "";
 
-    // Give the agent 30 seconds to finish before detaching
-    const detachTime = 30 * 1000; // 30 seconds
+    // Give the agent 5 seconds to finish before detaching
+    const detachTime = 5 * 1000;
     const tid = setTimeout(() => {
       try { child.unref(); } catch {}
       done(
