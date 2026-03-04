@@ -7,10 +7,13 @@ import { ToolsService } from "./Tools";
 import { MCPWebSocketTransport } from "./McpWebsocketTransport";
 import { WebSocket } from "ws";
 
+export type McpServerConfig = { name: string; version: string };
+
 export class McpServerService {
   server: McpServer | null = null;
   constructor(private toolsService: ToolsService) {}
   registeredTools = new Set<string>();
+  private serverConfig: McpServerConfig | null = null;
 
   createServer(name: string, version: string) {
     if (this.server) {
@@ -21,6 +24,7 @@ export class McpServerService {
       name,
       version,
     });
+    this.serverConfig = { name, version };
 
     return this;
   }
@@ -113,6 +117,26 @@ export class McpServerService {
     return this.createServer(name, version).withTools(
       this.toolsService.getTools()
     );
+  }
+
+  async reset() {
+    if (this.server) {
+      try {
+        await this.server.close();
+      } catch (err) {
+        console.warn("McpServerService: error closing server during reset:", err);
+      }
+      this.server = null;
+    }
+    this.registeredTools = new Set<string>();
+
+    // Recreate the server with the same config if we have it
+    if (this.serverConfig) {
+      this.server = new McpServer({
+        name: this.serverConfig.name,
+        version: this.serverConfig.version,
+      });
+    }
   }
 
   async runStdioServer() {

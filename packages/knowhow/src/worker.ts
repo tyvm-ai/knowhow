@@ -260,6 +260,12 @@ export async function worker(options?: {
     const jwt = await loadJwt();
     console.log(`Connecting to ${API_URL}`);
 
+    // Reset the MCP server to avoid "Already connected to a transport" error on reconnects
+    await mcpServer.reset();
+    // Re-register tools after reset (registeredTools set was cleared)
+    mcpServer.withTools(toolsToUse);
+
+
     const dir = process.cwd();
     const homedir = os.homedir();
 

@@ -1,10 +1,10 @@
 {
   "name": "@tyvm/knowhow",
-  "version": "0.0.72",
+  "version": "0.0.76",
   "description": "ai cli with plugins and agents",
   "main": "ts_build/src/index.js",
   "bin": {
-    "knowhow": "ts_build/src/cli.js"
+    "knowhow": "bin/knowhow.js"
   },
   "scripts": {
     "test": "jest --testTimeout 300000",

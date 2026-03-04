@@ -194,10 +194,13 @@ export async function updateConfig(config: Config) {
     throw new Error("Invalid config object");
   }
 
-  await fs.promises.copyFile(
-    ".knowhow/knowhow.json",
-    ".knowhow/knowhow.json.bak"
-  );
+  if (fs.existsSync(".knowhow/knowhow.json")) {
+    await fs.promises.copyFile(
+      ".knowhow/knowhow.json",
+      ".knowhow/knowhow.json.bak"
+    );
+  }
+
   await writeFile(".knowhow/knowhow.json", JSON.stringify(config, null, 2));
 }
 
