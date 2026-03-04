@@ -48,6 +48,11 @@ export class EmbeddingPlugin extends PluginBase {
   async call(userPrompt: string): Promise<string> {
     const count = 7;
     const embeddings = await getConfiguredEmbeddings();
+
+    if (embeddings.length === 0) {
+      return "EMBEDDING PLUGIN: No embeddings configured. Run 'knowhow embed' to generate embeddings.";
+    }
+
     const config = await getConfig();
     const results = await queryEmbedding(
       userPrompt,

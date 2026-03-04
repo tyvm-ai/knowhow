@@ -42,7 +42,8 @@ export async function loadEmbedding(filePath: string) {
 
 export async function getConfiguredEmbeddingMap() {
   const config = await getConfig();
-  const files = Array.from(new Set(config.embedSources.map((s) => s.output)));
+  const embedSources = config.embedSources || [];
+  const files = Array.from(new Set(embedSources.map((s) => s.output)));
   const embeddings: { [filePath: string]: Embeddable[] } = {};
   for (const file of files) {
     if (!embeddings[file]) {
@@ -57,7 +58,8 @@ export async function getConfiguredEmbeddingMap() {
 
 export async function getConfiguredEmbeddings() {
   const config = await getConfig();
-  const files = Array.from(new Set(config.embedSources.map((s) => s.output)));
+  const embedSources = config.embedSources || [];
+  const files = Array.from(new Set(embedSources.map((s) => s.output)));
   const embeddings: Embeddable[] = [];
   for (const file of files) {
     const fileEmbeddings = await loadEmbedding(file);
