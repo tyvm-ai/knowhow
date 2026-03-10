@@ -16,6 +16,7 @@ import { LazyToolsService, services } from "./services";
 import { login } from "./login";
 import { worker } from "./worker";
 import { fileSync } from "./fileSync";
+import { KnowhowSimpleClient } from "./services/KnowhowClient";
 import {
   startAllWorkers,
   listWorkerPaths,
@@ -424,6 +425,71 @@ async function main() {
         await startAllWorkers();
       } catch (error) {
         console.error("Error managing workers:", error);
+        process.exit(1);
+      }
+    });
+
+  program
+    .command("github-credentials [action]")
+    .description(
+      "Git credential helper for GitHub. Use as: git config credential.helper 'knowhow github-credentials'"
+    )
+    .option("--repo <repo>", "Repository in owner/repo format (e.g. myorg/myrepo)")
+    .action(async (action: string | undefined, options: { repo?: string }) => {
+      const client = new KnowhowSimpleClient();
+
+      // Determine what repo to fetch credentials for
+      let repo = options.repo;
+
+      // If action is "get", we're being called as a git credential helper
+      // git sends lines like: protocol=https\nhost=github.com\n on stdin
+      if (action === "get") {
+        // Read from stdin (git sends protocol/host/username)
+        const lines: string[] = [];
+        const readline = await import("readline");
+        const rl = readline.createInterface({ input: process.stdin, terminal: false });
+        await new Promise<void>((resolve) => {
+          rl.on("line", (line) => {
+            if (line.trim()) lines.push(line.trim());
+          });
+          rl.on("close", resolve);
+        });
+        // We always return GitHub credentials regardless of the parsed host
+        // repo will be inferred from git remote if not provided
+      } else if (action === "store" || action === "erase") {
+        // git credential helper store/erase — nothing to do, just exit cleanly
+        process.exit(0);
+      }
+
+      // If no repo provided, try to infer from git remote
+      if (!repo) {
+        try {
+          const remoteUrl = execSync("git remote get-url origin", {
+            encoding: "utf-8",
+            stdio: ["pipe", "pipe", "pipe"],
+          }).trim();
+          // Parse owner/repo from URL formats:
+          // https://github.com/owner/repo.git
+          // git@github.com:owner/repo.git
+          const match =
+            remoteUrl.match(/github\.com[/:]([^/]+\/[^/]+?)(?:\.git)?$/) ||
+            remoteUrl.match(/github\.com\/([^/]+\/[^/]+)/);
+          if (match) {
+            repo = match[1];
+          }
+        } catch {
+          // Not in a git repo or no remote — proceed without repo
+        }
+      }
+
+      try {
+        const credential = await client.getGitCredential(repo || "");
+        // Output in git credential helper format
+        process.stdout.write(
+          `protocol=${credential.protocol}\nhost=${credential.host}\nusername=${credential.username}\npassword=${credential.password}\n`
+        );
+      } catch (error) {
+        console.error("Failed to get git credentials:", error.message);
         process.exit(1);
       }
     });

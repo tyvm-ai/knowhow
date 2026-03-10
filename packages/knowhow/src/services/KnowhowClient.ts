@@ -87,6 +87,14 @@ export interface MarkProcessedResponse {
   processedCount: number;
 }
 
+export interface GitCredentialResponse {
+  protocol: string;
+  host: string;
+  username: string;
+  password: string;
+  expiresAt: string | null;
+}
+
 export function loadKnowhowJwt(): string {
   const jwtFile = path.join(process.cwd(), ".knowhow", ".jwt");
   if (!fs.existsSync(jwtFile)) {
@@ -600,5 +608,19 @@ export class KnowhowSimpleClient {
       { headers: this.headers }
     );
     return response.data.uploadUrl;
+  }
+
+  /**
+   * Get git credentials for a repository via the Knowhow API.
+   * Returns credentials in the GitCredentialResponse format.
+   */
+  async getGitCredential(repo: string): Promise<GitCredentialResponse> {
+    await this.checkJwt();
+    const response = await axios.post<GitCredentialResponse>(
+      `${this.baseUrl}/api/github/git-credential`,
+      { repo },
+      { headers: this.headers }
+    );
+    return response.data;
   }
 }
