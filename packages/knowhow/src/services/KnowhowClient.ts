@@ -192,6 +192,25 @@ export class KnowhowSimpleClient {
     return presignedUrl;
   }
 
+  async updateEmbeddingMetadata(
+    id: string,
+    data: {
+      inputGlob?: string;
+      outputPath?: string;
+      chunkSize?: number;
+      remoteType?: string;
+    }
+  ) {
+    await this.checkJwt();
+    return axios.put(
+      `${this.baseUrl}/api/org-embeddings/${id}`,
+      data,
+      {
+        headers: this.headers,
+      }
+    );
+  }
+
   async createChatCompletion(options: CompletionOptions) {
     await this.checkJwt();
     return axios.post<CompletionResponse>(

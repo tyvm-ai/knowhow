@@ -135,6 +135,14 @@ export async function upload() {
       const url = await knowhowApiClient.getPresignedUploadUrl(source);
       console.log("Uploading to", url);
       await AwsS3.uploadToPresignedUrl(url, source.output);
+      // Sync config metadata back to the backend DB
+      await knowhowApiClient.updateEmbeddingMetadata(source.remoteId, {
+        inputGlob: source.input,
+        outputPath: source.output,
+        chunkSize: source.chunkSize,
+        remoteType: source.remoteType,
+      });
+      console.log("Synced metadata for", source.remoteId);
     } else {
       console.log(
         "Skipping upload to",
@@ -376,6 +384,9 @@ export async function download() {
       const preSignedUrl = await knowhowApiClient.getPresignedDownloadUrl(
         source
       );
+      // Ensure output directory exists
+      const outputDir = path.dirname(destinationPath);
+      if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
       await AwsS3.downloadFromPresignedUrl(preSignedUrl, destinationPath);
     } else {
       console.log("Unsupported remote type for", source.output);

@@ -111,9 +111,5 @@ export async function checkJwt(storedJwt: string) {
     return org.organizationId === orgId;
   });
 
-  console.log(
-    `Current user: ${user.email}, \nOrganization: ${currentOrg?.organization?.name} - ${orgId}`
-  );
-
   return { user, currentOrg };
 }
