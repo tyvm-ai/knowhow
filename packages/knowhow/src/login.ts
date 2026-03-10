@@ -42,7 +42,11 @@ export async function login(jwtFlag?: boolean): Promise<void> {
   // Get current user/org information
   try {
     const storedJwt = await loadJwt();
-    await checkJwt(storedJwt);
+    const { user, currentOrg } = await checkJwt(storedJwt);
+
+    console.log(
+      `Current user: ${user.email}, \nOrganization: ${currentOrg?.organization?.name} - ${currentOrg?.organization?.id}`
+    );
 
     const config = await getConfig();
     const proxyUrl = KNOWHOW_API_URL + "/api/proxy";

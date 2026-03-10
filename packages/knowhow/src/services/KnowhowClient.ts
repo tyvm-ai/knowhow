@@ -144,9 +144,6 @@ export class KnowhowSimpleClient {
           return org.organizationId === orgId;
         });
 
-        console.log(
-          `Current user: ${user.email}, \nOrganization: ${currentOrg?.organization?.name} - ${orgId}`
-        );
       } catch (error) {
         throw new Error("Invalid JWT. Please login again.");
       }
@@ -557,13 +554,13 @@ export class KnowhowSimpleClient {
    */
   async getOrgFilePresignedDownloadUrl(filePath: string): Promise<string> {
     await this.checkJwt();
-    
+
     // Find the file by path
     const file = await this.findOrgFileByPath(filePath);
     if (!file) {
       throw new Error(`File not found: ${filePath}`);
     }
-    
+
     // Get download URL using the file ID
     const response = await axios.post<{ downloadUrl: string }>(
       `${this.baseUrl}/api/org-files/download/${file.id}`,
@@ -578,12 +575,12 @@ export class KnowhowSimpleClient {
    */
   async markOrgFileUploadComplete(filePath: string): Promise<void> {
     await this.checkJwt();
-    
+
     const file = await this.findOrgFileByPath(filePath);
     if (!file) {
       throw new Error(`File not found: ${filePath}`);
     }
-    
+
     await axios.post(`${this.baseUrl}/api/org-files/upload/${file.id}/complete`, {}, { headers: this.headers });
   }
 
@@ -593,14 +590,14 @@ export class KnowhowSimpleClient {
    */
   async getOrgFilePresignedUploadUrl(filePath: string): Promise<string> {
     await this.checkJwt();
-    
+
     // Find or create the file by path
     const file = await this.findOrCreateOrgFileByPath(filePath);
-    
+
     // Extract just the filename from the path
     const lastSlash = filePath.lastIndexOf("/");
     const fileName = lastSlash >= 0 ? filePath.substring(lastSlash + 1) : filePath;
-    
+
     // Get upload URL using the file ID
     const response = await axios.post<{ uploadUrl: string }>(
       `${this.baseUrl}/api/org-files/upload/${file.id}`,
