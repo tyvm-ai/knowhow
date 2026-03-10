@@ -19,6 +19,8 @@ export class GitPlugin extends PluginBase {
   private projectHasGit: boolean = false;
   private eventService: EventService;
   private currentTask: string | null = null;
+  // Track commit hash at time lint started, keyed by extension
+  private lintStartCommits: Map<string, string> = new Map();
   static isListening = false;
 
   constructor(context: PluginContext = {}) {
@@ -168,6 +170,23 @@ Your modifications are automatically tracked separately and won't affect the use
       this.eventService.on("agent:taskComplete", async (data: any) => {
         if (this.isEnabled()) {
           await this.handleTaskComplete(data);
+        }
+      });
+
+      // Listen for linter events to track build stability
+      this.eventService.on("linter:started", (data: any) => {
+        if (this.isEnabled()) {
+          const { extension } = data;
+          const currentCommit = this.safeGitCommand("rev-parse --short HEAD")?.trim() || null;
+          if (currentCommit) {
+            this.lintStartCommits.set(extension, currentCommit);
+          }
+        }
+      });
+
+      this.eventService.on("linter:finished", async (data: any) => {
+        if (this.isEnabled()) {
+          await this.handleLintFinished(data);
         }
       });
 
@@ -470,6 +489,43 @@ Your modifications are automatically tracked separately and won't affect the use
       this.currentTask = null;
     } catch (error) {
       console.error("Failed to handle task completion:", error);
+    }
+  }
+
+  /**
+   * Handle linter:finished events. If the lint was successful, add a git note
+   * to the commit that was current when the lint started, marking it as stable.
+   */
+  private async handleLintFinished(data: {
+    extension: string;
+    filePath: string;
+    command: string;
+    success: boolean;
+    output: string;
+    durationMs: number;
+  }): Promise<void> {
+    const { extension, success } = data;
+
+    if (!success) {
+      // Lint failed — clear the tracked commit, nothing to mark stable
+      this.lintStartCommits.delete(extension);
+      return;
+    }
+
+    const commitHash = this.lintStartCommits.get(extension);
+    this.lintStartCommits.delete(extension);
+
+    if (!commitHash) {
+      return;
+    }
+
+    // Add a git note to the commit marking it as stable
+    try {
+      const noteMessage = `[Build Stable] No linting issues found on branch: ${this.getCurrentBranch()}`;
+      this.gitCommand(`notes add -f -m "${noteMessage}" ${commitHash}`);
+      console.log(`GitPlugin: Marked commit ${commitHash} as build stable`);
+    } catch (error) {
+      console.warn(`GitPlugin: Failed to add git note for commit ${commitHash}:`, error);
     }
   }
 

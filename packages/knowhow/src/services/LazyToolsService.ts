@@ -1,6 +1,7 @@
 import { minimatch } from "minimatch";
 import { ToolsService, ToolContext } from "./Tools";
 import { Tool } from "../clients/types";
+import { ToolCall } from "../clients/types";
 import {
   listAvailableTools,
   enableTools,
@@ -108,6 +109,29 @@ export class LazyToolsService extends ToolsService {
       enabledCount: this.tools.length,
       disabledCount: this.allTools.length - this.tools.length,
     };
+  }
+
+  // Override callTool to auto-enable tools that are in allTools but not yet enabled
+  async callTool(toolCall: ToolCall, enabledTools?: string[]) {
+    const functionName = toolCall.function.name;
+
+    // If no explicit enabledTools list was provided and the tool isn't currently
+    // visible, check if it exists in allTools and auto-enable it
+    if (!enabledTools) {
+      const isCurrentlyEnabled = this.tools.some(
+        (t) => t.function.name === functionName
+      );
+      const existsInAll = this.allTools.some(
+        (t) => t.function.name === functionName
+      );
+
+      if (!isCurrentlyEnabled && existsInAll) {
+        // Auto-enable by adding the tool name as an exact pattern
+        this.enableTools([functionName]);
+      }
+    }
+
+    return super.callTool(toolCall, enabledTools ?? this.getToolNames());
   }
 
   // Internal: Update visible tools based on patterns
