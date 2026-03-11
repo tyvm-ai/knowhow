@@ -6,6 +6,8 @@ import { spawn } from "child_process";
 interface StartAgentTaskParams {
   messageId?: string;
   syncFs?: boolean;
+  taskId?: string;
+  resume?: boolean;
   prompt: string;
   provider?: string;
   model?: string;
@@ -51,6 +53,8 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
   const {
     messageId,
     prompt,
+    taskId: providedTaskId,
+    resume,
     syncFs,
     provider,
     model,
@@ -62,8 +66,8 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
     throw new Error("prompt is required to create a chat task");
   }
 
-  // Pre-generate taskId so we can return the agents dir path to the caller
-  const taskId = generateTaskId(prompt);
+  // Use provided taskId if given, otherwise generate one from the prompt
+  const taskId = providedTaskId ?? generateTaskId(prompt);
   const agentTaskDir = path.join(AGENTS_DIR, taskId);
 
   // Build args array (no shell escaping needed - args are passed directly)
@@ -73,7 +77,10 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
     args.push("--message-id", messageId);
   } else if (syncFs) {
     args.push("--sync-fs");
-    // Pass the pre-generated taskId so the agent dir path is predictable
+  }
+
+  if (syncFs || providedTaskId) {
+    // Pass --task-id whenever we have a known taskId (syncFs or explicit taskId)
     args.push("--task-id", taskId);
   }
 
@@ -95,6 +102,10 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
 
   if (maxSpendLimit !== undefined) {
     args.push("--max-spend-limit", String(maxSpendLimit));
+  }
+  if (resume) {
+    // --resume is a boolean flag; task ID is already passed via --task-id above
+    args.push("--resume");
   }
 
   const timeoutMs = maxTimeLimit ? maxTimeLimit * 60 * 1000 : 60 * 60 * 1000;
@@ -210,6 +221,16 @@ export const startAgentTaskDefinition: Tool = {
         maxSpendLimit: {
           type: "number",
           description: "Cost limit for agent execution in dollars. Default: 10",
+        },
+        taskId: {
+          type: "string",
+          description:
+            "Pre-generated task ID to use for this agent run. When provided with syncFs, the agent directory will use this ID for a predictable path. Required when using resume.",
+        },
+        resume: {
+          type: "boolean",
+          description:
+            "Resume a previously started task from where it left off. Must be used together with taskId which identifies the task to resume.",
         },
       },
       required: ["prompt"],

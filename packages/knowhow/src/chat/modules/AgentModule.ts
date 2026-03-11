@@ -733,6 +733,65 @@ Please continue from where you left off and complete the original request.
   }
 
   /**
+   * Resume an agent from a set of existing message threads
+   * Used by the CLI --resume flag to continue crashed/failed tasks
+   */
+  public async resumeFromMessages(options: {
+    agentName: string;
+    input: string;
+    threads: any[][];
+    messageId?: string;
+    taskId?: string;
+  }): Promise<{ taskCompleted: Promise<string> }> {
+    const { agentName, input, threads, messageId, taskId } = options;
+
+    // Try to extract the original request from the first user message in threads
+    let originalRequest = "";
+    if (threads && threads.length > 0) {
+      const firstThread = threads[0];
+      if (Array.isArray(firstThread)) {
+        const firstUserMsg = firstThread.find(
+          (m: any) => m.role === "user" && m.content
+        );
+        if (firstUserMsg) {
+          originalRequest =
+            typeof firstUserMsg.content === "string"
+              ? firstUserMsg.content
+              : JSON.stringify(firstUserMsg.content);
+        }
+      }
+    }
+
+    // Build the resume prompt
+    const resumePrompt = [
+      "You are resuming a previously started task.",
+      originalRequest
+        ? `ORIGINAL REQUEST: ${originalRequest}`
+        : "",
+      "Please continue from where you left off.",
+      input ? input : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    // Flatten threads into a single messages array for the agent
+    const flattenedMessages = threads.flat();
+
+    const result = await this.setupAgent({
+      agentName,
+      input: resumePrompt,
+      messageId,
+      existingKnowhowTaskId: taskId,
+      run: false,
+    });
+
+    // Start agent with prior messages as context
+    result.agent.call(resumePrompt, flattenedMessages as any);
+
+    return { taskCompleted: result.taskCompleted };
+  }
+
+  /**
    * Get list of active agent tasks
    */
   getActiveTasks(): { taskId: string; agent: TaskInfo }[] {

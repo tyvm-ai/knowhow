@@ -1,6 +1,7 @@
 #!/usr/bin/env node --no-node-snapshot
 import "source-map-support/register";
 import * as fs from "fs";
+import * as fsPromises from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 import { Command } from "commander";
@@ -209,9 +210,61 @@ async function main() {
     .option("--task-id <taskId>", "Pre-generated task ID (used with --sync-fs for predictable agent directory path)")
     .option("--prompt-file <path>", "Custom prompt template file with {text}")
     .option("--input <text>", "Task input (fallback to stdin if not provided)")
+    .option("--resume", "Resume a previously started task using the --task-id (local FS or remote)")
     .action(async (options) => {
       try {
         await setupServices();
+
+        // Handle --resume flag: load threads from local FS or remote using --task-id
+        if (options.resume && options.taskId) {
+          const resumeTaskId: string = options.taskId;
+          const localMetadataPath = path.join(
+            ".knowhow",
+            "processes",
+            "agents",
+            resumeTaskId,
+            "metadata.json"
+          );
+
+          let threads: any[][] = [];
+
+          // Try local FS first
+          if (fs.existsSync(localMetadataPath)) {
+            try {
+              const raw = await fsPromises.readFile(localMetadataPath, "utf-8");
+              const metadata = JSON.parse(raw);
+              threads = metadata.threads || [];
+              console.log(`📁 Loaded threads from local FS: ${localMetadataPath}`);
+            } catch (e) {
+              console.warn(`⚠️ Failed to parse local metadata: ${e.message}`);
+            }
+          } else {
+            // Try remote via KnowhowSimpleClient
+            try {
+              const client = new KnowhowSimpleClient();
+              threads = await client.getTaskThreads(resumeTaskId);
+              console.log(`🌐 Loaded threads from remote for task: ${resumeTaskId}`);
+            } catch (e) {
+              console.warn(`⚠️ Could not load threads from remote: ${e.message}`);
+            }
+          }
+
+          const resumeInput =
+            options.input || "Please continue from where you left off.";
+
+          const agentModule = new AgentModule();
+          await agentModule.initialize(chatService);
+          const { taskCompleted } = await agentModule.resumeFromMessages({
+            agentName: options.agentName || "Patcher",
+            input: resumeInput,
+            threads,
+            messageId: options.messageId,
+            taskId: resumeTaskId,
+          });
+          await taskCompleted;
+          return;
+        }
+
         let input = options.input;
 
         // Only read from stdin if we don't have input and don't have a standalone prompt file

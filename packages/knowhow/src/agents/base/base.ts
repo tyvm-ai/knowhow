@@ -480,7 +480,7 @@ export abstract class BaseAgent implements IAgent {
     } as Message);
   }
 
-  async call(userInput: string | MessageContent[], _messages?: Message[]) {
+  async call(userInput: string | MessageContent[], _messages?: Message[], retryCount = 0) {
     if (this.status === this.eventTypes.notStarted) {
       this.status = this.eventTypes.inProgress;
     }
@@ -704,7 +704,32 @@ export abstract class BaseAgent implements IAgent {
     } catch (e) {
       if (e.toString().includes("429")) {
         this.setNotHealthy();
-        return this.call(userInput, _messages);
+        return this.call(userInput, _messages, retryCount);
+      const errorStr = e.toString();
+      const isNonRetriable =
+        errorStr.includes("401") ||
+        errorStr.includes("403") ||
+        errorStr.includes("404");
+
+      const isRetriable =
+        !isNonRetriable &&
+        (errorStr.match(/5\d\d/) ||
+          errorStr.includes("Failed to get models") ||
+          errorStr.includes("timeout") ||
+          errorStr.includes("ECONNRESET") ||
+          errorStr.includes("ETIMEDOUT") ||
+          errorStr.includes("Invalid response format from MCP"));
+
+      if (isRetriable && retryCount < 3) {
+        const delay = 1000 * Math.pow(2, retryCount);
+        console.warn(
+          `Agent request failed (attempt ${retryCount + 1}/3), retrying in ${delay}ms...`,
+          e.message
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        return this.call(userInput, _messages, retryCount + 1);
+      }
+
       }
 
       console.error("Agent failed", e);

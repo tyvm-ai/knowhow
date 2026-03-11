@@ -53,7 +53,7 @@ export interface TaskDetailsResponse {
   inProgress: boolean;
   status: "running" | "paused" | "killed" | "completed";
   totalUsdCost: number;
-  threads: any;
+  threads: any[][];
   createdAt: string;
   updatedAt: string;
   messageId?: string;
@@ -448,6 +448,14 @@ export class KnowhowSimpleClient {
         headers: this.headers,
       }
     );
+  }
+
+  /**
+   * Get threads from a task by task ID
+   */
+  async getTaskThreads(taskId: string): Promise<any[][]> {
+    const response = await this.getTaskDetails(taskId);
+    return response.data.threads || [];
   }
 
   /**
