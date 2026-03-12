@@ -29,7 +29,13 @@ export class MCPWebSocketTransport implements Transport {
         }
         console.log("MCPW Message received", JSON.stringify(parsed));
         const message = JSONRPCMessageSchema.parse(parsed);
-        this.onmessage?.(message);
+        // Process message asynchronously to avoid blocking the WebSocket
+        // event loop while a long-running tool call is in progress.
+        // Without this, all subsequent messages are queued until the
+        // current tool call completes.
+        setImmediate(() => {
+          this.onmessage?.(message);
+        });
       } catch (error) {
         this.onerror?.(error as Error);
       }
