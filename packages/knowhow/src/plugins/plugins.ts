@@ -101,7 +101,7 @@ export class PluginService {
       return "";
     }
     const calls = plugins.map(async (p) => {
-      return this.callManyForPlugin(p, userInput).catch();
+      return this.callManyForPlugin(p, userInput).catch(() => "");
     });
 
     const results = await Promise.all(calls);
