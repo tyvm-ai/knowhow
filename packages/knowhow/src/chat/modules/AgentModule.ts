@@ -8,12 +8,14 @@ import {
   TaskRegistry,
 } from "../../services/index";
 import * as fs from "fs";
+import * as fsPromises from "fs/promises";
 import * as path from "path";
 
 import { BaseChatModule } from "./BaseChatModule";
 import { services } from "../../services/index";
 import { BaseAgent } from "../../agents/index";
 import { ChatCommand, ChatMode, ChatContext, ChatService } from "../types";
+import { Message } from "../../clients/types";
 import { ChatInteraction } from "../../types";
 import { Marked } from "../../utils/index";
 import { TokenCompressor } from "../../processors/TokenCompressor";
@@ -28,6 +30,7 @@ import { TaskInfo, ChatSession } from "../types";
 import { agents } from "../../agents";
 import { ToolCallEvent } from "../../agents/base/base";
 import { $Command } from "@aws-sdk/client-s3";
+import { KnowhowSimpleClient } from "../../services/KnowhowClient";
 
 export class AgentModule extends BaseChatModule {
   name = "agent";
@@ -668,7 +671,10 @@ Please continue from where you left off and complete the original request.
           done = true;
           output = doneMsg || "No response from the AI";
           // Remove threadUpdate listener to prevent cost sharing across tasks
-          agent.agentEvents.removeListener(agent.eventTypes.threadUpdate, threadUpdateHandler);
+          agent.agentEvents.removeListener(
+            agent.eventTypes.threadUpdate,
+            threadUpdateHandler
+          );
           // Update task info
           taskInfo = this.taskRegistry.get(taskId);
 
@@ -732,6 +738,42 @@ Please continue from where you left off and complete the original request.
     }
   }
 
+  public async loadThreadsForTask(taskId: string, messageId?: string) {
+    const resumeTaskId: string = taskId;
+    const localMetadataPath = path.join(
+      ".knowhow",
+      "processes",
+      "agents",
+      resumeTaskId,
+      "metadata.json"
+    );
+
+    let threads: Message[][] = [];
+
+    // Try local FS first
+    if (!messageId && fs.existsSync(localMetadataPath)) {
+      try {
+        const raw = await fsPromises.readFile(localMetadataPath, "utf-8");
+        const metadata = JSON.parse(raw);
+        threads = metadata.threads || [];
+        console.log(`📁 Loaded threads from local FS: ${localMetadataPath}`);
+      } catch (e) {
+        console.warn(`⚠️ Failed to parse local metadata: ${e.message}`);
+      }
+    } else {
+      // Try remote via KnowhowSimpleClient
+      try {
+        const client = new KnowhowSimpleClient();
+        threads = await client.getTaskThreads(resumeTaskId);
+        console.log(`🌐 Loaded threads from remote for task: ${resumeTaskId}`);
+      } catch (e) {
+        console.warn(`⚠️ Could not load threads from remote: ${e.message}`);
+      }
+    }
+
+    return threads;
+  }
+
   /**
    * Resume an agent from a set of existing message threads
    * Used by the CLI --resume flag to continue crashed/failed tasks
@@ -739,7 +781,7 @@ Please continue from where you left off and complete the original request.
   public async resumeFromMessages(options: {
     agentName: string;
     input: string;
-    threads: any[][];
+    threads: Message[][];
     messageId?: string;
     taskId?: string;
   }): Promise<{ taskCompleted: Promise<string> }> {
@@ -765,9 +807,7 @@ Please continue from where you left off and complete the original request.
     // Build the resume prompt
     const resumePrompt = [
       "You are resuming a previously started task.",
-      originalRequest
-        ? `ORIGINAL REQUEST: ${originalRequest}`
-        : "",
+      originalRequest ? `ORIGINAL REQUEST: ${originalRequest}` : "",
       "Please continue from where you left off.",
       input ? input : "",
     ]
@@ -775,7 +815,25 @@ Please continue from where you left off and complete the original request.
       .join("\n");
 
     // Flatten threads into a single messages array for the agent
-    const flattenedMessages = threads.flat();
+    const lastThread =
+      threads && threads.length > 0 ? threads[threads.length - 1] : [];
+    const resumeMessages = [...lastThread];
+
+    // find last user message index
+    const resumeIndex = lastThread
+      .reverse()
+      .findIndex((e) => e.role === "user" && typeof e.content === "string");
+
+    if (resumeIndex === -1) {
+      resumeMessages.push({
+        role: "user",
+        content: resumePrompt,
+      });
+    } else {
+      const actualIndex = lastThread.length - 1 - resumeIndex;
+      const lastUserMessage = resumeMessages[actualIndex];
+      lastUserMessage.content += `\n\n<Workflow>[RESUME CONTEXT]: ${resumePrompt}</Workflow>`;
+    }
 
     const result = await this.setupAgent({
       agentName,
@@ -786,7 +844,7 @@ Please continue from where you left off and complete the original request.
     });
 
     // Start agent with prior messages as context
-    result.agent.call(resumePrompt, flattenedMessages as any);
+    result.agent.call(resumePrompt, resumeMessages);
 
     return { taskCompleted: result.taskCompleted };
   }

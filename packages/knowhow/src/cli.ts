@@ -40,7 +40,6 @@ import { SetupModule } from "./chat/modules/SetupModule";
 import { CliChatService } from "./chat/CliChatService";
 
 async function setupServices() {
-
   const { Agents, Mcp, Clients, Tools: OldTools } = services();
   const Tools = new LazyToolsService();
 
@@ -207,59 +206,37 @@ async function main() {
     )
     .option("--message-id <messageId>", "Knowhow message ID for task tracking")
     .option("--sync-fs", "Enable filesystem-based synchronization")
-    .option("--task-id <taskId>", "Pre-generated task ID (used with --sync-fs for predictable agent directory path)")
+    .option(
+      "--task-id <taskId>",
+      "Pre-generated task ID (used with --sync-fs for predictable agent directory path)"
+    )
     .option("--prompt-file <path>", "Custom prompt template file with {text}")
     .option("--input <text>", "Task input (fallback to stdin if not provided)")
-    .option("--resume", "Resume a previously started task using the --task-id (local FS or remote)")
+    .option(
+      "--resume",
+      "Resume a previously started task using the --task-id (local FS or remote)"
+    )
     .action(async (options) => {
       try {
         await setupServices();
+        const agentModule = new AgentModule();
 
         // Handle --resume flag: load threads from local FS or remote using --task-id
-        if (options.resume && options.taskId) {
-          const resumeTaskId: string = options.taskId;
-          const localMetadataPath = path.join(
-            ".knowhow",
-            "processes",
-            "agents",
-            resumeTaskId,
-            "metadata.json"
+        if (options.resume) {
+          const threads = await agentModule.loadThreadsForTask(
+            options.taskId,
+            options.messageId
           );
-
-          let threads: any[][] = [];
-
-          // Try local FS first
-          if (fs.existsSync(localMetadataPath)) {
-            try {
-              const raw = await fsPromises.readFile(localMetadataPath, "utf-8");
-              const metadata = JSON.parse(raw);
-              threads = metadata.threads || [];
-              console.log(`📁 Loaded threads from local FS: ${localMetadataPath}`);
-            } catch (e) {
-              console.warn(`⚠️ Failed to parse local metadata: ${e.message}`);
-            }
-          } else {
-            // Try remote via KnowhowSimpleClient
-            try {
-              const client = new KnowhowSimpleClient();
-              threads = await client.getTaskThreads(resumeTaskId);
-              console.log(`🌐 Loaded threads from remote for task: ${resumeTaskId}`);
-            } catch (e) {
-              console.warn(`⚠️ Could not load threads from remote: ${e.message}`);
-            }
-          }
-
           const resumeInput =
             options.input || "Please continue from where you left off.";
 
-          const agentModule = new AgentModule();
           await agentModule.initialize(chatService);
           const { taskCompleted } = await agentModule.resumeFromMessages({
             agentName: options.agentName || "Patcher",
             input: resumeInput,
             threads,
             messageId: options.messageId,
-            taskId: resumeTaskId,
+            taskId: options.taskId,
           });
           await taskCompleted;
           return;
@@ -283,7 +260,6 @@ async function main() {
           process.exit(1);
         }
 
-        const agentModule = new AgentModule();
         await agentModule.initialize(chatService);
         const { taskCompleted } = await agentModule.setupAgent({
           ...options,
@@ -425,7 +401,9 @@ async function main() {
 
   program
     .command("files")
-    .description("Sync files between local filesystem and Knowhow FS (uses fileMounts config)")
+    .description(
+      "Sync files between local filesystem and Knowhow FS (uses fileMounts config)"
+    )
     .option("--upload", "Force upload direction for all mounts")
     .option("--download", "Force download direction for all mounts")
     .option("--config <path>", "Path to knowhow.json", "./knowhow.json")
@@ -487,7 +465,10 @@ async function main() {
     .description(
       "Git credential helper for GitHub. Use as: git config credential.helper 'knowhow github-credentials'"
     )
-    .option("--repo <repo>", "Repository in owner/repo format (e.g. myorg/myrepo)")
+    .option(
+      "--repo <repo>",
+      "Repository in owner/repo format (e.g. myorg/myrepo)"
+    )
     .action(async (action: string | undefined, options: { repo?: string }) => {
       const client = new KnowhowSimpleClient();
 
@@ -500,7 +481,10 @@ async function main() {
         // Read from stdin (git sends protocol/host/username)
         const lines: string[] = [];
         const readline = await import("readline");
-        const rl = readline.createInterface({ input: process.stdin, terminal: false });
+        const rl = readline.createInterface({
+          input: process.stdin,
+          terminal: false,
+        });
         await new Promise<void>((resolve) => {
           rl.on("line", (line) => {
             if (line.trim()) lines.push(line.trim());
