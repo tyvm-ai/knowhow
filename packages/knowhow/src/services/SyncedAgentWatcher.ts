@@ -23,6 +23,12 @@ export interface SyncedAgentWatcher {
   sendMessage(message: string): Promise<void>;
   /** Get current threads (for replaying history via /logs) */
   getThreads(): Promise<any[][]>;
+  /** Pause the remote agent */
+  pause(): Promise<void>;
+  /** Unpause/resume the remote agent */
+  unpause(): Promise<void>;
+  /** Kill/terminate the remote agent */
+  kill(): Promise<void>;
 }
 
 /**
@@ -109,6 +115,24 @@ export class FsSyncedAgentWatcher implements SyncedAgentWatcher {
     this.watcher?.close();
     this.watcher = null;
     console.log(`🔌 Stopped watching agent: ${this.taskId}`);
+  }
+
+  async pause(): Promise<void> {
+    const statusPath = path.join(this.taskPath, "status.txt");
+    await fsPromises.writeFile(statusPath, "paused", "utf8");
+    console.log(`⏸️  Paused remote agent: ${this.taskId}`);
+  }
+
+  async unpause(): Promise<void> {
+    const statusPath = path.join(this.taskPath, "status.txt");
+    await fsPromises.writeFile(statusPath, "running", "utf8");
+    console.log(`▶️  Unpaused remote agent: ${this.taskId}`);
+  }
+
+  async kill(): Promise<void> {
+    const statusPath = path.join(this.taskPath, "status.txt");
+    await fsPromises.writeFile(statusPath, "killed", "utf8");
+    console.log(`🛑 Killed remote agent: ${this.taskId}`);
   }
 
   private async readMetadata(): Promise<any> {
@@ -214,5 +238,20 @@ export class WebSyncedAgentWatcher implements SyncedAgentWatcher {
       this.pollInterval = null;
     }
     console.log(`🔌 Stopped watching web agent: ${this.taskId}`);
+  }
+
+  async pause(): Promise<void> {
+    await this.client.pauseAgent(this.taskId);
+    console.log(`⏸️  Paused remote web agent: ${this.taskId}`);
+  }
+
+  async unpause(): Promise<void> {
+    await this.client.resumeAgent(this.taskId);
+    console.log(`▶️  Unpaused remote web agent: ${this.taskId}`);
+  }
+
+  async kill(): Promise<void> {
+    await this.client.killAgent(this.taskId);
+    console.log(`🛑 Killed remote web agent: ${this.taskId}`);
   }
 }

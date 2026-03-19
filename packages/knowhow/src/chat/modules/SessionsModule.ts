@@ -614,10 +614,11 @@ export class SessionsModule extends BaseChatModule {
 
     const context = this.chatService?.getContext();
     if (context) context.activeAgentTaskId = taskId;
-    if (this.chatService) this.chatService.setMode("agent:attached");
 
     console.log(`📁 Attached to filesystem agent: ${taskId}`);
-    console.log(`   Type /logs 20 to see recent messages, or /detach to detach.`);
+
+    // Enter interactive loop — this sets mode to "agent:attached" and blocks until detach/done/kill
+    await this.agentModule.startAttachedWatcherLoop(taskId, watcher);
   }
 
   private async attachToWebAgent(taskId: string): Promise<void> {
@@ -650,10 +651,11 @@ export class SessionsModule extends BaseChatModule {
 
     const context = this.chatService?.getContext();
     if (context) context.activeAgentTaskId = taskId;
-    if (this.chatService) this.chatService.setMode("agent:attached");
 
     console.log(`🌐 Attached to web agent: ${taskId}`);
-    console.log(`   Type /logs 20 to see recent messages, or /detach to detach.`);
+
+    // Enter interactive loop — this sets mode to "agent:attached" and blocks until detach/done/kill
+    await this.agentModule.startAttachedWatcherLoop(taskId, watcher);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────

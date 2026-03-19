@@ -954,4 +954,84 @@ Please continue from where you left off and complete the original request.
       return { result: false, finalOutput: "Error during agent execution" };
     }
   }
+
+  /**
+   * Interactive chat loop for an attached synced watcher (FS or Web agent).
+   * Routes user input to watcher.sendMessage() and slash-commands to
+   * watcher.pause() / unpause() / kill().
+   */
+  public async startAttachedWatcherLoop(
+    taskId: string,
+    watcher: SyncedAgentWatcher
+  ): Promise<void> {
+    // Set mode so /logs, /detach etc. are available
+    if (this.chatService) {
+      this.chatService.setMode("agent:attached");
+    }
+
+    this.activeAgentTaskId = taskId;
+    this.renderer.setActiveTaskId(taskId);
+    const context = this.chatService?.getContext();
+    if (context) context.activeAgentTaskId = taskId;
+
+    const modeCommands =
+      this.chatService
+        ?.getCommandsForMode("agent:attached")
+        .map((cmd) => `/${cmd.name}`) || [];
+    const commands = [
+      ...modeCommands,
+      "/pause",
+      "/unpause",
+      "/kill",
+      "/detach",
+      "/done",
+    ];
+
+    let done = false;
+    while (!done) {
+      let input: string;
+      try {
+        input =
+          (await this.chatService?.getInput(
+            `[${watcher.agentName}] Send message or command: `,
+            commands
+          )) || "";
+      } catch {
+        // EOF / stream closed — detach gracefully
+        break;
+      }
+
+      switch (input.trim()) {
+        case "/done":
+        case "/detach":
+          done = true;
+          break;
+        case "/pause":
+          await watcher.pause();
+          break;
+        case "/unpause":
+          await watcher.unpause();
+          break;
+        case "/kill":
+          await watcher.kill();
+          done = true;
+          break;
+        case "":
+          // empty input — just loop
+          break;
+        default:
+          await watcher.sendMessage(input.trim());
+          console.log(`📨 Message sent to ${watcher.agentName}`);
+      }
+    }
+
+    // Reset state on exit
+    watcher.stopWatching();
+    this.activeSyncedWatcher = undefined;
+    this.activeAgentTaskId = undefined;
+    this.renderer.setActiveTaskId(undefined);
+    if (context) context.activeAgentTaskId = undefined;
+    if (this.chatService) this.chatService.setMode("default");
+    console.log(`🔌 Detached from ${watcher.agentName} (${taskId})`);
+  }
 }
