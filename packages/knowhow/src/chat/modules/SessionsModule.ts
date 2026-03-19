@@ -423,9 +423,9 @@ export class SessionsModule extends BaseChatModule {
       const fsAgents = includeFs ? await this.getFsAgents(runningTasks) : [];
       if (filteredTasks.length === 0 && savedSessions.length === 0 && fsAgents.length === 0) {
         console.log(
-          "No sessions from this process run. Use --all to see all historical sessions."
-        );
-        return;
+        "No sessions from this process run. Use --all to see all historical sessions."
+      );
+      return;
       }
 
       if (csv) {
@@ -436,7 +436,7 @@ export class SessionsModule extends BaseChatModule {
       return;
     }
 
-    const fsAgents = includeFs ? await this.getFsAgents(runningTasks) : [];
+  const fsAgents = includeFs ? await this.getFsAgentsIncludingCompleted(runningTasks) : [];
     if (csv) {
       this.logSessionsCsv(runningTasks, savedSessions, fsAgents);
     } else {
@@ -447,7 +447,7 @@ export class SessionsModule extends BaseChatModule {
   /** Compact table of ONLY running tasks + fs agents (for /attach interactive) */
   private printRunningTable(
     runningTasks: TaskInfo[],
-    fsAgents: Array<{ taskId: string; agentName: string; status: string }>
+    fsAgents: Array<{ taskId: string; agentName: string; status: string; totalCostUsd?: number }>
   ): void {
     const rows = [
       ...runningTasks.map((t) => ({
@@ -461,7 +461,7 @@ export class SessionsModule extends BaseChatModule {
         id: a.taskId,
         agent: a.agentName,
         status: a.status,
-        cost: "n/a",
+        cost: a.totalCostUsd != null ? `$${a.totalCostUsd.toFixed(3)}` : "n/a",
         type: "fs",
       })),
     ];
@@ -497,7 +497,7 @@ export class SessionsModule extends BaseChatModule {
   private logSessionsCompact(
     runningTasks: TaskInfo[],
     savedSessions: ChatSession[],
-    fsAgents: Array<{ taskId: string; agentName: string; status: string }> = []
+    fsAgents: Array<{ taskId: string; agentName: string; status: string; totalCostUsd?: number }> = []
   ): void {
     const runningTaskIds = new Set(runningTasks.map((t) => t.taskId));
     const savedIds = new Set(savedSessions.map((s) => s.sessionId));
@@ -518,7 +518,7 @@ export class SessionsModule extends BaseChatModule {
         id: a.taskId,
         agent: a.agentName,
         status: a.status,
-        cost: "n/a",
+        cost: a.totalCostUsd != null ? `$${a.totalCostUsd.toFixed(3)}` : "n/a",
         type: "fs",
         action: a.status === "completed" ? "/resume" : "/attach",
       })),
@@ -538,15 +538,16 @@ export class SessionsModule extends BaseChatModule {
     }
 
     console.log("\n📋 Sessions:");
-    console.log("─".repeat(92));
+    console.log("─".repeat(104));
     console.log(
       "taskId".padEnd(40) +
         "agent".padEnd(14) +
         "status".padEnd(12) +
         "type".padEnd(10) +
+        "cost".padEnd(12) +
         "action"
     );
-    console.log("─".repeat(92));
+    console.log("─".repeat(104));
     for (const r of rows) {
       const shortId = r.id.length > 38 ? r.id.substring(0, 35) + "..." : r.id;
       console.log(
@@ -554,10 +555,11 @@ export class SessionsModule extends BaseChatModule {
           r.agent.padEnd(14) +
           r.status.padEnd(12) +
           r.type.padEnd(10) +
+          r.cost.padEnd(12) +
           r.action
       );
     }
-    console.log("─".repeat(92));
+    console.log("─".repeat(104));
   }
 
   /**
@@ -566,7 +568,7 @@ export class SessionsModule extends BaseChatModule {
   private logSessionsCsv(
     runningTasks: TaskInfo[],
     savedSessions: ChatSession[],
-    fsAgents: Array<{ taskId: string; agentName: string; status: string }> = []
+    fsAgents: Array<{ taskId: string; agentName: string; status: string; totalCostUsd?: number }> = []
   ): void {
     const lines = ["taskId,agent,status,type,cost,startTime,initialInput"];
     const runningTaskIds = new Set(runningTasks.map((t) => t.taskId));
@@ -587,7 +589,7 @@ export class SessionsModule extends BaseChatModule {
     const allKnownIds = new Set([...runningTaskIds, ...savedSessions.map((s) => s.sessionId)]);
     for (const a of fsAgents) {
       if (!allKnownIds.has(a.taskId)) {
-        lines.push(`${a.taskId},${a.agentName},${a.status},fs,n/a,n/a,""`);
+        lines.push(`${a.taskId},${a.agentName},${a.status},fs,${a.totalCostUsd != null ? a.totalCostUsd.toFixed(3) : "n/a"},n/a,""`);
       }
     }
     console.log(lines.join("\n"));
@@ -682,10 +684,18 @@ export class SessionsModule extends BaseChatModule {
 
   private async getFsAgents(
     runningTasks: TaskInfo[]
-  ): Promise<Array<{ taskId: string; agentName: string; status: string }>> {
+  ): Promise<Array<{ taskId: string; agentName: string; status: string; totalCostUsd?: number }>> {
     const sessionManager = this.agentModule.getSessionManager();
     const registeredIds = new Set(runningTasks.map((t) => t.taskId));
     return sessionManager.discoverFsAgents(registeredIds);
+  }
+
+  private async getFsAgentsIncludingCompleted(
+    runningTasks: TaskInfo[]
+  ): Promise<Array<{ taskId: string; agentName: string; status: string; totalCostUsd?: number }>> {
+    const sessionManager = this.agentModule.getSessionManager();
+    const registeredIds = new Set(runningTasks.map((t) => t.taskId));
+    return sessionManager.discoverFsAgents(registeredIds, true);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────

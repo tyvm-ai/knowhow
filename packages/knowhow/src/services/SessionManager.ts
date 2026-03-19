@@ -288,12 +288,16 @@ export class SessionManager {
 
   /**
    * Discover agents running in other processes via the filesystem.
+   * By default only returns agents that are NOT completed/killed.
    */
-  public async discoverFsAgents(registeredIds: Set<string>): Promise<Array<{ taskId: string; agentName: string; status: string }>> {
+  public async discoverFsAgents(
+    registeredIds: Set<string>,
+    includeCompleted: boolean = false
+  ): Promise<Array<{ taskId: string; agentName: string; status: string; totalCostUsd?: number }>> {
     const agentsDir = path.join(".knowhow", "processes", "agents");
     if (!fs.existsSync(agentsDir)) return [];
 
-    const results: Array<{ taskId: string; agentName: string; status: string }> = [];
+    const results: Array<{ taskId: string; agentName: string; status: string; totalCostUsd?: number }> = [];
 
     try {
       const entries = await fsPromises.readdir(agentsDir, { withFileTypes: true });
@@ -305,10 +309,18 @@ export class SessionManager {
         try {
           const raw = await fsPromises.readFile(metadataPath, "utf-8");
           const metadata = JSON.parse(raw);
+          const status = metadata.status || "unknown";
+
+          // Skip completed/killed tasks unless explicitly requested
+          if (!includeCompleted && (status === "completed" || status === "killed")) {
+            continue;
+          }
+
           results.push({
             taskId,
             agentName: metadata.agentName || "unknown",
-            status: metadata.status || "unknown",
+            status,
+            totalCostUsd: metadata.totalCostUsd,
           });
         } catch {
           // Skip dirs without metadata

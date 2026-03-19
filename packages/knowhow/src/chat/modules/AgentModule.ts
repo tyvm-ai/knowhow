@@ -424,6 +424,7 @@ Please continue from where you left off and complete the original request.
         messageId: options.messageId,
         syncFs: options.syncFs,
         existingKnowhowTaskId: options.existingKnowhowTaskId,
+        agentName,
       });
 
       // Update TaskInfo with the sync task ID

@@ -15,6 +15,8 @@ export interface SyncerOptions {
   syncFs?: boolean;
   /** Use an existing Knowhow task ID instead of creating a new one */
   existingKnowhowTaskId?: string;
+  /** Agent name to persist in metadata.json */
+  agentName?: string;
 }
 
 export interface AgentSyncer {
@@ -70,6 +72,7 @@ export class SyncerService implements AgentSyncer {
     const fsTaskId = await this.fsSync.createTask({
       taskId: options.taskId,
       prompt: options.prompt,
+      agentName: options.agentName,
     });
 
     // Optionally create web sync task
