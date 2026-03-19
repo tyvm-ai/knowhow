@@ -30,6 +30,7 @@ export * from "./AgentSyncFs";
 export * from "./SessionManager";
 export * from "./TaskRegistry";
 export * from "./SyncedAgentWatcher";
+export * from "./SyncerService";
 export { Clients } from "../clients";
 
 let Singletons = {} as {

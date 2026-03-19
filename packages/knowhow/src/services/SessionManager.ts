@@ -2,6 +2,7 @@
  * Session Manager Service - Handles agent session persistence and restoration
  */
 import * as fs from "fs";
+import * as fsPromises from "fs/promises";
 import * as path from "path";
 import { TaskInfo, ChatSession } from "../chat/types";
 
@@ -283,5 +284,40 @@ export class SessionManager {
     });
 
     console.log("─".repeat(80));
+  }
+
+  /**
+   * Discover agents running in other processes via the filesystem.
+   */
+  public async discoverFsAgents(registeredIds: Set<string>): Promise<Array<{ taskId: string; agentName: string; status: string }>> {
+    const agentsDir = path.join(".knowhow", "processes", "agents");
+    if (!fs.existsSync(agentsDir)) return [];
+
+    const results: Array<{ taskId: string; agentName: string; status: string }> = [];
+
+    try {
+      const entries = await fsPromises.readdir(agentsDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const taskId = entry.name;
+        if (registeredIds.has(taskId)) continue; // Already in-process
+        const metadataPath = path.join(agentsDir, taskId, "metadata.json");
+        try {
+          const raw = await fsPromises.readFile(metadataPath, "utf-8");
+          const metadata = JSON.parse(raw);
+          results.push({
+            taskId,
+            agentName: metadata.agentName || "unknown",
+            status: metadata.status || "unknown",
+          });
+        } catch {
+          // Skip dirs without metadata
+        }
+      }
+    } catch {
+      // agentsDir not readable
+    }
+
+    return results;
   }
 }

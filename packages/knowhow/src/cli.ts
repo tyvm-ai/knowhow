@@ -35,6 +35,7 @@ import { BaseAgent } from "./agents/base/base";
 import { AskModule } from "./chat/modules/AskModule";
 import { SearchModule } from "./chat/modules/SearchModule";
 import { AgentModule } from "./chat/modules/AgentModule";
+import { SessionsModule } from "./chat/modules/SessionsModule";
 import { readPromptFile } from "./ai";
 import { SetupModule } from "./chat/modules/SetupModule";
 import { CliChatService } from "./chat/CliChatService";
@@ -383,7 +384,9 @@ async function main() {
       try {
         const agentModule = new AgentModule();
         await agentModule.initialize(chatService);
-        await agentModule.logSessionTable(options.all || false, options.csv || false);
+        const sessionsModule = new SessionsModule(agentModule);
+        await sessionsModule.initialize(chatService);
+        await sessionsModule.logSessionTable(options.all || false, options.csv || false, true);
       } catch (error) {
         console.error("Error listing sessions:", error);
         process.exit(1);

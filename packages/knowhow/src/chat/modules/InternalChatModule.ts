@@ -10,6 +10,7 @@ import { SetupModule } from "./SetupModule";
 import { CustomCommandsModule } from "./CustomCommandsModule";
 import { ShellCommandModule } from "./ShellCommandModule";
 import { RendererModule } from "./RendererModule";
+import { SessionsModule } from "./SessionsModule";
 
 export class InternalChatModule implements ChatModule {
   private chatService?: CliChatService;
@@ -20,6 +21,7 @@ export class InternalChatModule implements ChatModule {
   private agentModule = new AgentModule();
   private askModule = new AskModule();
   private searchModule = new SearchModule();
+  private sessionsModule: SessionsModule;
   private voiceModule = new VoiceModule();
   private systemModule = new SystemModule();
   private setupModule = new SetupModule();
@@ -28,8 +30,8 @@ export class InternalChatModule implements ChatModule {
   private rendererModule: RendererModule;
 
   constructor() {
-    // rendererModule needs agentModule reference
-    this.rendererModule = new RendererModule(this.agentModule);
+    this.rendererModule = new RendererModule();
+    this.sessionsModule = new SessionsModule(this.agentModule);
   }
 
   async initialize(chatService: CliChatService): Promise<void> {
@@ -38,8 +40,10 @@ export class InternalChatModule implements ChatModule {
     // Register this module first so it gets called for input handling
     chatService.registerModule(this);
 
-    // Initialize all sub-modules
+    // Initialize renderer first so context.renderer is set before other modules use it
+    await this.rendererModule.initialize(chatService);
     await this.agentModule.initialize(chatService);
+    await this.sessionsModule.initialize(chatService);
     await this.askModule.initialize(chatService);
     await this.searchModule.initialize(chatService);
     await this.voiceModule.initialize(chatService);
@@ -47,7 +51,6 @@ export class InternalChatModule implements ChatModule {
     await this.setupModule.initialize(chatService);
     await this.customCommandsModule.initialize(chatService);
     await this.shellCommandModule.initialize(chatService);
-    await this.rendererModule.initialize(chatService);
     
     // Register our own commands (exit and multi) - not duplicated by BaseChatModule
     chatService.registerCommand({
@@ -71,6 +74,7 @@ export class InternalChatModule implements ChatModule {
   getCommands(): ChatCommand[] {
     const commands: ChatCommand[] = [
       ...this.agentModule.getCommands(),
+      ...this.sessionsModule.getCommands(),
       ...this.askModule.getCommands(),
       ...this.searchModule.getCommands(),
       ...this.voiceModule.getCommands(),
@@ -96,6 +100,7 @@ export class InternalChatModule implements ChatModule {
   getModes(): ChatMode[] {
     return [
       ...this.agentModule.getModes(),
+      ...this.sessionsModule.getModes(),
       ...this.askModule.getModes(),
       ...this.searchModule.getModes(),
       ...this.voiceModule.getModes(),

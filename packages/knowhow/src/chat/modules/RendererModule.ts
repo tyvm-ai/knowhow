@@ -2,9 +2,9 @@
  * RendererModule - Allows switching the active renderer mid-session via /render command
  */
 import { BaseChatModule } from "./BaseChatModule";
-import { ChatCommand, ChatMode, ChatContext } from "../types";
+import { ChatCommand, ChatMode, ChatContext, ChatService } from "../types";
 import { loadRenderer } from "../renderer/loadRenderer";
-import { AgentModule } from "./AgentModule";
+import { ConsoleRenderer } from "../renderer";
 
 const BUILTIN_RENDERERS = ["basic", "compact", "fancy"];
 
@@ -12,14 +12,21 @@ export class RendererModule extends BaseChatModule {
   name = "renderer";
   description = "Renderer switching functionality";
 
-  /** Reference to AgentModule so we can swap its renderer */
-  private agentModule: AgentModule;
   /** Track the current renderer name for display */
   private currentRendererName: string = "basic";
 
-  constructor(agentModule: AgentModule) {
+  constructor() {
     super();
-    this.agentModule = agentModule;
+  }
+
+  async initialize(service: ChatService): Promise<void> {
+    await super.initialize(service);
+
+    // Initialize context.renderer with a default ConsoleRenderer if not already set
+    const context = service.getContext();
+    if (!context.renderer) {
+      service.setContext({ renderer: new ConsoleRenderer() });
+    }
   }
 
   getCommands(): ChatCommand[] {
@@ -62,7 +69,15 @@ export class RendererModule extends BaseChatModule {
     try {
       console.log(`🔄 Loading renderer: ${specifier}...`);
       const newRenderer = await loadRenderer(specifier);
-      this.agentModule.setRenderer(newRenderer);
+
+      // Preserve active task ID when swapping renderers
+      const currentRenderer = this.chatService?.getContext()?.renderer;
+      const activeTaskId = currentRenderer?.getActiveTaskId();
+      if (activeTaskId) {
+        newRenderer.setActiveTaskId(activeTaskId);
+      }
+
+      this.chatService?.setContext({ renderer: newRenderer });
       this.currentRendererName = specifier;
       console.log(`✅ Renderer switched to: ${specifier}`);
     } catch (err: any) {

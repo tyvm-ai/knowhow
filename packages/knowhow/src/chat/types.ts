@@ -4,6 +4,7 @@
 import { ChatInteraction, Config } from "../types";
 import { BaseAgent } from "../agents/base/base";
 import { ToolsService } from "src/services";
+import { AgentRenderer } from "./renderer/types";
 
 export interface ChatContext {
   debugMode?: boolean;
@@ -18,6 +19,7 @@ export interface ChatContext {
   selectedAgent?: BaseAgent;
   plugins: string[];
   activeAgentTaskId?: string;
+  renderer?: AgentRenderer;
 
   [key: string]: any;
 }

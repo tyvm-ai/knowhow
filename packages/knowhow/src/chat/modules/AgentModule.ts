@@ -3,13 +3,10 @@
  */
 import { ConsoleRenderer, AgentRenderer } from "../renderer";
 import {
-  AgentSyncKnowhowWeb,
-  AgentSyncFs,
   SessionManager,
   TaskRegistry,
   SyncedAgentWatcher,
-  FsSyncedAgentWatcher,
-  WebSyncedAgentWatcher,
+  SyncerService,
 } from "../../services/index";
 import * as fs from "fs";
 import * as fsPromises from "fs/promises";
@@ -30,12 +27,11 @@ import {
   HarmonyToolProcessor,
   Base64ImageProcessor,
 } from "../../processors/index";
-import { TaskInfo, ChatSession } from "../types";
+import { TaskInfo } from "../types";
 import { createAgent, agentConstructors, AgentName, agents } from "../../agents";
 import { ToolCallEvent } from "../../agents/base/base";
 import { $Command } from "@aws-sdk/client-s3";
 import { KnowhowSimpleClient } from "../../services/KnowhowClient";
-import { messagesToRenderEvents } from "../renderer/messagesToRenderEvents";
 
 export class AgentModule extends BaseChatModule {
   name = "agent";
@@ -44,23 +40,19 @@ export class AgentModule extends BaseChatModule {
   // Service instances for task management, session management, and synchronization
   private taskRegistry: TaskRegistry;
   private sessionManager: SessionManager;
-  private webSync: AgentSyncKnowhowWeb;
-  private fsSync: AgentSyncFs;
+  private syncer: SyncerService;
   /** Timestamp when this process started - used to filter sessions */
   private processStartTime: number = Date.now();
   /** Currently attached agent task ID */
   private activeAgentTaskId: string | undefined;
   /** Currently active synced agent watcher (for FS or Web agents) */
   private activeSyncedWatcher: SyncedAgentWatcher | undefined;
-  /** Renderer for agent output */
-  private renderer: AgentRenderer = new ConsoleRenderer();
 
   constructor() {
     super();
     this.taskRegistry = new TaskRegistry();
     this.sessionManager = new SessionManager();
-    this.webSync = new AgentSyncKnowhowWeb();
-    this.fsSync = new AgentSyncFs();
+    this.syncer = new SyncerService();
   }
 
   getCommands(): ChatCommand[] {
@@ -74,22 +66,6 @@ export class AgentModule extends BaseChatModule {
         name: "agents",
         description: "List available agents",
         handler: this.handleAgentsCommand.bind(this),
-      },
-      {
-        name: "attach",
-        description: "Attach to a running session or resume an old session",
-        handler: this.handleAttachCommand.bind(this),
-      },
-      {
-        name: "sessions",
-        description: "List active tasks and saved sessions",
-        handler: this.handleSessionsCommand.bind(this),
-      },
-      {
-        name: "logs",
-        description: "Show recent messages from attached agent [N=20]",
-        handler: this.handleLogsCommand.bind(this),
-        modes: ["agent:attached"],
       },
     ];
   }
@@ -105,32 +81,14 @@ export class AgentModule extends BaseChatModule {
   }
 
   /**
-   * Get the current renderer
+   * Get the current renderer from the chat context, falling back to a ConsoleRenderer.
    */
-  public getRenderer(): AgentRenderer {
-    return this.renderer;
-  }
-
-  /**
-   * Replace the active renderer. Preserves the active task ID tracking.
-   */
-  public setRenderer(newRenderer: AgentRenderer): void {
-    const activeTaskId = this.renderer.getActiveTaskId();
-    this.renderer = newRenderer;
-    if (activeTaskId) {
-      this.renderer.setActiveTaskId(activeTaskId);
-    }
+  private get renderer(): AgentRenderer {
+    return (this.chatService?.getContext()?.renderer as AgentRenderer) ?? new ConsoleRenderer();
   }
 
   async initialize(service: ChatService): Promise<void> {
     await super.initialize(service);
-
-    // Pick up a custom renderer if one was injected into the chat context
-    // (e.g. via config.chat.renderer loaded in chat.ts)
-    const context = service.getContext();
-    if (context.renderer && typeof (context.renderer as any).render === "function") {
-      this.renderer = context.renderer as AgentRenderer;
-    }
 
     // Set up plugin log event handler
     const Events = services().Events;
@@ -207,51 +165,59 @@ export class AgentModule extends BaseChatModule {
     }
   }
 
-  async handleAttachCommand(args: string[]): Promise<void> {
-    if (args.length === 0) {
-      // Get both running tasks and saved sessions
-      const runningTasks = this.taskRegistry.getAll();
-      const savedSessions = this.sessionManager.listAvailableSessions();
 
-      if (runningTasks.length === 0 && savedSessions.length === 0) {
-        console.log("No active tasks or saved sessions found to attach to.");
-        return;
-      }
-
-      await this.sessionManager.logRunningTasks(runningTasks, savedSessions);
-
-      // Interactive selection for both types
-      const allIds = [
-        ...savedSessions.map((s) => s.sessionId),
-        ...runningTasks.map((t) => t.taskId),
-      ];
-
-      const selectedId = await this.chatService?.getInput(
-        "Select a session/task to attach to (or press Enter to skip): ",
-        allIds
-      );
-
-      if (
-        selectedId &&
-        selectedId.trim() &&
-        allIds.includes(selectedId.trim())
-      ) {
-        await this.handleAttachById(selectedId.trim());
-      }
-      return;
-    }
-
-    const taskId = args[0];
-    await this.handleAttachById(taskId);
+  /**
+   * Get the task registry for CLI access
+   */
+  public getTaskRegistry(): TaskRegistry {
+    return this.taskRegistry;
   }
 
   /**
-   * Display single task details
+   * Get the session manager
    */
-  private displaySingleTask(task: TaskInfo): void {
-    this.taskRegistry.displaySingleTask(task);
+  public getSessionManager(): SessionManager {
+    return this.sessionManager;
   }
 
+  /**
+   * Get the current renderer from the chat context, falling back to a ConsoleRenderer.
+   */
+  public getRenderer(): AgentRenderer {
+    return this.renderer;
+  }
+
+  /**
+   * Get the currently active synced watcher
+   */
+  public getActiveSyncedWatcher(): SyncedAgentWatcher | undefined {
+    return this.activeSyncedWatcher;
+  }
+
+  /**
+   * Set the currently active synced watcher
+   */
+  public setActiveSyncedWatcher(w: SyncedAgentWatcher | undefined): void {
+    this.activeSyncedWatcher = w;
+  }
+
+  /**
+   * Get the currently active agent task ID
+   */
+  public getActiveAgentTaskId(): string | undefined {
+    return this.activeAgentTaskId;
+  }
+
+  /**
+   * Set the currently active agent task ID
+   */
+  public setActiveAgentTaskId(id: string | undefined): void {
+    this.activeAgentTaskId = id;
+  }
+
+  /**
+   * List available agents and optionally select one interactively
+   */
   async handleAgentsCommand(args: string[]): Promise<void> {
     try {
       const allAgents = agents();
@@ -261,22 +227,16 @@ export class AgentModule extends BaseChatModule {
 
         console.log("\nAvailable agents:");
         Object.entries(allAgents).forEach(([name, agent]: [string, any]) => {
-          console.log(`  - ${name}: ${agent.description || "No description"}`);
+          console.log(`  - ${name}: ${(agent as any).description || "No description"}`);
         });
         console.log("─".repeat(80), "\n");
 
-        // Interactive selection with autocomplete
         const selectedAgent = await this.chatService?.getInput(
           "Select an agent to start: ",
-          agentNames // Pass agent names as autocomplete options
+          agentNames
         );
 
-        if (
-          selectedAgent &&
-          selectedAgent.trim() &&
-          agentNames.includes(selectedAgent.trim())
-        ) {
-          // Start the selected agent
+        if (selectedAgent && selectedAgent.trim() && agentNames.includes(selectedAgent.trim())) {
           await this.handleAgentCommand([selectedAgent.trim()]);
         } else if (selectedAgent && selectedAgent.trim()) {
           console.log(`Agent "${selectedAgent.trim()}" not found.`);
@@ -291,432 +251,16 @@ export class AgentModule extends BaseChatModule {
   }
 
   /**
-   * Log sessions as a compact table
-   * @param all - if true, show all historical sessions; if false, only current process sessions
-   * @param csv - if true, output as CSV
+   * Get the process start time
    */
-  async logSessionTable(all: boolean = false, csv: boolean = false) {
-    const runningTasks = this.taskRegistry.getAll();
-    let savedSessions = this.sessionManager.listAvailableSessions();
-
-    // Filter to current process sessions unless --all is requested
-    if (!all) {
-      savedSessions = savedSessions.filter(
-        (s) => s.startTime >= this.processStartTime
-      );
-      // Also filter running tasks by process start time
-      const filteredTasks = runningTasks.filter(
-        (t) => t.startTime >= this.processStartTime
-      );
-
-      if (filteredTasks.length === 0 && savedSessions.length === 0) {
-        console.log(
-          "No sessions from this process run. Use --all to see all historical sessions."
-        );
-        return;
-      }
-
-      if (csv) {
-        this.logSessionsCsv(filteredTasks, savedSessions);
-      } else {
-        this.logSessionsCompact(filteredTasks, savedSessions);
-      }
-      return;
-    }
-
-    if (csv) {
-      this.logSessionsCsv(runningTasks, savedSessions);
-    } else {
-      this.sessionManager.logSessionTable(runningTasks, savedSessions);
-    }
-  }
-
-  /**
-   * Output sessions as a compact list: taskId | agent | status | cost
-   */
-  private logSessionsCompact(
-    runningTasks: TaskInfo[],
-    savedSessions: ChatSession[]
-  ): void {
-    const runningTaskIds = new Set(runningTasks.map((t) => t.taskId));
-    const dedupedSaved = savedSessions.filter((s) => !runningTaskIds.has(s.sessionId));
-    const all = [
-      ...dedupedSaved.map((s) => ({
-        id: s.sessionId,
-        agent: s.agentName,
-        status: s.status,
-        cost: s.totalCost ? `$${s.totalCost.toFixed(3)}` : "$0.000",
-        type: "saved",
-      })),
-      ...runningTasks.map((t) => ({
-        id: t.taskId,
-        agent: t.agentName,
-        status: t.status,
-        cost: `$${t.totalCost.toFixed(3)}`,
-        type: "running",
-      })),
-    ];
-
-    if (all.length === 0) {
-      console.log("No sessions found.");
-      return;
-    }
-
-    console.log("\n📋 Sessions (current run):");
-    console.log(
-      "─".repeat(80)
-    );
-    console.log(
-      "taskId".padEnd(40) +
-        "agent".padEnd(12) +
-        "status".padEnd(12) +
-        "cost"
-    );
-    console.log("─".repeat(80));
-    for (const item of all) {
-      const shortId =
-        item.id.length > 38 ? item.id.substring(0, 35) + "..." : item.id;
-      console.log(
-        shortId.padEnd(40) +
-          item.agent.padEnd(12) +
-          item.status.padEnd(12) +
-          item.cost
-      );
-    }
-    console.log("─".repeat(80));
-  }
-
-  /**
-   * Output sessions as CSV
-   */
-  private logSessionsCsv(
-    runningTasks: TaskInfo[],
-    savedSessions: ChatSession[]
-  ): void {
-    const lines = ["taskId,agent,status,type,cost,startTime,initialInput"];
-    const runningTaskIds = new Set(runningTasks.map((t) => t.taskId));
-    const dedupedSaved = savedSessions.filter((s) => !runningTaskIds.has(s.sessionId));
-    for (const s of dedupedSaved) {
-      const input = (s.initialInput || "").replace(/,/g, ";").replace(/\n/g, " ");
-      lines.push(
-        `${s.sessionId},${s.agentName},${s.status},saved,${s.totalCost?.toFixed(3) || "0.000"},${s.startTime},"${input}"`
-      );
-    }
-    for (const t of runningTasks) {
-      const input = (t.initialInput || "").replace(/,/g, ";").replace(/\n/g, " ");
-      lines.push(
-        `${t.taskId},${t.agentName},${t.status},running,${t.totalCost?.toFixed(3) || "0.000"},${t.startTime},"${input}"`
-      );
-    }
-    console.log(lines.join("\n"));
-  }
-
-  /**
-   * Handle /logs [N] command — show recent messages from attached agent
-   */
-  async handleLogsCommand(args: string[]): Promise<void> {
-    const count = parseInt(args[0] || "20", 10) || 20;
-    try {
-      // Check if we have an active synced watcher
-      if (this.activeSyncedWatcher) {
-        const threads = await this.activeSyncedWatcher.getThreads();
-        const lastThread = threads[threads.length - 1] || [];
-        const events = messagesToRenderEvents(lastThread, this.activeSyncedWatcher.taskId, this.activeSyncedWatcher.agentName);
-        this.renderer.logMessages(events, count);
-        return;
-      }
-
-      // Check if we have an active in-process task
-      const activeTaskId = this.renderer.getActiveTaskId();
-      if (activeTaskId && this.taskRegistry.has(activeTaskId)) {
-        const taskInfo = this.taskRegistry.get(activeTaskId);
-        const agent = taskInfo?.agent;
-        if (agent) {
-          const threads = agent.getThreads();
-          const lastThread = threads[threads.length - 1] || [];
-          const events = messagesToRenderEvents(lastThread, activeTaskId, agent.name);
-          this.renderer.logMessages(events, count);
-          return;
-        }
-      }
-
-      console.log("No active agent to show logs for. Use /attach to attach to an agent first.");
-    } catch (error) {
-      console.error("Error showing logs:", error);
-    }
-  }
-
-  async handleSessionsCommand(args: string[]): Promise<void> {
-    try {
-      const showAll = args.includes("--all");
-      const showCsv = args.includes("--csv");
-      const showFs = args.includes("--fs");
-      await this.logSessionTable(showAll, showCsv);
-
-      // Build list of IDs available to attach to (always from full set for interactive selection)
-      const runningTasks = this.taskRegistry.getAll();
-      let savedSessions = this.sessionManager.listAvailableSessions();
-      if (!showAll) {
-        savedSessions = savedSessions.filter(
-          (s) => s.startTime >= this.processStartTime
-        );
-      }
-
-      const allIds = [
-        ...savedSessions.map((s) => s.sessionId),
-        ...runningTasks.map((t) => t.taskId),
-      ];
-
-      // If --fs flag, discover and show external filesystem agents
-      if (showFs) {
-        const fsAgents = await this.discoverFsAgents();
-        if (fsAgents.length > 0) {
-          console.log("\n📁 External filesystem agents:");
-          console.log("─".repeat(60));
-          for (const a of fsAgents) {
-            console.log(`  ${a.taskId.padEnd(40)} ${a.agentName.padEnd(16)} ${a.status}`);
-          }
-          console.log("─".repeat(60));
-          allIds.push(...fsAgents.map((a) => a.taskId));
-        } else {
-          console.log("No external filesystem agents found.");
-        }
-      }
-
-      if (allIds.length > 0) {
-        const selectedId = await this.chatService?.getInput(
-          "Select a session/task to attach to (or press Enter to skip): ",
-          allIds
-        );
-
-        if (
-          selectedId &&
-          selectedId.trim() &&
-          allIds.includes(selectedId.trim())
-        ) {
-          await this.handleAttachById(selectedId.trim());
-        }
-      }
-    } catch (error) {
-      console.error("Error listing sessions and tasks:", error);
-    }
-  }
-
-  /**
-   * Handle attachment by ID - works for both running tasks and saved sessions
-   */
-  private async handleAttachById(id: string): Promise<void> {
-    // Check if it's a running task first
-    if (this.taskRegistry.has(id)) {
-      const taskInfo = this.taskRegistry.get(id);
-      if (taskInfo) {
-        // Switch to agent mode and set the selected agent
-        const context = this.chatService?.getContext();
-        const allAgents = agents();
-        const selectedAgent = allAgents[taskInfo.agentName];
-
-        if (context && selectedAgent) {
-          context.selectedAgent = selectedAgent;
-          context.agentMode = true;
-          context.currentAgent = taskInfo.agentName;
-          context.activeAgentTaskId = id;
-          this.activeAgentTaskId = id;
-          this.renderer.setActiveTaskId(id);
-          // Update context's model/provider to reflect the agent's settings
-          // so /model and /provider commands show accurate information
-          context.currentModel = selectedAgent.getModel();
-          context.currentProvider = selectedAgent.getProvider();
-          console.log(`🔄 Switched to agent mode with ${taskInfo.agentName}`);
-          console.log(`📋 Attached to running task: ${id}`);
-          console.log(`Task: ${taskInfo.initialInput}`);
-          console.log(`Status: ${taskInfo.status}`);
-          return;
-        }
-      }
-      console.log(Marked.parse(`**Attached to running task: ${id}**`));
-      return;
-    }
-
-    // Check if it's a saved session
-    try {
-      const session = this.sessionManager.loadSession(id);
-      if (session) {
-        console.log(Marked.parse(`**Resuming saved session: ${id}**`));
-        // Read session to get agent information
-
-        // Switch to agent mode and set the selected agent
-        const context = this.chatService?.getContext();
-        const allAgents = agents();
-        const selectedAgent = allAgents[session.agentName];
-
-        if (context && selectedAgent) {
-          context.selectedAgent = selectedAgent;
-          context.agentMode = true;
-          // Update context's model/provider to reflect the agent's settings
-          // so /model and /provider commands show accurate information
-          context.currentModel = selectedAgent.getModel();
-          context.currentProvider = selectedAgent.getProvider();
-          console.log(`🔄 Switched to agent mode with ${session.agentName}`);
-          console.log(`📋 Resuming saved session: ${id}`);
-          console.log(`Original task: ${session.initialInput}`);
-          console.log(`Status: ${session.status}`);
-
-          const addedContext = await this.chatService.getInput(
-            "Add any additional context for resuming this session (or press Enter to skip): "
-          );
-          await this.resumeSession(id);
-          return;
-        }
-      }
-    } catch (error) {
-      // Session file doesn't exist or error reading it
-    }
-
-    // Case 3: Check filesystem processes dir
-    const fsAgentPath = path.join(".knowhow", "processes", "agents", id);
-    if (fs.existsSync(fsAgentPath)) {
-      await this.attachToFsAgent(id);
-      return;
-    }
-
-    // Case 4: Try web API lookup
-    try {
-      await this.attachToWebAgent(id);
-      return;
-    } catch {
-      // Not found on web either
-    }
-
-    console.log(Marked.parse(`**Session/Task ${id} not found in memory, saved sessions, filesystem, or web.**`));
-  }
-
-  /**
-   * List available session files
-   */
-  public async listAvailableSessions(): Promise<ChatSession[]> {
-    return this.sessionManager.listAvailableSessions();
-  }
-
-  /**
-   * Attach to an agent running in another process via the filesystem.
-   */
-  private async attachToFsAgent(taskId: string): Promise<void> {
-    // Stop any existing watcher
-    if (this.activeSyncedWatcher) {
-      this.activeSyncedWatcher.stopWatching();
-      this.activeSyncedWatcher = undefined;
-    }
-
-    const watcher = new FsSyncedAgentWatcher();
-    await watcher.startWatching(taskId, this.renderer);
-    this.activeSyncedWatcher = watcher;
-    this.activeAgentTaskId = taskId;
-    this.renderer.setActiveTaskId(taskId);
-
-    const context = this.chatService?.getContext();
-    if (context) context.activeAgentTaskId = taskId;
-
-    if (this.chatService) {
-      this.chatService.setMode("agent:attached");
-    }
-
-    console.log(`📁 Attached to filesystem agent: ${taskId}`);
-    console.log(`   Type /logs 20 to see recent messages, or /detach to detach`);
-  }
-
-  /**
-   * Attach to an agent running on knowhow-web via polling.
-   */
-  private async attachToWebAgent(taskId: string): Promise<void> {
-    const client = new KnowhowSimpleClient();
-    // Verify the task exists by calling getTaskDetails (throws if not found)
-    await client.getTaskDetails(taskId);
-
-    // Stop any existing watcher
-    if (this.activeSyncedWatcher) {
-      this.activeSyncedWatcher.stopWatching();
-      this.activeSyncedWatcher = undefined;
-    }
-
-    const watcher = new WebSyncedAgentWatcher(client);
-    await watcher.startWatching(taskId, this.renderer);
-    this.activeSyncedWatcher = watcher;
-    this.activeAgentTaskId = taskId;
-    this.renderer.setActiveTaskId(taskId);
-
-    const context = this.chatService?.getContext();
-    if (context) context.activeAgentTaskId = taskId;
-
-    if (this.chatService) {
-      this.chatService.setMode("agent:attached");
-    }
-
-    console.log(`🌐 Attached to web agent: ${taskId}`);
-    console.log(`   Type /logs 20 to see recent messages, or /detach to detach`);
-  }
-
-  /**
-   * Discover agents running in other processes via the filesystem.
-   */
-  private async discoverFsAgents(): Promise<Array<{ taskId: string; agentName: string; status: string }>> {
-    const agentsDir = path.join(".knowhow", "processes", "agents");
-    if (!fs.existsSync(agentsDir)) return [];
-
-    const registeredIds = new Set(this.taskRegistry.getAll().map((t) => t.taskId));
-    const results: Array<{ taskId: string; agentName: string; status: string }> = [];
-
-    try {
-      const entries = await fsPromises.readdir(agentsDir, { withFileTypes: true });
-      for (const entry of entries) {
-        if (!entry.isDirectory()) continue;
-        const taskId = entry.name;
-        if (registeredIds.has(taskId)) continue; // Already in-process
-        const metadataPath = path.join(agentsDir, taskId, "metadata.json");
-        try {
-          const raw = await fsPromises.readFile(metadataPath, "utf-8");
-          const metadata = JSON.parse(raw);
-          results.push({
-            taskId,
-            agentName: metadata.agentName || "unknown",
-            status: metadata.status || "unknown",
-          });
-        } catch {
-          // Skip dirs without metadata
-        }
-      }
-    } catch {
-      // agentsDir not readable
-    }
-
-    return results;
-  }
-
-  /**
-   * List both active tasks and saved sessions for CLI usage
-   */
-  public async listSessionsAndTasks(): Promise<{
-    runningTasks: TaskInfo[];
-    savedSessions: ChatSession[];
-  }> {
-    const runningTasks = this.taskRegistry.getAll();
-    const savedSessions = this.sessionManager.listAvailableSessions();
-    return {
-      runningTasks,
-      savedSessions,
-    };
-  }
-
-  /**
-   * Get the task registry for CLI access
-   */
-  public getTaskRegistry(): TaskRegistry {
-    return this.taskRegistry;
+  public getProcessStartTime(): number {
+    return this.processStartTime;
   }
 
   /**
    * Resume a session from saved state
    */
-  private async resumeSession(
+  public async resumeSession(
     sessionId: string,
     resumeReason?: string
   ): Promise<void> {
@@ -871,45 +415,25 @@ Please continue from where you left off and complete the original request.
       this.saveSession(taskId, taskInfo, []);
 
       // Reset sync services before setting up new task (removes old listeners)
-      this.webSync.reset();
-      this.fsSync.reset();
+      this.syncer.reset();
 
-      // Create Knowhow chat task if messageId provided
-      if (
-        options.messageId &&
-        !options.existingKnowhowTaskId &&
-        !options.syncFs
-      ) {
-        knowhowTaskId = await this.webSync.createChatTask({
-          messageId: options.messageId,
-          prompt: input,
-        });
+      // Create sync task (SyncerService decides web vs fs internally)
+      const syncTaskId = await this.syncer.createTask({
+        taskId,
+        prompt: input,
+        messageId: options.messageId,
+        syncFs: options.syncFs,
+        existingKnowhowTaskId: options.existingKnowhowTaskId,
+      });
 
-        if (knowhowTaskId) {
-          // Update TaskInfo with the created knowhowTaskId
-          taskInfo.knowhowTaskId = knowhowTaskId;
-          this.taskRegistry.register(taskId, taskInfo);
+      // Update TaskInfo with the sync task ID
+      const webTaskId = this.syncer.getCreatedWebTaskId();
+      knowhowTaskId = webTaskId;
+      taskInfo.knowhowTaskId = webTaskId || syncTaskId;
+      this.taskRegistry.register(taskId, taskInfo);
 
-          // Set up event-based synchronization with Knowhow API
-          await this.webSync.setupAgentSync(agent, knowhowTaskId);
-        }
-      } else if (!options.messageId || options.syncFs) {
-        // Use filesystem sync when no messageId is provided or syncFs is explicitly enabled
-        console.log(
-          `📁 Using filesystem-based synchronization for task: ${taskId}`
-        );
-
-        const fsTaskId = await this.fsSync.createTask({
-          taskId,
-          prompt: input,
-        });
-
-        // Update TaskInfo with the fs sync info
-        taskInfo.knowhowTaskId = fsTaskId;
-        this.taskRegistry.register(taskId, taskInfo);
-
-        await this.fsSync.setupAgentSync(agent, fsTaskId);
-      }
+      // Wire up event listeners on the agent
+      await this.syncer.setupAgentSync(agent, syncTaskId);
 
       // Set up session update listener
       const threadUpdateHandler = async (threadState: any) => {
@@ -1054,16 +578,7 @@ Please continue from where you left off and complete the original request.
           taskInfo = this.taskRegistry.get(taskId);
 
           // Wait for AgentSync to finish before resolving
-          if (knowhowTaskId) {
-            console.log(
-              "🎯 [AgentModule] Waiting for web sync finalization..."
-            );
-            await this.webSync.waitForFinalization();
-            console.log("🎯 [AgentModule] Web sync finalization complete");
-          }
-          console.log("🎯 [AgentModule] Waiting for fs sync finalization...");
-          await this.fsSync.waitForFinalization();
-          console.log("🎯 [AgentModule] Fs sync finalization complete");
+          await this.syncer.waitForFinalization();
 
           if (taskInfo) {
             taskInfo.status = "completed";
