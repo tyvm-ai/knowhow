@@ -57,7 +57,7 @@ export class AsanaPlugin extends PluginBase {
     });
 
     const allTasks = tasksEmbeddings.concat(projectTaskEmbeddings);
-    console.log("Found ", allTasks.length, "tasks");
+    this.log(`Found ${allTasks.length} tasks`);
     return allTasks;
   }
 
@@ -92,7 +92,7 @@ export class AsanaPlugin extends PluginBase {
   async getTasksFromProjectUrl(url: string) {
     const urlParts = url.split("/");
     const projectId = urlParts[4];
-    console.log({ projectId });
+    this.log(`Project ID: ${projectId}`);
     if (!projectId) {
       return null;
     }
@@ -113,7 +113,7 @@ export class AsanaPlugin extends PluginBase {
   async getTaskFromUrl(url: string) {
     const taskId = url.split("/").pop();
     if (taskId) {
-      console.log(`Fetching Asana task ${taskId}`);
+      this.log(`Fetching Asana task ${taskId}`);
       return await this.getTaskData(taskId);
     }
     return null;
@@ -124,7 +124,7 @@ export class AsanaPlugin extends PluginBase {
       const task = await this.asanaClient.tasks.findById(taskId);
       return task;
     } catch (error) {
-      console.error("Error fetching Asana task:", error);
+      this.log(`Error fetching Asana task: ${error}`, "error");
       return null;
     }
   }

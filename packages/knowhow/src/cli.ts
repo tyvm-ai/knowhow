@@ -48,21 +48,31 @@ async function setupServices() {
     ...OldTools.getContext(),
   });
 
-  const { Researcher, Developer, Patcher, Setup } = agents({
+  // Build the AgentContext with the fully-populated LazyToolsService so every
+  // agent created (including those in setupAgent) gets all tools registered.
+  const agentContext: import("./agents/base/base").AgentContext = {
     ...services(),
     Tools,
+  };
+
+  const { Researcher, Developer, Patcher, Setup } = agents({
+    ...agentContext,
   });
 
   Agents.registerAgent(Researcher);
   Agents.registerAgent(Patcher);
   Agents.registerAgent(Developer);
   Agents.registerAgent(Setup);
-  Agents.loadAgentsFromConfig(services());
+  Agents.loadAgentsFromConfig(agentContext);
 
   Tools.defineTools(includedTools, allTools);
 
   // Add Mcp service to tool context directly so MCP management tools can access it
   Tools.addContext("Mcp", Mcp);
+
+  // Store the fully-wired AgentContext on AgentService so AgentModule.setupAgent
+  // can retrieve it when creating fresh agent instances via createAgent().
+  Agents.setAgentContext(agentContext);
 
   console.log("🔌 Connecting to MCP...");
   await Mcp.connectToConfigured(Tools);
@@ -367,11 +377,13 @@ async function main() {
   program
     .command("sessions")
     .description("Manage agent sessions from CLI")
-    .action(async () => {
+    .option("--all", "Show all historical sessions (default: current process only)")
+    .option("--csv", "Output sessions as CSV")
+    .action(async (options) => {
       try {
         const agentModule = new AgentModule();
         await agentModule.initialize(chatService);
-        await agentModule.logSessionTable();
+        await agentModule.logSessionTable(options.all || false, options.csv || false);
       } catch (error) {
         console.error("Error listing sessions:", error);
         process.exit(1);

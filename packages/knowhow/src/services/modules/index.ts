@@ -1,4 +1,4 @@
-import { getConfig } from "../../config";
+import { getConfig, getGlobalConfig } from "../../config";
 import { KnowhowModule, ModuleContext } from "./types";
 import { ToolsService } from "../Tools";
 import { services } from "../";
@@ -25,9 +25,14 @@ export class ModulesService {
     const pluginService = context.Plugins;
     const clients = context.Clients;
 
-    const modules = config.modules || [];
+    // Load from global config (~/.knowhow/knowhow.json) first, then local config
+    const globalConfig = await getGlobalConfig();
+    const allModulePaths = [
+      ...(globalConfig.modules || []),
+      ...(config.modules || []),
+    ];
 
-    for (const modulePath of modules) {
+    for (const modulePath of allModulePaths) {
       const importedModule = require(modulePath) as KnowhowModule;
       await importedModule.init({ config, cwd: process.cwd() });
 
@@ -48,6 +53,12 @@ export class ModulesService {
         clients.registerClient(client.provider, client.client);
         clients.registerModels(client.provider, client.models);
       }
+    }
+
+    // Also load plugins directly from config's pluginPackages map
+    if (pluginService) {
+      await pluginService.loadPluginsFromConfig(config);
+      await pluginService.loadPluginsFromConfig(globalConfig);
     }
   }
 }

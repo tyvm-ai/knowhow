@@ -5,6 +5,14 @@ export interface EventHandler {
   handler: (...args: any[]) => any;
 }
 
+export interface AgentLogEvent {
+  agentName: string;
+  message: string;
+  level: "info" | "warn" | "error";
+  timestamp: number;
+  taskId?: string | null;
+}
+
 export class EventService extends EventEmitter {
   private blockingHandlers: Map<string, EventHandler[]> = new Map();
 
@@ -12,6 +20,7 @@ export class EventService extends EventEmitter {
     agentMsg: "agent:msg",
     agentsRegister: "agents:register",
     agentsCall: "agents:call",
+    pluginLog: "plugin:log",
   };
 
   constructor() {
@@ -98,6 +107,15 @@ export class EventService extends EventEmitter {
   callAgent(name: string, query: string): Promise<string> {
     return new Promise((resolve, reject) => {
       this.emit(this.eventTypes.agentsCall, { name, query, resolve, reject });
+    });
+  }
+
+  log(source: string, message: string, level: "info" | "warn" | "error" = "info"): void {
+    this.emit(this.eventTypes.pluginLog, {
+      source,
+      message,
+      level,
+      timestamp: Date.now(),
     });
   }
 }

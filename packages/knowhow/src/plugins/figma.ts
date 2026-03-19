@@ -64,11 +64,11 @@ export class FigmaPlugin extends PluginBase implements Plugin {
       return null;
     }
     try {
-      console.log("Fetching figma data", { fileId, nodeIds });
+      this.log(`Fetching figma data: ${JSON.stringify({ fileId, nodeIds })}`);
       const response = await this.client.fileImages(fileId, { ids: nodeIds });
       return { id: fileId, ...response.data };
     } catch (error) {
-      console.error("Error fetching Figma file data:", error);
+      this.log(`Error fetching Figma file data: ${error}`, "error");
       return null;
     }
   }
@@ -146,11 +146,7 @@ export class FigmaPlugin extends PluginBase implements Plugin {
           imageUrl,
           `Describe the image with relavant information for this user question: ${userPrompt}`
         );
-
-        console.log(
-          "FIGMA PLUGIN: Image description",
-          imageDescription.choices[0].message.content
-        );
+        this.log(`Image description: ${imageDescription.choices[0].message.content}`);
         responses.push({ nodeId, imageDescription });
       }
     }

@@ -67,7 +67,7 @@ export class LanguagePlugin extends PluginBase implements Plugin {
         });
       });
     } catch (error) {
-      console.error("LANGUAGE PLUGIN: Error setting up event handlers:", error);
+      this.log("LANGUAGE PLUGIN: Error setting up event handlers: " + error, "error");
     }
   }
 
@@ -184,7 +184,7 @@ export class LanguagePlugin extends PluginBase implements Plugin {
         );
       }
     } catch (error) {
-      console.error("LANGUAGE PLUGIN: Error handling file event:", error);
+      this.log("LANGUAGE PLUGIN: Error handling file event: " + error, "error");
     }
   }
 
@@ -245,7 +245,7 @@ export class LanguagePlugin extends PluginBase implements Plugin {
         );
       }
     } catch (error) {
-      console.error("LANGUAGE PLUGIN: Error handling agent event:", error);
+      this.log("LANGUAGE PLUGIN: Error handling agent event: " + error, "error");
     }
   }
 
@@ -282,7 +282,7 @@ export class LanguagePlugin extends PluginBase implements Plugin {
     // Use the extracted resolveSources method
     const contexts = await this.resolveSources(matchingTerms);
 
-    console.log("LANGUAGE PLUGIN: Matching terms found:", matchingTerms);
+    this.log("LANGUAGE PLUGIN: Matching terms found: " + matchingTerms);
 
     const output = contexts.every((c) => typeof c === "string")
       ? contexts.join("")

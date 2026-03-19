@@ -35,7 +35,7 @@ export class UrlPlugin extends PluginBase implements Plugin {
     try {
       const text = await loadWebpage(url);
 
-      console.log(`URL PLUGIN: Fetched content from ${url}:`, text);
+      this.log(`URL PLUGIN: Fetched content from ${url}: ${text}`);
 
       return {
         id: url + "-url",
@@ -43,7 +43,7 @@ export class UrlPlugin extends PluginBase implements Plugin {
         metadata: { url },
       };
     } catch (error) {
-      console.error(`Error fetching or parsing URL ${url}:`, error);
+      this.log(`Error fetching or parsing URL ${url}: ${error}`, "error");
       return null;
     }
   }

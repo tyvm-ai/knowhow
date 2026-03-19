@@ -17,6 +17,7 @@ export interface ChatContext {
   inputMethod?: InputMethod;
   selectedAgent?: BaseAgent;
   plugins: string[];
+  activeAgentTaskId?: string;
 
   [key: string]: any;
 }

@@ -262,6 +262,21 @@ export async function getConfig() {
   }
 }
 
+export async function getGlobalConfig(): Promise<Config> {
+  const globalConfigDir = getGlobalConfigDir();
+  const globalConfigPath = path.join(globalConfigDir, "knowhow.json");
+  if (!fs.existsSync(globalConfigPath)) {
+    return {} as Config;
+  }
+  try {
+    const config = await readFile(globalConfigPath, "utf8");
+    return JSON.parse(config) as Config;
+  } catch (error) {
+    console.warn("Failed to load global knowhow config:", error);
+    return {} as Config;
+  }
+}
+
 export async function migrateConfig() {
   // Apply migrations, used to keep config structure up to date.
   if (!fs.existsSync(".knowhow/knowhow.json")) {

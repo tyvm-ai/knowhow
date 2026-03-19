@@ -43,6 +43,17 @@ export abstract class PluginBase implements Plugin {
     return true; // subclasses override if needed
   }
 
+  protected log(message: string, level: "info" | "warn" | "error" = "info"): void {
+    if (this.context.Events) {
+      this.context.Events.log(this.meta.name, message, level);
+    } else {
+      // Fallback to console if no Events service
+      if (level === "error") console.error(`[${this.meta.name}] ${message}`);
+      else if (level === "warn") console.warn(`[${this.meta.name}] ${message}`);
+      else console.log(`[${this.meta.name}] ${message}`);
+    }
+  }
+
   /* ------------------------------------------------------------------ */
   /** Default callMany implementation - delegates to call ------------ */
   /* ------------------------------------------------------------------ */

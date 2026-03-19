@@ -41,7 +41,7 @@ export class EmbeddingPlugin extends PluginBase {
       cwd: process.cwd(),
     });
     child.unref();
-    console.log(`EMBEDDING PLUGIN: Started 'knowhow embed' in background (pid: ${child.pid})`);
+    this.log(`Started 'knowhow embed' in background (pid: ${child.pid})`);
     return "Embedding started in background process";
   }
 
@@ -65,13 +65,11 @@ export class EmbeddingPlugin extends PluginBase {
     pruneMetadata(context);
 
     for (const entry of context) {
-      console.log(`EMBEDDING PLUGIN: Reading entry ${entry.id}`);
+      this.log(`Reading entry ${entry.id}`);
     }
 
     const contextLength = JSON.stringify(context).split(" ").length;
-    console.log(
-      `EMBEDDING PLUGIN: Found ${context.length} entries. Loading ${contextLength} words`
-    );
+    this.log(`Found ${context.length} entries. Loading ${contextLength} words`);
 
     return `EMBEDDING PLUGIN: Our knowledgebase contains this information which can be used to answer the question:
     ${JSON.stringify(context)}`;
