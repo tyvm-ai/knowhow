@@ -3,6 +3,8 @@
  * and display their messages in real-time through the renderer.
  */
 
+import { Message } from "../clients/types";
+import { EventEmitter } from "events";
 import * as fs from "fs";
 import * as fsPromises from "fs/promises";
 import * as path from "path";
@@ -29,6 +31,72 @@ export interface SyncedAgentWatcher {
   unpause(): Promise<void>;
   /** Kill/terminate the remote agent */
   kill(): Promise<void>;
+}
+
+/**
+ * A minimal agent-like interface used by attachedAgentChatLoop.
+ * Both BaseAgent and WatcherBackedAgent implement this, allowing the
+ * single attachedAgentChatLoop to handle both local and remote agents.
+ */
+export interface AttachableAgent {
+  name: string;
+  agentEvents: EventEmitter;
+  eventTypes: { done: string };
+  getTotalCostUsd(): number;
+  pause(): void | Promise<void>;
+  unpause(): void | Promise<void>;
+  kill(): void | Promise<void>;
+  addPendingUserMessage(message: Message): void;
+}
+
+/**
+ * Adapts a SyncedAgentWatcher to the AttachableAgent interface so that
+ * attachedAgentChatLoop can drive both local agents and remote/watcher-backed
+ * agents through a single code path.
+ *
+ * - pause/unpause/kill delegate to the watcher
+ * - addPendingUserMessage calls watcher.sendMessage()
+ * - agentEvents never emits "done" (the watcher loop exits via /done or /detach)
+ */
+export class WatcherBackedAgent implements AttachableAgent {
+  public name: string;
+  public agentEvents = new EventEmitter();
+  public eventTypes = { done: "done" };
+
+  constructor(public readonly watcher: SyncedAgentWatcher) {
+    this.name = watcher.agentName;
+  }
+
+  getTotalCostUsd(): number {
+    return 0;
+  }
+
+  async pause(): Promise<void> {
+    await this.watcher.pause();
+  }
+
+  async unpause(): Promise<void> {
+    await this.watcher.unpause();
+  }
+
+  async kill(): Promise<void> {
+    await this.watcher.kill();
+    // Signal the chat loop to exit
+    this.agentEvents.emit(this.eventTypes.done, "Agent killed");
+  }
+
+  addPendingUserMessage(message: Message): void {
+    // Fire-and-forget — errors are logged but not surfaced
+    const text = typeof message.content === "string" ? message.content : "";
+    this.watcher
+      .sendMessage(text)
+      .then(() => {
+        console.log(`📨 Message sent to ${this.name}`);
+      })
+      .catch((err) => {
+        console.error(`❌ Failed to send message to ${this.name}:`, err);
+      });
+  }
 }
 
 /**
@@ -75,7 +143,9 @@ export class FsSyncedAgentWatcher implements SyncedAgentWatcher {
     }
 
     console.log(`👁️  Watching fs-synced agent: ${taskId} (${this.agentName})`);
-    console.log(`   Type /logs 20 to see recent messages, or type to send a message`);
+    console.log(
+      `   Type /logs 20 to see recent messages, or type to send a message`
+    );
   }
 
   private async onMetadataChanged(): Promise<void> {
@@ -90,7 +160,11 @@ export class FsSyncedAgentWatcher implements SyncedAgentWatcher {
     const newMessages = lastThread.slice(this.lastThreadLength);
     if (newMessages.length === 0) return;
 
-    const events = messagesToRenderEvents(newMessages, this.taskId, this.agentName);
+    const events = messagesToRenderEvents(
+      newMessages,
+      this.taskId,
+      this.agentName
+    );
     for (const event of events) {
       this.renderer.render(event);
     }
@@ -177,7 +251,9 @@ export class WebSyncedAgentWatcher implements SyncedAgentWatcher {
       this.agentName = "remote-agent";
       this.lastThreadLength = lastThread.length;
     } catch (err: any) {
-      console.warn(`⚠️  Could not load initial state for task ${taskId}: ${err.message}`);
+      console.warn(
+        `⚠️  Could not load initial state for task ${taskId}: ${err.message}`
+      );
     }
 
     // Poll every 3 seconds for updates
@@ -188,7 +264,9 @@ export class WebSyncedAgentWatcher implements SyncedAgentWatcher {
     }, 3000);
 
     console.log(`🌐 Watching web-synced agent: ${taskId} (${this.agentName})`);
-    console.log(`   Type /logs 20 to see recent messages, or type to send a message`);
+    console.log(
+      `   Type /logs 20 to see recent messages, or type to send a message`
+    );
   }
 
   private async onPoll(): Promise<void> {
@@ -200,7 +278,11 @@ export class WebSyncedAgentWatcher implements SyncedAgentWatcher {
 
       const newMessages = lastThread.slice(this.lastThreadLength);
       if (newMessages.length > 0) {
-        const events = messagesToRenderEvents(newMessages, this.taskId, this.agentName);
+        const events = messagesToRenderEvents(
+          newMessages,
+          this.taskId,
+          this.agentName
+        );
         for (const event of events) {
           this.renderer.render(event);
         }

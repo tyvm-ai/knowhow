@@ -25,6 +25,7 @@ export class EventService extends EventEmitter {
 
   constructor() {
     super();
+    this.setMaxListeners(100);
   }
 
   /**

@@ -10,6 +10,7 @@ export interface ChatContext {
   debugMode?: boolean;
   agentMode?: boolean;
   currentAgent?: string;
+  promptText?: string;
   searchMode?: boolean;
   voiceMode?: boolean;
   multilineMode?: boolean;
@@ -28,6 +29,7 @@ export interface ChatMode {
   name: string;
   description: string;
   active: boolean;
+  promptText?: string | (() => string);
 }
 
 export interface CommandResult {

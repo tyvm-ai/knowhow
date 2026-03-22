@@ -15,6 +15,7 @@ import { AgentModule } from "./AgentModule";
 import {
   FsSyncedAgentWatcher,
   WebSyncedAgentWatcher,
+  WatcherBackedAgent,
 } from "../../services/index";
 import { TaskInfo, ChatSession } from "../types";
 import { agents } from "../../agents";
@@ -39,17 +40,20 @@ export class SessionsModule extends BaseChatModule {
     return [
       {
         name: "attach",
-        description: "Attach to a RUNNING session. Use --completed to also see completed sessions.",
+        description:
+          "Attach to a RUNNING session. Use --completed to also see completed sessions.",
         handler: this.handleAttachCommand.bind(this),
       },
       {
         name: "resume",
-        description: "Resume a completed/saved session with optional additional context",
+        description:
+          "Resume a completed/saved session with optional additional context",
         handler: this.handleResumeCommand.bind(this),
       },
       {
         name: "sessions",
-        description: "List running sessions. Use --completed to also show completed/saved sessions.",
+        description:
+          "List running sessions. Use --completed to also show completed/saved sessions.",
         handler: this.handleSessionsCommand.bind(this),
       },
       {
@@ -93,16 +97,42 @@ export class SessionsModule extends BaseChatModule {
         if (agent) {
           const threads = agent.getThreads();
           const lastThread = threads[threads.length - 1] || [];
-          const events = messagesToRenderEvents(lastThread, activeTaskId, agent.name);
+          const events = messagesToRenderEvents(
+            lastThread,
+            activeTaskId,
+            agent.name
+          );
           renderer.logMessages(events, count);
           return;
         }
       }
 
-      console.log("No active agent to show logs for. Use /attach <taskId> to attach to an agent first.");
+      console.log(
+        "No active agent to show logs for. Use /attach <taskId> to attach to an agent first."
+      );
     } catch (error) {
       console.error("Error showing logs:", error);
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Numbered selection helper
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Shows a prompt and accepts a number (1-based index) to select from a list of IDs.
+   * Returns the resolved ID, or undefined if cancelled.
+   */
+  private async selectByNumber(
+    prompt: string,
+    allIds: string[]
+  ): Promise<string | undefined> {
+    const numbers = allIds.map((_, i) => String(i + 1));
+    const input = await this.chatService?.getInput(prompt, numbers);
+    if (!input || !input.trim()) return undefined;
+    const idx = parseInt(input.trim(), 10);
+    if (isNaN(idx) || idx < 1 || idx > allIds.length) return undefined;
+    return allIds[idx - 1];
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -121,13 +151,19 @@ export class SessionsModule extends BaseChatModule {
       const runningTasks = taskRegistry.getAll();
       const fsAgents = await this.getFsAgents(runningTasks);
       // If --completed flag, also fetch saved/completed sessions
-      const savedSessions = showCompleted ? sessionManager.listAvailableSessions() : [];
+      const savedSessions = showCompleted
+        ? sessionManager.listAvailableSessions()
+        : [];
 
-      if (runningTasks.length === 0 && fsAgents.length === 0 && savedSessions.length === 0) {
+      if (
+        runningTasks.length === 0 &&
+        fsAgents.length === 0 &&
+        savedSessions.length === 0
+      ) {
         console.log(
           "No running sessions found to attach to.\n" +
-          "Use /attach --completed to also see completed sessions.\n" +
-          "Use /resume <taskId> to resume a completed session."
+            "Use /attach --completed to also see completed sessions.\n" +
+            "Use /resume <taskId> to resume a completed session."
         );
         return;
       }
@@ -144,16 +180,17 @@ export class SessionsModule extends BaseChatModule {
         ...(showCompleted ? savedSessions.map((s) => s.sessionId) : []),
       ];
 
-      const selectedId = await this.chatService?.getInput(
+      const selectedId = await this.selectByNumber(
         showCompleted
-          ? "Select a task to attach/resume (or press Enter to cancel): "
-          : "Select a running task to attach to (or press Enter to cancel): ",
+          ? "Enter number to attach/resume (or press Enter to cancel): "
+          : "Enter number to attach to (or press Enter to cancel): ",
         allIds
       );
 
-      if (selectedId && selectedId.trim() && allIds.includes(selectedId.trim())) {
-        const trimmed = selectedId.trim();
-        const isCompleted = showCompleted && savedSessions.some((s) => s.sessionId === trimmed);
+      if (selectedId) {
+        const trimmed = selectedId;
+        const isCompleted =
+          showCompleted && savedSessions.some((s) => s.sessionId === trimmed);
         if (isCompleted) {
           await this.resumeById(trimmed);
         } else {
@@ -199,7 +236,9 @@ export class SessionsModule extends BaseChatModule {
       console.log(`   Agent : ${taskInfo.agentName}`);
       console.log(`   Task  : ${taskInfo.initialInput}`);
       console.log(`   Status: ${taskInfo.status}`);
-      console.log(`   Type /logs to see recent messages, or /detach to detach.`);
+      console.log(
+        `   Type /logs to see recent messages, or /detach to detach.`
+      );
       return;
     }
 
@@ -211,7 +250,7 @@ export class SessionsModule extends BaseChatModule {
       if (status === "completed") {
         console.log(
           `⚠️  Task ${id} is completed.\n` +
-          `   Use /resume ${id} to resume it with additional context.`
+            `   Use /resume ${id} to resume it with additional context.`
         );
         return;
       }
@@ -226,7 +265,7 @@ export class SessionsModule extends BaseChatModule {
         if (session.status === "completed") {
           console.log(
             `⚠️  Session ${id} is completed.\n` +
-            `   Use /resume ${id} to resume it with additional context.`
+              `   Use /resume ${id} to resume it with additional context.`
           );
         } else {
           // Session exists but is not yet completed — treat as attach via fs watcher
@@ -255,7 +294,7 @@ export class SessionsModule extends BaseChatModule {
 
     console.log(
       `Session/Task "${id}" not found among running tasks, filesystem agents, or web.\n` +
-      `Use /sessions to see all known sessions.`
+        `Use /sessions to see all known sessions.`
     );
   }
 
@@ -278,13 +317,13 @@ export class SessionsModule extends BaseChatModule {
       this.printSavedSessionsTable(savedSessions);
 
       const allIds = savedSessions.map((s) => s.sessionId);
-      const selectedId = await this.chatService?.getInput(
-        "Select a session to resume (or press Enter to cancel): ",
+      const selectedId = await this.selectByNumber(
+        "Enter number to resume (or press Enter to cancel): ",
         allIds
       );
 
-      if (selectedId && selectedId.trim() && allIds.includes(selectedId.trim())) {
-        await this.resumeById(selectedId.trim());
+      if (selectedId) {
+        await this.resumeById(selectedId);
       }
       return;
     }
@@ -307,7 +346,10 @@ export class SessionsModule extends BaseChatModule {
         const additionalContext = await this.chatService?.getInput(
           "Add any additional context for resuming this session (or press Enter to skip): "
         );
-        await this.agentModule.resumeSession(id, additionalContext?.trim() || undefined);
+        await this.agentModule.resumeSession(
+          id,
+          additionalContext?.trim() || undefined
+        );
         return;
       }
     } catch {
@@ -319,7 +361,7 @@ export class SessionsModule extends BaseChatModule {
     if (fs.existsSync(fsAgentPath)) {
       console.log(
         `⚠️  Task ${id} exists in the filesystem but has no saved session.\n` +
-        `   Use /attach ${id} if it is still running.`
+          `   Use /attach ${id} if it is still running.`
       );
       return;
     }
@@ -336,7 +378,8 @@ export class SessionsModule extends BaseChatModule {
 
   async handleSessionsCommand(args: string[]): Promise<void> {
     try {
-      const showCompleted = args.includes("--completed") || args.includes("--all");
+      const showCompleted =
+        args.includes("--completed") || args.includes("--all");
       const showCsv = args.includes("--csv");
 
       const taskRegistry = this.agentModule.getTaskRegistry();
@@ -344,7 +387,9 @@ export class SessionsModule extends BaseChatModule {
       const runningTasks = taskRegistry.getAll();
       const fsAgents = await this.getFsAgents(runningTasks);
       // Only include saved/completed sessions when --completed (or --all) is passed
-      const savedSessions = showCompleted ? sessionManager.listAvailableSessions() : [];
+      const savedSessions = showCompleted
+        ? sessionManager.listAvailableSessions()
+        : [];
 
       if (showCompleted) {
         // Show running + completed together
@@ -370,23 +415,22 @@ export class SessionsModule extends BaseChatModule {
       ];
 
       if (allIds.length > 0) {
-        const selectedId = await this.chatService?.getInput(
+        const selectedId = await this.selectByNumber(
           showCompleted
-            ? "Select a session to attach/resume (or press Enter to skip): "
-            : "Select a running session to attach to (or press Enter to skip): ",
+            ? "Enter number to attach/resume (or press Enter to skip): "
+            : "Enter number to attach to (or press Enter to skip): ",
           allIds
         );
 
-        if (selectedId && selectedId.trim()) {
-          const trimmed = selectedId.trim();
+        if (selectedId) {
           const isRunning =
-            taskRegistry.has(trimmed) ||
-            fsAgents.some((a) => a.taskId === trimmed);
+            taskRegistry.has(selectedId) ||
+            fsAgents.some((a) => a.taskId === selectedId);
 
           if (isRunning) {
-            await this.attachById(trimmed);
+            await this.attachById(selectedId);
           } else {
-            await this.resumeById(trimmed);
+            await this.resumeById(selectedId);
           }
         }
       }
@@ -421,11 +465,15 @@ export class SessionsModule extends BaseChatModule {
       );
 
       const fsAgents = includeFs ? await this.getFsAgents(runningTasks) : [];
-      if (filteredTasks.length === 0 && savedSessions.length === 0 && fsAgents.length === 0) {
+      if (
+        filteredTasks.length === 0 &&
+        savedSessions.length === 0 &&
+        fsAgents.length === 0
+      ) {
         console.log(
-        "No sessions from this process run. Use --all to see all historical sessions."
-      );
-      return;
+          "No sessions from this process run. Use --all to see all historical sessions."
+        );
+        return;
       }
 
       if (csv) {
@@ -436,7 +484,9 @@ export class SessionsModule extends BaseChatModule {
       return;
     }
 
-  const fsAgents = includeFs ? await this.getFsAgentsIncludingCompleted(runningTasks) : [];
+    const fsAgents = includeFs
+      ? await this.getFsAgentsIncludingCompleted(runningTasks)
+      : [];
     if (csv) {
       this.logSessionsCsv(runningTasks, savedSessions, fsAgents);
     } else {
@@ -447,7 +497,12 @@ export class SessionsModule extends BaseChatModule {
   /** Compact table of ONLY running tasks + fs agents (for /attach interactive) */
   private printRunningTable(
     runningTasks: TaskInfo[],
-    fsAgents: Array<{ taskId: string; agentName: string; status: string; totalCostUsd?: number }>
+    fsAgents: {
+      taskId: string;
+      agentName: string;
+      status: string;
+      totalCostUsd?: number;
+    }[]
   ): void {
     const rows = [
       ...runningTasks.map((t) => ({
@@ -467,28 +522,58 @@ export class SessionsModule extends BaseChatModule {
     ];
 
     console.log("\n🏃 Running sessions (attach-able):");
-    console.log("─".repeat(80));
-    console.log("taskId".padEnd(40) + "agent".padEnd(14) + "status".padEnd(12) + "cost");
-    console.log("─".repeat(80));
+    console.log("─".repeat(86));
+    console.log(
+      "#".padEnd(5) +
+        "taskId".padEnd(40) +
+        "agent".padEnd(14) +
+        "status".padEnd(12) +
+        "cost"
+    );
+    console.log("─".repeat(86));
     for (const r of rows) {
+      const num = String(rows.indexOf(r) + 1).padEnd(5);
       const shortId = r.id.length > 38 ? r.id.substring(0, 35) + "..." : r.id;
-      console.log(shortId.padEnd(40) + r.agent.padEnd(14) + r.status.padEnd(12) + r.cost);
+      console.log(
+        num +
+          shortId.padEnd(40) +
+          r.agent.padEnd(14) +
+          r.status.padEnd(12) +
+          r.cost
+      );
     }
-    console.log("─".repeat(80));
+    console.log("─".repeat(86));
   }
 
   /** Compact table of ONLY saved sessions (for /resume interactive) */
   private printSavedSessionsTable(savedSessions: ChatSession[]): void {
     console.log("\n💾 Saved sessions (resumable):");
-    console.log("─".repeat(80));
-    console.log("taskId".padEnd(40) + "agent".padEnd(14) + "status".padEnd(12) + "cost");
-    console.log("─".repeat(80));
-    for (const s of savedSessions) {
-      const shortId = s.sessionId.length > 38 ? s.sessionId.substring(0, 35) + "..." : s.sessionId;
+    console.log("─".repeat(86));
+    console.log(
+      "#".padEnd(5) +
+        "taskId".padEnd(40) +
+        "agent".padEnd(14) +
+        "status".padEnd(12) +
+        "cost"
+    );
+    console.log("─".repeat(86));
+    for (let i = 0; i < savedSessions.length; i++) {
+      const s = savedSessions[i];
+      const num = String(i + 1).padEnd(5);
+      const shortId =
+        s.sessionId.length > 38
+          ? s.sessionId.substring(0, 35) + "..."
+          : s.sessionId;
       const cost = s.totalCost ? `$${s.totalCost.toFixed(3)}` : "$0.000";
-      console.log(shortId.padEnd(40) + s.agentName.padEnd(14) + s.status.padEnd(12) + cost);
+      console.log(
+        num +
+          shortId.padEnd(40) +
+          s.agentName.padEnd(14) +
+          s.status.padEnd(12) +
+          cost
+      );
     }
-    console.log("─".repeat(80));
+    console.log("─".repeat(86));
   }
 
   /**
@@ -497,11 +582,18 @@ export class SessionsModule extends BaseChatModule {
   private logSessionsCompact(
     runningTasks: TaskInfo[],
     savedSessions: ChatSession[],
-    fsAgents: Array<{ taskId: string; agentName: string; status: string; totalCostUsd?: number }> = []
+    fsAgents: {
+      taskId: string;
+      agentName: string;
+      status: string;
+      totalCostUsd?: number;
+    }[] = []
   ): void {
     const runningTaskIds = new Set(runningTasks.map((t) => t.taskId));
     const savedIds = new Set(savedSessions.map((s) => s.sessionId));
-    const dedupedSaved = savedSessions.filter((s) => !runningTaskIds.has(s.sessionId));
+    const dedupedSaved = savedSessions.filter(
+      (s) => !runningTaskIds.has(s.sessionId)
+    );
     const allKnownIds = new Set([...runningTaskIds, ...savedIds]);
     const dedupedFs = fsAgents.filter((a) => !allKnownIds.has(a.taskId));
 
@@ -538,20 +630,24 @@ export class SessionsModule extends BaseChatModule {
     }
 
     console.log("\n📋 Sessions:");
-    console.log("─".repeat(104));
+    console.log("─".repeat(109));
     console.log(
-      "taskId".padEnd(40) +
+      "#".padEnd(5) +
+        "taskId".padEnd(40) +
         "agent".padEnd(14) +
         "status".padEnd(12) +
         "type".padEnd(10) +
         "cost".padEnd(12) +
         "action"
     );
-    console.log("─".repeat(104));
-    for (const r of rows) {
+    console.log("─".repeat(109));
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const num = String(i + 1).padEnd(5);
       const shortId = r.id.length > 38 ? r.id.substring(0, 35) + "..." : r.id;
       console.log(
-        shortId.padEnd(40) +
+        num +
+          shortId.padEnd(40) +
           r.agent.padEnd(14) +
           r.status.padEnd(12) +
           r.type.padEnd(10) +
@@ -559,7 +655,7 @@ export class SessionsModule extends BaseChatModule {
           r.action
       );
     }
-    console.log("─".repeat(104));
+    console.log("─".repeat(109));
   }
 
   /**
@@ -568,28 +664,50 @@ export class SessionsModule extends BaseChatModule {
   private logSessionsCsv(
     runningTasks: TaskInfo[],
     savedSessions: ChatSession[],
-    fsAgents: Array<{ taskId: string; agentName: string; status: string; totalCostUsd?: number }> = []
+    fsAgents: {
+      taskId: string;
+      agentName: string;
+      status: string;
+      totalCostUsd?: number;
+    }[] = []
   ): void {
     const lines = ["taskId,agent,status,type,cost,startTime,initialInput"];
     const runningTaskIds = new Set(runningTasks.map((t) => t.taskId));
-    const dedupedSaved = savedSessions.filter((s) => !runningTaskIds.has(s.sessionId));
+    const dedupedSaved = savedSessions.filter(
+      (s) => !runningTaskIds.has(s.sessionId)
+    );
 
     for (const t of runningTasks) {
-      const input = (t.initialInput || "").replace(/,/g, ";").replace(/\n/g, " ");
+      const input = (t.initialInput || "")
+        .replace(/,/g, ";")
+        .replace(/\n/g, " ");
       lines.push(
-        `${t.taskId},${t.agentName},${t.status},running,${t.totalCost?.toFixed(3) || "0.000"},${t.startTime},"${input}"`
+        `${t.taskId},${t.agentName},${t.status},running,${
+          t.totalCost?.toFixed(3) || "0.000"
+        },${t.startTime},"${input}"`
       );
     }
     for (const s of dedupedSaved) {
-      const input = (s.initialInput || "").replace(/,/g, ";").replace(/\n/g, " ");
+      const input = (s.initialInput || "")
+        .replace(/,/g, ";")
+        .replace(/\n/g, " ");
       lines.push(
-        `${s.sessionId},${s.agentName},${s.status},saved,${s.totalCost?.toFixed(3) || "0.000"},${s.startTime},"${input}"`
+        `${s.sessionId},${s.agentName},${s.status},saved,${
+          s.totalCost?.toFixed(3) || "0.000"
+        },${s.startTime},"${input}"`
       );
     }
-    const allKnownIds = new Set([...runningTaskIds, ...savedSessions.map((s) => s.sessionId)]);
+    const allKnownIds = new Set([
+      ...runningTaskIds,
+      ...savedSessions.map((s) => s.sessionId),
+    ]);
     for (const a of fsAgents) {
       if (!allKnownIds.has(a.taskId)) {
-        lines.push(`${a.taskId},${a.agentName},${a.status},fs,${a.totalCostUsd != null ? a.totalCostUsd.toFixed(3) : "n/a"},n/a,""`);
+        lines.push(
+          `${a.taskId},${a.agentName},${a.status},fs,${
+            a.totalCostUsd != null ? a.totalCostUsd.toFixed(3) : "n/a"
+          },n/a,""`
+        );
       }
     }
     console.log(lines.join("\n"));
@@ -620,7 +738,8 @@ export class SessionsModule extends BaseChatModule {
     console.log(`📁 Attached to filesystem agent: ${taskId}`);
 
     // Enter interactive loop — this sets mode to "agent:attached" and blocks until detach/done/kill
-    await this.agentModule.startAttachedWatcherLoop(taskId, watcher);
+    const fsWatcherAgent = new WatcherBackedAgent(watcher);
+    await this.agentModule.attachedAgentChatLoop(taskId, fsWatcherAgent);
   }
 
   private async attachToWebAgent(taskId: string): Promise<void> {
@@ -633,7 +752,7 @@ export class SessionsModule extends BaseChatModule {
     if (webStatus === "completed" || webStatus === "killed") {
       console.log(
         `⚠️  Web task ${taskId} has status: ${webStatus}.\n` +
-        `   Use /resume ${taskId} to resume it with additional context.`
+          `   Use /resume ${taskId} to resume it with additional context.`
       );
       return;
     }
@@ -657,7 +776,8 @@ export class SessionsModule extends BaseChatModule {
     console.log(`🌐 Attached to web agent: ${taskId}`);
 
     // Enter interactive loop — this sets mode to "agent:attached" and blocks until detach/done/kill
-    await this.agentModule.startAttachedWatcherLoop(taskId, watcher);
+    const webWatcherAgent = new WatcherBackedAgent(watcher);
+    await this.agentModule.attachedAgentChatLoop(taskId, webWatcherAgent);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -684,7 +804,14 @@ export class SessionsModule extends BaseChatModule {
 
   private async getFsAgents(
     runningTasks: TaskInfo[]
-  ): Promise<Array<{ taskId: string; agentName: string; status: string; totalCostUsd?: number }>> {
+  ): Promise<
+    {
+      taskId: string;
+      agentName: string;
+      status: string;
+      totalCostUsd?: number;
+    }[]
+  > {
     const sessionManager = this.agentModule.getSessionManager();
     const registeredIds = new Set(runningTasks.map((t) => t.taskId));
     return sessionManager.discoverFsAgents(registeredIds);
@@ -692,7 +819,14 @@ export class SessionsModule extends BaseChatModule {
 
   private async getFsAgentsIncludingCompleted(
     runningTasks: TaskInfo[]
-  ): Promise<Array<{ taskId: string; agentName: string; status: string; totalCostUsd?: number }>> {
+  ): Promise<
+    {
+      taskId: string;
+      agentName: string;
+      status: string;
+      totalCostUsd?: number;
+    }[]
+  > {
     const sessionManager = this.agentModule.getSessionManager();
     const registeredIds = new Set(runningTasks.map((t) => t.taskId));
     return sessionManager.discoverFsAgents(registeredIds, true);

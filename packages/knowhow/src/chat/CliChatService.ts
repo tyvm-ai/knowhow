@@ -317,13 +317,29 @@ export class CliChatService implements ChatService {
     console.log("Commands:", commandNames.join(", "));
 
     while (true) {
+      // Recompute available commands each iteration so mode changes are reflected in autocomplete
+      const currentCommandNames = this.getCommandsForActiveModes().map((cmd) => `/${cmd.name}`);
+
+      // Check active modes for a promptText first, then fall back to context.promptText, then default
+      const activeModeWithPrompt = this.modes
+        .filter((m) => m.active && m.promptText)
+        .slice(-1)[0]; // last active mode with a promptText wins
+
+      let modePrompt: string | undefined;
+      if (activeModeWithPrompt?.promptText) {
+        const p = activeModeWithPrompt.promptText;
+        modePrompt = typeof p === "function" ? p() : p;
+      }
+
       const promptText =
-        this.context.agentMode && this.context.currentAgent
+        modePrompt ||
+        this.context.promptText ||
+        (this.context.agentMode && this.context.currentAgent
           ? `\nAsk knowhow ${this.context.currentAgent}: `
-          : `\nAsk knowhow: `;
+          : `\nAsk knowhow: `);
       try {
         // Pass command names as autocomplete options
-        const input = await this.getInput(promptText, commandNames);
+        const input = await this.getInput(promptText, currentCommandNames);
 
         if (input.trim() === "") {
           continue;
@@ -336,7 +352,7 @@ export class CliChatService implements ChatService {
           // Default chat behavior - this would be handled by a chat module
           const interaction = {
             input,
-            output: `I didn't understand that command. Available commands: ${commandNames.join(
+            output: `I didn't understand that command. Available commands: ${currentCommandNames.join(
               ", "
             )}`,
           } as ChatInteraction;

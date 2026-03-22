@@ -8,6 +8,7 @@ import {
   SyncedAgentWatcher,
   SyncerService,
 } from "../../services/index";
+import { AttachableAgent } from "../../services/SyncedAgentWatcher";
 import * as fs from "fs";
 import * as fsPromises from "fs/promises";
 import * as path from "path";
@@ -28,7 +29,12 @@ import {
   Base64ImageProcessor,
 } from "../../processors/index";
 import { TaskInfo } from "../types";
-import { createAgent, agentConstructors, AgentName, agents } from "../../agents";
+import {
+  createAgent,
+  agentConstructors,
+  AgentName,
+  agents,
+} from "../../agents";
 import { ToolCallEvent } from "../../agents/base/base";
 import { $Command } from "@aws-sdk/client-s3";
 import { KnowhowSimpleClient } from "../../services/KnowhowClient";
@@ -36,6 +42,9 @@ import { KnowhowSimpleClient } from "../../services/KnowhowClient";
 export class AgentModule extends BaseChatModule {
   name = "agent";
   description = "Agent interaction functionality";
+
+  /** Currently attached agent (for agent:attached mode commands) */
+  private attachedAgent: AttachableAgent | undefined;
 
   // Service instances for task management, session management, and synchronization
   private taskRegistry: TaskRegistry;
@@ -67,7 +76,82 @@ export class AgentModule extends BaseChatModule {
         description: "List available agents",
         handler: this.handleAgentsCommand.bind(this),
       },
+      {
+        name: "pause",
+        description: "Pause the currently attached agent",
+        modes: ["agent:attached"],
+        handler: async (_args: string[]): Promise<void> => {
+          if (this.attachedAgent) {
+            await this.attachedAgent.pause();
+            console.log("Agent paused.");
+          }
+        },
+      },
+      {
+        name: "unpause",
+        description: "Unpause the currently attached agent",
+        modes: ["agent:attached"],
+        handler: async (_args: string[]): Promise<void> => {
+          if (this.attachedAgent) {
+            await this.attachedAgent.unpause();
+            console.log("Agent unpaused.");
+          }
+        },
+      },
+      {
+        name: "kill",
+        description: "Kill the currently attached agent",
+        modes: ["agent:attached"],
+        handler: async (_args: string[]): Promise<void> => {
+          if (this.attachedAgent) {
+            await this.attachedAgent.kill();
+            console.log("Agent terminated.");
+            this.detachFromAgent();
+          }
+        },
+      },
+      {
+        name: "detach",
+        description: "Detach from the currently attached agent",
+        modes: ["agent:attached"],
+        handler: async (_args: string[]): Promise<void> => {
+          console.log("Detached from agent");
+          this.detachFromAgent();
+        },
+      },
+      {
+        name: "done",
+        description: "Exit the current agent interaction",
+        modes: ["agent:attached"],
+        handler: async (_args: string[]): Promise<void> => {
+          this.detachFromAgent();
+        },
+      },
     ];
+  }
+
+  /**
+   * Clean up attached agent state and restore default mode/prompt.
+   */
+  private detachFromAgent(): void {
+    this.attachedAgent = undefined;
+
+    if (this.chatService) {
+      this.chatService.setMode("default");
+    }
+
+    // Stop any active synced watcher
+    if (this.activeSyncedWatcher) {
+      this.activeSyncedWatcher.stopWatching();
+      this.activeSyncedWatcher = undefined;
+    }
+
+    // Clear active agent tracking so other agents' logs don't pollute output
+    this.activeAgentTaskId = undefined;
+    this.renderer.setActiveTaskId(undefined);
+
+    const context = this.chatService?.getContext();
+    if (context) context.activeAgentTaskId = undefined;
   }
 
   getModes(): ChatMode[] {
@@ -76,6 +160,21 @@ export class AgentModule extends BaseChatModule {
         name: "agent",
         description: "Agent interaction mode",
         active: true,
+        promptText: () => {
+          const ctx = this.chatService?.getContext();
+          return ctx?.currentAgent
+            ? `\nAsk knowhow ${ctx.currentAgent}: `
+            : `\nAsk knowhow: `;
+        },
+      },
+      {
+        name: "agent:attached",
+        description: "Attached to a running agent",
+        active: false,
+        promptText: () =>
+          this.attachedAgent
+            ? `Enter command or message for ${this.attachedAgent.name}: `
+            : `Enter command or message for agent: `,
       },
     ];
   }
@@ -84,7 +183,10 @@ export class AgentModule extends BaseChatModule {
    * Get the current renderer from the chat context, falling back to a ConsoleRenderer.
    */
   private get renderer(): AgentRenderer {
-    return (this.chatService?.getContext()?.renderer as AgentRenderer) ?? new ConsoleRenderer();
+    return (
+      (this.chatService?.getContext()?.renderer as AgentRenderer) ??
+      new ConsoleRenderer()
+    );
   }
 
   async initialize(service: ChatService): Promise<void> {
@@ -165,7 +267,6 @@ export class AgentModule extends BaseChatModule {
     }
   }
 
-
   /**
    * Get the task registry for CLI access
    */
@@ -227,7 +328,9 @@ export class AgentModule extends BaseChatModule {
 
         console.log("\nAvailable agents:");
         Object.entries(allAgents).forEach(([name, agent]: [string, any]) => {
-          console.log(`  - ${name}: ${(agent as any).description || "No description"}`);
+          console.log(
+            `  - ${name}: ${(agent as any).description || "No description"}`
+          );
         });
         console.log("─".repeat(80), "\n");
 
@@ -236,7 +339,11 @@ export class AgentModule extends BaseChatModule {
           agentNames
         );
 
-        if (selectedAgent && selectedAgent.trim() && agentNames.includes(selectedAgent.trim())) {
+        if (
+          selectedAgent &&
+          selectedAgent.trim() &&
+          agentNames.includes(selectedAgent.trim())
+        ) {
           await this.handleAgentCommand([selectedAgent.trim()]);
         } else if (selectedAgent && selectedAgent.trim()) {
           console.log(`Agent "${selectedAgent.trim()}" not found.`);
@@ -325,6 +432,16 @@ Please continue from where you left off and complete the original request.
   async handleInput(input: string, context: ChatContext): Promise<boolean> {
     // If in agent mode, start agent with the input as initial task (like original chat.ts)
     if (context.agentMode && context.selectedAgent) {
+      // If we're attached to a running agent, forward input to it
+      if (this.attachedAgent) {
+        this.attachedAgent.addPendingUserMessage({
+          role: "user",
+          content: input,
+        });
+        return true;
+      }
+
+      // Otherwise start a new agent task
       // Create initial interaction for the chatHistory
       const initialInteraction: ChatInteraction = {
         input,
@@ -369,13 +486,20 @@ Please continue from where you left off and complete the original request.
   }) {
     if (!agentConstructors[options.agentName as AgentName]) {
       throw new Error(
-        `Agent "${options.agentName}" not found. Available agents: ${Object.keys(agentConstructors).join(", ")}`
+        `Agent "${
+          options.agentName
+        }" not found. Available agents: ${Object.keys(agentConstructors).join(
+          ", "
+        )}`
       );
     }
 
     const { input, chatHistory = [], agentName } = options;
     const agentContext = services().Agents.getAgentContext();
-    const agent = createAgent(options.agentName as AgentName, agentContext) as BaseAgent;
+    const agent = createAgent(
+      options.agentName as AgentName,
+      agentContext
+    ) as BaseAgent;
 
     let done = false;
     let output = "Done";
@@ -526,7 +650,7 @@ Please continue from where you left off and complete the original request.
       const agentLogHandler = (logData: any) => {
         this.renderer.render({
           type: "log",
-          taskId: taskId,
+          taskId,
           agentName: logData.agentName,
           message: logData.message,
           level: logData.level,
@@ -536,7 +660,7 @@ Please continue from where you left off and complete the original request.
       const agentStatusHandler = (statusData: any) => {
         this.renderer.render({
           type: "agentStatus",
-          taskId: taskId,
+          taskId,
           agentName: statusData.agentName,
           statusMessage: statusData.statusMessage,
           details: statusData.details,
@@ -546,7 +670,7 @@ Please continue from where you left off and complete the original request.
       const agentSayHandler = (sayData: any) => {
         this.renderer.render({
           type: "agentMessage",
-          taskId: taskId,
+          taskId,
           agentName: agent.name,
           message: sayData.message,
           role: "assistant",
@@ -570,11 +694,26 @@ Please continue from where you left off and complete the original request.
             threadUpdateHandler
           );
           // Remove task-specific listeners so they don't fire for the next task
-          agent.agentEvents.removeListener(agent.eventTypes.toolCall, toolCallHandler);
-          agent.agentEvents.removeListener(agent.eventTypes.toolUsed, toolUsedHandler);
-          agent.agentEvents.removeListener(agent.eventTypes.agentLog, agentLogHandler);
-          agent.agentEvents.removeListener(agent.eventTypes.agentStatus, agentStatusHandler);
-          agent.agentEvents.removeListener(agent.eventTypes.agentSay, agentSayHandler);
+          agent.agentEvents.removeListener(
+            agent.eventTypes.toolCall,
+            toolCallHandler
+          );
+          agent.agentEvents.removeListener(
+            agent.eventTypes.toolUsed,
+            toolUsedHandler
+          );
+          agent.agentEvents.removeListener(
+            agent.eventTypes.agentLog,
+            agentLogHandler
+          );
+          agent.agentEvents.removeListener(
+            agent.eventTypes.agentStatus,
+            agentStatusHandler
+          );
+          agent.agentEvents.removeListener(
+            agent.eventTypes.agentSay,
+            agentSayHandler
+          );
           // Update task info
           taskInfo = this.taskRegistry.get(taskId);
 
@@ -814,16 +953,13 @@ Please continue from where you left off and complete the original request.
 
   async attachedAgentChatLoop(
     taskId: string,
-    agent: BaseAgent,
+    agent: AttachableAgent,
     initialInput?: string
   ): Promise<{ result: boolean; finalOutput?: string }> {
     try {
-      let done = false;
-      let output = "Done";
       let agentFinalOutput: string | undefined;
 
-      // Define available commands
-      // Set mode to agent:attached so custom commands are available
+      // Set mode to agent:attached so mode-specific commands are available
       if (this.chatService) {
         this.chatService.setMode("agent:attached");
       }
@@ -834,205 +970,47 @@ Please continue from where you left off and complete the original request.
       const context = this.chatService?.getContext();
       if (context) context.activeAgentTaskId = taskId;
 
-      // Get mode-specific commands for autocomplete
-      const modeCommands =
-        this.chatService
-          ?.getCommandsForMode("agent:attached")
-          .map((cmd) => `/${cmd.name}`) || [];
-
-      const commands = [
-        ...modeCommands,
-        "/pause",
-        "/unpause",
-        "/kill",
-        "/detach",
-        "/done",
-      ];
-      const history: string[] = [];
+      // Store the agent so the registered agent:attached commands can reference it
+      this.attachedAgent = agent;
 
       // Set up the event listener BEFORE starting the agent to avoid race condition
-      let finished = false;
       const donePromise = new Promise<string>((resolve) => {
         agent.agentEvents.once(agent.eventTypes.done, (doneMsg) => {
           // Capture the agent's final output
           agentFinalOutput = doneMsg || "No response from the AI";
           console.log("Finished", taskId, `$${agent.getTotalCostUsd()}`);
-          finished = true;
+
+          // Update final task status
+          const finalTaskInfo = this.taskRegistry.get(taskId);
+          if (finalTaskInfo) {
+            if (finalTaskInfo.status === "running") {
+              finalTaskInfo.status = "completed";
+              finalTaskInfo.totalCost = agent.getTotalCostUsd();
+              finalTaskInfo.endTime = Date.now();
+            }
+          }
+
           resolve("done");
+          // Exit agent:attached mode so the prompt resets back to the default
+          this.detachFromAgent();
         });
       });
 
       // Now start the agent if we have an initial input (this means we're starting, not just attaching)
       if (initialInput) {
         const taskInfo = this.taskRegistry.get(taskId);
-        agent.call(
+        (agent as BaseAgent).call(
           taskInfo?.formattedPrompt || taskInfo?.initialInput || initialInput
         );
       }
 
-      let input =
-        (await this.chatService?.getInput(
-          `Enter command or message for ${agent.name}: `,
-          commands
-        )) || "";
-
-      history.push(input);
-
-      while (!done) {
-        switch (input) {
-          case "":
-            if (finished) {
-              output = "Agent has completed the task.";
-              done = true;
-            }
-            break;
-          case "/done":
-            output = "Exited agent interaction.";
-            done = true;
-            break;
-          case "/pause":
-            await agent.pause();
-            console.log("Agent paused.");
-            break;
-          case "/unpause":
-            await agent.unpause();
-            console.log("Agent unpaused.");
-            break;
-          case "/kill":
-            await agent.kill();
-            console.log("Agent terminated.");
-            done = true;
-            break;
-          case "/detach":
-            console.log("Detached from agent");
-            // Reset mode back to default when detaching
-            if (this.chatService) {
-              this.chatService.setMode("default");
-            }
-            // Stop any active synced watcher
-            if (this.activeSyncedWatcher) {
-              this.activeSyncedWatcher.stopWatching();
-              this.activeSyncedWatcher = undefined;
-            }
-            // Clear active agent tracking so other agents' logs don't pollute output
-            this.activeAgentTaskId = undefined;
-            this.renderer.setActiveTaskId(undefined);
-            if (context) context.activeAgentTaskId = undefined;
-            return { result: true, finalOutput: agentFinalOutput };
-          default:
-            agent.addPendingUserMessage({
-              role: "user",
-              content: input,
-            });
-        }
-
-        if (!done) {
-          input = await this.chatService?.getInput(
-            `Enter command or message for ${agent.name}: `,
-            commands
-          );
-        }
-      }
-
-      // Reset mode back to default when exiting loop
-      if (this.chatService) {
-        this.chatService.setMode("default");
-      }
-
-      // Update final task status and save session
-      const finalTaskInfo = this.taskRegistry.get(taskId);
-      if (finalTaskInfo) {
-        if (finalTaskInfo.status === "running") {
-          finalTaskInfo.status = "completed";
-          // Ensure final cost is captured
-          finalTaskInfo.totalCost = agent.getTotalCostUsd();
-          finalTaskInfo.endTime = Date.now();
-        }
-      }
+      // Return immediately — the main startChatLoop on CliChatService
+      // now handles all user input via the registered agent:attached commands.
+      // Any non-command input is forwarded to the agent via handleInput below.
       return { result: true, finalOutput: agentFinalOutput };
     } catch (error) {
       console.error("Agent execution failed:", error);
       return { result: false, finalOutput: "Error during agent execution" };
     }
-  }
-
-  /**
-   * Interactive chat loop for an attached synced watcher (FS or Web agent).
-   * Routes user input to watcher.sendMessage() and slash-commands to
-   * watcher.pause() / unpause() / kill().
-   */
-  public async startAttachedWatcherLoop(
-    taskId: string,
-    watcher: SyncedAgentWatcher
-  ): Promise<void> {
-    // Set mode so /logs, /detach etc. are available
-    if (this.chatService) {
-      this.chatService.setMode("agent:attached");
-    }
-
-    this.activeAgentTaskId = taskId;
-    this.renderer.setActiveTaskId(taskId);
-    const context = this.chatService?.getContext();
-    if (context) context.activeAgentTaskId = taskId;
-
-    const modeCommands =
-      this.chatService
-        ?.getCommandsForMode("agent:attached")
-        .map((cmd) => `/${cmd.name}`) || [];
-    const commands = [
-      ...modeCommands,
-      "/pause",
-      "/unpause",
-      "/kill",
-      "/detach",
-      "/done",
-    ];
-
-    let done = false;
-    while (!done) {
-      let input: string;
-      try {
-        input =
-          (await this.chatService?.getInput(
-            `[${watcher.agentName}] Send message or command: `,
-            commands
-          )) || "";
-      } catch {
-        // EOF / stream closed — detach gracefully
-        break;
-      }
-
-      switch (input.trim()) {
-        case "/done":
-        case "/detach":
-          done = true;
-          break;
-        case "/pause":
-          await watcher.pause();
-          break;
-        case "/unpause":
-          await watcher.unpause();
-          break;
-        case "/kill":
-          await watcher.kill();
-          done = true;
-          break;
-        case "":
-          // empty input — just loop
-          break;
-        default:
-          await watcher.sendMessage(input.trim());
-          console.log(`📨 Message sent to ${watcher.agentName}`);
-      }
-    }
-
-    // Reset state on exit
-    watcher.stopWatching();
-    this.activeSyncedWatcher = undefined;
-    this.activeAgentTaskId = undefined;
-    this.renderer.setActiveTaskId(undefined);
-    if (context) context.activeAgentTaskId = undefined;
-    if (this.chatService) this.chatService.setMode("default");
-    console.log(`🔌 Detached from ${watcher.agentName} (${taskId})`);
   }
 }
