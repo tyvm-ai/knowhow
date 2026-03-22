@@ -59,6 +59,7 @@ export interface TaskDetailsResponse {
   messageId?: string;
   hasPendingMessages: boolean;
   pendingMessagesCount: number;
+  result?: string;
 }
 
 export interface PendingMessage {

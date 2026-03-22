@@ -727,10 +727,45 @@ export class SessionsModule extends BaseChatModule {
     }
 
     const watcher = new FsSyncedAgentWatcher();
-    await watcher.startWatching(taskId, renderer);
+    await watcher.startWatching(taskId);
     this.agentModule.setActiveSyncedWatcher(watcher);
     this.agentModule.setActiveAgentTaskId(taskId);
     renderer.setActiveTaskId(taskId);
+
+    // Wire watcher agentEvents to the renderer (same pattern as regular agents)
+    const { agentEvents, eventTypes, agentName } = watcher;
+    const toolCallHandler = (data: any) =>
+      renderer.render({
+        type: "toolCall",
+        taskId,
+        agentName,
+        toolCall: data.toolCall,
+      });
+    const toolUsedHandler = (data: any) =>
+      renderer.render({
+        type: "toolResult",
+        taskId,
+        agentName,
+        toolCall: data.toolCall,
+        result: data.functionResp,
+      });
+    const agentSayHandler = (data: any) =>
+      renderer.render({
+        type: "agentMessage",
+        taskId,
+        agentName,
+        message: data.message,
+        role: "assistant",
+      });
+    agentEvents.on(eventTypes.toolCall, toolCallHandler);
+    agentEvents.on(eventTypes.toolUsed, toolUsedHandler);
+    agentEvents.on(eventTypes.agentSay, agentSayHandler);
+    agentEvents.once(eventTypes.done, (output) => {
+      agentEvents.removeListener(eventTypes.toolCall, toolCallHandler);
+      agentEvents.removeListener(eventTypes.toolUsed, toolUsedHandler);
+      agentEvents.removeListener(eventTypes.agentSay, agentSayHandler);
+      console.log(Marked.parse(output));
+    });
 
     const context = this.chatService?.getContext();
     if (context) context.activeAgentTaskId = taskId;
@@ -765,10 +800,44 @@ export class SessionsModule extends BaseChatModule {
     }
 
     const watcher = new WebSyncedAgentWatcher(client);
-    await watcher.startWatching(taskId, renderer);
+    await watcher.startWatching(taskId);
     this.agentModule.setActiveSyncedWatcher(watcher);
     this.agentModule.setActiveAgentTaskId(taskId);
     renderer.setActiveTaskId(taskId);
+
+    // Wire watcher agentEvents to the renderer (same pattern as regular agents)
+    const { agentEvents, eventTypes, agentName } = watcher;
+    const toolCallHandler = (data: any) =>
+      renderer.render({
+        type: "toolCall",
+        taskId,
+        agentName,
+        toolCall: data.toolCall,
+      });
+    const toolUsedHandler = (data: any) =>
+      renderer.render({
+        type: "toolResult",
+        taskId,
+        agentName,
+        toolCall: data.toolCall,
+        result: data.functionResp,
+      });
+    const agentSayHandler = (data: any) =>
+      renderer.render({
+        type: "agentMessage",
+        taskId,
+        agentName,
+        message: data.message,
+        role: "assistant",
+      });
+    agentEvents.on(eventTypes.toolCall, toolCallHandler);
+    agentEvents.on(eventTypes.toolUsed, toolUsedHandler);
+    agentEvents.on(eventTypes.agentSay, agentSayHandler);
+    agentEvents.once(eventTypes.done, () => {
+      agentEvents.removeListener(eventTypes.toolCall, toolCallHandler);
+      agentEvents.removeListener(eventTypes.toolUsed, toolUsedHandler);
+      agentEvents.removeListener(eventTypes.agentSay, agentSayHandler);
+    });
 
     const context = this.chatService?.getContext();
     if (context) context.activeAgentTaskId = taskId;
@@ -802,9 +871,7 @@ export class SessionsModule extends BaseChatModule {
     return "unknown";
   }
 
-  private async getFsAgents(
-    runningTasks: TaskInfo[]
-  ): Promise<
+  private async getFsAgents(runningTasks: TaskInfo[]): Promise<
     {
       taskId: string;
       agentName: string;

@@ -1,6 +1,6 @@
 /**
  * SyncedAgentWatcher - Watch agents running in other processes or on knowhow-web
- * and display their messages in real-time through the renderer.
+ * and emit agent events as messages come in, decoupled from rendering.
  */
 
 import { Message } from "../clients/types";
@@ -8,13 +8,12 @@ import { EventEmitter } from "events";
 import * as fs from "fs";
 import * as fsPromises from "fs/promises";
 import * as path from "path";
-import { AgentRenderer } from "../chat/renderer/types";
 import { messagesToRenderEvents } from "../chat/renderer/messagesToRenderEvents";
 import { KnowhowSimpleClient } from "./KnowhowClient";
 
 export interface SyncedAgentWatcher {
-  /** Start watching for changes, emitting render events */
-  startWatching(taskId: string, renderer: AgentRenderer): Promise<void>;
+  /** Start watching for changes, emitting agent events */
+  startWatching(taskId: string): Promise<void>;
   /** Stop watching */
   stopWatching(): void;
   /** The task ID being watched */
@@ -25,6 +24,10 @@ export interface SyncedAgentWatcher {
   sendMessage(message: string): Promise<void>;
   /** Get current threads (for replaying history via /logs) */
   getThreads(): Promise<any[][]>;
+  /** EventEmitter that emits agent lifecycle events (toolCall, toolUsed, agentSay, threadUpdate, done) */
+  agentEvents: EventEmitter;
+  /** Event type constants mirroring BaseAgent.eventTypes */
+  eventTypes: { done: string; toolCall: string; toolUsed: string; agentSay: string; threadUpdate: string };
   /** Pause the remote agent */
   pause(): Promise<void>;
   /** Unpause/resume the remote agent */
@@ -56,15 +59,18 @@ export interface AttachableAgent {
  *
  * - pause/unpause/kill delegate to the watcher
  * - addPendingUserMessage calls watcher.sendMessage()
- * - agentEvents never emits "done" (the watcher loop exits via /done or /detach)
+ * - agentEvents and eventTypes are delegated to the watcher
+ * - "done" is emitted by the watcher when the remote agent completes
  */
 export class WatcherBackedAgent implements AttachableAgent {
   public name: string;
-  public agentEvents = new EventEmitter();
-  public eventTypes = { done: "done" };
+  public agentEvents: EventEmitter;
+  public eventTypes: { done: string };
 
   constructor(public readonly watcher: SyncedAgentWatcher) {
     this.name = watcher.agentName;
+    this.agentEvents = watcher.agentEvents;
+    this.eventTypes = watcher.eventTypes;
   }
 
   getTotalCostUsd(): number {
@@ -108,15 +114,21 @@ export class FsSyncedAgentWatcher implements SyncedAgentWatcher {
   public taskId: string = "";
   private taskPath: string = "";
   private watcher: fs.FSWatcher | null = null;
-  private renderer: AgentRenderer | null = null;
   private lastThreadLength: number = 0;
   public agentName: string = "unknown";
   private debounceTimer: NodeJS.Timeout | null = null;
+  public agentEvents = new EventEmitter();
+  public eventTypes = {
+    done: "done",
+    toolCall: "tool:pre_call",
+    toolUsed: "tool:post_call",
+    agentSay: "agent:say",
+    threadUpdate: "thread_update",
+  };
 
-  async startWatching(taskId: string, renderer: AgentRenderer): Promise<void> {
+  async startWatching(taskId: string): Promise<void> {
     this.taskId = taskId;
     this.taskPath = path.join(".knowhow/processes/agents", taskId);
-    this.renderer = renderer;
 
     // Load initial state to track current thread length (for delta rendering)
     const metadata = await this.readMetadata();
@@ -149,7 +161,6 @@ export class FsSyncedAgentWatcher implements SyncedAgentWatcher {
   }
 
   private async onMetadataChanged(): Promise<void> {
-    if (!this.renderer) return;
     const metadata = await this.readMetadata();
     if (!metadata?.threads) return;
 
@@ -158,17 +169,39 @@ export class FsSyncedAgentWatcher implements SyncedAgentWatcher {
 
     // Only render NEW messages since last check
     const newMessages = lastThread.slice(this.lastThreadLength);
-    if (newMessages.length === 0) return;
-
-    const events = messagesToRenderEvents(
-      newMessages,
-      this.taskId,
-      this.agentName
-    );
-    for (const event of events) {
-      this.renderer.render(event);
+    if (newMessages.length > 0) {
+      const renderEvents = messagesToRenderEvents(
+        newMessages,
+        this.taskId,
+        this.agentName
+      );
+      for (const event of renderEvents) {
+        if (event.type === "toolCall") {
+          this.agentEvents.emit(this.eventTypes.toolCall, {
+            toolCall: (event as any).toolCall,
+          });
+        } else if (event.type === "toolResult") {
+          this.agentEvents.emit(this.eventTypes.toolUsed, {
+            toolCall: (event as any).toolCall,
+            functionResp: (event as any).result,
+          });
+        } else if (event.type === "agentMessage") {
+          this.agentEvents.emit(this.eventTypes.agentSay, {
+            message: (event as any).message,
+          });
+        }
+      }
+      this.agentEvents.emit(this.eventTypes.threadUpdate, lastThread);
+      this.lastThreadLength = lastThread.length;
     }
-    this.lastThreadLength = lastThread.length;
+
+    // Emit done if the agent has completed and has a result
+    const status = metadata.status;
+    const result = metadata.result;
+    if ((status === "completed" || status === "killed") && result != null) {
+      this.stopWatching();
+      this.agentEvents.emit(this.eventTypes.done, result);
+    }
   }
 
   async sendMessage(message: string): Promise<void> {
@@ -228,19 +261,25 @@ export class FsSyncedAgentWatcher implements SyncedAgentWatcher {
 export class WebSyncedAgentWatcher implements SyncedAgentWatcher {
   public taskId: string = "";
   private client: KnowhowSimpleClient;
-  private renderer: AgentRenderer | null = null;
   private pollInterval: NodeJS.Timeout | null = null;
   private lastThreadLength: number = 0;
   public agentName: string = "remote-agent";
   private stopped: boolean = false;
+  public agentEvents = new EventEmitter();
+  public eventTypes = {
+    done: "done",
+    toolCall: "tool:pre_call",
+    toolUsed: "tool:post_call",
+    agentSay: "agent:say",
+    threadUpdate: "thread_update",
+  };
 
   constructor(client?: KnowhowSimpleClient) {
     this.client = client || new KnowhowSimpleClient();
   }
 
-  async startWatching(taskId: string, renderer: AgentRenderer): Promise<void> {
+  async startWatching(taskId: string): Promise<void> {
     this.taskId = taskId;
-    this.renderer = renderer;
     this.stopped = false;
 
     // Load initial state to track current thread length
@@ -270,7 +309,7 @@ export class WebSyncedAgentWatcher implements SyncedAgentWatcher {
   }
 
   private async onPoll(): Promise<void> {
-    if (!this.renderer || this.stopped) return;
+    if (this.stopped) return;
     try {
       const details = await this.client.getTaskDetails(this.taskId);
       const threads: any[][] = details?.data?.threads || [];
@@ -278,22 +317,41 @@ export class WebSyncedAgentWatcher implements SyncedAgentWatcher {
 
       const newMessages = lastThread.slice(this.lastThreadLength);
       if (newMessages.length > 0) {
-        const events = messagesToRenderEvents(
+        const renderEvents = messagesToRenderEvents(
           newMessages,
           this.taskId,
           this.agentName
         );
-        for (const event of events) {
-          this.renderer.render(event);
+        for (const event of renderEvents) {
+          if (event.type === "toolCall") {
+            this.agentEvents.emit(this.eventTypes.toolCall, {
+              toolCall: (event as any).toolCall,
+            });
+          } else if (event.type === "toolResult") {
+            this.agentEvents.emit(this.eventTypes.toolUsed, {
+              toolCall: (event as any).toolCall,
+              functionResp: (event as any).result,
+            });
+          } else if (event.type === "agentMessage") {
+            this.agentEvents.emit(this.eventTypes.agentSay, {
+              message: (event as any).message,
+            });
+          }
         }
+        this.agentEvents.emit(this.eventTypes.threadUpdate, lastThread);
         this.lastThreadLength = lastThread.length;
       }
 
-      // Stop polling if task is complete
+      // Stop polling and emit done if task is complete with a result
       const status = details?.data?.status;
+      const result = details?.data?.result;
       if (status === "completed" || status === "killed") {
-        console.log(`\n✅ Remote agent ${this.taskId} status: ${status}`);
         this.stopWatching();
+        if (result != null) {
+          this.agentEvents.emit(this.eventTypes.done, result);
+        } else {
+          console.log(`\n✅ Remote agent ${this.taskId} status: ${status} (no result)`);
+        }
       }
     } catch {
       // Silently continue on poll errors

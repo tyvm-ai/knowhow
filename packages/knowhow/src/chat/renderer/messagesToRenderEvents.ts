@@ -75,6 +75,11 @@ export function messagesToRenderEvents(
               .map((c: any) => c.text)
               .join("\n")
           : String(msg.content ?? "");
+      // Skip workflow messages — these are internal agent control messages
+      // injected as user-role messages and should not be rendered to the user
+      if (content.trim().startsWith("<Workflow>") || /<Workflow>/i.test(content)) {
+        continue;
+      }
       if (content) {
         events.push({
           type: "agentMessage",
