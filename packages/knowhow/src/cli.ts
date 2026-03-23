@@ -333,7 +333,9 @@ async function main() {
     .action(async (options) => {
       try {
         await setupServices();
-        const setupModule = new SetupModule();
+        const agentModule = new AgentModule();
+        await agentModule.initialize(chatService);
+        const setupModule = new SetupModule(agentModule);
         await setupModule.initialize(chatService);
         await setupModule.handleSetupCommand([]);
       } catch (error) {
@@ -409,6 +411,8 @@ async function main() {
       "--no-sandbox",
       "Run worker directly on host (disable sandbox mode)"
     )
+    .option("--passkey", "Set up passkey authentication for this worker")
+    .option("--passkey-reset", "Remove passkey authentication requirement")
     .action(async (options) => {
       await setupServices();
       await worker(options);

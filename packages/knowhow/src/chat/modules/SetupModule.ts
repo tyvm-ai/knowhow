@@ -9,7 +9,12 @@ import { BaseChatModule } from "./BaseChatModule";
 export class SetupModule extends BaseChatModule {
   name = "setup";
   description = "Setup commands";
-  private agentModule?: AgentModule;
+  private agentModule: AgentModule;
+
+  constructor(agentModule: AgentModule) {
+    super();
+    this.agentModule = agentModule;
+  }
 
   getCommands(): ChatCommand[] {
     return [
@@ -23,13 +28,6 @@ export class SetupModule extends BaseChatModule {
 
   getModes(): ChatMode[] {
     return [];
-  }
-
-  async initialize(chatService: CliChatService): Promise<void> {
-    await super.initialize(chatService);
-    // We'll need access to AgentModule for launching Setup agent
-    this.agentModule = new AgentModule();
-    await this.agentModule.initialize(chatService);
   }
 
   /**

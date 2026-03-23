@@ -86,6 +86,18 @@ export type Config = {
     sandbox?: boolean;
     volumes?: string[];
     envFile?: string;
+    auth?: {
+      required?: boolean;
+      passkey?: {
+        publicKey?: string;       // base64-encoded public key
+        credentialId?: string;    // base64-encoded credential ID
+        algorithm?: string;       // e.g. "ES256"
+      };
+      sessionDurationHours?: number;
+    };
+    commandAuth?: {
+      [toolName: string]: "always" | "session" | "never";
+    };
     tunnel?: {
       enabled?: boolean;
       allowedPorts?: number[];

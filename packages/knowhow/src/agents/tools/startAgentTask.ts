@@ -32,7 +32,9 @@ function generateTaskId(prompt: string): string {
     .slice(0, 9);
   const wordPart = words.join("-") || "task";
   const epochSeconds = Math.floor(Date.now() / 1000);
-  return `${epochSeconds}-${wordPart}`;
+  const fullId = `${epochSeconds}-${wordPart}`;
+  // Truncate to 80 chars to avoid ENAMETOOLONG filesystem errors
+  return fullId.slice(0, 80);
 }
 
 /**

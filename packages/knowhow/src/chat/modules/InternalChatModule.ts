@@ -24,13 +24,14 @@ export class InternalChatModule implements ChatModule {
   private sessionsModule: SessionsModule;
   private voiceModule = new VoiceModule();
   private systemModule = new SystemModule();
-  private setupModule = new SetupModule();
+  private setupModule: SetupModule;
   private customCommandsModule = new CustomCommandsModule();
   private shellCommandModule = new ShellCommandModule();
   private rendererModule: RendererModule;
 
   constructor() {
     this.rendererModule = new RendererModule();
+    this.setupModule = new SetupModule(this.agentModule);
     this.sessionsModule = new SessionsModule(this.agentModule);
   }
 
