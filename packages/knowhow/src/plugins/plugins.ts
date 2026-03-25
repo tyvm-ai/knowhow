@@ -1,4 +1,5 @@
 import { Plugin, PluginContext } from "./types";
+import { Config } from "../types";
 import { VimPlugin } from "./vim";
 import { LinterPlugin } from "./LinterPlugin";
 import { LanguagePlugin } from "./language";
@@ -17,11 +18,15 @@ import { AgentsMdPlugin } from "./AgentsMdPlugin";
 import { ExecPlugin } from "./exec";
 import { getConfig } from "../config";
 import { getDisabledPlugins } from "../types";
+import { SkillsPlugin } from "./SkillsPlugin";
+import { EventService } from "../services/EventService";
 
 export class PluginService {
   private pluginMap = new Map<string, Plugin>();
+  private events?: EventService;
 
   constructor(context: PluginContext) {
+    this.events = context.Events;
     context.Plugins = this;
 
     // Register migrated PluginBase plugins
@@ -41,6 +46,7 @@ export class PluginService {
     this.pluginMap.set("tmux", new TmuxPlugin(context));
     this.pluginMap.set("agents-md", new AgentsMdPlugin(context));
     this.pluginMap.set("exec", new ExecPlugin(context));
+    this.pluginMap.set("skills", new SkillsPlugin(context));
   }
 
   /* -------- lifecycle helpers ------------------------------------ */
@@ -55,6 +61,26 @@ export class PluginService {
     const instance: Plugin = new PluginCtor(this); // assumes default export
     this.pluginMap.set(instance.meta.key, instance);
     return instance.meta.key;
+  }
+
+  /**
+   * Load plugins from config's pluginPackages map.
+   * Each entry maps a plugin key to an npm package name or file path.
+   * Errors are caught and logged as warnings without crashing.
+   */
+  async loadPluginsFromConfig(config: Config): Promise<void> {
+    const pluginPackages = config.pluginPackages || {};
+    for (const [key, spec] of Object.entries(pluginPackages)) {
+      try {
+        await this.loadPlugin(spec);
+      } catch (error) {
+        this.events?.log(
+          "PluginService",
+          `Failed to load plugin "${key}" from "${spec}": ${error instanceof Error ? error.message : error}`,
+          "warn"
+        );
+      }
+    }
   }
 
   /** Disable a plugin by its key; returns `true` if found. */
@@ -118,7 +144,7 @@ export class PluginService {
 
     const enabled = await newPlugin.isEnabled();
     if (!enabled) {
-      console.log(`Plugin ${kind} is disabled, skipping`);
+      this.events?.log("PluginService", `Plugin ${kind} is disabled, skipping`);
       return "";
     }
     return newPlugin.call(userInput);
@@ -134,7 +160,7 @@ export class PluginService {
 
     const enabled = await newPlugin.isEnabled();
     if (!enabled) {
-      console.log(`Plugin ${kind} is disabled, skipping`);
+      this.events?.log("PluginService", `Plugin ${kind} is disabled, skipping`);
       return "";
     }
     return newPlugin.callMany(userInput);
@@ -149,7 +175,7 @@ export class PluginService {
 
     const enabled = await newPlugin.isEnabled();
     if (!enabled) {
-      console.log(`Plugin ${kind} is disabled, skipping`);
+      this.events?.log("PluginService", `Plugin ${kind} is disabled, skipping`);
       return [];
     }
     return newPlugin.embed ? newPlugin.embed(userInput) : [];

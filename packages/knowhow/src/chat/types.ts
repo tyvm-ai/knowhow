@@ -4,11 +4,13 @@
 import { ChatInteraction, Config } from "../types";
 import { BaseAgent } from "../agents/base/base";
 import { ToolsService } from "src/services";
+import { AgentRenderer } from "./renderer/types";
 
 export interface ChatContext {
   debugMode?: boolean;
   agentMode?: boolean;
   currentAgent?: string;
+  promptText?: string;
   searchMode?: boolean;
   voiceMode?: boolean;
   multilineMode?: boolean;
@@ -17,6 +19,8 @@ export interface ChatContext {
   inputMethod?: InputMethod;
   selectedAgent?: BaseAgent;
   plugins: string[];
+  activeAgentTaskId?: string;
+  renderer?: AgentRenderer;
 
   [key: string]: any;
 }
@@ -25,6 +29,7 @@ export interface ChatMode {
   name: string;
   description: string;
   active: boolean;
+  promptText?: string | (() => string);
 }
 
 export interface CommandResult {

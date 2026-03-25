@@ -2,6 +2,7 @@
  * Session Manager Service - Handles agent session persistence and restoration
  */
 import * as fs from "fs";
+import * as fsPromises from "fs/promises";
 import * as path from "path";
 import { TaskInfo, ChatSession } from "../chat/types";
 
@@ -38,7 +39,9 @@ export class SessionManager {
 
     const wordPart = words.join("-") || "task";
     const epochSeconds = Math.floor(Date.now() / 1000);
-    return `${epochSeconds}-${wordPart}`;
+    const fullId = `${epochSeconds}-${wordPart}`;
+    // Truncate to 80 chars to avoid ENAMETOOLONG filesystem errors
+    return fullId.slice(0, 80);
   }
 
   /**
@@ -283,5 +286,52 @@ export class SessionManager {
     });
 
     console.log("─".repeat(80));
+  }
+
+  /**
+   * Discover agents running in other processes via the filesystem.
+   * By default only returns agents that are NOT completed/killed.
+   */
+  public async discoverFsAgents(
+    registeredIds: Set<string>,
+    includeCompleted: boolean = false
+  ): Promise<Array<{ taskId: string; agentName: string; status: string; totalCostUsd?: number }>> {
+    const agentsDir = path.join(".knowhow", "processes", "agents");
+    if (!fs.existsSync(agentsDir)) return [];
+
+    const results: Array<{ taskId: string; agentName: string; status: string; totalCostUsd?: number }> = [];
+
+    try {
+      const entries = await fsPromises.readdir(agentsDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const taskId = entry.name;
+        if (registeredIds.has(taskId)) continue; // Already in-process
+        const metadataPath = path.join(agentsDir, taskId, "metadata.json");
+        try {
+          const raw = await fsPromises.readFile(metadataPath, "utf-8");
+          const metadata = JSON.parse(raw);
+          const status = metadata.status || "unknown";
+
+          // Skip completed/killed tasks unless explicitly requested
+          if (!includeCompleted && (status === "completed" || status === "killed")) {
+            continue;
+          }
+
+          results.push({
+            taskId,
+            agentName: metadata.agentName || "unknown",
+            status,
+            totalCostUsd: metadata.totalCostUsd,
+          });
+        } catch {
+          // Skip dirs without metadata
+        }
+      }
+    } catch {
+      // agentsDir not readable
+    }
+
+    return results;
   }
 }

@@ -1,7 +1,6 @@
 import { BaseChatModule } from "./BaseChatModule";
 import { ChatCommand, ChatService, CommandResult } from "../types";
 import { getLanguageConfig } from "../../config";
-import { services } from "../../services";
 
 /**
  * CustomCommandsModule - Loads `/command`-style keys from the language config

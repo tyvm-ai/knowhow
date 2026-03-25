@@ -110,7 +110,7 @@ Your modifications are automatically tracked separately and won't affect the use
 
       await this.setBranch("main");
     } catch (error) {
-      console.error("Failed to initialize .knowhow git repository:", error);
+      this.log(`Failed to initialize .knowhow git repository: ${error}`, "error");
     }
   }
 
@@ -144,7 +144,7 @@ Your modifications are automatically tracked separately and won't affect the use
     try {
       return this.gitCommand(command, options);
     } catch (error) {
-      console.warn(`Safe git command failed: ${command}`, error);
+      this.log(`Safe git command failed: ${command} - ${error}`, "warn");
       return null;
     }
   }
@@ -235,7 +235,7 @@ Your modifications are automatically tracked separately and won't affect the use
 
       // Get the current HEAD commit hash from the actual repo (if it exists)
       const actualRepoHash = this.getRepoHash();
-      console.log(`GitPlugin: Current branch is ${this.getCurrentBranch()}`);
+      this.log(`Current branch is ${this.getCurrentBranch()}`);
 
       // First, handle any uncommitted changes on the current branch
       const hasChanges = await this.hasChanges();
@@ -246,7 +246,7 @@ Your modifications are automatically tracked separately and won't affect the use
             : `sync ${new Date().toISOString()}`;
           await this.commitAll(message);
         } catch (error) {
-          console.error("Failed to commit uncommitted changes:", error);
+          this.log(`Failed to commit uncommitted changes: ${error}`, "error");
         }
       }
 
@@ -259,7 +259,7 @@ Your modifications are automatically tracked separately and won't affect the use
 
       await this.setBranch("main");
     } catch (error) {
-      console.error("Failed to ensure clean state:", error);
+      this.log(`Failed to ensure clean state: ${error}`, "error");
     }
   }
 
@@ -288,7 +288,7 @@ Your modifications are automatically tracked separately and won't affect the use
         this.gitCommand(`checkout -b ${branchName}`);
       }
     } catch (error) {
-      console.error(`GitPlugin: Failed to set branch ${branchName}:`);
+      this.log(`Failed to set branch ${branchName}`, "error");
     }
   }
 
@@ -298,7 +298,7 @@ Your modifications are automatically tracked separately and won't affect the use
     try {
       this.gitCommand(`checkout -b ${branchName}`);
     } catch (error) {
-      console.error(`GitPlugin: Failed to create branch ${branchName}:`);
+      this.log(`Failed to create branch ${branchName}`, "error");
     }
   }
 
@@ -317,7 +317,7 @@ Your modifications are automatically tracked separately and won't affect the use
         try {
           this.gitCommand(`add "${file}"`);
         } catch (error) {
-          console.warn(`Failed to add file ${file}:`, error);
+          this.log(`Failed to add file ${file}: ${error}`, "warn");
         }
       }
     } else {
@@ -339,7 +339,7 @@ Your modifications are automatically tracked separately and won't affect the use
       this.gitCommand("add -A");
       await this.commitWithEvents(message);
     } catch (error) {
-      console.error("Failed to commit all changes:", error);
+      this.log(`Failed to commit all changes: ${error}`, "error");
     }
   }
 
@@ -389,7 +389,7 @@ Your modifications are automatically tracked separately and won't affect the use
         `
       );
     } catch (error) {
-      console.error("Failed to commit with events:", error);
+      this.log(`Failed to commit with events: ${error}`, "error");
     }
   }
 
@@ -402,7 +402,7 @@ Your modifications are automatically tracked separately and won't affect the use
       try {
         this.gitCommand('commit --allow-empty -m "Initial empty commit"');
       } catch (error) {
-        console.warn("Could not create initial commit:", error);
+        this.log(`Could not create initial commit: ${error}`, "warn");
       }
     }
   }
@@ -424,7 +424,7 @@ Your modifications are automatically tracked separately and won't affect the use
 
       await this.commitAll(message);
     } catch (error) {
-      console.error("Auto-commit failed:", error);
+      this.log(`Auto-commit failed: ${error}`, "error");
     }
   }
 
@@ -455,9 +455,9 @@ Your modifications are automatically tracked separately and won't affect the use
         );
       }
 
-      console.log(`Created new task branch: ${branchName}`);
+      this.log(`Created new task branch: ${branchName}`);
     } catch (error) {
-      console.error("Failed to handle new task:", error);
+      this.log(`Failed to handle new task: ${error}`, "error");
     }
   }
 
@@ -466,7 +466,7 @@ Your modifications are automatically tracked separately and won't affect the use
 
     try {
       if (!this.currentTask) {
-        console.warn("No tasks in progress to complete");
+        this.log("No tasks in progress to complete", "warn");
         return;
       }
 
@@ -488,7 +488,7 @@ Your modifications are automatically tracked separately and won't affect the use
       // Clear current task
       this.currentTask = null;
     } catch (error) {
-      console.error("Failed to handle task completion:", error);
+      this.log(`Failed to handle task completion: ${error}`, "error");
     }
   }
 
@@ -523,9 +523,9 @@ Your modifications are automatically tracked separately and won't affect the use
     try {
       const noteMessage = `[Build Stable] No linting issues found on branch: ${this.getCurrentBranch()}`;
       this.gitCommand(`notes add -f -m "${noteMessage}" ${commitHash}`);
-      console.log(`GitPlugin: Marked commit ${commitHash} as build stable`);
+      this.log(`Marked commit ${commitHash} as build stable`);
     } catch (error) {
-      console.warn(`GitPlugin: Failed to add git note for commit ${commitHash}:`, error);
+      this.log(`Failed to add git note for commit ${commitHash}: ${error}`, "warn");
     }
   }
 
@@ -559,7 +559,7 @@ Your modifications are automatically tracked separately and won't affect the use
         .map((line) => line.replace(/^\*?\s*/, "").trim())
         .filter((line) => line.length > 0);
     } catch (error) {
-      console.error("Error getting branches:", error);
+      this.log(`Error getting branches: ${error}`, "error");
       return [];
     }
   }
@@ -592,7 +592,7 @@ Your modifications are automatically tracked separately and won't affect the use
         this.commitAll(message);
       }
     } catch (error) {
-      console.error(`Failed to merge ${branchName}:`, error);
+      this.log(`Failed to merge ${branchName}: ${error}`, "error");
     }
   }
 }

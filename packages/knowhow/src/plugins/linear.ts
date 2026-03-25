@@ -79,7 +79,7 @@ export class LinearPlugin extends PluginBase {
       const issue = await this.linearClient.issue(issueId);
       return issue;
     } catch (error) {
-      console.error("Error fetching Linear issue:", error);
+      this.log(`Error fetching Linear issue: ${error}`, "error");
       return null;
     }
   }
@@ -87,7 +87,7 @@ export class LinearPlugin extends PluginBase {
   async getTaskFromUrl(url: string) {
     const issueId = this.getIdFromUrl(url);
     if (issueId) {
-      console.log(`Fetching Linear issue ${issueId}`);
+      this.log(`Fetching Linear issue ${issueId}`);
       return await this.getIssueData(issueId);
     }
     return null;
@@ -135,7 +135,7 @@ export class LinearPlugin extends PluginBase {
   }
 
   async getTasksForProject(projectId: string) {
-    console.log({ projectId });
+    this.log(`Project ID: ${projectId}`);
     let tasks = await this.linearClient.issues({
       filter: {
         project: { slugId: { eq: projectId } },
@@ -161,7 +161,7 @@ export class LinearPlugin extends PluginBase {
   }
 
   async getTasksForTeam(teamId: string) {
-    console.log({ teamId });
+    this.log(`Team ID: ${teamId}`);
     let tasks = await this.linearClient.issues({
       filter: {
         team: { key: { eq: teamId } },

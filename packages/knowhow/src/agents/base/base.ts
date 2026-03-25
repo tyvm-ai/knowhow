@@ -1,4 +1,4 @@
-import { EventEmitter } from "events";
+import { EventEmitter } from "events";  // kept for reference; agentEvents now uses EventService
 import {
   GenericClient,
   Message,
@@ -64,13 +64,15 @@ export abstract class BaseAgent implements IAgent {
   protected summaries = [] as string[];
   protected currentTaskId: string | null = null;
 
-  public agentEvents = new EventEmitter();
+  public agentEvents = new EventService();
   public eventTypes = {
     newThread: "new_thread",
     threadUpdate: "thread_update",
     costUpdate: "cost_update",
+    agentLog: "agent:log",
     toolCall: "tool:pre_call",
     toolUsed: "tool:post_call",
+    agentStatus: "agent:status",
     notStarted: "not_started",
     inProgress: "in_progress",
     done: "done",
@@ -106,7 +108,8 @@ export abstract class BaseAgent implements IAgent {
     }
 
     // Subscribe to "agent:msg" events for dynamic context loading
-    this.events.on(this.eventTypes.agentMsg, (eventData: any) => {
+    // Use setListener with a key so re-creating the agent doesn't double-subscribe
+    this.events.setListener({ key: `agent:msg:${this.constructor.name}`, event: this.eventTypes.agentMsg }, (eventData: any) => {
       if (
         this.status === this.eventTypes.inProgress ||
         this.status === this.eventTypes.pause
@@ -117,6 +120,16 @@ export abstract class BaseAgent implements IAgent {
         } as Message;
         this.addPendingMessage(message);
       }
+    });
+  }
+
+  protected log(message: string, level: "info" | "warn" | "error" = "info"): void {
+    this.agentEvents.emit(this.eventTypes.agentLog, {
+      agentName: this.name,
+      message,
+      level,
+      timestamp: Date.now(),
+      taskId: this.currentTaskId,
     });
   }
 
@@ -196,12 +209,12 @@ export abstract class BaseAgent implements IAgent {
   getClient() {
     if (!this.client) {
       if (this.provider) {
-        console.log("Getting client for provider", this.provider);
+        this.log(`Getting client for provider ${this.provider}`);
         this.client = this.clientService.getClient(this.provider)?.client;
       }
 
       if (!this.client) {
-        console.log("Getting client for model", this.modelName);
+        this.log(`Getting client for model ${this.modelName}`);
         this.client = this.clientService.getClient(
           undefined,
           this.modelName
@@ -246,17 +259,17 @@ export abstract class BaseAgent implements IAgent {
   private checkLimits(): boolean {
     // Check turn limit
     if (this.maxTurns !== null && this.turnCount >= this.maxTurns) {
-      console.log(`Turn limit reached: ${this.turnCount}/${this.maxTurns}`);
+      this.log(`Turn limit reached: ${this.turnCount}/${this.maxTurns}`, "warn");
       return true;
     }
 
     // Check spend limit
     if (this.maxSpend !== null && this.totalCostUsd >= this.maxSpend) {
-      console.log(
+      this.log(
         `Spend limit reached: $${this.totalCostUsd.toFixed(
           4
         )}/$${this.maxSpend.toFixed(4)}`
-      );
+      , "warn");
       return true;
     }
 
@@ -264,8 +277,9 @@ export abstract class BaseAgent implements IAgent {
     if (this.maxRunTimeMs !== null && this.startTimeMs !== null) {
       const currentRunTimeMs = this.runTime();
       if (currentRunTimeMs >= this.maxRunTimeMs) {
-        console.log(
-          `Runtime limit reached: ${currentRunTimeMs}ms/${this.maxRunTimeMs}ms`
+        this.log(
+          `Runtime limit reached: ${currentRunTimeMs}ms/${this.maxRunTimeMs}ms`,
+          "warn"
         );
         return true;
       }
@@ -343,7 +357,6 @@ export abstract class BaseAgent implements IAgent {
         this.agentEvents.emit(this.eventTypes.agentSay, {
           message: message.content,
         });
-        console.log("\n", "💬 " + message.content, "\n");
       }
     }
   }
@@ -385,7 +398,7 @@ export abstract class BaseAgent implements IAgent {
       });
       return true;
     } catch (e) {
-      console.error(e);
+      this.log(String(e), "error");
       return false;
     }
   }
@@ -417,10 +430,8 @@ export abstract class BaseAgent implements IAgent {
       return false;
     }
 
-    console.log(
-      `Required tool: [${this.requiredToolNames}] not available, checking for finalAnswer`,
-      this.getEnabledToolNames(),
-      this.requiredToolNames
+    this.log(
+      `Required tool: [${this.requiredToolNames}] not available, checking for finalAnswer. Enabled: ${this.getEnabledToolNames().join(", ")}`
     );
 
     // Otherwise we're missing the required tool, lets use finalAnswer if we have it
@@ -430,9 +441,9 @@ export abstract class BaseAgent implements IAgent {
 
     // We have the final answer tool, but it wasn't required
     if (hasFinalAnswer && !requiredFinalAnswer) {
-      console.warn(
+      this.log(
         "Required tool not available, setting finalAnswer as required tool"
-      );
+      , "warn");
       this.requiredToolNames.push("finalAnswer");
       return false;
     }
@@ -445,22 +456,22 @@ export abstract class BaseAgent implements IAgent {
   }
 
   pause() {
-    console.log("Pausing agent");
+    this.log("Pausing agent");
     this.agentEvents.emit(this.eventTypes.pause, this);
     this.status = this.eventTypes.pause;
   }
 
   unpause() {
-    console.log("Unpausing agent");
+    this.log("Unpausing agent");
     this.agentEvents.emit(this.eventTypes.unpause, this);
     this.status = this.eventTypes.inProgress;
   }
 
   async unpaused() {
     return new Promise((resolve) => {
-      console.log("Waiting for agent to unpause");
+      this.log("Waiting for agent to unpause");
       this.agentEvents.once(this.eventTypes.unpause, () => {
-        console.log("Agent resumed");
+        this.log("Agent resumed");
         resolve(true);
       });
       this.agentEvents.once(this.eventTypes.done, () => {
@@ -470,7 +481,7 @@ export abstract class BaseAgent implements IAgent {
   }
 
   async kill() {
-    console.log("Killing agent");
+    this.log("Killing agent");
     this.agentEvents.emit(this.eventTypes.kill, this);
     this.status = this.eventTypes.kill;
 
@@ -550,15 +561,15 @@ export abstract class BaseAgent implements IAgent {
       });
 
       if (response?.usd_cost === undefined) {
-        console.warn(
-          "Response cost is undefined",
-          JSON.stringify(response, null, 2)
+        this.log(
+          `Response cost is undefined: ${JSON.stringify(response, null, 2)}`,
+          "warn"
         );
         const error = response as any;
         if ("response" in error && "data" in error.response) {
-          console.warn(
-            "Response data",
-            JSON.stringify(error.response.data, null, 2)
+          this.log(
+            `Response data: ${JSON.stringify(error.response.data, null, 2)}`,
+            "warn"
           );
         }
       }
@@ -650,7 +661,7 @@ export abstract class BaseAgent implements IAgent {
         const error = `Required tool: ${JSON.stringify(
           this.requiredToolNames
         )} not available, options are ${this.getEnabledToolNames().join(", ")}`;
-        console.error(error);
+        this.log(error, "error");
         this.status = this.eventTypes.done;
         this.agentEvents.emit(this.eventTypes.done, error);
         return error;
@@ -661,7 +672,7 @@ export abstract class BaseAgent implements IAgent {
         this.pendingUserMessages.length === 0 &&
         this.status === this.eventTypes.kill
       ) {
-        console.log("Agent killed, stopping execution");
+        this.log("Agent killed, stopping execution");
         this.status = this.eventTypes.done;
         this.agentEvents.emit(this.eventTypes.done, firstMessage.content);
         return firstMessage.content;
@@ -672,11 +683,8 @@ export abstract class BaseAgent implements IAgent {
         messages.length > 30
       ) {
         const taskBreakdown = await this.getTaskBreakdown(messages);
-        console.log(
-          "Compressing messages",
-          this.getMessagesLength(messages),
-          "exceeds",
-          compressThreshold
+        this.log(
+          `Compressing messages: ${this.getMessagesLength(messages)} exceeds ${compressThreshold}`
         );
         messages = await this.compressMessages(messages, startIndex, endIndex);
         this.startNewThread(messages);
@@ -722,9 +730,9 @@ export abstract class BaseAgent implements IAgent {
 
       if (isRetriable && retryCount < 3) {
         const delay = 1000 * Math.pow(2, retryCount);
-        console.warn(
-          `Agent request failed (attempt ${retryCount + 1}/3), retrying in ${delay}ms...`,
-          e.message
+        this.log(
+          `Agent request failed (attempt ${retryCount + 1}/3), retrying in ${delay}ms: ${e.message}`,
+          "warn"
         );
         await new Promise((resolve) => setTimeout(resolve, delay));
         return this.call(userInput, _messages, retryCount + 1);
@@ -732,12 +740,12 @@ export abstract class BaseAgent implements IAgent {
 
       }
 
-      console.error("Agent failed", e);
+      this.log(`Agent failed: ${e}`, "error");
 
       if ("response" in e && "data" in e.response) {
-        console.error(
-          "Error response data:",
-          JSON.stringify(e.response.data, null, 2)
+        this.log(
+          `Error response data: ${JSON.stringify(e.response.data, null, 2)}`,
+          "error"
         );
       }
 
@@ -783,14 +791,26 @@ export abstract class BaseAgent implements IAgent {
 
   logStatus() {
     const statusMessage = this.getStatusMessage();
-    console.log(
-      `\n● ${this.name} status: ${statusMessage}`
-    );
+    this.agentEvents.emit(this.eventTypes.agentStatus, {
+      agentName: this.name,
+      taskId: this.currentTaskId,
+      statusMessage,
+      details: {
+        totalCostUsd: this.getTotalCostUsd(),
+        elapsedMs: this.runTime(),
+        remainingTimeMs: this.maxRunTimeMs && this.startTimeMs
+          ? this.maxRunTimeMs - (Date.now() - this.startTimeMs)
+          : undefined,
+        remainingTurns: this.maxTurns ? this.maxTurns - this.turnCount : undefined,
+        remainingBudget: this.maxSpend ? this.maxSpend - this.totalCostUsd : undefined,
+      },
+      timestamp: Date.now(),
+    });
   }
 
   addPendingMessage(message: Message) {
     if (this.status === this.eventTypes.done) {
-      console.warn("Agent is done, cannot take more messages");
+      this.log("Agent is done, cannot take more messages", "warn");
     } else {
       const pendingMessages = this.pendingUserMessages.map((m) => m.content);
       if (pendingMessages.includes(message.content)) {
@@ -839,7 +859,7 @@ export abstract class BaseAgent implements IAgent {
 
     this.adjustTotalCostUsd(response.usd_cost);
 
-    console.log(response);
+    this.log(String(response));
 
     this.taskBreakdown = response.choices[0].message.content;
     return this.taskBreakdown;
@@ -850,13 +870,8 @@ export abstract class BaseAgent implements IAgent {
     startIndex: number,
     endIndex: number
   ) {
-    console.log(
-      "Compressing messages from",
-      startIndex,
-      "to",
-      endIndex,
-      "total messages:",
-      messages.length
+    this.log(
+      `Compressing messages from ${startIndex} to ${endIndex}, total messages: ${messages.length}`
     );
     const toCompress = messages.slice(startIndex, endIndex);
     const toCompressPrompt = `We are compressing our conversation to save memory.
@@ -921,13 +936,8 @@ export abstract class BaseAgent implements IAgent {
       100
     ).toFixed(2);
 
-    console.log(
-      "Compressed messages from",
-      oldLength,
-      "to",
-      newLength,
-      compressionRatio + "%",
-      "reduction in size"
+    this.log(
+      `Compressed messages from ${oldLength} to ${newLength}, ${compressionRatio}% reduction in size`
     );
 
     return newMessages;

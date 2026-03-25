@@ -58,9 +58,7 @@ export class NotionPlugin extends PluginBase {
     if (processed[pageId] || currentDepth > maxDepth) {
       return { results: [] };
     }
-    console.log(
-      `Notion Plugin: Fetching all blocks for page ${pageId} at depth ${currentDepth}`
-    );
+    this.log(`Fetching all blocks for page ${pageId} at depth ${currentDepth}`);
     processed[pageId] = true;
     const response = await this.notionClient.blocks.children.list({
       block_id: pageId,
@@ -68,7 +66,7 @@ export class NotionPlugin extends PluginBase {
 
     let cursor = response.next_cursor;
     while (cursor) {
-      console.log("Fetching more blocks");
+      this.log("Fetching more blocks");
       const childResponse = await this.notionClient.blocks.children.list({
         block_id: pageId,
         start_cursor: cursor,
@@ -109,7 +107,7 @@ export class NotionPlugin extends PluginBase {
         (b) => "has_children" in b && b.has_children
       );
 
-      console.log(JSON.stringify(results, null, 2));
+      this.log(JSON.stringify(results, null, 2));
 
       const childBlocks = await Promise.all(
         childPages.map(async (childPage) => {
@@ -133,7 +131,7 @@ export class NotionPlugin extends PluginBase {
       }
     }
 
-    console.log(JSON.stringify(embeddings, null, 2));
+    this.log(JSON.stringify(embeddings, null, 2));
     return embeddings;
   }
 
@@ -147,7 +145,7 @@ export class NotionPlugin extends PluginBase {
   async getPageFromUrl(url: string) {
     const pageId = url.split("-").pop();
     if (pageId) {
-      console.log(`Fetching Notion page ${pageId}`);
+      this.log(`Fetching Notion page ${pageId}`);
       const page = await this.notionClient.pages.retrieve({ page_id: pageId });
       const blocks = await this.getAllChildBlocks(page.id);
       return { page, blocks };
@@ -175,7 +173,7 @@ export class NotionPlugin extends PluginBase {
     const markdownPages = pagesDataFiltered
       .map((page) => `### Page: ${JSON.stringify(page, null, 2)}\n-`)
       .join("\n\n");
-    console.log(markdownPages);
+    this.log(markdownPages);
     return `NOTION PLUGIN: The following pages were loaded:\n\n${markdownPages}`;
   }
 }

@@ -53,7 +53,7 @@ export class JiraPlugin extends PluginBase {
   async getTaskFromUrl(url: string) {
     const issueId = this.extractIdFromUrl(url);
     if (issueId) {
-      console.log(`Fetching Jira issue ${issueId}`);
+      this.log(`Fetching Jira issue ${issueId}`);
       return await this.getIssueData(issueId);
     }
     return null;
@@ -64,7 +64,7 @@ export class JiraPlugin extends PluginBase {
       const issue = await this.jiraClient.findIssue(issueId);
       return issue;
     } catch (error) {
-      console.error("Error fetching Jira issue:", error);
+      this.log(`Error fetching Jira issue: ${error}`, "error");
       return null;
     }
   }

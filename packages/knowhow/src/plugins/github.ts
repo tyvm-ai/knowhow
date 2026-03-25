@@ -35,10 +35,7 @@ export class GitHubPlugin extends PluginBase {
       }
       return false;
     } catch (error) {
-      console.error(
-        "GITHUB PLUGIN: Failed to initialize Octokit client",
-        error
-      );
+      this.log(`Failed to initialize Octokit client: ${error}`, "error");
       return false;
     }
   }
@@ -76,9 +73,7 @@ export class GitHubPlugin extends PluginBase {
   async getDiff(url: string) {
     try {
       const { owner, repo, pullNumber } = this.parseUrl(url);
-      console.log(
-        `GITHUB PLUGIN: Loading diff for ${owner}/${repo}#${pullNumber}`
-      );
+      this.log(`Loading diff for ${owner}/${repo}#${pullNumber}`);
       const { data: diff } = await this.octokit.rest.pulls.get({
         owner,
         repo,
@@ -90,9 +85,9 @@ export class GitHubPlugin extends PluginBase {
 
       return diff;
     } catch (error) {
-      console.error(`GITHUB PLUGIN: Failed to get diff for ${url}:`, error.message);
+      this.log(`Failed to get diff for ${url}: ${error.message}`, "error");
       if (error.status === 401) {
-        console.error("GITHUB PLUGIN: Authentication failed. Please check your GITHUB_TOKEN.");
+        this.log("Authentication failed. Please check your GITHUB_TOKEN.", "error");
       }
       return null;
     }
@@ -107,9 +102,9 @@ export class GitHubPlugin extends PluginBase {
         pull_number: parseInt(pullNumber, 10),
       });
     } catch (error) {
-      console.error(`GITHUB PLUGIN: Failed to get PR for ${url}:`, error.message);
+      this.log(`Failed to get PR for ${url}: ${error.message}`, "error");
       if (error.status === 401) {
-        console.error("GITHUB PLUGIN: Authentication failed. Please check your GITHUB_TOKEN.");
+        this.log("Authentication failed. Please check your GITHUB_TOKEN.", "error");
       }
       return null;
     }
@@ -119,7 +114,7 @@ export class GitHubPlugin extends PluginBase {
     const length = hunks
       .flatMap((hunk) => [...hunk.additions, ...hunk.subtractions])
       .reduce((acc, line) => acc + line.length, 0);
-    console.log(`GITHUB PLUGIN: Length of hunks: ${length}`);
+    this.log(`Length of hunks: ${length}`);
     return length;
   }
 
@@ -131,13 +126,13 @@ export class GitHubPlugin extends PluginBase {
           
           // If getDiff returned null (auth error), skip this URL
           if (!diff) {
-            console.log(`GITHUB PLUGIN: Skipping ${url} due to error`);
+            this.log(`Skipping ${url} due to error`);
             return null;
           }
           
           let parsed = parseHunks(diff.toString());
 
-          console.log(`GITHUB PLUGIN: Parsed ${parsed.length} hunks`);
+          this.log(`Parsed ${parsed.length} hunks`);
 
           const averageHunkSize =
             parsed.reduce((acc, hunk) => acc + hunk.lines.length, 0) /
@@ -147,9 +142,7 @@ export class GitHubPlugin extends PluginBase {
             .flatMap((hunk) => [...hunk.additions, ...hunk.subtractions])
             .reduce((acc, line) => acc + line.length, 0);
 
-          console.log(
-            `GITHUB PLUGIN: Average hunk size: ${averageHunkSize}, total characters: ${totalCharacters}`
-          );
+          this.log(`Average hunk size: ${averageHunkSize}, total characters: ${totalCharacters}`);
 
           const MAX_CHARACTERS = 10000;
           const average = MAX_CHARACTERS / averageHunkSize;
@@ -159,14 +152,10 @@ export class GitHubPlugin extends PluginBase {
             return this.getLengthOfHunks([hunk]) <= PER_HUNK_LIMIT;
           });
 
-          console.log(
-            `GITHUB PLUGIN: Filtered to ${
-              parsed.length
-            } hunks. ${this.getLengthOfHunks(parsed)} characters`
-          );
+          this.log(`Filtered to ${parsed.length} hunks. ${this.getLengthOfHunks(parsed)} characters`);
           return parsed;
         } catch (error) {
-          console.error(`GITHUB PLUGIN: Error parsing diff for ${url}:`, error.message);
+          this.log(`Error parsing diff for ${url}: ${error.message}`, "error");
           return null;
         }
       })
@@ -188,7 +177,7 @@ export class GitHubPlugin extends PluginBase {
           
           // Skip this PR if we couldn't get its data
           if (!prResponse) {
-            console.log(`GITHUB PLUGIN: Skipping ${url} - could not fetch PR data`);
+            this.log(`Skipping ${url} - could not fetch PR data`);
             continue;
           }
           
@@ -210,21 +199,21 @@ export class GitHubPlugin extends PluginBase {
         }
 
         if (prs.length === 0) {
-          return "GITHUB PLUGIN: Could not fetch any pull request data. Please check your GITHUB_TOKEN and permissions.";
+          return "Could not fetch any pull request data. Please check your GITHUB_TOKEN and permissions.";
         }
 
-        const context = `GITHUB PLUGIN: These ${urls} have automatically been expanded to include the changes:\n\n${JSON.stringify(
+        const context = `These ${urls} have automatically been expanded to include the changes:\n\n${JSON.stringify(
           prs,
           null,
           2
         )}`;
-        console.log(context);
+        this.log(context);
         return context;
       } catch (error) {
-        return `GITHUB PLUGIN: Error fetching pull request data: ${error.message}`;
+        return `Error fetching pull request data: ${error.message}`;
       }
     }
 
-    return "GITHUB PLUGIN: No pull request URLs detected.";
+    return "No pull request URLs detected.";
   }
 }

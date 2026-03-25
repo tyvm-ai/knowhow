@@ -182,8 +182,6 @@ export class DynamicSwaggerClient {
       throw new Error(`Operation ${operationId} not found in swagger spec`);
     }
 
-    console.log(`Executing operation: ${foundOperation.operationId} (${foundOperation.method.toUpperCase()} ${foundOperation.path})`);
-
     const result = await executeOperation(this.swaggerSpec, foundOperation, {
       baseUrl: this.baseUrl,
       operationId,

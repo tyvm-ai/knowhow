@@ -35,6 +35,7 @@ import { BaseAgent } from "./agents/base/base";
 import { AskModule } from "./chat/modules/AskModule";
 import { SearchModule } from "./chat/modules/SearchModule";
 import { AgentModule } from "./chat/modules/AgentModule";
+import { SessionsModule } from "./chat/modules/SessionsModule";
 import { readPromptFile } from "./ai";
 import { SetupModule } from "./chat/modules/SetupModule";
 import { CliChatService } from "./chat/CliChatService";
@@ -48,21 +49,31 @@ async function setupServices() {
     ...OldTools.getContext(),
   });
 
-  const { Researcher, Developer, Patcher, Setup } = agents({
+  // Build the AgentContext with the fully-populated LazyToolsService so every
+  // agent created (including those in setupAgent) gets all tools registered.
+  const agentContext: import("./agents/base/base").AgentContext = {
     ...services(),
     Tools,
+  };
+
+  const { Researcher, Developer, Patcher, Setup } = agents({
+    ...agentContext,
   });
 
   Agents.registerAgent(Researcher);
   Agents.registerAgent(Patcher);
   Agents.registerAgent(Developer);
   Agents.registerAgent(Setup);
-  Agents.loadAgentsFromConfig(services());
+  Agents.loadAgentsFromConfig(agentContext);
 
   Tools.defineTools(includedTools, allTools);
 
   // Add Mcp service to tool context directly so MCP management tools can access it
   Tools.addContext("Mcp", Mcp);
+
+  // Store the fully-wired AgentContext on AgentService so AgentModule.setupAgent
+  // can retrieve it when creating fresh agent instances via createAgent().
+  Agents.setAgentContext(agentContext);
 
   console.log("🔌 Connecting to MCP...");
   await Mcp.connectToConfigured(Tools);
@@ -322,7 +333,9 @@ async function main() {
     .action(async (options) => {
       try {
         await setupServices();
-        const setupModule = new SetupModule();
+        const agentModule = new AgentModule();
+        await agentModule.initialize(chatService);
+        const setupModule = new SetupModule(agentModule);
         await setupModule.initialize(chatService);
         await setupModule.handleSetupCommand([]);
       } catch (error) {
@@ -367,11 +380,15 @@ async function main() {
   program
     .command("sessions")
     .description("Manage agent sessions from CLI")
-    .action(async () => {
+    .option("--all", "Show all historical sessions (default: current process only)")
+    .option("--csv", "Output sessions as CSV")
+    .action(async (options) => {
       try {
         const agentModule = new AgentModule();
         await agentModule.initialize(chatService);
-        await agentModule.logSessionTable();
+        const sessionsModule = new SessionsModule(agentModule);
+        await sessionsModule.initialize(chatService);
+        await sessionsModule.logSessionTable(options.all || false, options.csv || false, true);
       } catch (error) {
         console.error("Error listing sessions:", error);
         process.exit(1);
@@ -394,6 +411,8 @@ async function main() {
       "--no-sandbox",
       "Run worker directly on host (disable sandbox mode)"
     )
+    .option("--passkey", "Set up passkey authentication for this worker")
+    .option("--passkey-reset", "Remove passkey authentication requirement")
     .action(async (options) => {
       await setupServices();
       await worker(options);

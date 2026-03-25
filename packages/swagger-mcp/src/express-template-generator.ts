@@ -26,18 +26,17 @@ export function statelessApp(app: express.Application, mcpPath: string = '/mcp')
       // Extract authorization header for API calls
       const authHeader = req.headers.authorization;
       const requestHeaders = authHeader ? { Authorization: authHeader } : undefined;
-      
+
       const server = createMcpServer(requestHeaders);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });
-      
+
       res.on('close', () => {
-        console.log('Request closed');
         transport.close();
         server.close();
       });
-      
+
       await server.connect(transport);
       await transport.handleRequest(req, res, req.body);
     } catch (error) {
@@ -57,7 +56,6 @@ export function statelessApp(app: express.Application, mcpPath: string = '/mcp')
 
   // SSE notifications not supported in stateless mode
   app.get(mcpPath, async (req: express.Request, res: express.Response) => {
-    console.log('Received GET MCP request');
     res.writeHead(405).end(JSON.stringify({
       jsonrpc: "2.0",
       error: {
@@ -70,7 +68,6 @@ export function statelessApp(app: express.Application, mcpPath: string = '/mcp')
 
   // Session termination not needed in stateless mode
   app.delete(mcpPath, async (req: express.Request, res: express.Response) => {
-    console.log('Received DELETE MCP request');
     res.writeHead(405).end(JSON.stringify({
       jsonrpc: "2.0",
       error: {
@@ -99,7 +96,7 @@ export function statefulApp(app: express.Application, mcpPath: string = '/mcp'):
     // Extract authorization header for API calls
     const authHeader = req.headers.authorization;
     const requestHeaders = authHeader ? { Authorization: authHeader } : undefined;
-    
+
     // Check for existing session ID
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
     let transport: StreamableHTTPServerTransport;
@@ -123,7 +120,7 @@ export function statefulApp(app: express.Application, mcpPath: string = '/mcp'):
           delete transports[transport.sessionId];
         }
       };
-      
+
       const server = createMcpServer(requestHeaders);
       await server.connect(transport);
     } else {
@@ -150,7 +147,7 @@ export function statefulApp(app: express.Application, mcpPath: string = '/mcp'):
       res.status(400).send('Invalid or missing session ID');
       return;
     }
-    
+
     const transport = transports[sessionId];
     await transport.handleRequest(req, res);
   };

@@ -40,7 +40,7 @@ export class ExecPlugin extends PluginBase {
     }
 
     try {
-      console.log(`EXEC PLUGIN: Executing: ${command}`);
+      this.log(`Executing: ${command}`);
 
       // Execute the command
       const result = execSync(command, {
@@ -55,9 +55,9 @@ export class ExecPlugin extends PluginBase {
       const stderr = error.stderr || "";
       const stdout = error.stdout || "";
 
-      console.error(`EXEC PLUGIN: Command failed: ${errorMessage}`);
+      this.log(`Command failed: ${errorMessage}`, "error");
       if (stderr) {
-        console.error(stderr);
+        this.log(stderr, "error");
       }
 
       return `EXEC PLUGIN: Command \`${command}\` failed:\n\`\`\`\n${stdout}\n${stderr}\n${errorMessage}\n\`\`\``;

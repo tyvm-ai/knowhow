@@ -46,9 +46,22 @@ export type Config = {
   embedSources: EmbedSource[];
   embeddingModel: string;
 
+  skills?: string[];
+
   plugins: { enabled: string[]; disabled: string[] };
 
+  chat?: {
+    /** Path to a custom root chat module (npm package or local file) */
+    rootModule?: string;
+    /** Path to a custom renderer (npm package or local file, can be .ts) */
+    renderer?: string;
+    /** Additional chat modules to load (npm packages or local files, can be .ts) */
+    modules?: string[];
+  };
+
   modules: string[];
+
+  pluginPackages?: Record<string, string>;
 
   agents: Assistant[];
   mcps: McpConfig[];
@@ -73,6 +86,18 @@ export type Config = {
     sandbox?: boolean;
     volumes?: string[];
     envFile?: string;
+    auth?: {
+      required?: boolean;
+      passkey?: {
+        publicKey?: string;       // base64-encoded public key
+        credentialId?: string;    // base64-encoded credential ID
+        algorithm?: string;       // e.g. "ES256"
+      };
+      sessionDurationHours?: number;
+    };
+    commandAuth?: {
+      [toolName: string]: "always" | "session" | "never";
+    };
     tunnel?: {
       enabled?: boolean;
       allowedPorts?: number[];

@@ -9,6 +9,8 @@ import { SystemModule } from "./SystemModule";
 import { SetupModule } from "./SetupModule";
 import { CustomCommandsModule } from "./CustomCommandsModule";
 import { ShellCommandModule } from "./ShellCommandModule";
+import { RendererModule } from "./RendererModule";
+import { SessionsModule } from "./SessionsModule";
 
 export class InternalChatModule implements ChatModule {
   private chatService?: CliChatService;
@@ -19,11 +21,19 @@ export class InternalChatModule implements ChatModule {
   private agentModule = new AgentModule();
   private askModule = new AskModule();
   private searchModule = new SearchModule();
+  private sessionsModule: SessionsModule;
   private voiceModule = new VoiceModule();
   private systemModule = new SystemModule();
-  private setupModule = new SetupModule();
+  private setupModule: SetupModule;
   private customCommandsModule = new CustomCommandsModule();
   private shellCommandModule = new ShellCommandModule();
+  private rendererModule: RendererModule;
+
+  constructor() {
+    this.rendererModule = new RendererModule(this.agentModule);
+    this.setupModule = new SetupModule(this.agentModule);
+    this.sessionsModule = new SessionsModule(this.agentModule);
+  }
 
   async initialize(chatService: CliChatService): Promise<void> {
     this.chatService = chatService;
@@ -31,8 +41,10 @@ export class InternalChatModule implements ChatModule {
     // Register this module first so it gets called for input handling
     chatService.registerModule(this);
 
-    // Initialize all sub-modules
+    // Initialize renderer first so context.renderer is set before other modules use it
+    await this.rendererModule.initialize(chatService);
     await this.agentModule.initialize(chatService);
+    await this.sessionsModule.initialize(chatService);
     await this.askModule.initialize(chatService);
     await this.searchModule.initialize(chatService);
     await this.voiceModule.initialize(chatService);
@@ -63,6 +75,7 @@ export class InternalChatModule implements ChatModule {
   getCommands(): ChatCommand[] {
     const commands: ChatCommand[] = [
       ...this.agentModule.getCommands(),
+      ...this.sessionsModule.getCommands(),
       ...this.askModule.getCommands(),
       ...this.searchModule.getCommands(),
       ...this.voiceModule.getCommands(),
@@ -70,6 +83,7 @@ export class InternalChatModule implements ChatModule {
       ...this.setupModule.getCommands(),
       ...this.customCommandsModule.getCommands(),
       ...this.shellCommandModule.getCommands(),
+      ...this.rendererModule.getCommands(),
       {
         name: "exit",
         description: "Exit the chat",
@@ -87,6 +101,7 @@ export class InternalChatModule implements ChatModule {
   getModes(): ChatMode[] {
     return [
       ...this.agentModule.getModes(),
+      ...this.sessionsModule.getModes(),
       ...this.askModule.getModes(),
       ...this.searchModule.getModes(),
       ...this.voiceModule.getModes(),
@@ -94,6 +109,7 @@ export class InternalChatModule implements ChatModule {
       ...this.setupModule.getModes(),
       ...this.customCommandsModule.getModes(),
       ...this.shellCommandModule.getModes(),
+      ...this.rendererModule.getModes(),
     ];
   }
 

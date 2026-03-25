@@ -98,7 +98,7 @@ export class AgentsMdPlugin extends PluginBase implements Plugin {
 
       events.emit("agent:msg", alertMessage);
     } catch (error) {
-      console.error("AGENTS-MD PLUGIN: Error handling file event:", error);
+      this.log("AGENTS-MD PLUGIN: Error handling file event: " + error, "error");
     }
   }
 

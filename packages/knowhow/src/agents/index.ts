@@ -16,21 +16,37 @@ export * from "./researcher/researcher";
 export * as tools from "./tools";
 export { includedTools } from "./tools/list";
 
-let singletons = {} as {
-  Developer: DeveloperAgent;
-  Patcher: PatchingAgent;
-  Researcher: ResearcherAgent;
-  Setup: SetupAgent;
+export type AgentName = "Developer" | "Patcher" | "Researcher" | "Setup";
+
+/**
+ * Registry of agent constructors (not instances).
+ * Use createAgent() to get a fresh instance per task, avoiding stale event listener issues.
+ */
+export const agentConstructors: Record<AgentName, new (context: AgentContext) => any> = {
+  Developer: DeveloperAgent,
+  Patcher: PatchingAgent,
+  Researcher: ResearcherAgent,
+  Setup: SetupAgent,
 };
 
-export function agents(agentContext: AgentContext = services()) {
-  if (Object.keys(singletons).length === 0) {
-    singletons = {
-      Developer: new DeveloperAgent(agentContext),
-      Patcher: new PatchingAgent(agentContext),
-      Researcher: new ResearcherAgent(agentContext),
-      Setup: new SetupAgent(agentContext),
-    };
+/**
+ * Create a fresh agent instance by name.
+ * Always returns a new instance to avoid shared state / stale listeners between tasks.
+ */
+export function createAgent(agentName: AgentName, agentContext: AgentContext = services()) {
+  const AgentClass = agentConstructors[agentName];
+  if (!AgentClass) {
+    throw new Error(`Agent "${agentName}" not found. Available agents: ${Object.keys(agentConstructors).join(", ")}`);
   }
-  return singletons;
+  return new AgentClass(agentContext);
+}
+
+/** @deprecated Use createAgent() for per-task instances to avoid event listener leaks */
+export function agents(agentContext: AgentContext = services()) {
+  return {
+    Developer: new DeveloperAgent(agentContext),
+    Patcher: new PatchingAgent(agentContext),
+    Researcher: new ResearcherAgent(agentContext),
+    Setup: new SetupAgent(agentContext),
+  };
 }

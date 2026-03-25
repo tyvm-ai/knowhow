@@ -10,6 +10,7 @@ import { watch } from "fs";
 export interface FsSyncOptions {
   taskId: string;
   prompt: string;
+  agentName?: string;
 }
 
 /**
@@ -51,6 +52,7 @@ export class AgentSyncFs {
       await this.writeMetadata({
         taskId: this.taskId,
         prompt: options.prompt,
+        agentName: options.agentName || "unknown",
         startTime: new Date().toISOString(),
         status: "running",
       });
@@ -125,6 +127,7 @@ export class AgentSyncFs {
 
       metadata.threads = agent.getThreads();
       metadata.totalCostUsd = agent.getTotalCostUsd();
+    metadata.agentName = agent.name;
       metadata.inProgress = inProgress;
       metadata.lastUpdate = new Date().toISOString();
 

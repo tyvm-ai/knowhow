@@ -7,6 +7,7 @@ import { AgentContext } from "../agents/base/base";
 
 export class AgentService {
   private agents: Map<string, IAgent> = new Map();
+  private agentContext: AgentContext | null = null;
 
   constructor(private tools: ToolsService, private events: EventService) {
     this.wireUp();
@@ -55,6 +56,22 @@ export class AgentService {
 
   public registerAgentByName(name: string, agent: IAgent): void {
     this.agents.set(name, agent);
+  }
+
+  /**
+   * Set the AgentContext that will be used when creating new agent instances.
+   * Should be called from cli.ts after all services are wired up (including LazyToolsService).
+   */
+  public setAgentContext(context: AgentContext): void {
+    this.agentContext = context;
+  }
+
+  /**
+   * Get the current AgentContext. Falls back to a minimal context using this service's
+   * own tools/events if none has been explicitly set.
+   */
+  public getAgentContext(): AgentContext {
+    return this.agentContext ?? { Tools: this.tools, Events: this.events };
   }
 
   public getAgent(name: string): IAgent {

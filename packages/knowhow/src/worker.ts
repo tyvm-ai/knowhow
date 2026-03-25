@@ -4,6 +4,9 @@ import { createTunnelHandler, TunnelHandler } from "@tyvm/knowhow-tunnel";
 import { includedTools } from "./agents/tools/list";
 import { loadJwt } from "./login";
 import { services } from "./services";
+import { PasskeySetupService } from "./workers/auth/PasskeySetup";
+import { WorkerPasskeyAuthService } from "./workers/auth/WorkerPasskeyAuth";
+import { makeUnlockTool, makeLockTool } from "./workers/tools";
 import { McpServerService } from "./services/Mcp";
 import * as allTools from "./agents/tools";
 import workerTools from "./workers/tools";
@@ -85,8 +88,32 @@ export async function worker(options?: {
   unshare?: boolean;
   sandbox?: boolean;
   noSandbox?: boolean;
+  passkey?: boolean;
+  passkeyReset?: boolean;
 }) {
   const config = await getConfig();
+
+  // Handle --passkey-reset: remove passkey from config
+  if (options?.passkeyReset) {
+    const passkeySetup = new PasskeySetupService();
+    await passkeySetup.reset();
+    return;
+  }
+
+  // Handle --passkey: run browser-based passkey registration flow
+  if (options?.passkey) {
+    let jwt: string;
+    try {
+      jwt = await loadJwt();
+    } catch {
+      console.error("❌ You must be logged in to set up a passkey.");
+      console.error("   Run 'knowhow login' first.");
+      process.exit(1);
+    }
+    const passkeySetup = new PasskeySetupService();
+    await passkeySetup.setup(jwt);
+    return;
+  }
 
   // Check if we're already running inside a Docker container
   const isInsideDocker = process.env.KNOWHOW_DOCKER === "true";
@@ -158,6 +185,24 @@ export async function worker(options?: {
   const clientName = "knowhow-worker";
   const clientVersion = "1.1.1";
 
+  // ---------------------------------------------------------------------------
+  // Passkey auth gating
+  // ---------------------------------------------------------------------------
+  let authService: WorkerPasskeyAuthService | null = null;
+  const passkeyConfig = config.worker?.auth?.passkey;
+
+  if (passkeyConfig?.publicKey && passkeyConfig?.credentialId) {
+    authService = new WorkerPasskeyAuthService(
+      {
+        publicKey: passkeyConfig.publicKey,
+        credentialId: passkeyConfig.credentialId,
+        algorithm: -7, // ES256
+      },
+      config.worker?.auth?.sessionDurationHours ?? 3
+    );
+    console.log("🔒 Passkey auth enabled — worker starts locked");
+  }
+
   if (!shouldUseSandbox) {
     console.log(`🖥️  Using host mode (${sandboxSource})`);
   }
@@ -172,7 +217,6 @@ export async function worker(options?: {
       ...config.worker,
       allowedTools: Tools.getToolNames(),
     };
-
     await updateConfig(config);
     return;
   }
@@ -183,7 +227,41 @@ export async function worker(options?: {
     return;
   }
 
-  const toolsToUse = Tools.getToolsByNames(config.worker.allowedTools);
+  let toolsToUse = Tools.getToolsByNames(config.worker.allowedTools);
+
+  // If passkey auth is enabled, wrap all tool functions to check locked state
+  // and register the unlock/lock auth tools
+  if (authService) {
+    const _authService = authService;
+
+    // Wrap every configured tool to gate on locked state
+    for (const tool of toolsToUse) {
+      const toolName = tool.function.name;
+      const originalFn = Tools.getFunction(toolName);
+      Tools.addFunctions({
+        [toolName]: async (...args: any[]) => {
+          if (_authService.isLocked()) {
+            return {
+              error: "WORKER_LOCKED",
+              message:
+                "Worker is locked. Call the `unlock` tool with your passkey assertion to unlock it first.",
+            };
+          }
+          return originalFn(...args);
+        },
+      });
+    }
+
+    // Build and register the auth tools
+    const { unlock, unlockDefinition } = makeUnlockTool(_authService);
+    const { lock, lockDefinition } = makeLockTool(_authService);
+
+    Tools.addFunctions({ unlock, lock });
+    toolsToUse = [unlockDefinition, lockDefinition, ...toolsToUse];
+
+    console.log("🔑 Auth tools registered: unlock, lock");
+  }
+
   mcpServer.createServer(clientName, clientVersion).withTools(toolsToUse);
 
   let connected = false;
