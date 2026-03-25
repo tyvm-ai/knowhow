@@ -4,7 +4,7 @@
  */
 
 import { Message } from "../clients/types";
-import { EventEmitter } from "events";
+import { EventService } from "./EventService";
 import * as fs from "fs";
 import * as fsPromises from "fs/promises";
 import * as path from "path";
@@ -24,8 +24,8 @@ export interface SyncedAgentWatcher {
   sendMessage(message: string): Promise<void>;
   /** Get current threads (for replaying history via /logs) */
   getThreads(): Promise<any[][]>;
-  /** EventEmitter that emits agent lifecycle events (toolCall, toolUsed, agentSay, threadUpdate, done) */
-  agentEvents: EventEmitter;
+  /** EventService that emits agent lifecycle events (toolCall, toolUsed, agentSay, threadUpdate, done) */
+  agentEvents: EventService;
   /** Event type constants mirroring BaseAgent.eventTypes */
   eventTypes: { done: string; toolCall: string; toolUsed: string; agentSay: string; threadUpdate: string };
   /** Pause the remote agent */
@@ -43,8 +43,8 @@ export interface SyncedAgentWatcher {
  */
 export interface AttachableAgent {
   name: string;
-  agentEvents: EventEmitter;
-  eventTypes: { done: string };
+  agentEvents: EventService;
+  eventTypes: { done: string; toolCall?: string; toolUsed?: string; agentSay?: string };
   getTotalCostUsd(): number;
   pause(): void | Promise<void>;
   unpause(): void | Promise<void>;
@@ -64,7 +64,7 @@ export interface AttachableAgent {
  */
 export class WatcherBackedAgent implements AttachableAgent {
   public name: string;
-  public agentEvents: EventEmitter;
+  public agentEvents: EventService;
   public eventTypes: { done: string };
 
   constructor(public readonly watcher: SyncedAgentWatcher) {
@@ -117,7 +117,7 @@ export class FsSyncedAgentWatcher implements SyncedAgentWatcher {
   private lastThreadLength: number = 0;
   public agentName: string = "unknown";
   private debounceTimer: NodeJS.Timeout | null = null;
-  public agentEvents = new EventEmitter();
+  public agentEvents = new EventService();
   public eventTypes = {
     done: "done",
     toolCall: "tool:pre_call",
@@ -265,7 +265,7 @@ export class WebSyncedAgentWatcher implements SyncedAgentWatcher {
   private lastThreadLength: number = 0;
   public agentName: string = "remote-agent";
   private stopped: boolean = false;
-  public agentEvents = new EventEmitter();
+  public agentEvents = new EventService();
   public eventTypes = {
     done: "done",
     toolCall: "tool:pre_call",

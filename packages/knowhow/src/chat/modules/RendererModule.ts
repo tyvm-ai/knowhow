@@ -5,6 +5,7 @@ import { BaseChatModule } from "./BaseChatModule";
 import { ChatCommand, ChatMode, ChatContext, ChatService } from "../types";
 import { loadRenderer } from "../renderer/loadRenderer";
 import { ConsoleRenderer } from "../renderer";
+import { AgentModule } from "./AgentModule";
 
 const BUILTIN_RENDERERS = ["basic", "compact", "fancy"];
 
@@ -15,8 +16,12 @@ export class RendererModule extends BaseChatModule {
   /** Track the current renderer name for display */
   private currentRendererName: string = "basic";
 
-  constructor() {
+  /** Optional reference to AgentModule for rewiring rendering on renderer switch */
+  private agentModule: AgentModule | undefined;
+
+  constructor(agentModule?: AgentModule) {
     super();
+    this.agentModule = agentModule;
   }
 
   async initialize(service: ChatService): Promise<void> {
@@ -79,6 +84,15 @@ export class RendererModule extends BaseChatModule {
 
       this.chatService?.setContext({ renderer: newRenderer });
       this.currentRendererName = specifier;
+
+      // Rewire agent rendering event listeners to the new renderer so live
+      // events are forwarded correctly even mid-session.
+      // This works because wireAgentRendering() always reads `this.renderer`
+      // (which resolves from context), and re-registering replaces the old handlers.
+      if (this.agentModule && activeTaskId) {
+        this.agentModule.rewireAgentRendering();
+      }
+
       console.log(`✅ Renderer switched to: ${specifier}`);
     } catch (err: any) {
       console.error(`❌ Failed to load renderer "${specifier}": ${err.message}`);

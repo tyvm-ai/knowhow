@@ -1,6 +1,7 @@
 /**
  * Agent Chat Module - Handles agent interactions
  */
+import { EventService } from "../../services/EventService";
 import { ConsoleRenderer, AgentRenderer } from "../renderer";
 import {
   SessionManager,
@@ -56,6 +57,14 @@ export class AgentModule extends BaseChatModule {
   private activeAgentTaskId: string | undefined;
   /** Currently active synced agent watcher (for FS or Web agents) */
   private activeSyncedWatcher: SyncedAgentWatcher | undefined;
+
+  /** Stored wire params for rewireAgentRendering */
+  private _wireAgentEvents: EventService | undefined;
+  private _wireTaskId: string | undefined;
+  private _wireAgentName: string | undefined;
+  private _wireEventTypes:
+    | { toolCall?: string; toolUsed?: string; agentSay?: string; done: string }
+    | undefined;
 
   constructor() {
     super();
@@ -136,6 +145,9 @@ export class AgentModule extends BaseChatModule {
   private detachFromAgent(): void {
     this.attachedAgent = undefined;
 
+    // Unregister rendering event listeners
+    this.unwireAgentRendering();
+
     if (this.chatService) {
       this.chatService.setMode("default");
     }
@@ -145,10 +157,6 @@ export class AgentModule extends BaseChatModule {
       this.activeSyncedWatcher.stopWatching();
       this.activeSyncedWatcher = undefined;
     }
-
-    // Clear active agent tracking so other agents' logs don't pollute output
-    this.activeAgentTaskId = undefined;
-    this.renderer.setActiveTaskId(undefined);
 
     const context = this.chatService?.getContext();
     if (context) context.activeAgentTaskId = undefined;
@@ -192,22 +200,22 @@ export class AgentModule extends BaseChatModule {
   async initialize(service: ChatService): Promise<void> {
     await super.initialize(service);
 
-    // Set up plugin log event handler
+    // Set up plugin log event handler - use setListener so re-init doesn't double-subscribe
     const Events = services().Events;
-    Events.on(Events.eventTypes.pluginLog, (logEvent: any) => {
-      // Forward plugin logs to renderer for all active tasks
-      const activeTasks = this.taskRegistry.getAll();
-      activeTasks.forEach((task) => {
+    Events.setListener(
+      { key: "agentModule:pluginLog", event: Events.eventTypes.pluginLog },
+      (logEvent: any) => {
+        const activeTasks = this.taskRegistry.getAll();
         this.renderer.render({
           type: "log",
-          taskId: task.taskId,
+          taskId: this.activeAgentTaskId,
           agentName: logEvent.source,
           message: logEvent.message,
           level: logEvent.level || "info",
           timestamp: logEvent.timestamp || new Date().toISOString(),
         });
-      });
-    });
+      }
+    );
 
     await this.handleAgentCommand(["Patcher"]);
   }
@@ -314,6 +322,113 @@ export class AgentModule extends BaseChatModule {
    */
   public setActiveAgentTaskId(id: string | undefined): void {
     this.activeAgentTaskId = id;
+  }
+
+  /**
+   * Wire up agentEvents to the renderer for a given task.
+   * Uses setListener with stable keys so re-calling automatically replaces old listeners.
+   *
+   * @param taskId    The task ID to pass through to render events
+   * @param agentEvents   An EventEmitter that emits toolCall / toolUsed / agentSay events
+   * @param eventTypes    Object with event name constants (toolCall, toolUsed, agentSay, done)
+   * @param agentName     Display name for the agent
+   */
+  public wireAgentRendering(
+    taskId: string,
+    agentEvents: EventService,
+    eventTypes: {
+      toolCall?: string;
+      toolUsed?: string;
+      agentSay?: string;
+      done: string;
+    },
+    agentName: string
+  ): void {
+    if (eventTypes.toolCall) {
+      agentEvents.setListener(
+        { key: "agentModule:render:toolCall", event: eventTypes.toolCall },
+        (data: any) =>
+          this.renderer.render({
+            type: "toolCall",
+            taskId,
+            agentName,
+            toolCall: data.toolCall,
+          })
+      );
+    }
+    if (eventTypes.toolUsed) {
+      agentEvents.setListener(
+        { key: "agentModule:render:toolUsed", event: eventTypes.toolUsed },
+        (data: any) =>
+          this.renderer.render({
+            type: "toolResult",
+            taskId,
+            agentName,
+            toolCall: data.toolCall,
+            result: data.functionResp,
+          })
+      );
+    }
+    if (eventTypes.agentSay) {
+      agentEvents.setListener(
+        { key: "agentModule:render:agentSay", event: eventTypes.agentSay },
+        (data: any) =>
+          this.renderer.render({
+            type: "agentMessage",
+            taskId,
+            agentName,
+            message: data.message,
+            role: "assistant",
+          })
+      );
+    }
+
+    // Set active task on the renderer
+    this.activeAgentTaskId = taskId;
+    this.renderer.setActiveTaskId(taskId);
+
+    // Store agentEvents reference for unwire/rewire
+    this._wireAgentEvents = agentEvents;
+    this._wireAgentName = agentName;
+    this._wireEventTypes = eventTypes;
+    this._wireTaskId = taskId;
+  }
+
+  /**
+   * Unwire rendering event listeners that were set up by wireAgentRendering().
+   * Clears the active task on the renderer.
+   */
+  public unwireAgentRendering(): void {
+    if (this._wireAgentEvents) {
+      this._wireAgentEvents.removeManagedListenersByPrefix(
+        "agentModule:render:"
+      );
+      this._wireAgentEvents = undefined;
+    }
+    this.activeAgentTaskId = undefined;
+    this.renderer.setActiveTaskId(undefined);
+  }
+
+  /**
+   * Rewire rendering event listeners to the current renderer.
+   * Call this after switching the active renderer (e.g. via /render) so that
+   * in-progress agents forward events to the new renderer.
+   * Since setListener auto-replaces, just re-call wireAgentRendering with stored params.
+   */
+  public rewireAgentRendering(): void {
+    if (
+      !this._wireAgentEvents ||
+      !this._wireTaskId ||
+      !this._wireEventTypes ||
+      !this._wireAgentName
+    )
+      return;
+    this.wireAgentRendering(
+      this._wireTaskId,
+      this._wireAgentEvents,
+      this._wireEventTypes,
+      this._wireAgentName
+    );
   }
 
   /**
@@ -630,23 +745,6 @@ Please continue from where you left off and complete the original request.
 
       // Set up event listeners
       // Each task gets a fresh agent instance (via createAgent), so no stale listeners exist.
-      const toolCallHandler = (responseMsg: ToolCallEvent) => {
-        this.renderer.render({
-          type: "toolCall",
-          taskId,
-          agentName: agent.name,
-          toolCall: responseMsg.toolCall,
-        });
-      };
-      const toolUsedHandler = (responseMsg: ToolCallEvent) => {
-        this.renderer.render({
-          type: "toolResult",
-          taskId,
-          agentName: agent.name,
-          toolCall: responseMsg.toolCall,
-          result: responseMsg.functionResp,
-        });
-      };
       const agentLogHandler = (logData: any) => {
         this.renderer.render({
           type: "log",
@@ -667,21 +765,9 @@ Please continue from where you left off and complete the original request.
           timestamp: statusData.timestamp,
         });
       };
-      const agentSayHandler = (sayData: any) => {
-        this.renderer.render({
-          type: "agentMessage",
-          taskId,
-          agentName: agent.name,
-          message: sayData.message,
-          role: "assistant",
-        });
-      };
 
-      agent.agentEvents.on(agent.eventTypes.toolCall, toolCallHandler);
-      agent.agentEvents.on(agent.eventTypes.toolUsed, toolUsedHandler);
       agent.agentEvents.on(agent.eventTypes.agentLog, agentLogHandler);
       agent.agentEvents.on(agent.eventTypes.agentStatus, agentStatusHandler);
-      agent.agentEvents.on(agent.eventTypes.agentSay, agentSayHandler);
 
       const taskCompleted = new Promise<string>((resolve) => {
         agent.agentEvents.once(agent.eventTypes.done, async (doneMsg) => {
@@ -695,24 +781,12 @@ Please continue from where you left off and complete the original request.
           );
           // Remove task-specific listeners so they don't fire for the next task
           agent.agentEvents.removeListener(
-            agent.eventTypes.toolCall,
-            toolCallHandler
-          );
-          agent.agentEvents.removeListener(
-            agent.eventTypes.toolUsed,
-            toolUsedHandler
-          );
-          agent.agentEvents.removeListener(
             agent.eventTypes.agentLog,
             agentLogHandler
           );
           agent.agentEvents.removeListener(
             agent.eventTypes.agentStatus,
             agentStatusHandler
-          );
-          agent.agentEvents.removeListener(
-            agent.eventTypes.agentSay,
-            agentSayHandler
           );
           // Update task info
           taskInfo = this.taskRegistry.get(taskId);
@@ -964,9 +1038,13 @@ Please continue from where you left off and complete the original request.
         this.chatService.setMode("agent:attached");
       }
 
-      // Track the active agent task for filtered rendering
-      this.activeAgentTaskId = taskId;
-      this.renderer.setActiveTaskId(taskId);
+      // Wire up rendering event listeners and track the active task
+      this.wireAgentRendering(
+        taskId,
+        agent.agentEvents,
+        agent.eventTypes,
+        agent.name
+      );
       const context = this.chatService?.getContext();
       if (context) context.activeAgentTaskId = taskId;
 

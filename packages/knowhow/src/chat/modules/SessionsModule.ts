@@ -718,8 +718,6 @@ export class SessionsModule extends BaseChatModule {
   // ─────────────────────────────────────────────────────────────────────────────
 
   private async attachToFsAgent(taskId: string): Promise<void> {
-    const renderer = this.agentModule.getRenderer();
-
     const existingWatcher = this.agentModule.getActiveSyncedWatcher();
     if (existingWatcher) {
       existingWatcher.stopWatching();
@@ -729,41 +727,10 @@ export class SessionsModule extends BaseChatModule {
     const watcher = new FsSyncedAgentWatcher();
     await watcher.startWatching(taskId);
     this.agentModule.setActiveSyncedWatcher(watcher);
-    this.agentModule.setActiveAgentTaskId(taskId);
-    renderer.setActiveTaskId(taskId);
 
-    // Wire watcher agentEvents to the renderer (same pattern as regular agents)
-    const { agentEvents, eventTypes, agentName } = watcher;
-    const toolCallHandler = (data: any) =>
-      renderer.render({
-        type: "toolCall",
-        taskId,
-        agentName,
-        toolCall: data.toolCall,
-      });
-    const toolUsedHandler = (data: any) =>
-      renderer.render({
-        type: "toolResult",
-        taskId,
-        agentName,
-        toolCall: data.toolCall,
-        result: data.functionResp,
-      });
-    const agentSayHandler = (data: any) =>
-      renderer.render({
-        type: "agentMessage",
-        taskId,
-        agentName,
-        message: data.message,
-        role: "assistant",
-      });
-    agentEvents.on(eventTypes.toolCall, toolCallHandler);
-    agentEvents.on(eventTypes.toolUsed, toolUsedHandler);
-    agentEvents.on(eventTypes.agentSay, agentSayHandler);
-    agentEvents.once(eventTypes.done, (output) => {
-      agentEvents.removeListener(eventTypes.toolCall, toolCallHandler);
-      agentEvents.removeListener(eventTypes.toolUsed, toolUsedHandler);
-      agentEvents.removeListener(eventTypes.agentSay, agentSayHandler);
+    // Wire rendering via AgentModule utility (handles cleanup on detach)
+    this.agentModule.wireAgentRendering(taskId, watcher.agentEvents, watcher.eventTypes, watcher.agentName);
+    watcher.agentEvents.once(watcher.eventTypes.done, (output) => {
       console.log(Marked.parse(output));
     });
 
@@ -792,7 +759,6 @@ export class SessionsModule extends BaseChatModule {
       return;
     }
 
-    const renderer = this.agentModule.getRenderer();
     const existingWatcher = this.agentModule.getActiveSyncedWatcher();
     if (existingWatcher) {
       existingWatcher.stopWatching();
@@ -802,42 +768,9 @@ export class SessionsModule extends BaseChatModule {
     const watcher = new WebSyncedAgentWatcher(client);
     await watcher.startWatching(taskId);
     this.agentModule.setActiveSyncedWatcher(watcher);
-    this.agentModule.setActiveAgentTaskId(taskId);
-    renderer.setActiveTaskId(taskId);
 
-    // Wire watcher agentEvents to the renderer (same pattern as regular agents)
-    const { agentEvents, eventTypes, agentName } = watcher;
-    const toolCallHandler = (data: any) =>
-      renderer.render({
-        type: "toolCall",
-        taskId,
-        agentName,
-        toolCall: data.toolCall,
-      });
-    const toolUsedHandler = (data: any) =>
-      renderer.render({
-        type: "toolResult",
-        taskId,
-        agentName,
-        toolCall: data.toolCall,
-        result: data.functionResp,
-      });
-    const agentSayHandler = (data: any) =>
-      renderer.render({
-        type: "agentMessage",
-        taskId,
-        agentName,
-        message: data.message,
-        role: "assistant",
-      });
-    agentEvents.on(eventTypes.toolCall, toolCallHandler);
-    agentEvents.on(eventTypes.toolUsed, toolUsedHandler);
-    agentEvents.on(eventTypes.agentSay, agentSayHandler);
-    agentEvents.once(eventTypes.done, () => {
-      agentEvents.removeListener(eventTypes.toolCall, toolCallHandler);
-      agentEvents.removeListener(eventTypes.toolUsed, toolUsedHandler);
-      agentEvents.removeListener(eventTypes.agentSay, agentSayHandler);
-    });
+    // Wire rendering via AgentModule utility (handles cleanup on detach)
+    this.agentModule.wireAgentRendering(taskId, watcher.agentEvents, watcher.eventTypes, watcher.agentName);
 
     const context = this.chatService?.getContext();
     if (context) context.activeAgentTaskId = taskId;

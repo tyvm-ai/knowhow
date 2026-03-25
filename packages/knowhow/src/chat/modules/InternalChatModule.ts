@@ -30,7 +30,7 @@ export class InternalChatModule implements ChatModule {
   private rendererModule: RendererModule;
 
   constructor() {
-    this.rendererModule = new RendererModule();
+    this.rendererModule = new RendererModule(this.agentModule);
     this.setupModule = new SetupModule(this.agentModule);
     this.sessionsModule = new SessionsModule(this.agentModule);
   }

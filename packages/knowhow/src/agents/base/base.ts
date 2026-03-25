@@ -1,4 +1,4 @@
-import { EventEmitter } from "events";
+import { EventEmitter } from "events";  // kept for reference; agentEvents now uses EventService
 import {
   GenericClient,
   Message,
@@ -64,7 +64,7 @@ export abstract class BaseAgent implements IAgent {
   protected summaries = [] as string[];
   protected currentTaskId: string | null = null;
 
-  public agentEvents = new EventEmitter();
+  public agentEvents = new EventService();
   public eventTypes = {
     newThread: "new_thread",
     threadUpdate: "thread_update",
@@ -108,7 +108,8 @@ export abstract class BaseAgent implements IAgent {
     }
 
     // Subscribe to "agent:msg" events for dynamic context loading
-    this.events.on(this.eventTypes.agentMsg, (eventData: any) => {
+    // Use setListener with a key so re-creating the agent doesn't double-subscribe
+    this.events.setListener({ key: `agent:msg:${this.constructor.name}`, event: this.eventTypes.agentMsg }, (eventData: any) => {
       if (
         this.status === this.eventTypes.inProgress ||
         this.status === this.eventTypes.pause
