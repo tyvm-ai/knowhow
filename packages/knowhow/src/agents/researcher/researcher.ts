@@ -8,7 +8,7 @@ export class ResearcherAgent extends BaseAgent {
 
   constructor(context: AgentContext) {
     super(context);
-    this.setModel(Models.google.Gemini_20_Flash);
+    this.setModel(Models.google.Gemini_3_Flash_Preview);
     this.setProvider("google");
     this.disableTool("patchFile");
     this.disableTool("writeFile");
@@ -106,4 +106,3 @@ export class ResearcherAgent extends BaseAgent {
     ] as Message[];
   }
 }
-
