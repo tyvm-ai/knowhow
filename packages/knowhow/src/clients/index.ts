@@ -25,9 +25,22 @@ import { GenericGeminiClient } from "./gemini";
 import { HttpClient } from "./http";
 import { EmbeddingModels, Models } from "../types";
 import { getConfig } from "../config";
+import {
+  GoogleImageModels,
+  GoogleVideoModels,
+  GoogleTTSModels,
+  OpenAiImageModels,
+  OpenAiVideoModels,
+  OpenAiTTSModels,
+  OpenAiTranscriptionModels,
+  XaiImageModels,
+  XaiVideoModels,
+} from "../types";
 import { GenericXAIClient } from "./xai";
 import { KnowhowGenericClient } from "./knowhow";
 import { loadKnowhowJwt } from "../services/KnowhowClient";
+
+export type ModelModality = "completion" | "embedding" | "image" | "audio" | "video";
 
 function envCheck(key: string): boolean {
   const value = process.env[key];
@@ -83,6 +96,39 @@ export class AIClient {
       google: [...this.completionModels.google, ...this.embeddingModels.google],
     }),
     ...(envCheck("XAI_API_KEY") && { xai: this.completionModels.xai }),
+  };
+
+  imageModels: Record<string, string[]> = {
+    ...(envCheck("OPENAI_KEY") && {
+      openai: OpenAiImageModels,
+    }),
+    ...(envCheck("GEMINI_API_KEY") && {
+      google: GoogleImageModels,
+    }),
+    ...(envCheck("XAI_API_KEY") && {
+      xai: XaiImageModels,
+    }),
+  };
+
+  audioModels: Record<string, string[]> = {
+    ...(envCheck("OPENAI_KEY") && {
+      openai: [...OpenAiTTSModels, ...OpenAiTranscriptionModels],
+    }),
+    ...(envCheck("GEMINI_API_KEY") && {
+      google: GoogleTTSModels,
+    }),
+  };
+
+  videoModels: Record<string, string[]> = {
+    ...(envCheck("OPENAI_KEY") && {
+      openai: OpenAiVideoModels,
+    }),
+    ...(envCheck("GEMINI_API_KEY") && {
+      google: GoogleVideoModels,
+    }),
+    ...(envCheck("XAI_API_KEY") && {
+      xai: XaiVideoModels,
+    }),
   };
 
   getClient(provider: string, model?: string) {
@@ -212,6 +258,39 @@ export class AIClient {
 
     this.embeddingModels[provider] = Array.from<string>(
       new Set(currentModels.concat(models))
+    );
+  }
+
+  registerImageModels(provider: string, models: string[]) {
+    const currentModels = this.clientModels[provider] || [];
+    const currentImageModels = this.imageModels[provider] || [];
+    this.clientModels[provider] = Array.from<string>(
+      new Set(currentModels.concat(models))
+    );
+    this.imageModels[provider] = Array.from<string>(
+      new Set(currentImageModels.concat(models))
+    );
+  }
+
+  registerAudioModels(provider: string, models: string[]) {
+    const currentModels = this.clientModels[provider] || [];
+    const currentAudioModels = this.audioModels[provider] || [];
+    this.clientModels[provider] = Array.from<string>(
+      new Set(currentModels.concat(models))
+    );
+    this.audioModels[provider] = Array.from<string>(
+      new Set(currentAudioModels.concat(models))
+    );
+  }
+
+  registerVideoModels(provider: string, models: string[]) {
+    const currentModels = this.clientModels[provider] || [];
+    const currentVideoModels = this.videoModels[provider] || [];
+    this.clientModels[provider] = Array.from<string>(
+      new Set(currentModels.concat(models))
+    );
+    this.videoModels[provider] = Array.from<string>(
+      new Set(currentVideoModels.concat(models))
     );
   }
 
@@ -516,6 +595,18 @@ export class AIClient {
 
   listAllProviders() {
     return Object.keys(this.clientModels);
+  }
+
+  listAllImageModels() {
+    return this.imageModels;
+  }
+
+  listAllAudioModels() {
+    return this.audioModels;
+  }
+
+  listAllVideoModels() {
+    return this.videoModels;
   }
 }
 

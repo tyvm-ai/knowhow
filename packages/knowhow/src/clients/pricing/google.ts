@@ -58,6 +58,9 @@ export const GeminiTextPricing = {
   [Models.google.Veo_2]: {
     video_generation: 0.35,
   },
+  [Models.google.Veo_3_1]: {
+    video_generation: 0.35,
+  },
   [EmbeddingModels.google.Gemini_Embedding]: {
     input: 0, // Free of charge
     output: 0, // Free of charge

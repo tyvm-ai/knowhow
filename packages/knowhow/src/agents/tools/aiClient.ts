@@ -128,3 +128,51 @@ export async function listAllEmbeddingModels(): Promise<Record<string, string[]>
 
   return contextClients.listAllEmbeddingModels();
 }
+
+export async function listAllImageModels(): Promise<Record<string, string[]>> {
+  // Get context from bound ToolsService
+  const toolService = (
+    this instanceof ToolsService ? this : services().Tools
+  ) as ToolsService;
+
+  const toolContext = toolService.getContext();
+  const { Clients: contextClients } = toolContext;
+
+  if (!contextClients) {
+    throw new Error("Clients not available in tool context");
+  }
+
+  return contextClients.listAllImageModels();
+}
+
+export async function listAllAudioModels(): Promise<Record<string, string[]>> {
+  // Get context from bound ToolsService
+  const toolService = (
+    this instanceof ToolsService ? this : services().Tools
+  ) as ToolsService;
+
+  const toolContext = toolService.getContext();
+  const { Clients: contextClients } = toolContext;
+
+  if (!contextClients) {
+    throw new Error("Clients not available in tool context");
+  }
+
+  return contextClients.listAllAudioModels();
+}
+
+export async function listAllVideoModels(): Promise<Record<string, string[]>> {
+  // Get context from bound ToolsService
+  const toolService = (
+    this instanceof ToolsService ? this : services().Tools
+  ) as ToolsService;
+
+  const toolContext = toolService.getContext();
+  const { Clients: contextClients } = toolContext;
+
+  if (!contextClients) {
+    throw new Error("Clients not available in tool context");
+  }
+
+  return contextClients.listAllVideoModels();
+}

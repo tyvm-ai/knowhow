@@ -216,6 +216,12 @@ export const Models = {
   openai: {
     GPT_5_2: "gpt-5.2",
     GPT_5_1: "gpt-5.1",
+    GPT_54: "gpt-5.4",
+    GPT_54_Mini: "gpt-5.4-mini",
+    GPT_54_Nano: "gpt-5.4-nano",
+    GPT_54_Pro: "gpt-5.4-pro",
+    GPT_53_Chat: "gpt-5.3-chat-latest",
+    GPT_53_Codex: "gpt-5.3-codex",
     GPT_5: "gpt-5",
     GPT_5_Mini: "gpt-5-mini",
     GPT_5_Nano: "gpt-5-nano",
@@ -239,6 +245,12 @@ export const Models = {
     GPT_4o_Mini_Search: "gpt-4o-mini-search-preview-2025-03-11",
     GPT_4o_Search: "gpt-4o-search-preview-2025-03-11",
 
+    GPT_4o_Transcribe: "gpt-4o-transcribe",
+    GPT_4o_Mini_Transcribe: "gpt-4o-mini-transcribe",
+    GPT_Realtime_15: "gpt-realtime-1.5",
+    GPT_Realtime_Mini: "gpt-realtime-mini",
+    GPT_Image_15: "gpt-image-1.5",
+    GPT_Image_1_Mini: "gpt-image-1-mini",
     TTS_1: "tts-1",
     Whisper_1: "whisper-1",
     DALL_E_3: "dall-e-3",
@@ -306,6 +318,12 @@ export const OpenAiReasoningModels = [
   Models.openai.o3,
   Models.openai.o3_Pro,
   Models.openai.o4_Mini,
+  Models.openai.GPT_54,
+  Models.openai.GPT_54_Mini,
+  Models.openai.GPT_54_Nano,
+  Models.openai.GPT_54_Pro,
+  Models.openai.GPT_53_Chat,
+  Models.openai.GPT_53_Codex,
   Models.openai.GPT_5,
   Models.openai.GPT_5_Mini,
   Models.openai.GPT_5_Nano,
@@ -338,6 +356,8 @@ export const GoogleImageModels = [
 export const OpenAiImageModels = [
   Models.openai.DALL_E_3,
   Models.openai.DALL_E_2,
+  Models.openai.GPT_Image_15,
+  Models.openai.GPT_Image_1_Mini,
 ];
 
 export const OpenAiVideoModels = [
@@ -348,10 +368,19 @@ export const OpenAiVideoModels = [
 
 export const OpenAiTTSModels = [Models.openai.TTS_1];
 
-export const OpenAiTranscriptionModels = [Models.openai.Whisper_1];
-
 export const XaiImageModels = [Models.xai.GrokImagineImage];
+export const OpenAiTranscriptionModels = [
+  Models.openai.Whisper_1,
+  Models.openai.GPT_4o_Transcribe,
+  Models.openai.GPT_4o_Mini_Transcribe,
+];
 
+export const OpenAiRealtimeModels = [
+  Models.openai.GPT_4o_Realtime,
+  Models.openai.GPT_4o_Mini_Realtime,
+  Models.openai.GPT_Realtime_15,
+  Models.openai.GPT_Realtime_Mini,
+];
 export const XaiVideoModels = [Models.xai.GrokImagineVideo];
 
 export const GoogleTTSModels = [

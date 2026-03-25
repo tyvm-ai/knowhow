@@ -509,6 +509,63 @@ export const includedTools = [
   {
     type: "function",
     function: {
+      name: "listAllImageModels",
+      description:
+        "List all available image generation models using the knowhow ai client. Use this to discover which providers and models support image generation.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+      returns: {
+        type: "object",
+        description:
+          "A dictionary of all available image generation models for each provider",
+      },
+    },
+  },
+
+  {
+    type: "function",
+    function: {
+      name: "listAllAudioModels",
+      description:
+        "List all available audio generation models (TTS/transcription) using the knowhow ai client. Use this to discover which providers and models support audio generation.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+      returns: {
+        type: "object",
+        description:
+          "A dictionary of all available audio generation models for each provider",
+      },
+    },
+  },
+
+  {
+    type: "function",
+    function: {
+      name: "listAllVideoModels",
+      description:
+        "List all available video generation models using the knowhow ai client. Use this to discover which providers and models support video generation.",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+      returns: {
+        type: "object",
+        description:
+          "A dictionary of all available video generation models for each provider",
+      },
+    },
+  },
+
+  {
+    type: "function",
+    function: {
       name: "listAllModels",
       description: "List all available models using the knowhow ai client",
       parameters: {
