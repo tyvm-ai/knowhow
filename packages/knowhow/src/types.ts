@@ -179,8 +179,7 @@ export type Language = {
 export type ChatInteraction = {
   input: string;
   output: string;
-  summaries: string[];
-  lastThread: string[];
+  taskId: string;
 };
 
 export const Models = {

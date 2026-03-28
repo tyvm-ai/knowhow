@@ -242,14 +242,15 @@ async function main() {
             options.input || "Please continue from where you left off.";
 
           await agentModule.initialize(chatService);
-          const { taskCompleted } = await agentModule.resumeFromMessages({
-            agentName: options.agentName || "Patcher",
-            input: resumeInput,
-            threads,
-            messageId: options.messageId,
-            taskId: options.taskId,
-          });
-          await taskCompleted;
+          const { taskCompleted: resumed } =
+            await agentModule.resumeFromMessages({
+              agentName: options.agentName || "Patcher",
+              input: resumeInput,
+              threads,
+              messageId: options.messageId,
+              taskId: options.taskId,
+            });
+          await resumed;
           return;
         }
 
@@ -320,6 +321,7 @@ async function main() {
           plugins: config.plugins.enabled,
           currentModel: options.model,
           currentProvider: options.provider,
+          chatHistory: [],
         });
       } catch (error) {
         console.error("Error asking AI:", error);
@@ -380,7 +382,10 @@ async function main() {
   program
     .command("sessions")
     .description("Manage agent sessions from CLI")
-    .option("--all", "Show all historical sessions (default: current process only)")
+    .option(
+      "--all",
+      "Show all historical sessions (default: current process only)"
+    )
     .option("--csv", "Output sessions as CSV")
     .action(async (options) => {
       try {
@@ -388,7 +393,11 @@ async function main() {
         await agentModule.initialize(chatService);
         const sessionsModule = new SessionsModule(agentModule);
         await sessionsModule.initialize(chatService);
-        await sessionsModule.logSessionTable(options.all || false, options.csv || false, true);
+        await sessionsModule.logSessionTable(
+          options.all || false,
+          options.csv || false,
+          true
+        );
       } catch (error) {
         console.error("Error listing sessions:", error);
         process.exit(1);

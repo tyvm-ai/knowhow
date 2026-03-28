@@ -21,6 +21,7 @@ export interface ChatContext {
   plugins: string[];
   activeAgentTaskId?: string;
   renderer?: AgentRenderer;
+  chatHistory: ChatInteraction[];
 
   [key: string]: any;
 }

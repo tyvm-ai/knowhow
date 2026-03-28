@@ -556,28 +556,21 @@ Please continue from where you left off and complete the original request.
         return true;
       }
 
-      // Otherwise start a new agent task
-      // Create initial interaction for the chatHistory
-      const initialInteraction: ChatInteraction = {
-        input,
-        output: "", // Will be filled after agent completion
-        summaries: [],
-        lastThread: [],
-      };
+      context.chatHistory = context.chatHistory || [];
 
-      const { result, finalOutput } = await this.startAgent(
+      const { taskId } = await this.startAgent(
         context.selectedAgent,
         input,
-        context.chatHistory || []
+        context.chatHistory
       );
 
-      // Update the chatHistory with the completed interaction
-      if (result && finalOutput) {
-        initialInteraction.output = finalOutput;
-        context.chatHistory.push(initialInteraction);
-      }
+      context.chatHistory.push({
+        input,
+        output: "", // Output will be filled in when the agent responds and the session is updated
+        taskId,
+      });
 
-      return result;
+      return true;
     }
     return false;
   }
@@ -1005,7 +998,7 @@ Please continue from where you left off and complete the original request.
     selectedAgent: BaseAgent,
     initialInput: string,
     chatHistory: ChatInteraction[] = []
-  ): Promise<{ result: boolean; finalOutput?: string }> {
+  ) {
     try {
       const { agent, taskId, formattedPrompt } = await this.setupAgent({
         agentName: selectedAgent.name,
@@ -1013,15 +1006,12 @@ Please continue from where you left off and complete the original request.
         chatHistory,
         run: false, // Don't run yet, we need to set up event listeners first
       });
-      const result = await this.attachedAgentChatLoop(
-        taskId,
-        agent,
-        formattedPrompt
-      );
-      return result;
+
+      await this.attachedAgentChatLoop(taskId, agent, formattedPrompt);
+
+      return { taskId };
     } catch (error) {
       console.error("Error starting agent:", error);
-      return { result: false, finalOutput: "Error starting agent" };
     }
   }
 
@@ -1029,7 +1019,7 @@ Please continue from where you left off and complete the original request.
     taskId: string,
     agent: AttachableAgent,
     initialInput?: string
-  ): Promise<{ result: boolean; finalOutput?: string }> {
+  ): Promise<void> {
     try {
       let agentFinalOutput: string | undefined;
 
@@ -1068,6 +1058,11 @@ Please continue from where you left off and complete the original request.
             }
           }
 
+          if (context.chatHistory) {
+            const found = context.chatHistory.find((h) => h.taskId === taskId);
+            found.output = agentFinalOutput;
+          }
+
           resolve("done");
           // Exit agent:attached mode so the prompt resets back to the default
           this.detachFromAgent();
@@ -1081,14 +1076,8 @@ Please continue from where you left off and complete the original request.
           taskInfo?.formattedPrompt || taskInfo?.initialInput || initialInput
         );
       }
-
-      // Return immediately — the main startChatLoop on CliChatService
-      // now handles all user input via the registered agent:attached commands.
-      // Any non-command input is forwarded to the agent via handleInput below.
-      return { result: true, finalOutput: agentFinalOutput };
     } catch (error) {
       console.error("Agent execution failed:", error);
-      return { result: false, finalOutput: "Error during agent execution" };
     }
   }
 }

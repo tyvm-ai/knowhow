@@ -318,7 +318,9 @@ export class CliChatService implements ChatService {
 
     while (true) {
       // Recompute available commands each iteration so mode changes are reflected in autocomplete
-      const currentCommandNames = this.getCommandsForActiveModes().map((cmd) => `/${cmd.name}`);
+      const currentCommandNames = this.getCommandsForActiveModes().map(
+        (cmd) => `/${cmd.name}`
+      );
 
       // Check active modes for a promptText first, then fall back to context.promptText, then default
       const activeModeWithPrompt = this.modes
