@@ -258,4 +258,12 @@ export interface GenericClient {
   /** Download a file from the provider's file storage */
   downloadFile?(options: FileDownloadOptions): Promise<FileDownloadResponse>;
   getModels(): Promise<{ id: string }[]>;
+  /**
+   * Returns the context window limit and compression threshold for a given model,
+   * or undefined if the model is not known to this client.
+   * - contextLimit: the maximum number of tokens the model can handle
+   * - threshold: the point at which compression should kick in; equals contextLimit
+   *   unless the model has tiered pricing (input_gt_200k), in which case it is 200_000
+   */
+  getContextLimit?(model: string): { contextLimit: number; threshold: number } | undefined;
 }

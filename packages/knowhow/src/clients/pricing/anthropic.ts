@@ -3,19 +3,15 @@ import { Models } from "../../types";
 export const AnthropicTextPricing = {
   [Models.anthropic.Opus4_6]: {
     input: 5.0,
-    input_gt_200k: 10.0,
     cache_write: 6.25,
     cache_hit: 0.5,
     output: 25.0,
-    output_gt_200k: 37.5,
   },
   [Models.anthropic.Sonnet4_6]: {
     input: 3.0,
-    input_gt_200k: 6.0,
     cache_write: 3.75,
     cache_hit: 0.3,
     output: 15.0,
-    output_gt_200k: 22.5,
   },
   [Models.anthropic.Opus4_5]: {
     input: 5.0,

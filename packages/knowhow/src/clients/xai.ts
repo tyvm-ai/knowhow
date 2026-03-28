@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { XaiTextPricing, XaiImagePricing, XaiVideoPricing } from "./pricing";
+import { ContextLimits } from "./contextLimits";
 import {
   GenericClient,
   CompletionOptions,
@@ -391,5 +392,15 @@ export class GenericXAIClient implements GenericClient {
       data,
       mimeType,
     };
+  }
+
+  getContextLimit(model: string): { contextLimit: number; threshold: number } | undefined {
+    const contextLimit = ContextLimits[model];
+    if (contextLimit === undefined) return undefined;
+    const pricing = XaiTextPricing[model];
+    // If the model has tiered pricing above 200k tokens, use 200k as the threshold
+    const threshold =
+      pricing && "input_gt_200k" in pricing ? 200_000 : contextLimit;
+    return { contextLimit, threshold };
   }
 }

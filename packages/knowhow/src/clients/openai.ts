@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { getConfigSync } from "../config";
 import { OpenAiTextPricing } from "./pricing";
+import { ContextLimits } from "./contextLimits";
 import {
   GenericClient,
   CompletionOptions,
@@ -428,5 +429,15 @@ export class GenericOpenAiClient implements GenericClient {
     const mimeType = response.headers.get("content-type") || undefined;
     const data = Buffer.from(await response.arrayBuffer());
     return { data, mimeType };
+  }
+
+  getContextLimit(model: string): { contextLimit: number; threshold: number } | undefined {
+    const contextLimit = ContextLimits[model];
+    if (contextLimit === undefined) return undefined;
+    const pricing = OpenAiTextPricing[model];
+    // If the model has tiered pricing above 200k tokens, use 200k as the threshold
+    const threshold =
+      pricing && "input_gt_200k" in pricing ? 200_000 : contextLimit;
+    return { contextLimit, threshold };
   }
 }

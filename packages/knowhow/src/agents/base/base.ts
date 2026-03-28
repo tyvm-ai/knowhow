@@ -1,4 +1,4 @@
-import { EventEmitter } from "events";  // kept for reference; agentEvents now uses EventService
+import { EventEmitter } from "events"; // kept for reference; agentEvents now uses EventService
 import {
   GenericClient,
   Message,
@@ -18,6 +18,7 @@ import { EventService } from "../../services/EventService";
 import { AIClient, Clients } from "../../clients";
 import { Models } from "../../ai";
 import { MessageProcessor } from "../../services/MessageProcessor";
+import { DEFAULT_CONTEXT_LIMIT } from "../../clients/contextLimits";
 import { Marked } from "../../utils";
 
 export { Message, Tool, ToolCall };
@@ -58,6 +59,10 @@ export abstract class BaseAgent implements IAgent {
   protected turnCount = 0;
   protected totalCostUsd = 0;
   protected currentThread = 0;
+
+  protected compressThreshold = 30000;
+  protected compressMinMessages = 30;
+
   protected threads = [] as Message[][];
   protected pendingUserMessages = [] as Message[];
   protected taskBreakdown = "";
@@ -109,21 +114,30 @@ export abstract class BaseAgent implements IAgent {
 
     // Subscribe to "agent:msg" events for dynamic context loading
     // Use setListener with a key so re-creating the agent doesn't double-subscribe
-    this.events.setListener({ key: `agent:msg:${this.constructor.name}`, event: this.eventTypes.agentMsg }, (eventData: any) => {
-      if (
-        this.status === this.eventTypes.inProgress ||
-        this.status === this.eventTypes.pause
-      ) {
-        const message = {
-          role: "user",
-          content: JSON.stringify(eventData),
-        } as Message;
-        this.addPendingMessage(message);
+    this.events.setListener(
+      {
+        key: `agent:msg:${this.constructor.name}`,
+        event: this.eventTypes.agentMsg,
+      },
+      (eventData: any) => {
+        if (
+          this.status === this.eventTypes.inProgress ||
+          this.status === this.eventTypes.pause
+        ) {
+          const message = {
+            role: "user",
+            content: JSON.stringify(eventData),
+          } as Message;
+          this.addPendingMessage(message);
+        }
       }
-    });
+    );
   }
 
-  protected log(message: string, level: "info" | "warn" | "error" = "info"): void {
+  protected log(
+    message: string,
+    level: "info" | "warn" | "error" = "info"
+  ): void {
     this.agentEvents.emit(this.eventTypes.agentLog, {
       agentName: this.name,
       message,
@@ -131,6 +145,29 @@ export abstract class BaseAgent implements IAgent {
       timestamp: Date.now(),
       taskId: this.currentTaskId,
     });
+  }
+
+  setCompressThreshold(threshold: number) {
+    this.compressThreshold = threshold;
+  }
+
+  /**
+   * Returns the effective compress threshold for the current model.
+   * If the user has manually set a custom threshold (different from the default 30k),
+   * that value is used as-is. Otherwise, the threshold is dynamically computed as
+   * 85% of the model's context window limit, falling back to DEFAULT_CONTEXT_LIMIT.
+   */
+  getCompressThreshold(): number {
+    if (this.compressThreshold !== DEFAULT_CONTEXT_LIMIT) {
+      return this.compressThreshold;
+    }
+    const result = this.clientService.getContextLimit(
+      this.getProvider() as string,
+      this.getModel()
+    );
+    const contextLimit = result?.contextLimit ?? DEFAULT_CONTEXT_LIMIT;
+    const threshold = result?.threshold ?? contextLimit;
+    return Math.floor(threshold * 0.85);
   }
 
   setMaxTurns(maxTurns: number | null) {
@@ -259,7 +296,10 @@ export abstract class BaseAgent implements IAgent {
   private checkLimits(): boolean {
     // Check turn limit
     if (this.maxTurns !== null && this.turnCount >= this.maxTurns) {
-      this.log(`Turn limit reached: ${this.turnCount}/${this.maxTurns}`, "warn");
+      this.log(
+        `Turn limit reached: ${this.turnCount}/${this.maxTurns}`,
+        "warn"
+      );
       return true;
     }
 
@@ -268,8 +308,9 @@ export abstract class BaseAgent implements IAgent {
       this.log(
         `Spend limit reached: $${this.totalCostUsd.toFixed(
           4
-        )}/$${this.maxSpend.toFixed(4)}`
-      , "warn");
+        )}/$${this.maxSpend.toFixed(4)}`,
+        "warn"
+      );
       return true;
     }
 
@@ -333,7 +374,9 @@ export abstract class BaseAgent implements IAgent {
     return this.summaries;
   }
 
-  abstract getInitialMessages(userInput: string | MessageContent[]): Promise<Message[]>;
+  abstract getInitialMessages(
+    userInput: string | MessageContent[]
+  ): Promise<Message[]>;
 
   async processToolMessages(toolCall: ToolCall) {
     this.agentEvents.emit(this.eventTypes.toolCall, { toolCall });
@@ -431,7 +474,11 @@ export abstract class BaseAgent implements IAgent {
     }
 
     this.log(
-      `Required tool: [${this.requiredToolNames}] not available, checking for finalAnswer. Enabled: ${this.getEnabledToolNames().join(", ")}`
+      `Required tool: [${
+        this.requiredToolNames
+      }] not available, checking for finalAnswer. Enabled: ${this.getEnabledToolNames().join(
+        ", "
+      )}`
     );
 
     // Otherwise we're missing the required tool, lets use finalAnswer if we have it
@@ -442,8 +489,9 @@ export abstract class BaseAgent implements IAgent {
     // We have the final answer tool, but it wasn't required
     if (hasFinalAnswer && !requiredFinalAnswer) {
       this.log(
-        "Required tool not available, setting finalAnswer as required tool"
-      , "warn");
+        "Required tool not available, setting finalAnswer as required tool",
+        "warn"
+      );
       this.requiredToolNames.push("finalAnswer");
       return false;
     }
@@ -491,7 +539,11 @@ export abstract class BaseAgent implements IAgent {
     } as Message);
   }
 
-  async call(userInput: string | MessageContent[], _messages?: Message[], retryCount = 0) {
+  async call(
+    userInput: string | MessageContent[],
+    _messages?: Message[],
+    retryCount = 0
+  ) {
     if (this.status === this.eventTypes.notStarted) {
       this.status = this.eventTypes.inProgress;
     }
@@ -551,7 +603,6 @@ export abstract class BaseAgent implements IAgent {
         messages,
         "pre_call"
       );
-      const compressThreshold = 30000;
 
       const response = await this.getClient().createChatCompletion({
         model,
@@ -575,6 +626,7 @@ export abstract class BaseAgent implements IAgent {
       }
 
       this.adjustTotalCostUsd(response?.usd_cost);
+      this.log("agent response cost: " + response?.usd_cost);
 
       // Typically, there's only one choice in the array, but you could have many
       // If you set `n` to more than 1, you will get multiple choices
@@ -679,12 +731,14 @@ export abstract class BaseAgent implements IAgent {
       }
 
       if (
-        this.getMessagesLength(messages) > compressThreshold &&
-        messages.length > 30
+        this.getMessagesLength(messages) > this.getCompressThreshold() &&
+        messages.length > this.compressMinMessages
       ) {
         const taskBreakdown = await this.getTaskBreakdown(messages);
         this.log(
-          `Compressing messages: ${this.getMessagesLength(messages)} exceeds ${compressThreshold}`
+          `Compressing messages: ${this.getMessagesLength(
+            messages
+          )} exceeds ${this.getCompressThreshold()}`
         );
         messages = await this.compressMessages(messages, startIndex, endIndex);
         this.startNewThread(messages);
@@ -713,6 +767,7 @@ export abstract class BaseAgent implements IAgent {
       if (e.toString().includes("429")) {
         this.setNotHealthy();
         return this.call(userInput, _messages, retryCount);
+      }
       const errorStr = e.toString();
       const isNonRetriable =
         errorStr.includes("401") ||
@@ -731,13 +786,13 @@ export abstract class BaseAgent implements IAgent {
       if (isRetriable && retryCount < 3) {
         const delay = 1000 * Math.pow(2, retryCount);
         this.log(
-          `Agent request failed (attempt ${retryCount + 1}/3), retrying in ${delay}ms: ${e.message}`,
+          `Agent request failed (attempt ${
+            retryCount + 1
+          }/3), retrying in ${delay}ms: ${e.message}`,
           "warn"
         );
         await new Promise((resolve) => setTimeout(resolve, delay));
         return this.call(userInput, _messages, retryCount + 1);
-      }
-
       }
 
       this.log(`Agent failed: ${e}`, "error");
@@ -798,11 +853,16 @@ export abstract class BaseAgent implements IAgent {
       details: {
         totalCostUsd: this.getTotalCostUsd(),
         elapsedMs: this.runTime(),
-        remainingTimeMs: this.maxRunTimeMs && this.startTimeMs
-          ? this.maxRunTimeMs - (Date.now() - this.startTimeMs)
+        remainingTimeMs:
+          this.maxRunTimeMs && this.startTimeMs
+            ? this.maxRunTimeMs - (Date.now() - this.startTimeMs)
+            : undefined,
+        remainingTurns: this.maxTurns
+          ? this.maxTurns - this.turnCount
           : undefined,
-        remainingTurns: this.maxTurns ? this.maxTurns - this.turnCount : undefined,
-        remainingBudget: this.maxSpend ? this.maxSpend - this.totalCostUsd : undefined,
+        remainingBudget: this.maxSpend
+          ? this.maxSpend - this.totalCostUsd
+          : undefined,
       },
       timestamp: Date.now(),
     });
@@ -836,19 +896,21 @@ export abstract class BaseAgent implements IAgent {
     }
 
     const taskPrompt = `
+    Analyze all previous messages.
+
     Generate a detailed task breakdown for this conversation, include a section for the following:
     1. Task List
     2. Completion Criteria - when the agent should stop
 
-    This output will be used to guide the work of the agent, and determine when we've accomplished the goal
-
-    \n\n<ToAnalyze>${JSON.stringify(messages)}</ToAnalyze>`;
+    Your output will be used to guide the work of the agent, and determine when we've accomplished the goal
+    `;
 
     const model = this.getModel();
 
     const response = await this.getClient().createChatCompletion({
       model,
       messages: [
+        ...messages,
         {
           role: "user",
           content: taskPrompt,
@@ -859,9 +921,8 @@ export abstract class BaseAgent implements IAgent {
 
     this.adjustTotalCostUsd(response.usd_cost);
 
-    this.log(String(response));
-
     this.taskBreakdown = response.choices[0].message.content;
+    this.log(`task breakdown cost: ${response.usd_cost}`);
     return this.taskBreakdown;
   }
 
@@ -936,6 +997,7 @@ export abstract class BaseAgent implements IAgent {
       100
     ).toFixed(2);
 
+    this.log(`compression cost: ${response.usd_cost}`);
     this.log(
       `Compressed messages from ${oldLength} to ${newLength}, ${compressionRatio}% reduction in size`
     );

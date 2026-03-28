@@ -39,6 +39,7 @@ import {
 import { GenericXAIClient } from "./xai";
 import { KnowhowGenericClient } from "./knowhow";
 import { loadKnowhowJwt } from "../services/KnowhowClient";
+import { ContextLimits } from "./contextLimits";
 
 export type ModelModality = "completion" | "embedding" | "image" | "audio" | "video";
 
@@ -608,6 +609,25 @@ export class AIClient {
   listAllVideoModels() {
     return this.videoModels;
   }
+
+  /**
+   * Returns the context window limit (in tokens) for a given model.
+   * Optionally accepts a provider for future provider-specific overrides.
+   * Delegates to the registered client's getContextLimit() if available,
+   * so custom clients can provide their own context limits.
+   * Returns undefined if neither the client nor the global ContextLimits table knows the model.
+   */
+  getContextLimit(provider: string, model: string): { contextLimit: number; threshold: number } | undefined {
+    // Try the registered client first
+    const client = this.clients[provider];
+    if (client?.getContextLimit) {
+      return client.getContextLimit(model);
+    }
+    // Fall back to the global ContextLimits table
+    const contextLimit = ContextLimits[model];
+    if (contextLimit === undefined) return undefined;
+    return { contextLimit, threshold: contextLimit };
+  }
 }
 
 export const Clients = new AIClient();
@@ -619,5 +639,6 @@ export * from "./openai";
 export * from "./anthropic";
 export * from "./knowhow";
 export * from "./gemini";
+export * from "./contextLimits";
 export * from "./xai";
 export * from "./knowhowMcp";

@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { wait } from "../utils";
 import { AnthropicTextPricing } from "./pricing";
+import { ContextLimits } from "./contextLimits";
 import { Models } from "../types";
 import {
   GenericClient,
@@ -481,6 +482,16 @@ export class GenericAnthropicClient implements GenericClient {
     options: AudioTranscriptionOptions
   ): Promise<AudioTranscriptionResponse> {
     throw new Error("Anthropic does not support audio transcription");
+  }
+
+  getContextLimit(model: string): { contextLimit: number; threshold: number } | undefined {
+    const contextLimit = ContextLimits[model];
+    if (contextLimit === undefined) return undefined;
+    const pricing = AnthropicTextPricing[model];
+    // If the model has tiered pricing above 200k tokens, use 200k as the threshold
+    const threshold =
+      pricing && "input_gt_200k" in pricing ? 200_000 : contextLimit;
+    return { contextLimit, threshold };
   }
 
   async createAudioGeneration(

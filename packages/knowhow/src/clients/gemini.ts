@@ -15,6 +15,7 @@ import * as pathSync from "path";
 import { wait } from "../utils";
 import { EmbeddingModels, Models } from "../types";
 import { GeminiTextPricing } from "./pricing";
+import { ContextLimits } from "./contextLimits";
 
 import {
   GenericClient,
@@ -915,5 +916,15 @@ export class GenericGeminiClient implements GenericClient {
       console.error("Error downloading file from Google GenAI Files API:", error);
       throw error;
     }
+  }
+
+  getContextLimit(model: string): { contextLimit: number; threshold: number } | undefined {
+    const contextLimit = ContextLimits[model];
+    if (contextLimit === undefined) return undefined;
+    const pricing = GeminiTextPricing[model];
+    // If the model has tiered pricing above 200k tokens, use 200k as the threshold
+    const threshold =
+      pricing && "input_gt_200k" in pricing ? 200_000 : contextLimit;
+    return { contextLimit, threshold };
   }
 }
