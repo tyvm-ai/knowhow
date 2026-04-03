@@ -127,7 +127,7 @@ function drawBox(
   const contentLines = lines.map((line) => {
     const visible = stripAnsi(line);
     const padLen = Math.max(0, innerWidth - visible.length);
-    return headerColor + toolBox.v + c.reset + " " + line + " ".repeat(padLen - 1) + headerColor + toolBox.v + c.reset;
+    return headerColor + toolBox.v + c.reset + " " + line + " ".repeat(Math.max(0, padLen - 1)) + headerColor + toolBox.v + c.reset;
   });
 
   const bottomLine = headerColor + toolBox.bl + toolBox.h.repeat(innerWidth) + toolBox.br + c.reset;

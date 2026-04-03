@@ -101,7 +101,7 @@ export interface AudioTranscriptionResponse {
   text: string;
   language?: string;
   duration?: number;
-  segments?: Array<{
+  segments?: {
     id: number;
     seek: number;
     start: number;
@@ -112,7 +112,7 @@ export interface AudioTranscriptionResponse {
     avg_logprob: number;
     compression_ratio: number;
     no_speech_prob: number;
-  }>;
+  }[];
   usd_cost?: number;
 }
 
@@ -143,32 +143,32 @@ export interface ImageGenerationOptions {
 
 export interface ImageGenerationResponse {
   created: number;
-  data: Array<{
+  data: {
     url?: string;
     b64_json?: string;
     revised_prompt?: string;
-  }>;
+  }[];
   usd_cost?: number;
 }
 
 export interface VideoGenerationOptions {
   model: string;
   prompt: string;
-  duration?: number;        // seconds
-  resolution?: string;      // e.g. "1080p", "720p"
-  aspect_ratio?: string;    // e.g. "16:9", "9:16", "1:1"
-  n?: number;               // number of videos to generate
-  image_url?: string;       // for image-to-video (XAI)
-  video_url?: string;       // for video editing (XAI)
+  duration?: number; // seconds
+  resolution?: string; // e.g. "1080p", "720p"
+  aspect_ratio?: string; // e.g. "16:9", "9:16", "1:1"
+  n?: number; // number of videos to generate
+  image_url?: string; // for image-to-video (XAI)
+  video_url?: string; // for video editing (XAI)
 }
 
 export interface VideoGenerationResponse {
   created: number;
-  data: Array<{
+  data: {
     url?: string;
     b64_json?: string;
     video?: Buffer;
-  }>;
+  }[];
   /** Opaque provider-specific job/operation ID used for status polling */
   jobId?: string;
   usd_cost?: number;
@@ -185,12 +185,12 @@ export interface VideoStatusResponse {
   /** "queued" | "in_progress" | "completed" | "failed" | "expired" */
   status: "queued" | "in_progress" | "completed" | "failed" | "expired";
   /** Available when status === "completed" */
-  data?: Array<{
+  data?: {
     url?: string;
     b64_json?: string;
     /** File resource name (Google) or asset identifier (other providers) */
     fileUri?: string;
-  }>;
+  }[];
   error?: string;
   progress?: number;
 }
@@ -265,5 +265,7 @@ export interface GenericClient {
    * - threshold: the point at which compression should kick in; equals contextLimit
    *   unless the model has tiered pricing (input_gt_200k), in which case it is 200_000
    */
-  getContextLimit?(model: string): { contextLimit: number; threshold: number } | undefined;
+  getContextLimit?(
+    model: string
+  ): { contextLimit: number; threshold: number } | undefined;
 }

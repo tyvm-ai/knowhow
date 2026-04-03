@@ -262,7 +262,7 @@ export class ToolsService {
         toolCallId: toolCall.id,
         functionName,
         functionArgs,
-        functionResp: functionResponse || "Done",
+        functionResp: this.unwrapMcpResponse(functionResponse) || "Done",
       };
     } catch (error) {
       console.log(error.message);
@@ -412,6 +412,61 @@ export class ToolsService {
       }
     }
     return matchingWrappers;
+  }
+
+  /**
+   * Tries to parse a string as JSON, returns null if it fails
+   */
+  private tryParseJson(value: string): any | null {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Unwraps nested MCP-style tool responses.
+   *
+   * Handles responses shaped like:
+   *   { content: [{ type: "text", text: "<json string>" }] }
+   *
+   * If the `text` field is itself JSON (or contains another layer of the same
+   * structure), this method unwraps recursively until there is nothing more
+   * to unwrap.
+   *
+   * @param response - The raw tool response value (any type)
+   * @returns The innermost unwrapped value
+   */
+  unwrapMcpResponse(response: any): any {
+    // Only objects can have the content-array wrapper
+    if (response === null || typeof response !== "object") {
+      return response;
+    }
+
+    const { content } = response;
+    if (!Array.isArray(content) || content.length === 0) {
+      return response;
+    }
+
+    const firstItem = content[0];
+    if (
+      !firstItem ||
+      firstItem.type !== "text" ||
+      typeof firstItem.text !== "string"
+    ) {
+      return response;
+    }
+
+    // Try to parse the text as JSON
+    const parsed = this.tryParseJson(firstItem.text);
+    if (parsed === null) {
+      // text is not JSON – return the text string as the unwrapped value
+      return firstItem.text;
+    }
+
+    // Recursively unwrap in case there are more layers
+    return this.unwrapMcpResponse(parsed);
   }
 
   getOriginalFunction(name: string): ((...args: any[]) => any) | undefined {
