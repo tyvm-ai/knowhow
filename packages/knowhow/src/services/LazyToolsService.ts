@@ -97,14 +97,24 @@ export class LazyToolsService extends ToolsService {
   }
 
   // List all available tools (not just enabled ones)
-  listAvailableTools() {
-    return {
-      enabled: this.tools.map((t) => t.function.name),
-      disabled: this.allTools
+  listAvailableTools(patterns?: string[]) {
+    const enabledNames = this.tools.map((t) => t.function.name);
+    const disabledNames = this.allTools
         .filter(
           (t) => !this.tools.find((et) => et.function.name === t.function.name)
         )
-        .map((t) => t.function.name),
+        .map((t) => t.function.name);
+
+    const filterByPatterns = (names: string[]) =>
+      patterns && patterns.length > 0
+        ? names.filter((name) =>
+            patterns.some((pattern) => minimatch(name, pattern))
+          )
+        : names;
+
+    return {
+      enabled: filterByPatterns(enabledNames),
+      disabled: filterByPatterns(disabledNames),
       total: this.allTools.length,
       enabledCount: this.tools.length,
       disabledCount: this.allTools.length - this.tools.length,

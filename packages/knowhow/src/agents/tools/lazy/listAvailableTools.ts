@@ -1,7 +1,10 @@
 import { LazyToolsService } from "../../../services/LazyToolsService";
 import { ToolsService } from "../../../services/Tools";
 
-export async function listAvailableTools(this: ToolsService) {
+export async function listAvailableTools(
+  this: ToolsService,
+  patterns?: string[]
+) {
   if (!(this instanceof LazyToolsService)) {
     return {
       error: "This tool requires LazyToolsService",
@@ -10,5 +13,5 @@ export async function listAvailableTools(this: ToolsService) {
     };
   }
 
-  return this.listAvailableTools();
+  return this.listAvailableTools(patterns);
 }

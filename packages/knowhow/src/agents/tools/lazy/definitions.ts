@@ -5,11 +5,18 @@ export const listAvailableToolsDefinition: Tool = {
   function: {
     name: "listAvailableTools",
     description:
-      "List all available tools in the system, showing which are currently enabled and disabled. Use this to discover what tools exist before enabling them.",
+      "List all available tools in the system, showing which are currently enabled and disabled. Use this to discover what tools exist before enabling them. Optionally filter by glob patterns to search for specific tools.",
     parameters: {
       type: "object",
       positional: true,
-      properties: {},
+      properties: {
+        patterns: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Optional array of glob patterns to filter tool names. Examples: ['read*'] finds all tools starting with 'read', ['*File'] finds all tools ending with 'File', ['mcp_*'] finds all MCP tools. If omitted, all tools are listed.",
+        },
+      },
       required: [],
     },
   },
