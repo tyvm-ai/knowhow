@@ -175,11 +175,13 @@ export async function worker(options?: {
     return runWorkerInSandbox(options, config);
   }
 
-  const { Tools } = services();
+  const { Tools, Mcp } = services();
   // Combine agent tools and worker-specific tools
   const combinedTools = { ...allTools, ...workerTools.tools };
   Tools.defineTools(includedTools, combinedTools);
   Tools.defineTools(workerTools.definitions, workerTools.tools);
+
+  await Mcp.addTools(Tools);
 
   const mcpServer = new McpServerService(Tools);
   const clientName = "knowhow-worker";
