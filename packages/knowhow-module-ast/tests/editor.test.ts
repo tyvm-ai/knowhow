@@ -25,7 +25,7 @@ describe("TreeEditor", () => {
   });
 
   test("should create TreeEditor from file", () => {
-    const beforeFilePath = join(__dirname, "../../../knowhow/tests/tree-sitter/sample-before.ts");
+    const beforeFilePath = join(__dirname, "test-files/sample-before.ts");
     const editor = TreeEditor.fromFile(parser, beforeFilePath);
     expect(editor).toBeDefined();
     expect(editor.getCurrentText().length).toBeGreaterThan(0);
@@ -91,7 +91,7 @@ describe("TreeEditor", () => {
   });
 
   test("should handle complex editing workflow", () => {
-    const beforeFilePath = join(__dirname, "../../../knowhow/tests/tree-sitter/sample-before.ts");
+    const beforeFilePath = join(__dirname, "test-files/sample-before.ts");
     const editor = TreeEditor.fromFile(parser, beforeFilePath);
 
     // Make multiple edits

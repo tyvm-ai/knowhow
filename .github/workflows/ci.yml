@@ -104,7 +104,7 @@ jobs:
         working-directory: packages/knowhow-tunnel
 
       - name: Build knowhow (peer dependency)
-        run: npm run build
+        run: npm run compile
         working-directory: packages/knowhow
 
       - name: Run tests
