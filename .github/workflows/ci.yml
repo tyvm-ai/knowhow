@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    name: Test (@tyvm/knowhow)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/knowhow
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: packages/knowhow/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript compile check
+        run: npx tsc --noEmit
+
+      - name: Run tests
+        run: npm test -- --testPathIgnorePatterns="tests/manual" --forceExit
+        env:
+          CI: true
+
+  lint:
+    name: Lint & Dep Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/knowhow
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: packages/knowhow/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check for unused dependencies
+        run: npx depcheck --config=.depcheckrc
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/knowhow
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: npm audit (high severity)
+        # Fail on HIGH or CRITICAL vulnerabilities
+        run: npm audit --audit-level=high
+        continue-on-error: true  # Remove this once Phase 1 cleanup lands and audit is clean

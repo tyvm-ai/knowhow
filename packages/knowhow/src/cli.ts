@@ -1,5 +1,4 @@
 #!/usr/bin/env node --no-node-snapshot
-import "source-map-support/register";
 import * as fs from "fs";
 import * as fsPromises from "fs/promises";
 import * as path from "path";
@@ -26,7 +25,6 @@ import {
 } from "./workerRegistry";
 import { agents } from "./agents";
 import { startChat } from "./chat";
-import { askAI } from "./chat-old";
 import { getConfiguredEmbeddingMap, queryEmbedding } from "./embeddings";
 import { getConfig } from "./config";
 import { getEnabledPlugins } from "./types";

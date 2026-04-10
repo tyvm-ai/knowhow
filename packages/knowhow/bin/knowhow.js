@@ -10,7 +10,7 @@ if (!process.execArgv.includes("--no-node-snapshot")) {
 
   const result = spawnSync(
     process.execPath,
-    ["--no-node-snapshot", cliEntrypoint, ...process.argv.slice(2)],
+    ["--no-node-snapshot", "--enable-source-maps", cliEntrypoint, ...process.argv.slice(2)],
     {
       stdio: "inherit",
     }

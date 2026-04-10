@@ -1,14 +1,11 @@
 import * as fs from "fs";
 import * as path from "path";
 import ytdl from "youtube-dl-exec";
-import Logger from "progress-estimator";
 import { DownloadInfo, KeyframeInfo, TranscriptChunk } from "./types";
 import { visionTool } from "../../agents/tools/visionTool";
 import { execAsync, fileExists, readFile, mkdir } from "../../utils";
 import { Clients } from "../../clients";
 import { Models } from "../../types";
-
-const logger = Logger();
 
 export class DownloaderService {
   constructor(private clients: typeof Clients) {}
@@ -50,8 +47,10 @@ export class DownloaderService {
       return info;
     }
 
+    console.log(`Downloading ${url}...`);
     const scrape = ytdl(url, { output: `${outputDir}/%(id)s.%(ext)s` });
-    const result = await logger(scrape, `Obtaining ${url}`);
+    await scrape;
+    console.log(`Download complete: ${url}`);
     return info;
   }
 
