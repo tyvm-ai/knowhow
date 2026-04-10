@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "lib": ["es5", "es6", "es2021", "es2022"],
+    "skipLibCheck": true,
+    "noImplicitAny": false,
+    "removeComments": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "moduleResolution": "node",
+    "target": "esnext",
+    "outDir": "ts_build",
+    "sourceMap": true
+  },
+  "include": ["./src/**/*.ts", "./tests/**/*.ts"],
+  "exclude": ["node_modules", "tests/tree-sitter/test-files/**/*.ts"]
+}

@@ -1,4 +1,4 @@
-import axios from "axios";
+import http from "../../utils/http";
 import { KNOWHOW_API_URL } from "../../services/KnowhowClient";
 import { openBrowser } from "../../auth/browserLogin";
 import { Spinner } from "../../auth/spinner";
@@ -93,21 +93,18 @@ export class PasskeySetupService {
 
   private async createSetupSession(jwt: string): Promise<PasskeySetupSession> {
     try {
-      const response = await axios.post<PasskeySetupSession>(
+      const response = await http.post<PasskeySetupSession>(
         `${this.baseUrl}/api/worker/passkey/setup/session`,
         {},
         {
           headers: { Authorization: `Bearer ${jwt}` },
-          timeout: 10000,
         }
       );
       return response.data;
     } catch (error) {
-      if (axios.isAxiosError(error)) {
+      if (http.isHttpError(error)) {
         throw new Error(
-          `Failed to create passkey setup session: ${
-            error.response?.data?.message || error.message
-          }`
+          `Failed to create passkey setup session: ${error.message}`
         );
       }
       throw error;
@@ -125,9 +122,8 @@ export class PasskeySetupService {
       attempt++;
 
       try {
-        const response = await axios.get<PasskeySetupStatus>(
-          `${this.baseUrl}/api/worker/passkey/setup/status/${sessionId}`,
-          { timeout: 10000 }
+        const response = await http.get<PasskeySetupStatus>(
+          `${this.baseUrl}/api/worker/passkey/setup/status/${sessionId}`
         );
 
         const { status, credential } = response.data;
@@ -140,7 +136,7 @@ export class PasskeySetupService {
           );
         }
       } catch (error) {
-        if (axios.isAxiosError(error) && error.code === "ECONNABORTED") {
+        if (http.isHttpError(error) && error.status === 408) {
           // Timeout — keep polling
         } else if (!(error instanceof Error && error.message.includes("expired"))) {
           // Re-throw non-timeout, non-expected errors

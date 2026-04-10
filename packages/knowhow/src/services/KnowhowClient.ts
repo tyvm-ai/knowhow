@@ -1,4 +1,4 @@
-import axios from "axios";
+import http from "../utils/http";
 import fs from "fs";
 import { Message } from "../clients/types";
 import path from "path";
@@ -110,7 +110,7 @@ export const KNOWHOW_API_URL =
   process.env.KNOWHOW_API_URL || "https://api.knowhow.tyvm.ai";
 
 export class KnowhowSimpleClient {
-  headers = {};
+  headers: Record<string, string> = {};
   jwtValidated = false;
 
   constructor(
@@ -156,7 +156,7 @@ export class KnowhowSimpleClient {
       throw new Error("No JWT found. Please login first.");
     }
 
-    return axios.get(`${this.baseUrl}/api/users/me`, {
+    return http.get(`${this.baseUrl}/api/users/me`, {
       headers: this.headers,
     });
   }
@@ -164,7 +164,7 @@ export class KnowhowSimpleClient {
   async getPresignedUploadUrl(source: Config["embedSources"][0]) {
     await this.checkJwt();
     const id = source.remoteId;
-    const presignedUrlResp = await axios.post(
+    const presignedUrlResp = await http.post(
       `${this.baseUrl}/api/org-embeddings/${id}/upload`,
       {},
       {
@@ -181,7 +181,7 @@ export class KnowhowSimpleClient {
   async getPresignedDownloadUrl(source: Config["embedSources"][0]) {
     await this.checkJwt();
     const id = source.remoteId;
-    const presignedUrlResp = await axios.post(
+    const presignedUrlResp = await http.post(
       `${this.baseUrl}/api/org-embeddings/${id}/download`,
       {},
       {
@@ -203,7 +203,7 @@ export class KnowhowSimpleClient {
     }
   ) {
     await this.checkJwt();
-    return axios.put(
+    return http.put(
       `${this.baseUrl}/api/org-embeddings/${id}`,
       data,
       {
@@ -214,7 +214,7 @@ export class KnowhowSimpleClient {
 
   async createChatCompletion(options: CompletionOptions) {
     await this.checkJwt();
-    return axios.post<CompletionResponse>(
+    return http.post<CompletionResponse>(
       `${this.baseUrl}/api/proxy/v1/chat/completions`,
       options,
       {
@@ -225,7 +225,7 @@ export class KnowhowSimpleClient {
 
   async createEmbedding(options: EmbeddingOptions) {
     await this.checkJwt();
-    return axios.post<EmbeddingResponse>(
+    return http.post<EmbeddingResponse>(
       `${this.baseUrl}/api/proxy/v1/embeddings`,
       options,
       {
@@ -236,7 +236,7 @@ export class KnowhowSimpleClient {
 
   async getModels() {
     await this.checkJwt();
-    return axios.get(`${this.baseUrl}/api/proxy/v1/models?type=all`, {
+    return http.get(`${this.baseUrl}/api/proxy/v1/models?type=all`, {
       headers: this.headers,
     });
   }
@@ -262,7 +262,7 @@ export class KnowhowSimpleClient {
     if (options.temperature != null)
       formData.append("temperature", String(options.temperature));
 
-    return axios.post<AudioTranscriptionResponse>(
+    return http.post<AudioTranscriptionResponse>(
       `${this.baseUrl}/api/proxy/v1/audio/transcriptions`,
       formData,
       { headers: { ...this.headers } }
@@ -271,7 +271,7 @@ export class KnowhowSimpleClient {
 
   async createAudioGeneration(options: AudioGenerationOptions) {
     await this.checkJwt();
-    return axios.post<AudioGenerationResponse>(
+    return http.post<AudioGenerationResponse>(
       `${this.baseUrl}/api/proxy/v1/audio/generations`,
       options,
       { headers: this.headers }
@@ -280,7 +280,7 @@ export class KnowhowSimpleClient {
 
   async createImageGeneration(options: ImageGenerationOptions) {
     await this.checkJwt();
-    return axios.post<ImageGenerationResponse>(
+    return http.post<ImageGenerationResponse>(
       `${this.baseUrl}/api/proxy/v1/images/generations`,
       options,
       { headers: this.headers }
@@ -289,7 +289,7 @@ export class KnowhowSimpleClient {
 
   async createVideoGeneration(options: VideoGenerationOptions) {
     await this.checkJwt();
-    return axios.post<VideoGenerationResponse>(
+    return http.post<VideoGenerationResponse>(
       `${this.baseUrl}/api/proxy/v1/videos/generations`,
       options,
       { headers: this.headers }
@@ -299,7 +299,7 @@ export class KnowhowSimpleClient {
   async getVideoStatus(options: VideoStatusOptions) {
     await this.checkJwt();
     const { jobId, ...rest } = options;
-    return axios.get<VideoStatusResponse>(
+    return http.get<VideoStatusResponse>(
       `${this.baseUrl}/api/proxy/v1/videos/${jobId}/status`,
       { headers: this.headers, params: rest }
     );
@@ -308,7 +308,7 @@ export class KnowhowSimpleClient {
   async downloadVideo(options: FileDownloadOptions) {
     await this.checkJwt();
     const { fileId } = options;
-    return axios.get<ArrayBuffer>(
+    return http.get<ArrayBuffer>(
       `${this.baseUrl}/api/proxy/v1/videos/${fileId}/content`,
       { headers: this.headers, responseType: "arraybuffer" }
     );
@@ -323,7 +323,7 @@ export class KnowhowSimpleClient {
       fileName: options.fileName,
       displayName: options.displayName,
     };
-    return axios.post<FileUploadResponse>(
+    return http.post<FileUploadResponse>(
       `${this.baseUrl}/api/proxy/v1/files`,
       body,
       { headers: this.headers }
@@ -333,7 +333,7 @@ export class KnowhowSimpleClient {
   async downloadFile(options: FileDownloadOptions) {
     await this.checkJwt();
     const { fileId } = options;
-    return axios.get<ArrayBuffer>(
+    return http.get<ArrayBuffer>(
       `${this.baseUrl}/api/proxy/v1/files/${fileId}/content`,
       { headers: this.headers, responseType: "arraybuffer" }
     );
@@ -341,7 +341,7 @@ export class KnowhowSimpleClient {
 
   async createChatTask(request: CreateMessageTaskRequest) {
     await this.checkJwt();
-    return axios.post<CreateMessageTaskResponse>(
+    return http.post<CreateMessageTaskResponse>(
       `${this.baseUrl}/api/chat/tasks`,
       request,
       {
@@ -352,7 +352,7 @@ export class KnowhowSimpleClient {
 
   async updateChatTask(taskId: string, updates: UpdateOrgTaskRequest) {
     await this.checkJwt();
-    return axios.put<UpdateOrgTaskResponse>(
+    return http.put<UpdateOrgTaskResponse>(
       `${this.baseUrl}/api/chat/tasks/${taskId}`,
       updates,
       {
@@ -370,7 +370,7 @@ export class KnowhowSimpleClient {
    */
   async getTaskDetails(taskId: string) {
     await this.checkJwt();
-    return axios.get<TaskDetailsResponse>(
+    return http.get<TaskDetailsResponse>(
       `${this.baseUrl}/api/org-agent-tasks/${taskId}`,
       {
         headers: this.headers,
@@ -383,7 +383,7 @@ export class KnowhowSimpleClient {
    */
   async getPendingMessages(taskId: string) {
     await this.checkJwt();
-    return axios.get<PendingMessage[]>(
+    return http.get<PendingMessage[]>(
       `${this.baseUrl}/api/org-agent-tasks/${taskId}/pending-messages`,
       {
         headers: this.headers,
@@ -396,7 +396,7 @@ export class KnowhowSimpleClient {
    */
   async markMessagesAsProcessed(taskId: string, messageIds: string[]) {
     await this.checkJwt();
-    return axios.post<MarkProcessedResponse>(
+    return http.post<MarkProcessedResponse>(
       `${this.baseUrl}/api/org-agent-tasks/${taskId}/pending-messages/mark-processed`,
       { messageIds },
       {
@@ -414,7 +414,7 @@ export class KnowhowSimpleClient {
     role: "user" | "system" = "user"
   ) {
     await this.checkJwt();
-    return axios.post<SendMessageResponse>(
+    return http.post<SendMessageResponse>(
       `${this.baseUrl}/api/org-agent-tasks/${taskId}/messages`,
       { message, role },
       {
@@ -428,7 +428,7 @@ export class KnowhowSimpleClient {
    */
   async pauseAgent(taskId: string) {
     await this.checkJwt();
-    return axios.post<StatusResponse>(
+    return http.post<StatusResponse>(
       `${this.baseUrl}/api/org-agent-tasks/${taskId}/pause`,
       {},
       {
@@ -442,7 +442,7 @@ export class KnowhowSimpleClient {
    */
   async resumeAgent(taskId: string) {
     await this.checkJwt();
-    return axios.post<StatusResponse>(
+    return http.post<StatusResponse>(
       `${this.baseUrl}/api/org-agent-tasks/${taskId}/resume`,
       {},
       {
@@ -464,7 +464,7 @@ export class KnowhowSimpleClient {
    */
   async killAgent(taskId: string) {
     await this.checkJwt();
-    return axios.post<StatusResponse>(
+    return http.post<StatusResponse>(
       `${this.baseUrl}/api/org-agent-tasks/${taskId}/kill`,
       {},
       {
@@ -483,7 +483,7 @@ export class KnowhowSimpleClient {
    */
   async listOrgFiles() {
     await this.checkJwt();
-    return axios.get<
+    return http.get<
       { id: string; fileName: string; folderPath: string; name: string }[]
     >(`${this.baseUrl}/api/org-files`, { headers: this.headers });
   }
@@ -493,7 +493,7 @@ export class KnowhowSimpleClient {
    */
   async createOrgFile(fileName: string, folderPath: string) {
     await this.checkJwt();
-    return axios.post<{
+    return http.post<{
       id: string;
       fileName: string;
       folderPath: string;
@@ -510,7 +510,7 @@ export class KnowhowSimpleClient {
    */
   async getOrgFileText(fileId: string) {
     await this.checkJwt();
-    return axios.get<string>(`${this.baseUrl}/api/org-files/${fileId}/text`, {
+    return http.get<string>(`${this.baseUrl}/api/org-files/${fileId}/text`, {
       headers: this.headers,
       params: { reading: "true" },
     });
@@ -521,7 +521,7 @@ export class KnowhowSimpleClient {
    */
   async updateOrgFileText(fileId: string, text: string) {
     await this.checkJwt();
-    return axios.put(
+    return http.put(
       `${this.baseUrl}/api/org-files/${fileId}/text`,
       { text },
       { headers: this.headers }
@@ -590,7 +590,7 @@ export class KnowhowSimpleClient {
     }
 
     // Get download URL using the file ID
-    const response = await axios.post<{ downloadUrl: string }>(
+    const response = await http.post<{ downloadUrl: string }>(
       `${this.baseUrl}/api/org-files/download/${file.id}`,
       {},
       { headers: this.headers }
@@ -609,7 +609,7 @@ export class KnowhowSimpleClient {
       throw new Error(`File not found: ${filePath}`);
     }
 
-    await axios.post(`${this.baseUrl}/api/org-files/upload/${file.id}/complete`, {}, { headers: this.headers });
+    await http.post(`${this.baseUrl}/api/org-files/upload/${file.id}/complete`, {}, { headers: this.headers });
   }
 
   /**
@@ -627,7 +627,7 @@ export class KnowhowSimpleClient {
     const fileName = lastSlash >= 0 ? filePath.substring(lastSlash + 1) : filePath;
 
     // Get upload URL using the file ID
-    const response = await axios.post<{ uploadUrl: string }>(
+    const response = await http.post<{ uploadUrl: string }>(
       `${this.baseUrl}/api/org-files/upload/${file.id}`,
       { fileName },
       { headers: this.headers }
@@ -641,7 +641,7 @@ export class KnowhowSimpleClient {
    */
   async getGitCredential(repo: string): Promise<GitCredentialResponse> {
     await this.checkJwt();
-    const response = await axios.post<GitCredentialResponse>(
+    const response = await http.post<GitCredentialResponse>(
       `${this.baseUrl}/api/github/git-credential`,
       { repo },
       { headers: this.headers }

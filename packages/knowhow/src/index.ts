@@ -5,7 +5,6 @@ import {
   getHashes,
   checkNoFilesChanged,
 } from "./hashes";
-import axios from "axios";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
@@ -51,6 +50,14 @@ export * as embeddings from "./embeddings";
 export * as types from "./types";
 export * as processors from "./processors";
 export * as ai from "./ai";
+
+// Export module system types for external modules
+export * from "./services/modules/types";
+// Export plugin types for external plugins
+export { PluginBase } from "./plugins/PluginBase";
+export { PluginMeta, Plugin, PluginContext } from "./plugins/types";
+// Export embedding types
+export { MinimalEmbedding, Embeddable } from "./types";
 
 export async function embed() {
   // load config

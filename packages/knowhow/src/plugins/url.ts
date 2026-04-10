@@ -1,9 +1,6 @@
 import { PluginBase, PluginMeta } from "./PluginBase";
 import { Plugin, PluginContext } from "./types";
 import { MinimalEmbedding } from "../types";
-import axios from "axios";
-import * as cheerio from "cheerio";
-import loadWebpage from "../agents/tools/loadWebpage";
 
 export class UrlPlugin extends PluginBase implements Plugin {
   static readonly meta: PluginMeta = {
@@ -20,22 +17,47 @@ export class UrlPlugin extends PluginBase implements Plugin {
 
   async embed(userPrompt: string): Promise<MinimalEmbedding[]> {
     const urls = this.extractUrls(userPrompt);
-    const embeddings = await Promise.all(urls.map(this.fetchAndParseUrl));
+    const embeddings = await Promise.all(urls.map((url) => this.fetchAndParseUrl(url)));
     return embeddings.filter((e): e is MinimalEmbedding => e !== null);
   }
 
   extractUrls(userPrompt: string): string[] {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const urls = userPrompt.match(urlRegex) || [];
-
     return Array.from(new Set(urls));
   }
 
   async fetchAndParseUrl(url: string): Promise<MinimalEmbedding | null> {
     try {
-      const text = await loadWebpage(url);
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; KnowhowBot/1.0)",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+      });
 
-      this.log(`URL PLUGIN: Fetched content from ${url}: ${text}`);
+      if (!response.ok) {
+        this.log(`URL PLUGIN: Failed to fetch ${url}: ${response.status}`, "warn");
+        return null;
+      }
+
+      const contentType = response.headers.get("content-type") || "";
+      let text = "";
+
+      if (contentType.includes("text/html") || contentType.includes("text/plain")) {
+        const html = await response.text();
+        // Simple HTML to text: strip tags
+        text = html
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+      } else {
+        text = await response.text();
+      }
+
+      this.log(`URL PLUGIN: Fetched content from ${url}: ${text.substring(0, 100)}`);
 
       return {
         id: url + "-url",
@@ -58,7 +80,7 @@ export class UrlPlugin extends PluginBase implements Plugin {
       return "URL PLUGIN: Too many URLs detected. Skipping like unintentional bulk browse.";
     }
 
-    const results = await Promise.all(urls.map(this.fetchAndParseUrl));
+    const results = await Promise.all(urls.map((url) => this.fetchAndParseUrl(url)));
     const validResults = results.filter(
       (r): r is MinimalEmbedding => r !== null
     );
@@ -70,10 +92,7 @@ export class UrlPlugin extends PluginBase implements Plugin {
     const formattedResults = validResults
       .map(
         (result) =>
-          `URL: ${result.metadata.url}\n\nContent:\n${result.text.substring(
-            0,
-            500
-          )}...`
+          `URL: ${result.metadata.url}\n\nContent:\n${result.text.substring(0, 500)}...`
       )
       .join("\n\n---\n\n");
 

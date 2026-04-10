@@ -2,7 +2,16 @@ import pdf from "pdf-parse";
 import * as fs from "fs";
 import * as path from "path";
 import { readFile, fileExists } from "./utils";
-import { services } from "./services";
+
+/**
+ * Get the MediaProcessorService from services() lazily.
+ * We import lazily to avoid circular dependency issues.
+ */
+function getMediaProcessor() {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { services } = require("./services") as typeof import("./services");
+  return services().MediaProcessor;
+}
 
 export async function processAudio(
   filePath: string,
@@ -17,24 +26,12 @@ export async function processAudio(
     console.log(`Transcription ${outputPath} already exists, skipping`);
     const fileContent = await readFile(outputPath, "utf8");
     return outputPath.endsWith("txt")
-      ? fileContent.split("\n")
-      : JSON.parse(fileContent);
+      ? (fileContent as string).split("\n")
+      : JSON.parse(fileContent as string);
   }
 
-  const { Downloader } = services();
-  const chunks = await Downloader.chunk(
-    filePath,
-    parsed.dir,
-    chunkTime,
-    reusePreviousTranscript
-  );
-  const transcription = await Downloader.transcribeChunks(
-    chunks,
-    outputPath,
-    reusePreviousTranscript
-  );
-
-  return transcription;
+  const mediaProcessor = getMediaProcessor();
+  return mediaProcessor.processAudio(filePath, reusePreviousTranscript, chunkTime);
 }
 
 export async function convertAudioToText(
@@ -73,48 +70,21 @@ export async function processVideo(
     chunkTime
   );
 
-  console.log("Extracting keyframes...");
-  const { Downloader } = services();
-  const videoAnalysis = await Downloader.extractKeyframes(
-    filePath,
-    outputPath,
-    reusePreviousTranscript,
-    chunkTime
-  );
-
-  return videoAnalysis.map((frame, index) => {
-    return {
-      frame,
-      transcription: transcriptions[index],
-    };
-  });
+  // Return the transcriptions as text — keyframe extraction requires the
+  // @tyvm/knowhow-module-video-downloader module
+  return transcriptions;
 }
 
 async function convertVideoToText(
   filePath: string,
   reusePreviousTranscript = true,
   chunkTime = 30
-) {
-  const processed = await processVideo(
-    filePath,
-    reusePreviousTranscript,
-    chunkTime
-  );
-
-  let fullString = "";
-
-  for (let i = 0; i < processed.length; i++) {
-    const chunk = processed[i];
-    fullString += `
-    Chunk: (${i + 1}/ ${processed.length}):
-    Start Timestamp: [${i * chunkTime}s]
-    Visual: ${chunk.frame.description}
-    Audio: ${chunk.transcription}
-    End Timestamp: [${i * chunkTime}s]
-    `;
+): Promise<string> {
+  const transcriptions = await processVideo(filePath, reusePreviousTranscript, chunkTime);
+  if (Array.isArray(transcriptions)) {
+    return transcriptions.join("\n");
   }
-
-  return fullString;
+  return String(transcriptions);
 }
 
 async function convertPdfToText(filePath: string) {
@@ -123,7 +93,7 @@ async function convertPdfToText(filePath: string) {
   return data.text;
 }
 
-export async function convertToText(filePath: string) {
+export async function convertToText(filePath: string): Promise<string> {
   const extension = filePath.split(".").pop();
 
   switch (extension) {
@@ -140,6 +110,6 @@ export async function convertToText(filePath: string) {
     case "pdf":
       return convertPdfToText(filePath);
     default:
-      return readFile(filePath, "utf8");
+      return ((await readFile(filePath, "utf8")) as string) || "";
   }
 }

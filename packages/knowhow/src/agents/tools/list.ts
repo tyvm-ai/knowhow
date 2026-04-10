@@ -2,8 +2,6 @@ import { Tool } from "../../clients/types";
 import { ChatCompletionTool } from "openai/resources/chat";
 
 import { services } from "../../services";
-import * as github from "./github/definitions";
-import * as asana from "./asana/definitions";
 import * as ycmd from "./ycmd/definitions";
 import * as language from "./language/definitions";
 import * as mcp from "./mcp/definitions";
@@ -853,9 +851,7 @@ export const includedTools = [
       },
     },
   },
-  ...asana.definitions,
   ...ycmd.definitions,
-  ...github.definitions,
   ...language.definitions,
   ...mcp.definitions,
 ] as Tool[];

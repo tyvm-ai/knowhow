@@ -1,0 +1,16 @@
+{
+  "name": "@tyvm/knowhow-benchmarks",
+  "version": "0.0.1",
+  "description": "Benchmarking framework and leaderboard for Knowhow terminal agent",
+  "private": true,
+  "scripts": {
+    "dev:leaderboard": "cd leaderboard && npm run dev",
+    "build:leaderboard": "cd leaderboard && npm run build",
+    "build:benchmarks": "cd benchmarks && npm run build",
+    "build": "npm run build:benchmarks && npm run build:leaderboard",
+    "bench": "cd benchmarks && npm run dev",
+    "test": "cd benchmarks && npm test"
+  },
+  "author": "Micah Riggan",
+  "license": "MIT"
+}

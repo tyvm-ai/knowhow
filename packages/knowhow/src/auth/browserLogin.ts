@@ -1,4 +1,4 @@
-import axios from "axios";
+import http from "../utils/http";
 import { exec } from "child_process";
 import { promisify } from "util";
 import * as os from "os";
@@ -81,7 +81,7 @@ export class BrowserLoginService {
             );
           }
 
-          const statusResponse = await axios.get(
+          const statusResponse = await http.get(
             `${this.baseUrl}/api/cli-login/session/${sessionData.sessionId}/status`,
             { timeout: 10000 }
           );
@@ -93,7 +93,7 @@ export class BrowserLoginService {
             spinner.start("Authentication successful! Retrieving token");
 
             // Step 4: Retrieve JWT token
-            const tokenResponse = await axios.post(
+            const tokenResponse = await http.post(
               `${this.baseUrl}/api/cli-login/session/${sessionData.sessionId}/token`
             );
 
@@ -113,7 +113,7 @@ export class BrowserLoginService {
             );
           }
         } catch (error) {
-          if (axios.isAxiosError(error) && error.code !== "ECONNABORTED") {
+          if (http.isHttpError(error) && error.status !== 408) {
             throw new BrowserLoginError(
               `Network error: ${error.message}`,
               "NETWORK_ERROR"
@@ -139,23 +139,20 @@ export class BrowserLoginService {
    */
   private async createSession(): Promise<CreateSessionResponse> {
     try {
-      const response = await axios.post<CreateSessionResponse>(
+      const response = await http.post<CreateSessionResponse>(
         `${this.baseUrl}/api/cli-login/session`,
-        {},
-        { timeout: 10000 }
+        {}
       );
       return response.data;
     } catch (error) {
-      if (axios.isAxiosError(error)) {
+      if (http.isHttpError(error)) {
         throw new BrowserLoginError(
-          `Failed to create login session: ${
-            error.response?.data?.message || error.message
-          }`,
+          `Failed to create login session: ${error.message}`,
           "SESSION_CREATE_FAILED"
         );
       }
       throw new BrowserLoginError(
-        `Unexpected error creating session: ${error.message}`
+        `Unexpected error creating session: ${(error as Error).message}`
       );
     }
   }
@@ -226,7 +223,7 @@ export async function openBrowser(url: string): Promise<void> {
   } catch (error) {
     // If we can't open the browser automatically, that's not a fatal error
     // The user can still manually navigate to the URL
-    console.warn(`Could not automatically open browser: ${error.message}`);
+    console.warn(`Could not automatically open browser: ${(error as Error).message}`);
   }
 }
 

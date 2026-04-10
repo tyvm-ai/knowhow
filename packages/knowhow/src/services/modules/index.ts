@@ -10,12 +10,13 @@ export class ModulesService {
 
     // If no context provided, fall back to global singletons
     if (!context) {
-      const { Clients, Plugins, Agents, Tools } = services();
+      const { Clients, Plugins, Agents, Tools, MediaProcessor } = services();
       context = {
         Agents,
         Plugins,
         Clients,
         Tools,
+        MediaProcessor,
       };
     }
 
@@ -46,7 +47,14 @@ export class ModulesService {
       }
 
       for (const plugin of importedModule.plugins) {
-        pluginService.registerPlugin(plugin.name, plugin.plugin);
+        const pluginContext = {
+          Agents: agentService,
+          Clients: clients,
+          Tools: toolsService,
+          Plugins: pluginService,
+          ...(context.MediaProcessor ? { MediaProcessor: context.MediaProcessor } : {}),
+        };
+        pluginService.registerPlugin(plugin.name, new plugin.plugin(pluginContext as any));
       }
 
       for (const client of importedModule.clients) {

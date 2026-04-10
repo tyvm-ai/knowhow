@@ -1,4 +1,4 @@
-import axios from "axios";
+import http from "../../utils/http";
 import { Tool } from "../../clients/types";
 
 interface GoogleSearchParams {
@@ -180,7 +180,7 @@ export async function googleSearch(params: GoogleSearchParams) {
   }
 
   try {
-    const response = await axios.get<GoogleSearchResponse>(url.toString());
+    const response = await http.get<GoogleSearchResponse>(url.toString());
     return transformGoogleSearchResponseForLLM(response.data);
   } catch (error) {
     console.error("Error performing Google search:", error);
