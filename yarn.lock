@@ -2538,14 +2538,14 @@
   dependencies:
     "@types/node" "*"
 
-"@tyvm/knowhow-tunnel@0.0.3", "@tyvm/knowhow-tunnel@file:/Users/micah/dev/knowhow/packages/knowhow-tunnel":
-  version "0.0.3"
+"@tyvm/knowhow-tunnel@0.0.4", "@tyvm/knowhow-tunnel@file:/Users/micah/dev/knowhow/packages/knowhow-tunnel":
+  version "0.0.4"
   resolved "file:packages/knowhow-tunnel"
   dependencies:
     ws "^8.18.1"
 
 "@tyvm/knowhow@file:/Users/micah/dev/knowhow/packages/knowhow":
-  version "0.0.88"
+  version "0.0.89"
   resolved "file:packages/knowhow"
   dependencies:
     "@anthropic-ai/sdk" "^0.39.0"

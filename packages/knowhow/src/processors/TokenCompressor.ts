@@ -131,7 +131,7 @@ export class TokenCompressor implements JsonCompressorStorage {
       200
     )}...\n[Use ${
       this.toolName
-    } tool with key "${firstKey}" to retrieve content. Follow NEXT_CHUNK_KEY references for complete content]`;
+    } tool with key "${firstKey}" to retrieve content. Follow NEXT_CHUNK_KEY references for complete content]\n[TIP: If this is JSON data, prefer using the jqToolResponse tool with the toolCallId instead — it parses ._data automatically and lets you filter/search without repeated expandTokens calls]`;
   }
 
   /**
@@ -413,7 +413,7 @@ export const expandTokensDefinition: Tool = {
   function: {
     name: "expandTokens",
     description:
-      "Retrieve a chunk of compressed data that was stored during message processing. The returned content may contain a `NEXT_CHUNK_KEY` to retrieve subsequent chunks.",
+      "Retrieve a chunk of compressed data that was stored during message processing. The returned content may contain a `NEXT_CHUNK_KEY` to retrieve subsequent chunks. NOTE: If the compressed data is JSON (e.g. a tool response), prefer using jqToolResponse instead — it lets you query the data directly using JQ without repeatedly calling expandTokens. Use expandTokens only for plain text/string data or when you need the raw content.",
     parameters: {
       type: "object",
       positional: true,

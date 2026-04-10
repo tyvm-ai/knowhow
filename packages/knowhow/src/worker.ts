@@ -345,7 +345,6 @@ export async function worker(options?: {
     // Re-register tools after reset (registeredTools set was cleared)
     mcpServer.withTools(toolsToUse);
 
-
     const dir = process.cwd();
     const homedir = os.homedir();
 
@@ -414,21 +413,24 @@ export async function worker(options?: {
           return replacementUrl;
         };
 
-        // Initialize tunnel handler with the tunnel-specific WebSocket
-        // Pass useHttps flag so the tunnel package can add the correct protocol
-        tunnelHandler = createTunnelHandler(tunnelConnection!, {
+        const tunnelConfig = {
           allowedPorts,
           maxConcurrentStreams:
             config.worker?.tunnel?.maxConcurrentStreams || 50,
-          tunnelUseHttps: tunnelUseHttps,
+          tunnelUseHttps,
           localHost: tunnelLocalHost,
           urlRewriter,
           enableUrlRewriting:
             config.worker?.tunnel?.enableUrlRewriting !== false,
           portMapping,
-          logLevel: "debug",
-        });
+          logLevel: "debug" as const,
+        };
+
+        // Initialize tunnel handler with the tunnel-specific WebSocket
+        // Pass useHttps flag so the tunnel package can add the correct protocol
+        tunnelHandler = createTunnelHandler(tunnelConnection!, tunnelConfig);
         console.log("🌐 Tunnel handler initialized");
+        console.log(tunnelConfig);
       });
 
       tunnelConnection.on("close", (code, reason) => {

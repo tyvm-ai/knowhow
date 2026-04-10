@@ -6,6 +6,7 @@ import { Assistant } from "./types";
 import { convertToText } from "./conversion";
 import { getConfigSync } from "./config";
 import { Clients } from "./clients";
+import { getModelContextLimit } from "./clients/contextLimits";
 
 const config = getConfigSync();
 const OPENAI_KEY = process.env.OPENAI_KEY;
@@ -59,7 +60,7 @@ export async function singlePrompt(userPrompt: string, model = "", agent = "") {
   }
 
   if (!model) {
-    model = Models.openai.GPT_4o;
+    model = Models.openai.GPT_54_Nano;
   }
 
   // Assume we're using provider/model format of model
@@ -71,12 +72,43 @@ export async function singlePrompt(userPrompt: string, model = "", agent = "") {
   return resp?.choices?.[0]?.message?.content;
 }
 
+/**
+ * Rough token estimate: ~4 characters per token (common heuristic).
+ */
+function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+
 export async function summarizeTexts(
   texts: string[],
   template: string,
   model = "",
   agent = ""
 ) {
+  const effectiveModel = model || Models.openai.GPT_54_Nano;
+
+  // Estimate total tokens if we were to combine all texts into one prompt
+  const combinedText = texts.join("\n\n");
+  const combinedContent = template.replaceAll("{text}", combinedText);
+  const estimatedTokens = estimateTokens(combinedContent);
+  const contextLimit = getModelContextLimit(effectiveModel);
+
+  console.log(
+    `summarizeTexts: ${texts.length} text(s), ~${estimatedTokens} estimated tokens, context limit: ${contextLimit}`
+  );
+
+  // If everything fits in one context window, do a single prompt
+  if (estimatedTokens < contextLimit) {
+    console.log("summarizeTexts: fits in context window, using single prompt");
+    return singlePrompt(combinedContent, model, agent).catch((err) => {
+      return `Texts of combined length ${combinedText.length} could not be summarized due to error: ${err.message}`;
+    });
+  }
+
+  // Otherwise summarize each text individually, then combine
+  console.log(
+    "summarizeTexts: exceeds context window, summarizing texts individually"
+  );
   const summaries = [];
   for (const text of texts) {
     const content = template.replaceAll("{text}", text);
@@ -94,7 +126,6 @@ export async function summarizeTexts(
   }
 
   // Otherwise form a final summary of the pieces
-
   const finalPrompt =
     `Generate a final output for this prompt ${template} with these incremental summaries: ` +
     summaries.join("\n\n");

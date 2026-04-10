@@ -16,12 +16,17 @@ export async function executeGrep(
   toolCallId: string,
   pattern: string,
   availableIds: string[],
-  options?: GrepOptions
+  options?: GrepOptions,
+  toolNameMap?: { [toolCallId: string]: string }
 ): Promise<string> {
   if (!data) {
-    return `Error: No tool response found for toolCallId "${toolCallId}". Available IDs: ${availableIds.join(
-      ", "
-    )}`;
+    const idList = availableIds
+      .map((id) => {
+        const name = toolNameMap?.[id];
+        return name ? `${id} (${name})` : id;
+      })
+      .join("\n  - ");
+    return `Error: No tool response found for toolCallId "${toolCallId}". Call listStoredToolResponses to see all available responses with their tool names.\n\nAvailable toolCallIds:\n  - ${idList || "(none)"}`;
   }
 
   try {

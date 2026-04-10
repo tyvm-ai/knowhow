@@ -200,7 +200,7 @@ export class ToolResponseCache {
   ): Promise<string> {
     const data = this.storage[toolCallId];
     const availableIds = Object.keys(this.storage);
-    return executeJqQuery(data, toolCallId, jqQuery, availableIds);
+    return executeJqQuery(data, toolCallId, jqQuery, availableIds, this.toolNameMap);
   }
 
   /**
@@ -213,7 +213,7 @@ export class ToolResponseCache {
   ): Promise<string> {
     const data = this.storage[toolCallId];
     const availableIds = Object.keys(this.storage);
-    return executeGrep(data, toolCallId, pattern, availableIds, options);
+    return executeGrep(data, toolCallId, pattern, availableIds, options, this.toolNameMap);
   }
 
   /**
@@ -225,7 +225,7 @@ export class ToolResponseCache {
   ): Promise<string> {
     const data = this.storage[toolCallId];
     const availableIds = Object.keys(this.storage);
-    return executeTail(data, toolCallId, availableIds, options);
+    return executeTail(data, toolCallId, availableIds, options, this.toolNameMap);
   }
 
   /**

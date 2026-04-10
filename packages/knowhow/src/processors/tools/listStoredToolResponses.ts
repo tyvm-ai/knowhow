@@ -72,7 +72,7 @@ export const listStoredToolResponsesDefinition: Tool = {
   function: {
     name: "listStoredToolResponses",
     description:
-      "List all stored tool responses with metadata including tool call ID, tool name, size, timestamp, and a preview of the content. Use this to discover which tool responses are available for querying with jqToolResponse or grepToolResponse.",
+      "List all stored tool responses with metadata including tool call ID, tool name, size, timestamp, and a preview of the content. ALWAYS call this before using jqToolResponse, grepToolResponse, or tailToolResponse — you need the toolCallId from this list to query a specific response. The tool name shown here corresponds to the tool that produced the response (e.g. 'mcp_1_knowhow-web_GetOrgUserTask'), making it easy to identify which response you want.",
     parameters: {
       type: "object",
       positional: false,

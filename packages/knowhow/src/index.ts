@@ -154,12 +154,32 @@ export async function upload() {
   }
 }
 
+/**
+ * Normalizes an input pattern to a valid glob pattern.
+ * Supports:
+ *   - Standard glob patterns (e.g. "src/**\/*.ts")
+ *   - Brace expansion (e.g. "{src/a.ts,src/b.ts}")
+ *   - Comma-separated file paths (e.g. "src/a.ts,src/b.ts") — auto-converted to brace expansion
+ */
+function normalizeInputPattern(input: string): string {
+  // If it already has braces or glob chars other than comma, use as-is
+  if (input.includes("{") || input.includes("*") || input.includes("?")) {
+    return input;
+  }
+  // If it contains commas, treat as comma-separated list and wrap in braces
+  if (input.includes(",")) {
+    const parts = input.split(",").map((p) => p.trim());
+    return `{${parts.join(",")}}`;
+  }
+  return input;
+}
+
 export async function generate(): Promise<void> {
   const config = await getConfig();
   for (const source of config.sources) {
     console.log("Generating", source.input, "to", source.output);
     if (source.kind === "file" || !source.kind) {
-      const files = globSync(source.input);
+      const files = globSync(normalizeInputPattern(source.input));
       const prompt = await loadPrompt(source.prompt);
 
       if (source.output.endsWith("/")) {
@@ -205,7 +225,7 @@ async function handleAllKindsGeneration(source: GenerationSource) {
 
 async function handleFileKindGeneration(source: GenerationSource) {
   const prompt = await loadPrompt(source.prompt);
-  const files = globSync(source.input);
+  const files = globSync(normalizeInputPattern(source.input));
   console.log("Analyzing files: ", files);
 
   if (source.output.endsWith("/")) {

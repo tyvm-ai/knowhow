@@ -11,12 +11,17 @@ export async function executeTail(
   data: string,
   toolCallId: string,
   availableIds: string[],
-  options?: TailOptions
+  options?: TailOptions,
+  toolNameMap?: { [toolCallId: string]: string }
 ): Promise<string> {
   if (data === null || data === undefined) {
-    return `Error: No tool response found for toolCallId "${toolCallId}". Available IDs: ${availableIds.join(
-      ", "
-    )}`;
+    const idList = availableIds
+      .map((id) => {
+        const name = toolNameMap?.[id];
+        return name ? `${id} (${name})` : id;
+      })
+      .join("\n  - ");
+    return `Error: No tool response found for toolCallId "${toolCallId}". Call listStoredToolResponses to see all available responses with their tool names.\n\nAvailable toolCallIds:\n  - ${idList || "(none)"}`;
   }
 
   try {

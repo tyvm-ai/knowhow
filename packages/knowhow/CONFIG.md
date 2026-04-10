@@ -372,3 +372,55 @@ This example would load the diff of a PR every time we said "my pr"
   }
 }
 ```
+
+## Language Plugin triggers on file edits
+in  .knowhow/language.json you can trigger event driven language expansions
+```
+  ": any,useState<any[]>": {
+    "events": ["file:post-edit"],
+    "sources": [
+      {
+        "data": [".knowhow/prompts/any.mdx"],
+        "kind": "file"
+      }
+    ]
+  },
+
+  "packages/client/src/generated/*,@tyvm/knowhow-api-client": {
+    "events": ["file:pre-read"],
+    "sources": [
+      {
+        "data": ["./packages/frontend/.knowhow/prompts/ClientHelp.mdx"],
+        "kind": "file"
+      }
+    ]
+  },
+
+  "backend,route,controller,schema,api,server": {
+    "events": ["user:say"],
+    "sources": [
+      {
+        "kind": "file",
+        "data": ["./packages/backend/.knowhow/prompts/backend.mdx"]
+      }
+    ]
+  },
+
+```
+
+## Language Plugin commands
+If you want the language plugin to run a command. Handled: true prevents the ai from seeing this output
+```
+  "/git": {
+    "events": [],
+    "handled": true,
+    "sources": [
+      {
+        "kind": "exec",
+        "data": [
+          "git status"
+        ]
+      }
+    ]
+  },
+```
