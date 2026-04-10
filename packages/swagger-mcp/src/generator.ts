@@ -224,7 +224,7 @@ if (require.main === module) {
       },
       devDependencies: {
         "@types/node": "^20.6.3",
-        typescript: "^4.6.3",
+        typescript: "^5.0.0",
       },
     };
 
