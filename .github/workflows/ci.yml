@@ -59,6 +59,60 @@ jobs:
         run: npx depcheck --config=.depcheckrc
         working-directory: packages/knowhow
 
+  test-swagger-mcp:
+    name: Test (@tyvm/swagger-mcp)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test -- --forceExit
+        working-directory: packages/swagger-mcp
+        env:
+          CI: true
+
+  test-knowhow-module-ast:
+    name: Test (@tyvm/knowhow-module-ast)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build knowhow-tunnel (workspace dependency)
+        run: npm run build
+        working-directory: packages/knowhow-tunnel
+
+      - name: Build knowhow (peer dependency)
+        run: npm run build
+        working-directory: packages/knowhow
+
+      - name: Run tests
+        run: npm test -- --forceExit
+        working-directory: packages/knowhow-module-ast
+        env:
+          CI: true
+
   security:
     name: Security Audit
     runs-on: ubuntu-latest
