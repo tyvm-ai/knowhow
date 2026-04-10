@@ -1,4 +1,3 @@
-```md
 # Knowhow CLI 🤖
 
 Knowhow is an AI-powered CLI for generating docs, building embeddings for semantic search, and running interactive chat/agents—powered by a modular system of **plugins, agents, and a secure worker** that can expose your local tools to Knowhow Cloud.
@@ -363,4 +362,3 @@ For command usage and behavior details, see:
 - Website: https://knowhow.tyvm.ai
 - Twitter/X: https://x.com/micahriggan
 - npm: https://www.npmjs.com/package/@tyvm/knowhow
-```

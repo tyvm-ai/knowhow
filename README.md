@@ -1,194 +1,48 @@
-## Overview
+# 🧠 knowhow Mono-Repo
 
-Knowhow is a tool designed to increase the ease of allowing an AI to interact with a folder structure, with the goal of generating embeddings, documentation, or answering questions about the contents of the folders via RAG. This allows us to create codebase chat features, and eventually agents which can operate on the folders themselves.
+This repo contains the **Knowhow** toolchain and related packages, managed as a single monorepo. It includes the main **@tyvm/knowhow** AI CLI plus supporting packages for generating MCP servers and tunneling requests to your local services.
 
-## Key Features
+---
 
-* Generation Pipelines (`knowhow generate`):
-    * Given a prompt and a source file/ glob, run each file through the prompt and output the results to the output file / folder.
-    * incremental pipelines: after the first run, subsequent runs will only process files that have changed
-    * Can be used for documentation generation, code transformation tasks, or any other task that can be broken down into a prompt and a source file
+## 🚀 Quickstart (primary: `@tyvm/knowhow`)
 
-* Embedding Creation (`knowhow embed`):
-    * given a source file / glob, create embeddings for each file and output them to a single embedding file
-    * enabled chat support for embedding contents via *embedding plugin*
-    * Can generate embeddings from plugins via optional `kind` field
-* Chat Feature (`knowhow chat`):
-    * Supports querying the knowledgebase through a chat interface, with context-aware responses.
-    * Plugins: chat plugins for vim, embedding search, github, and language expansion
-    * Language: Allows defining terms that map to specific folders, files, or data sources, enriching the chat context.
-
-## Installation
-```
-git clone git@github.com:micahriggan/knowhow.git
-cd knowhow
-npm install
-npm link
+```bash
+npm install -g @tyvm/knowhow
 ```
 
-## Getting Started
+Initialize a workspace in your project:
 
-Knowhow is meant to have a config folder within each folder / project that it's working on. Here are some instructions on how to setup knowhow in a project:
+```bash
+knowhow init
+```
 
-1. `cd` into the project folder you want to use knowhow on.
-2. Initialization: Run `knowhow init` to create the necessary folder structure and configuration files.
-3. Modify the configuration file in `.knowhow/knowhow.json` to suit your needs.
-    * See the [config examples](./CONFIG.md)
-4. Embedding: Execute `knowhow embed` to create embeddings from the generated documentation.
-5. Chat: Run `knowhow chat` to start a chat session with additional context provided by the plugins
-6. Generation: Use `knowhow generate` to process source files and produce new files. Can output to one or many files
+Log in to Knowhow Cloud:
 
-## Configuration
+```bash
+knowhow login
+```
 
-Knowhow is highly configurable, allowing you to specify source patterns, output directories, and custom prompts for documentation generation. Here's an example configuration snippet:
+Start chatting:
 
-[See more Config examples here](./CONFIG.md)
+```bash
+knowhow chat
+```
 
-    {
-      "promptsDir": ".knowhow/prompts",
-      "plugins": ["embeddings", "language", "vim", "github"],
+> For full setup, configuration, and command usage, see the package README for **@tyvm/knowhow**.
 
-      // if you want to generate embeddings from source directories
-      "embedSources": [
-        {
-          "input": "./src/**/*.ts",
-          "output": ".knowhow/embeddings/knowhow.json",
-          "chunkSize": 2000,
-          "remote": "micahriggan/knowhow",
-          "remoteType": "github"
-        }
-      ],
+---
 
-      // if you want to generate some AI generated files from source directories
-      "sources": [
-        {
-          "input": "src/**/*.mdx",
-          "output": ".knowhow/docs/",
-          "prompt": "BasicCodeDocumenter"
-        },
-        {
-          "input": ".knowhow/docs/**/*.mdx",
-          "output": ".knowhow/docs/README.mdx",
-          "prompt": "BasicProjectDocumenter"
-        }
-      ],
-    },
+## 📦 Packages
 
-    mcps: [
-      {
-        name: "browser",
-        command: "npx",
-        args: ["-y", "@modelcontextprotocol/server-puppeteer"],
-        env: {
-          VALUE_1: "browser",
-          SERVER: "http://localhost:3000",
-      },
-    ],
+| Package (npm) | What it does | README |
+|---|---|---|
+| `@tyvm/knowhow` | Main AI CLI for docs generation, embeddings, and interactive chat/agents | [packages/knowhow/README.md](packages/knowhow/README.md) |
+| `@tyvm/swagger-mcp` | Generate MCP servers (or a runtime proxy) from Swagger/OpenAPI specs | [packages/swagger-mcp/README.md](packages/swagger-mcp/README.md) |
+| `@tyvm/knowhow-tunnel` | HTTP tunnel library for the worker system (proxy to localhost) | [packages/knowhow-tunnel/README.md](packages/knowhow-tunnel/README.md) |
 
-This config would enable two things.
-- `knowhow generate` would run all the mdx files in the src folder through the BasicCodeDocumenter prompt, and output them to the .knowhow/docs folder
-- `knowhow embed` would take all the typescript files in the src folder, and create embeddings for them, outputting them to the .knowhow/embeddings/knowhow.json file
-    - This would enable the `chat` feature to have knowledge of the contents of the codebase
+---
 
-# Vision
-In the future, I hope that every project publishes embeddings from their documentation, and source code, and then as a developer, we can use tools like this one, to download those embeddings and get completions / chats that are augmented with the embeddings for in depth knowledge of the codebases we are working on, and the libraries we are using. Projects should commit their embeddings to github with LFS, and then users can download the embeddings via `knowhow download` and specifying the org/repo and file path of the embedding.
+## 🔗 Links
 
-
-# Disclaimer
-Some of this documentation was mostly generated by the knowhow tool. I have taken a few editor privelages - micah
-Beware any files in the autodoc folder as they were 100% generated by the tool, and may contain hallucinations or other errors.
-This project is in active development and may have issues, bugs, or change dramatically.
-
-
-# Plugins
-Plugins can be used to load additional context into a chat, or create embeddings from an external data source. Here's some plugins we have built so far:
-- [asana.mdx](./autodoc/plugins/asana.mdx)
-- [downloader](./autodoc/plugins/downloader)
-- [embedding.mdx](./autodoc/plugins/embedding.mdx)
-- [figma.mdx](./autodoc/plugins/figma.mdx)
-- [github.mdx](./autodoc/plugins/github.mdx)
-- [jira.mdx](./autodoc/plugins/jira.mdx)
-- [language.mdx](./autodoc/plugins/language.mdx)
-- [linear.mdx](./autodoc/plugins/linear.mdx)
-- [notion.mdx](./autodoc/plugins/notion.mdx)
-- [plugins.mdx](./autodoc/plugins/plugins.mdx)
-- [types.mdx](./autodoc/plugins/types.mdx)
-- [vim.mdx](./autodoc/plugins/vim.mdx)
-
-Note: Eventually I'll make it to where these can be published as their own npm modules and installed, but don't have that yet.
-
-# Tools
-Tools can be used by agents to do complex interations with other systems, or the local system. Here's some tools we have built so far:
-- [Asana Tool Directory](./autodoc/tools/asana)
-- [askHuman Tool](./autodoc/tools/askHuman.mdx)
-- [callPlugin Tool](./autodoc/tools/callPlugin.mdx)
-- [embeddingSearch Tool](./autodoc/tools/embeddingSearch.mdx)
-- [execCommand Tool](./autodoc/tools/execCommand.mdx)
-- [fileSearch Tool](./autodoc/tools/fileSearch.mdx)
-- [finalAnswer Tool](./autodoc/tools/finalAnswer.mdx)
-- [GitHub Tool Directory](./autodoc/tools/github)
-- [lintFile Tool](./autodoc/tools/lintFile.mdx)
-- [patch Tool](./autodoc/tools/patch.mdx)
-- [readBlocks Tool](./autodoc/tools/readBlocks.mdx)
-- [readFile Tool](./autodoc/tools/readFile.mdx)
-- [textSearch Tool](./autodoc/tools/textSearch.mdx)
-- [visionTool Tool](./autodoc/tools/visionTool.mdx)
-- [writeFile Tool](./autodoc/tools/writeFile.mdx)
-
-Note: This changes often. Refer to the [tools directory](./src/agents/tools) for the most up-to-date list.
-
-
-
-# CLI Commands
-This command line tool accepts the following inputs (commands):
-
-1. `init`: Initializes the tool. Creates config in `.knowhow`
-3. `embed`: Creates embeddings from the configured `embedSources`.
-7. `chat`: Starts a chat session.
-2. `generate`: Processes the `sources` from config to make AI generated files
-4. `upload`: Uploads embeddings to s3 if configured.
-5. `download`: Downloads embeddings from s3 if configured.
-6. `upload:openai`: beta: upload an assistant to openai alongside files
-
-# Chat
-Activated via: `knowhow chat`
-
-This command line tool allows users to provide various inputs to interact with an AI assistant.
-
-The available commands include:
-   - `agent`: Toggle the use of a specific agent.
-   - `agents`: List and select from available agents.
-   - `debug`: Toggle debug mode.
-   - `multi`: Enable or disable multi-line input.
-   - `voice`: Talk to the AI instead of typing (beta).
-   - `search`: Search for embeddings.
-   - `clear`: Clear the chat history.
-   - `exit`: Exit the tool.
-
-## Agents
-Activated via: `agent` or `agents` within a knowhow chat session
-
-Agents are able to use tools to accomplish goals. Out of the box knowhow includes:
-- Developer Agent - Can delegate tasks to other agents
-- Researcher Agent - Can browse the codebase to answer questions
-- Patcher Agents - Can modify files, used to write coe by the Developer
-
-# Environment Variables
-**Plugins:**
-- Figma Plugin (`src/plugins/figma.ts`): Uses `process.env.FIGMA_API_KEY`.
-- GitHub Plugin (`src/plugins/github.ts`): Uses `process.env.GITHUB_TOKEN`.
-- Notion Plugin (`src/plugins/notion.ts`): Uses `process.env.NOTION_TOKEN`.
-- Jira Plugin (`src/plugins/jira.ts`): Uses `process.env.JIRA_HOST`, `process.env.JIRA_USER`, `process.env.JIRA_PASSWORD`.
-- Linear Plugin (`src/plugins/linear.ts`): Uses `process.env.LINEAR_API_KEY`.
-- Asana Plugin (`src/plugins/asana.ts`): Uses `process.env.ASANA_TOKEN`.
-
-**Agent Tools:**
-- GitHub (`src/agents/tools/github/index.ts`): Uses `process.env.GITHUB_TOKEN`.
-- Asana:
-  - Workspace ID (`src/agents/tools/asana/index.ts`): Uses `process.env.ASANA_WORKSPACE`.
-  - Token (`src/agents/tools/asana/index.ts`): Uses `process.env.ASANA_TOKEN`.
-
-**AI Core:**
-- OPENAI Key (`src/ai.ts` and `src/index.ts`): Uses `process.env.OPENAI_KEY`.
-- Anthropic Key (`src/clients/anthropic.ts`): Uses `process.env.ANTHROPIC_API_KEY`.
-
+- Website: https://knowhow.tyvm.ai
+- Twitter/X: https://x.com/micahriggan
