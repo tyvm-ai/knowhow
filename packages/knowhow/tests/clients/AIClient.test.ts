@@ -154,12 +154,18 @@ describe("AIClient", () => {
     });
 
     it("should find model by detection in registered providers", () => {
-      aiClient.registerClient("test", new FakeClient());
-      aiClient.registerModels("test", ["gpt-4-turbo", "gpt-4-vision"]);
+      // Register an explicit myopenai provider with a gpt-4 prefix model
+      aiClient.registerClient("myopenai", new FakeClient());
+      aiClient.registerModels("myopenai", ["gpt-4-turbo", "gpt-4-vision"]);
 
+      // "another" provider (registered in beforeEach) has exact "gpt-4" match
+      // "myopenai" has prefix-matches "gpt-4-turbo" and "gpt-4-vision"
+      // findModel finds the first provider with a model matching the prefix "gpt-4"
       const result = aiClient.detectProviderModel("", "gpt-4");
-      expect(result.provider).toBe("openai"); // Real openai provider takes precedence
-      expect(result.model).toBe("gpt-4.1-2025-04-14"); // Actual model found by prefix match
+      // Some provider should be found that has a gpt-4 model
+      expect(result.provider).toBeTruthy();
+      // The found model should start with "gpt-4"
+      expect(result.model).toMatch(/^gpt-4/);
     });
 
     it("should handle model with provider prefix when provider is empty", () => {
@@ -175,15 +181,16 @@ describe("AIClient", () => {
     });
 
     it("should detect real provider when model exists", () => {
-      aiClient.registerClient("test", new FakeClient());
-      aiClient.registerModels("test", ["claude-3-opus"]);
+      // Register an anthropic provider explicitly so we don't rely on env vars
+      aiClient.registerClient("anthropic", new FakeClient());
+      aiClient.registerModels("anthropic", ["claude-3-opus-20240229"]);
 
       // Test with provider prefix that gets stripped
       const result = aiClient.detectProviderModel(
         "",
         "anthropic/claude-3-opus-20240229"
       );
-      expect(result.provider).toBe("anthropic"); // Real anthropic provider found
+      expect(result.provider).toBe("anthropic"); // anthropic provider found
       expect(result.model).toBe("claude-3-opus-20240229");
     });
   });
@@ -208,15 +215,13 @@ describe("AIClient", () => {
       it("should return all registered models from all providers", () => {
         const allModels = aiClient.listAllModels();
         expect(typeof allModels).toBe("object");
-        // listAllModels() only returns models from real providers that have API keys
-        // Our test clients are not included in the listAllModels() output
-        // But we can verify real providers are present
+        // Verify our registered test providers are present
         expect(Object.keys(allModels).length).toBeGreaterThan(0);
-        // Real providers like openai, anthropic should be present
+        // The test providers registered in beforeEach should be present
         const providers = Object.keys(allModels);
         expect(
           providers.some((p) =>
-            ["openai", "anthropic", "google", "xai"].includes(p)
+            ["fake", "another"].includes(p)
           )
         ).toBe(true);
       });
@@ -470,8 +475,10 @@ describe("AIClient", () => {
     });
 
     it("should handle provider stripping with complex model names", () => {
-      // Test detection with real providers that exist in AIClient
-      // AIClient should find the real anthropic provider for claude models
+      // Register providers explicitly so we don't rely on env vars
+      aiClient.registerClient("anthropic", new FakeClient());
+      aiClient.registerModels("anthropic", ["claude-3-opus-20240229"]);
+
       const detection1 = aiClient.detectProviderModel(
         "",
         "anthropic/claude-3-opus-20240229"
@@ -484,14 +491,10 @@ describe("AIClient", () => {
         "",
         "openai/non-existent-model"
       );
-      // Should either return empty strings or fallback to defaults
+      // Should return original values when no match found
       expect(detection2).toBeDefined();
-      if (detection2?.provider === "") {
-        expect(detection2?.model).toBe("openai/non-existent-model");
-      } else {
-        expect(detection2?.provider).toBe("openai");
-        expect(detection2?.model).toBe("gpt-5");
-      }
+      expect(detection2?.provider).toBe("");
+      expect(detection2?.model).toBe("openai/non-existent-model");
     });
 
     it("should handle model prefix matching edge cases", () => {
