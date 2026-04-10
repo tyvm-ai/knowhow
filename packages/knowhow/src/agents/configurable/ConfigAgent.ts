@@ -1,8 +1,8 @@
 import { AgentContext, BaseAgent } from "../base/base";
 import { Message } from "../../clients/types";
 import { Assistant, Config } from "../../types";
-import { EventService, ToolsService } from "src/services";
-import { MessageProcessor } from "src/services/MessageProcessor";
+import { EventService, ToolsService } from "../../services";
+import { MessageProcessor } from "../../services/MessageProcessor";
 
 export class ConfigAgent extends BaseAgent {
   name: string;

@@ -1,6 +1,6 @@
 {
   "name": "@tyvm/knowhow",
-  "version": "0.0.90",
+  "version": "0.0.91",
   "description": "ai cli with plugins and agents",
   "main": "ts_build/src/index.js",
   "bin": {
@@ -39,7 +39,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "@aws-sdk/client-s3": "^3.588.0",
     "@google/genai": "^0.14.1",
     "@inquirer/editor": "^4.2.18",
     "@modelcontextprotocol/sdk": "^1.13.3",
@@ -73,5 +72,8 @@
   "bugs": {
     "url": "https://github.com/tyvm-ai/knowhow/issues"
   },
-  "homepage": "https://github.com/tyvm-ai/knowhow#readme"
+  "homepage": "https://github.com/tyvm-ai/knowhow#readme",
+  "optionalDependencies": {
+    "esbuild-register": "^3.0.0"
+  }
 }

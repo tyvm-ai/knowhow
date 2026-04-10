@@ -47,6 +47,11 @@ function makeContext(overrides?: Partial<ModuleContext>): ModuleContext {
       addTool: jest.fn(),
       setFunction: jest.fn(),
     } as any,
+    Embeddings: {
+      registerDownloader: jest.fn(),
+      hasDownloader: jest.fn(),
+      download: jest.fn(),
+    } as any,
     ...overrides,
   };
 }

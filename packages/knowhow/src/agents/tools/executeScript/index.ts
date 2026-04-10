@@ -12,12 +12,14 @@ export async function executeScript({
   maxTokens,
   maxExecutionTimeMs,
   maxCostUsd,
+  allowNetworkAccess,
 }: {
   script: string;
   maxToolCalls?: number;
   maxTokens?: number;
   maxExecutionTimeMs?: number;
   maxCostUsd?: number;
+  allowNetworkAccess?: boolean;
 }) {
   try {
     // Get context from bound ToolsService
@@ -43,6 +45,9 @@ export async function executeScript({
         maxExecutionTimeMs: maxExecutionTimeMs || 30000,
         maxCostUsd: maxCostUsd || 1.0,
         maxMemoryMb: 100,
+      },
+      policy: {
+        allowNetworkAccess: allowNetworkAccess ?? false,
       },
     });
 

@@ -4,6 +4,7 @@ import { Tool } from "../../clients/types";
 import { Config } from "../../types";
 import { GenericClient } from "../../clients/types";
 import { AgentService } from "../AgentService";
+import { EmbeddingsService } from "../EmbeddingsService";
 import { PluginService } from "../../plugins/plugins";
 import { AIClient } from "../../clients";
 import { ToolsService } from "../Tools";
@@ -42,10 +43,12 @@ export type ModuleClient = {
 export type InitParams = {
   config: Config;
   cwd: string;
+  context?: ModuleContext;
 };
 
 export interface ModuleContext {
   Agents: AgentService;
+  Embeddings: EmbeddingsService;
   Plugins: PluginService;
   Clients: AIClient;
   Tools: ToolsService;

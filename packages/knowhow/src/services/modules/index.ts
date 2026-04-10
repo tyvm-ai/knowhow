@@ -10,9 +10,10 @@ export class ModulesService {
 
     // If no context provided, fall back to global singletons
     if (!context) {
-      const { Clients, Plugins, Agents, Tools, MediaProcessor } = services();
+      const { Clients, Plugins, Agents, Tools, Embeddings, MediaProcessor } = services();
       context = {
         Agents,
+        Embeddings,
         Plugins,
         Clients,
         Tools,
@@ -35,7 +36,7 @@ export class ModulesService {
 
     for (const modulePath of allModulePaths) {
       const importedModule = require(modulePath) as KnowhowModule;
-      await importedModule.init({ config, cwd: process.cwd() });
+      await importedModule.init({ config, cwd: process.cwd(), context });
 
       for (const agent of importedModule.agents) {
         agentService.registerAgent(agent);

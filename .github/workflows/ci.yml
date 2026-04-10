@@ -113,6 +113,35 @@ jobs:
         env:
           CI: true
 
+  build-knowhow-module-s3:
+    name: Build (@tyvm/knowhow-module-s3)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build knowhow-tunnel (workspace dependency)
+        run: npm run build
+        working-directory: packages/knowhow-tunnel
+
+      - name: Build knowhow (peer dependency)
+        run: npm run compile
+        working-directory: packages/knowhow
+
+      - name: TypeScript compile check
+        run: npx tsc --noEmit
+        working-directory: packages/knowhow-module-s3
+
   security:
     name: Security Audit
     runs-on: ubuntu-latest
