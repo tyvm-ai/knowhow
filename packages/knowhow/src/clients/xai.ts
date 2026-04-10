@@ -345,7 +345,7 @@ export class GenericXAIClient implements GenericClient {
 
     const formData = new FormData();
     formData.append("purpose", "assistants");
-    const blob = new Blob([options.data], { type: options.mimeType || "application/octet-stream" });
+    const blob = new Blob([new Uint8Array(options.data)], { type: options.mimeType || "application/octet-stream" });
     formData.append("file", blob, options.fileName || "upload");
 
     const response = await fetch("https://api.x.ai/v1/files", {

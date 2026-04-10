@@ -398,7 +398,7 @@ export class GenericOpenAiClient implements GenericClient {
     if (!apiKey) throw new Error("OpenAI API key not set");
     const formData = new FormData();
     formData.append("purpose", "assistants");
-    const blob = new Blob([options.data], { type: options.mimeType || "application/octet-stream" });
+    const blob = new Blob([new Uint8Array(options.data)], { type: options.mimeType || "application/octet-stream" });
     formData.append("file", blob, options.fileName || "upload");
     const response = await fetch("https://api.openai.com/v1/files", {
       method: "POST",

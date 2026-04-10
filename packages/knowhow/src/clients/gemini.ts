@@ -688,7 +688,7 @@ export class GenericGeminiClient implements GenericClient {
       const mimeType = audioPart.inlineData.mimeType || "audio/wav";
 
       // Gemini returns raw PCM (audio/L16) - convert to WAV format for playability
-      let audioBuffer = rawBuffer;
+      let audioBuffer: Buffer = rawBuffer;
       if (mimeType.includes("L16") || mimeType.includes("pcm")) {
         // Parse sample rate from mime type e.g. "audio/L16;codec=pcm;rate=24000"
         const rateMatch = mimeType.match(/rate=(\d+)/);
@@ -883,7 +883,7 @@ export class GenericGeminiClient implements GenericClient {
    */
   async uploadFile(options: FileUploadOptions): Promise<FileUploadResponse> {
     try {
-      const blob = new Blob([options.data], { type: options.mimeType });
+      const blob = new Blob([new Uint8Array(options.data)], { type: options.mimeType });
       const uploadedFile = await this.client.files.upload({
         file: blob,
         config: {

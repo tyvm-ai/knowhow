@@ -23,11 +23,7 @@ export const knowhowMcpClient = {
   version: "1.0.0",
 };
 export const knowhowConfig = {
-  capabilities: {
-    prompts: {},
-    resources: {},
-    tools: {},
-  },
+  capabilities: {},
 };
 
 export * from "./McpServer";

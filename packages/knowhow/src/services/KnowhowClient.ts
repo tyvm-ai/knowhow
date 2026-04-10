@@ -248,7 +248,7 @@ export class KnowhowSimpleClient {
     if (Buffer.isBuffer(options.file)) {
       formData.append(
         "file",
-        new Blob([options.file]),
+        new Blob([new Uint8Array(options.file)]),
         options.fileName || "audio.mp3"
       );
     } else {
