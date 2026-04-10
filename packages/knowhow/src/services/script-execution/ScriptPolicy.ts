@@ -163,7 +163,7 @@ export class ScriptPolicyEnforcer {
   /**
    * Validate script content for security issues
    */
-  validateScript(scriptContent: string): { valid: boolean; issues: string[] } {
+  validateScript(scriptContent: string, allowNetworkAccess?: boolean): { valid: boolean; issues: string[] } {
     const issues: string[] = [];
 
     // Check for dangerous patterns
@@ -176,10 +176,14 @@ export class ScriptPolicyEnforcer {
       /Function\s*\(/gi,          // Function constructor
       /setTimeout/gi,             // setTimeout
       /setInterval/gi,            // setInterval
-      /fetch\s*\(/gi,             // Direct fetch calls
       /XMLHttpRequest/gi,         // XHR
       /WebSocket/gi,              // WebSocket
     ];
+
+    // Block direct fetch calls when network access is not explicitly allowed
+    if (!allowNetworkAccess) {
+      dangerousPatterns.push(/fetch\s*\(/gi);
+    }
 
     for (const pattern of dangerousPatterns) {
       if (pattern.test(scriptContent)) {

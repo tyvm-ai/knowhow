@@ -2,8 +2,6 @@
 # Run each test file sequentially to avoid tree-sitter native module state corruption
 # when multiple test files share a worker process.
 
-set -e
-
 JEST="npx jest --runInBand --forceExit"
 
 TEST_FILES=(

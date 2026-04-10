@@ -96,7 +96,7 @@ export class ScriptExecutor {
 
     try {
       // Validate script
-      const validation = policyEnforcer.validateScript(request.script);
+      const validation = policyEnforcer.validateScript(request.script, policy.allowNetworkAccess);
       if (!validation.valid) {
         tracer.emitEvent("script_validation_failed", {
           issues: validation.issues,
@@ -240,8 +240,9 @@ export class ScriptExecutor {
       tracer.emitEvent("script_execution_start", {});
 
       // Execute the script and get the result
+      // Note: do NOT set timeout here — it kills the isolate while awaiting host async promises.
+      // The outer executeWithTimeout wrapper handles wall-clock timeout instead.
       const result = await compiledScript.run(vmContext, {
-        timeout: policyEnforcer.getQuotas().maxExecutionTimeMs,
         promise: true,
         copy: true,
       });
@@ -280,13 +281,29 @@ export class ScriptExecutor {
         `__host_${name}`,
         new ivm.Reference(async (...args: any[]) => {
           const result = await fn(...args);
-          return new ivm.ExternalCopy(result).copyInto();
+          const safeResult = result !== undefined ? result : null;
+          const plainResult =
+            safeResult !== null && typeof safeResult === 'object'
+              ? JSON.parse(JSON.stringify(safeResult))
+              : safeResult;
+          // copyInto() transfers the value into the isolate heap so it's directly usable
+          return new ivm.ExternalCopy(plainResult).copyInto();
         })
       );
+      // Use applySyncPromise so the script isolate suspends and yields the Node.js event loop
+      // back to the host while waiting for async host operations (MCP stdio calls etc.).
+      // Without this, the ivm isolate blocks the event loop and stdio-based MCP transports
+      // can never deliver their responses → deadlock.
       await vmContext.eval(`
         globalThis.${name} = (...a) =>
-          __host_${name}.apply(undefined, a,
-            { arguments: { copy: true }, result: { promise: true, copy: true } });
+          new Promise((resolve, reject) => {
+            try {
+              // applySyncPromise does not support result options — the Reference fn returns ExternalCopy
+              const result = __host_${name}.applySyncPromise(undefined, a,
+                { arguments: { copy: true } });
+              resolve(result);
+            } catch(e) { reject(e); }
+          });
       `);
     };
 
@@ -308,11 +325,13 @@ export class ScriptExecutor {
 
     // Expose async sandbox functions
     await exposeAsync("callTool", async (tool, params) => {
-      const { functionResp } = await sandboxContext.callTool(
-        tool as string,
-        params
-      );
-      return functionResp;
+      try {
+        const result = await sandboxContext.callTool(tool as string, params);
+        const { functionResp } = result;
+        return functionResp !== undefined ? functionResp : null;
+      } catch (err) {
+        throw err;
+      }
     });
     await exposeAsync("llm", (messages, options) =>
       sandboxContext.llm(messages, options || {})
