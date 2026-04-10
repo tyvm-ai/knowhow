@@ -6,8 +6,8 @@ import { join } from "path";
 
 describe("Tree-sitter TypeScript Parser", () => {
   let parser: LanguageAgnosticParser;
-  const beforeFilePath = join(__dirname, "../../../knowhow/tests/tree-sitter/sample-before.ts");
-  const afterFilePath = join(__dirname, "../../../knowhow/tests/tree-sitter/sample-after.ts");
+  const beforeFilePath = join(__dirname, "test-files/sample-before.ts");
+  const afterFilePath = join(__dirname, "test-files/sample-after.ts");
 
   beforeEach(() => {
     parser = LanguageAgnosticParser.createTypeScriptParser();
@@ -158,8 +158,8 @@ class Test {
 
 describe("Language Agnostic Parser", () => {
   let parser: LanguageAgnosticParser;
-  const beforeFilePath = join(__dirname, "../../../knowhow/tests/tree-sitter/sample-before.ts");
-  const afterFilePath = join(__dirname, "../../../knowhow/tests/tree-sitter/sample-after.ts");
+  const beforeFilePath = join(__dirname, "test-files/sample-before.ts");
+  const afterFilePath = join(__dirname, "test-files/sample-after.ts");
 
   afterEach(() => {
     // Clean up parser instance

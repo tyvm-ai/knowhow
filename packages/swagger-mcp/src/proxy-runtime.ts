@@ -8,6 +8,8 @@ import {
 import axios from "axios";
 import { SwaggerSpec, Tool } from "./types";
 import { generateToolsFromSwagger, validateBaseUrl } from "./core";
+
+export { generateToolsFromSwagger, validateBaseUrl };
 import { DynamicSwaggerClient } from "./core/execute";
 
 /**

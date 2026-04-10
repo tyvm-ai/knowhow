@@ -1,18 +1,4 @@
 // Global mocks that need to be hoisted before any imports
-jest.mock("tree-sitter", () => {
-  return jest.fn().mockImplementation(() => ({
-    setLanguage: jest.fn(),
-    parse: jest.fn(() => ({ rootNode: { toString: () => "mock tree" } })),
-  }));
-});
-jest.mock("tree-sitter-typescript", () => ({ typescript: jest.fn() }));
-jest.mock("tree-sitter-javascript", () => ({ javascript: jest.fn() }));
-jest.mock("../src/plugins/tree-sitter/parser", () => ({
-  LanguageAgnosticParser: jest.fn(),
-}));
-jest.mock("../src/plugins/tree-sitter/editor", () => ({
-  TreeEditor: jest.fn(),
-}));
 jest.mock("../src/services/S3", () => ({
   S3Service: jest.fn().mockImplementation(() => ({
     uploadFile: jest.fn(),
