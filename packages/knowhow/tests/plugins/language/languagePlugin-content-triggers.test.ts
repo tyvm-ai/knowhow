@@ -18,6 +18,7 @@ jest.mock("../../../src/services/EventService", () => ({
   EventService: jest.fn().mockImplementation(() => ({
     on: jest.fn(),
     emit: jest.fn(),
+    log: jest.fn(),
   })),
 }));
 
@@ -54,6 +55,7 @@ describe("LanguagePlugin - Content-Based Triggering", () => {
         eventHandlers.set(event, handler);
       }),
       emit: jest.fn(),
+      log: jest.fn(),
     };
 
     mockPluginService = {

@@ -1,0 +1,31 @@
+{
+  "ignores": [
+    "typescript",
+    "ts-jest",
+    "jest",
+    "ts-node",
+    "prettier",
+    "tslint",
+    "tslint-config-prettier",
+    "@types/jest",
+    "@types/node",
+    "@types/mocha",
+    "@types/diff",
+    "@types/express",
+    "@types/asana",
+    "@types/jira-client",
+    "@types/pdf-parse",
+    "@types/ws",
+    "@babel/preset-typescript"
+  ],
+  "skip-missing": true,
+  "ignore-patterns": [
+    "src/dataset/**",
+    "ts_build/**",
+    "node_modules/**",
+    "tests/**"
+  ],
+  "specials": [
+    "depcheck-special-bin"
+  ]
+}

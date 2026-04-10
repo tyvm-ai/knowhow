@@ -132,7 +132,7 @@ describe("ModulesService.loadModulesFromConfig", () => {
   });
 
   it("should load plugins from a module", async () => {
-    const mockPlugin = {
+    const mockPluginInstance = {
       meta: { key: "test-plugin", name: "Test Plugin" },
       isEnabled: () => true,
       enable: () => {},
@@ -141,8 +141,10 @@ describe("ModulesService.loadModulesFromConfig", () => {
       callMany: () => Promise.resolve(""),
       embed: () => Promise.resolve([]),
     };
+    // ModulePlugin expects a constructor (class), not an instance
+    const MockPluginClass = jest.fn().mockImplementation(() => mockPluginInstance);
     const mockModule = makeModule({
-      plugins: [{ name: "test-plugin", plugin: mockPlugin as any }],
+      plugins: [{ name: "test-plugin", plugin: MockPluginClass as any }],
     });
 
     const service = new ModulesService();
@@ -153,13 +155,14 @@ describe("ModulesService.loadModulesFromConfig", () => {
         const resolvedCtx = ctx || context;
         await mockModule.init({ config: {} as Config, cwd: process.cwd() });
         for (const plugin of mockModule.plugins) {
-          resolvedCtx.Plugins.registerPlugin(plugin.name, plugin.plugin);
+          const instance = new (plugin.plugin as any)(resolvedCtx);
+          resolvedCtx.Plugins.registerPlugin(plugin.name, instance);
         }
       });
 
     await service.loadModulesFromConfig(context);
 
-    expect(context.Plugins.registerPlugin).toHaveBeenCalledWith("test-plugin", mockPlugin);
+    expect(context.Plugins.registerPlugin).toHaveBeenCalledWith("test-plugin", mockPluginInstance);
     spy.mockRestore();
   });
 

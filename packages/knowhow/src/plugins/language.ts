@@ -6,10 +6,6 @@ import { getConfig, getLanguageConfig } from "../config";
 import { getEnabledPlugins } from "../types";
 import { PluginBase, PluginMeta } from "./PluginBase";
 import { Plugin, PluginContext } from "./types";
-import { GitHubPlugin } from "./github";
-import { AsanaPlugin } from "./asana";
-import { JiraPlugin } from "./jira";
-import { LinearPlugin } from "./linear";
 import { PluginService } from "./plugins";
 
 /**

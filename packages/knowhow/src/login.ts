@@ -1,4 +1,4 @@
-import axios from "axios";
+import http from "./utils/http";
 import fs from "fs";
 import path from "path";
 import { chmod } from "fs/promises";
@@ -68,11 +68,10 @@ export async function login(jwtFlag?: boolean): Promise<void> {
       await updateConfig(config);
     }
   } catch (error) {
-    if (axios.isAxiosError(error) && error.response) {
+    if (http.isHttpError(error) && error.response) {
+      const errData = await error.response.json().catch(() => ({ message: "Unknown error" }));
       throw new Error(
-        `Error: ${error.response.status} - ${
-          error.response.data.message || "Unknown error"
-        }`
+        `Error: ${error.status} - ${errData.message || "Unknown error"}`
       );
     }
     console.log(
@@ -98,7 +97,7 @@ export async function loadJwt(): Promise<string> {
 }
 
 export async function checkJwt(storedJwt: string) {
-  const response = await axios.get(`${KNOWHOW_API_URL}/api/users/me`, {
+  const response = await http.get(`${KNOWHOW_API_URL}/api/users/me`, {
     headers: {
       Authorization: `Bearer ${storedJwt}`,
     },

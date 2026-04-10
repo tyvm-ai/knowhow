@@ -11,6 +11,7 @@ function makeContext(): PluginContext {
       emit: jest.fn(),
       emitBlocking: jest.fn(),
       emitNonBlocking: jest.fn(),
+      log: jest.fn(),
     } as any,
   } as PluginContext;
 }
@@ -110,8 +111,8 @@ describe("PluginService.loadPluginsFromConfig", () => {
   });
 
   it("should log a warning and not crash when a plugin fails to load", async () => {
-    const service = new PluginService(makeContext());
-    const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+    const context = makeContext();
+    const service = new PluginService(context);
 
     service.loadPlugin = jest.fn().mockRejectedValue(new Error("Module not found"));
 
@@ -122,12 +123,11 @@ describe("PluginService.loadPluginsFromConfig", () => {
     } as unknown as Config;
 
     await expect(service.loadPluginsFromConfig(config)).resolves.toBeUndefined();
-    expect(warnSpy).toHaveBeenCalledWith(
+    expect(context.Events.log).toHaveBeenCalledWith(
+      "PluginService",
       expect.stringContaining("broken"),
-      expect.any(String)
+      "warn"
     );
-
-    warnSpy.mockRestore();
   });
 
   it("should load each plugin with the correct spec string", async () => {

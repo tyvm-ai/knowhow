@@ -73,6 +73,7 @@ describe("LanguagePlugin", () => {
     const mockEventService = {
       on: jest.fn(),
       emit: jest.fn(),
+      log: jest.fn(),
     };
     const mockListPlugins = jest.fn().mockReturnValue(["github", "asana"]);
     const mockCall = jest.fn().mockResolvedValue(["mocked plugin response"]);
@@ -362,6 +363,7 @@ describe("LanguagePlugin", () => {
     const mockEventService = {
       on: jest.fn(),
       emit: jest.fn(),
+      log: jest.fn(),
     };
     const mockPluginService = new MockedPluginService({} as any);
     const mockListPlugins = jest.fn().mockReturnValue(["github"]);

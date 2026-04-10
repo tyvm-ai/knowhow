@@ -1,4 +1,4 @@
-import axios from "axios";
+import http from "../utils/http";
 import {
   GenericClient,
   CompletionOptions,
@@ -91,12 +91,10 @@ export class HttpClient implements GenericClient {
         }),
       };
 
-      const response = await axios.post(
+      const response = await http.post(
         `${this.baseUrl}/v1/chat/completions`,
         body,
-        {
-          headers: this.headers,
-        }
+        { headers: this.headers as Record<string, string> }
       );
 
       const data = response.data;
@@ -123,15 +121,13 @@ export class HttpClient implements GenericClient {
 
   async createEmbedding(options: EmbeddingOptions): Promise<EmbeddingResponse> {
     return this.withRetry(async () => {
-      const response = await axios.post(
+      const response = await http.post(
         `${this.baseUrl}/v1/embeddings`,
         {
           model: options.model,
           input: options.input,
         },
-        {
-          headers: this.headers,
-        }
+        { headers: this.headers as Record<string, string> }
       );
 
       const data = response.data;
@@ -152,8 +148,8 @@ export class HttpClient implements GenericClient {
 
   async getModels() {
     return this.withRetry(async () => {
-      const response = await axios.get(`${this.baseUrl}/v1/models`, {
-        headers: this.headers,
+      const response = await http.get(`${this.baseUrl}/v1/models`, {
+        headers: this.headers as Record<string, string>,
       });
 
       const data = response.data?.data;

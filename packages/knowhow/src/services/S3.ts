@@ -12,9 +12,8 @@ import * as fs from "fs";
 const fsPromises = fs.promises;
 import { createWriteStream } from "fs";
 import * as path from "path";
-import { pipeline } from "stream";
+import { pipeline, Readable } from "stream";
 import * as util from "util";
-import axios from "axios";
 
 import { createReadStream } from "fs";
 const pipelineAsync = util.promisify(pipeline);
@@ -83,19 +82,19 @@ export class S3Service {
       const fileStream = createReadStream(filePath);
       const fileStats = await fsPromises.stat(filePath);
 
-      const response = await axios.put(presignedUrl, fileStream, {
-        headers: {
-          "Content-Length": fileStats.size,
-        },
-        maxBodyLength: Infinity,
-        maxContentLength: Infinity,
+      const response = await fetch(presignedUrl, {
+        method: "PUT",
+        headers: { "Content-Length": String(fileStats.size) },
+        body: fileStream as any,
+        // @ts-ignore - Node 18+ supports ReadableStream body with duplex
+        duplex: "half",
       });
 
-      if (response.status === 200) {
-        console.log("File uploaded successfully to pre-signed URL");
-      } else {
+      if (!response.ok) {
         throw new Error(`Upload failed with status code: ${response.status}`);
       }
+
+      console.log("File uploaded successfully to pre-signed URL");
     } catch (error) {
       console.error("Error uploading file to pre-signed URL:", error);
       throw error;
@@ -107,12 +106,14 @@ export class S3Service {
     destinationPath: string
   ): Promise<void> {
     try {
-      const response = await axios.get(presignedUrl, {
-        responseType: "stream",
-      });
+      const response = await fetch(presignedUrl);
+
+      if (!response.ok) {
+        throw new Error(`Download failed with status code: ${response.status}`);
+      }
 
       const fileStream = createWriteStream(destinationPath);
-      await pipelineAsync(response.data, fileStream);
+      await pipelineAsync(Readable.from(response.body as any), fileStream);
 
       console.log(
         `File downloaded successfully from pre-signed URL to ${destinationPath}`
@@ -123,4 +124,3 @@ export class S3Service {
     }
   }
 }
-

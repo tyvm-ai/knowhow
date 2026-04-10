@@ -14,8 +14,6 @@ export * from "./scanFile";
 export * from "./textSearch";
 export * from "./visionTool";
 export * from "./writeFile";
-export * from "./asana";
-export * from "./github";
 export * from "./fileSearch";
 export * from "./language";
 export * from "./askHuman";

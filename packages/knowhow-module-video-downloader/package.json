@@ -1,0 +1,14 @@
+{
+  "name": "@tyvm/knowhow-module-video-downloader",
+  "version": "0.0.1",
+  "description": "Video downloader plugin for @tyvm/knowhow",
+  "main": "ts_build/src/index.js",
+  "types": "ts_build/src/index.d.ts",
+  "scripts": { "compile": "tsc", "prepublishOnly": "npm run compile" },
+  "peerDependencies": { "@tyvm/knowhow": "*" },
+  "dependencies": { "youtube-dl-exec": "^2.5.5" },
+  "devDependencies": {
+    "@types/node": "^20.6.3",
+    "typescript": "^4.6.3"
+  }
+}

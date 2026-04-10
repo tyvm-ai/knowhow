@@ -371,7 +371,7 @@ describe("ToolResponseCache", () => {
       const result = await cache.queryToolResponse("missing_id", ".test");
       expect(result).toContain("Error: No tool response found");
       expect(result).toContain("missing_id");
-      expect(result).toContain("Available IDs:");
+      expect(result).toContain("Available toolCallIds:");
     });
 
     it("should handle invalid JQ queries with error message", async () => {
@@ -698,7 +698,7 @@ describe("ToolResponseCache", () => {
       const result = await cache.tailToolResponse("missing_id");
       expect(result).toContain("Error: No tool response found");
       expect(result).toContain("missing_id");
-      expect(result).toContain("Available IDs:");
+      expect(result).toContain("Available toolCallIds:");
     });
 
     it("should handle lines option of 0", async () => {

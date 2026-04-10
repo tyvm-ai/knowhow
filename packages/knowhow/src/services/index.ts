@@ -1,4 +1,3 @@
-import { DownloaderService } from "../plugins/downloader/downloader";
 import { AIClient, Clients } from "../clients";
 import { AgentService } from "./AgentService";
 import { EventService } from "./EventService";
@@ -14,6 +13,7 @@ import { AgentSyncKnowhowWeb } from "./AgentSyncKnowhowWeb";
 import { AgentSyncFs } from "./AgentSyncFs";
 import { SessionManager } from "./SessionManager";
 import { TaskRegistry } from "./TaskRegistry";
+import { MediaProcessorService } from "./MediaProcessorService";
 
 export * from "./AgentService";
 export * from "./EventService";
@@ -25,6 +25,7 @@ export * from "./LazyToolsService";
 export * as MCP from "./Mcp";
 export * from "./EmbeddingService";
 export * from "./DockerService";
+export * from "./MediaProcessorService";
 export * from "./AgentSyncKnowhowWeb";
 export * from "./AgentSyncFs";
 export * from "./SessionManager";
@@ -45,7 +46,7 @@ let Singletons = {} as {
   knowhowApiClient: KnowhowSimpleClient;
   Plugins: PluginService;
   Clients: AIClient;
-  Downloader: DownloaderService;
+  MediaProcessor: MediaProcessorService;
 };
 
 export const services = (): typeof Singletons => {
@@ -53,7 +54,6 @@ export const services = (): typeof Singletons => {
     const Tools = new ToolsService();
     const Events = new EventService();
     const Agents = new AgentService(Tools, Events);
-    const Downloader = new DownloaderService(Clients);
     const Plugins = new PluginService({
       Agents,
       Events,
@@ -66,11 +66,11 @@ export const services = (): typeof Singletons => {
       AwsS3: new S3Service(),
       Clients,
       Docker: new DockerService(),
-      Downloader,
       Events,
       Flags: new FlagsService(),
       GitHub: new GitHubService(),
       Mcp: new McpService(),
+      MediaProcessor: new MediaProcessorService(Clients),
       Plugins,
       Tools,
       knowhowApiClient: new KnowhowSimpleClient(),

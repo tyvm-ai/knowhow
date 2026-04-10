@@ -1,5 +1,5 @@
 import { Octokit } from "@octokit/rest";
-import axios from "axios";
+import http from "../utils/http";
 
 export class GitHubService {
   octokit: Octokit;
@@ -22,7 +22,7 @@ export class GitHubService {
   }
 
   private async getLfsContent(downloadUrl: string): Promise<string> {
-    const response = await axios.get(downloadUrl);
+    const response = await http.get(downloadUrl);
     return JSON.stringify(response.data);
   }
 
