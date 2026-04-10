@@ -212,6 +212,15 @@ export class CliChatService implements ChatService {
           // Old-style void handler, consider it handled
           return true;
         }
+      } else {
+        // Input starts with "/" but no matching command found - warn the user
+        const availableCommands = this.getCommandsForActiveModes();
+        console.log(
+          `Unknown command "/${commandName}". Available commands: ${availableCommands
+            .map((cmd) => `/${cmd.name}`)
+            .join(", ")}`
+        );
+        return true;
       }
     }
 
