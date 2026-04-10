@@ -105,7 +105,7 @@ export async function purge(globPath: string) {
 
 export async function upload() {
   const config = await getConfig();
-  const { AwsS3, knowhowApiClient } = services();
+  const { AwsS3, Embeddings, knowhowApiClient } = services();
 
   for (const source of config.embedSources) {
     const bucketName = source.remote;
@@ -125,16 +125,15 @@ export async function upload() {
       items,
     };
 
-    if (source.remoteType === "s3") {
+    if (Embeddings.hasResolver(source.remoteType) && source.remoteType !== "knowhow") {
       console.log(
         "Uploading",
         source.output,
         "to",
         `${bucketName}/${embeddingName}.json`
       );
-
-      const s3Key = `${embeddingName}.json`;
-      await AwsS3.uploadFile(source.output, bucketName, s3Key);
+      const remoteKey = `${embeddingName}.json`;
+      await Embeddings.upload(source.remoteType, source.output, bucketName, remoteKey);
     } else if (source.remoteType === "knowhow") {
       if (!source.remoteId) {
         throw new Error("remoteId is required for knowhow uploads");
@@ -357,7 +356,7 @@ export async function handleSingleOutputGeneration(
 
 export async function download() {
   const config = await getConfig();
-  const { AwsS3, GitHub, knowhowApiClient } = services();
+  const { AwsS3, Embeddings, knowhowApiClient } = services();
 
   for (const source of config.embedSources) {
     const { remote, remoteType } = source;
@@ -375,28 +374,17 @@ export async function download() {
     const fileName = `${name}.json`;
     const destinationPath = source.output;
 
-    if (remoteType === "s3") {
-      const bucketName = remote;
+    if (Embeddings.hasResolver(remoteType)) {
       console.log(
         "Downloading",
         fileName,
         `from ${remoteType}`,
-        bucketName,
-        "to",
-        destinationPath
-      );
-      await AwsS3.downloadFile(bucketName, fileName, destinationPath);
-    } else if (remoteType === "github") {
-      console.log(
-        "Downloading",
-        fileName,
-        "from GitHub repo",
         remote,
         "to",
         destinationPath
       );
       const embeddingPath = ".knowhow/embeddings/" + fileName;
-      await GitHub.downloadFile(remote, embeddingPath, destinationPath);
+      await Embeddings.download(remoteType, remote, embeddingPath, destinationPath);
     } else if (remoteType === "knowhow") {
       if (!source.remoteId) {
         throw new Error("remoteId is required for knowhow downloads");

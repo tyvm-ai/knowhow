@@ -2,7 +2,7 @@ import { AIClient, Clients } from "../clients";
 import { AgentService } from "./AgentService";
 import { EventService } from "./EventService";
 import { FlagsService } from "./flags";
-import { GitHubService } from "./GitHub";
+import { EmbeddingsService } from "./EmbeddingsService";
 import { KnowhowSimpleClient } from "./KnowhowClient";
 import { McpService } from "./Mcp";
 import { S3Service } from "./S3";
@@ -18,7 +18,7 @@ import { MediaProcessorService } from "./MediaProcessorService";
 export * from "./AgentService";
 export * from "./EventService";
 export * from "./flags";
-export * from "./GitHub";
+export * from "./EmbeddingsService";
 export * from "./S3";
 export * from "./Tools";
 export * from "./LazyToolsService";
@@ -38,8 +38,8 @@ let Singletons = {} as {
   Tools: ToolsService;
   Events: EventService;
   Agents: AgentService;
+  Embeddings: EmbeddingsService;
   Flags: FlagsService;
-  GitHub: GitHubService;
   Mcp: McpService;
   AwsS3: S3Service;
   Docker: DockerService;
@@ -67,8 +67,8 @@ export const services = (): typeof Singletons => {
       Clients,
       Docker: new DockerService(),
       Events,
+      Embeddings: new EmbeddingsService(),
       Flags: new FlagsService(),
-      GitHub: new GitHubService(),
       Mcp: new McpService(),
       MediaProcessor: new MediaProcessorService(Clients),
       Plugins,

@@ -37,7 +37,6 @@ import {
   agents,
 } from "../../agents";
 import { ToolCallEvent } from "../../agents/base/base";
-import { $Command } from "@aws-sdk/client-s3";
 import { KnowhowSimpleClient } from "../../services/KnowhowClient";
 
 export class AgentModule extends BaseChatModule {

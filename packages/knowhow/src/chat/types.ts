@@ -3,7 +3,7 @@
  */
 import { ChatInteraction, Config } from "../types";
 import { BaseAgent } from "../agents/base/base";
-import { ToolsService } from "src/services";
+import { ToolsService } from "../services";
 import { AgentRenderer } from "./renderer/types";
 
 export interface ChatContext {

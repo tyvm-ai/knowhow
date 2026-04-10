@@ -18,7 +18,6 @@
     "@types/ws",
     "@babel/preset-typescript"
   ],
-  "skip-missing": true,
   "ignore-patterns": [
     "src/dataset/**",
     "ts_build/**",
