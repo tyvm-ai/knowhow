@@ -1,5 +1,5 @@
 {
-  "name": "@tyvm/knowhow-module-ast-js",
+  "name": "@tyvm/knowhow-module-ast",
   "version": "0.0.1",
   "description": "Tree-sitter AST parsing tools for @tyvm/knowhow",
   "main": "ts_build/src/index.js",

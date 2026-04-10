@@ -1,4 +1,4 @@
-# @tyvm/knowhow-module-ast-js
+# @tyvm/knowhow-module-ast
 
 Tree-sitter AST parsing tools for [@tyvm/knowhow](https://www.npmjs.com/package/@tyvm/knowhow).
 
@@ -22,7 +22,7 @@ This module provides 5 AST-based code editing tools powered by [tree-sitter](htt
 ## Installation
 
 ```bash
-npm install @tyvm/knowhow-module-ast-js
+npm install @tyvm/knowhow-module-ast
 ```
 
 ## Usage
@@ -32,7 +32,7 @@ Add the module to your `knowhow.json` configuration:
 ```json
 {
   "modules": [
-    "@tyvm/knowhow-module-ast-js"
+    "@tyvm/knowhow-module-ast"
   ]
 }
 ```
