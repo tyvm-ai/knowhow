@@ -265,6 +265,7 @@ export const Models = {
     Gemini_31_Pro_Preview: "gemini-3.1-pro-preview",
     Gemini_31_Flash_Image_Preview: "gemini-3.1-flash-image-preview",
     Gemini_31_Flash_Lite_Preview: "gemini-3.1-flash-lite-preview",
+    Gemini_31_Flash_Live_Preview: "gemini-3.1-flash-live-preview",
     Gemini_3_Flash_Preview: "gemini-3-flash-preview",
     Gemini_3_Pro_Image_Preview: "gemini-3-pro-image-preview",
     // Gemini 2.5
