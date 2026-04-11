@@ -226,11 +226,18 @@ export class ScriptExecutor {
 
       tracer.emitEvent("script_compilation_start", {});
 
-      // Compile the script
+      // Compile the script.
+      // Many scripts follow the pattern: define functions, then call `main();` at the end.
+      // The IIFE wrapper captures the *return value* of the function body, but `main();`
+      // is an expression statement — it doesn't return anything from the IIFE.
+      // We fix this by rewriting the last bare expression-statement into `return <expr>;`
+      // so that the script's return value (e.g. the object from main()) is captured.
+      const scriptWithReturn = this.injectReturnForLastExpression(script);
+
       const wrappedScript = `
         (async function() {
           "use strict";
-          ${script}
+          ${scriptWithReturn}
         })()
       `;
 
@@ -391,4 +398,44 @@ export class ScriptExecutor {
   getDefaultPolicy(): SecurityPolicy {
     return { ...this.defaultPolicy };
   }
-}
+
+
+  /**
+   * Rewrite the last bare expression-statement in a script to use `return` so
+   * that the value propagates out of the IIFE wrapper.
+   *
+   * For example:
+   *   main();        →  return main();
+   *   main()         →  return main()
+   *   someExpr;      →  return someExpr;
+   *
+   * We only transform the last non-empty, non-comment line that looks like a
+   * plain expression statement (i.e. does NOT start with keywords that aren't
+   * valid in expression position: `function`, `class`, `const`, `let`, `var`,
+   * `if`, `for`, `while`, `do`, `switch`, `try`, `return`, `throw`, `break`,
+   * `continue`, `import`, `export`, `{`).
+   */
+  private injectReturnForLastExpression(script: string): string {
+    const lines = script.split('\n');
+
+    // Walk backwards to find the last non-empty, non-comment line
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const trimmed = lines[i].trim();
+      if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) {
+        continue;
+      }
+
+      // Skip lines that start with statement keywords — these can't be returned
+      const statementKeywords = /^(function\s|class\s|const\s|let\s|var\s|if\s*[(]|for\s*[(]|while\s*[(]|do\s*[{]|switch\s*[(]|try\s*[{]|return\s|throw\s|break;|continue;|import\s|export\s|[{])/;
+      if (statementKeywords.test(trimmed)) {
+        break; // last meaningful line is a statement — don't touch it
+      }
+
+      // It looks like an expression statement — prepend `return`
+      lines[i] = lines[i].replace(trimmed, `return ${trimmed}`);
+      return lines.join('\n');
+    }
+
+    // No suitable last expression found — return script unchanged
+    return script;
+  }}
