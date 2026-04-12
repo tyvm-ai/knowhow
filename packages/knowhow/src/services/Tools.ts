@@ -73,7 +73,12 @@ export class ToolsService {
     this.addTools(tools);
 
     for (const name of toolNames) {
-      this.setFunction(name, toolsService.getFunction(name));
+      const fn = toolsService.getFunction(name);
+      if (!fn) {
+        continue;
+      }
+
+      this.setFunction(name, fn);
     }
   }
 
@@ -118,6 +123,10 @@ export class ToolsService {
 
   setFunctions(names: string[], funcs: ((...args: any) => any)[]) {
     for (let i = 0; i < names.length; i++) {
+      if (!names[i] || typeof funcs[i] !== "function") {
+        console.warn("Ignoring invalid function entry at index", i, "with name", names[i]);
+        continue;
+      }
       this.setFunction(names[i], funcs[i]);
     }
   }

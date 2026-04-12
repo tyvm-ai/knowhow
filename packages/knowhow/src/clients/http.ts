@@ -18,6 +18,7 @@ export class HttpClient implements GenericClient {
       try {
         return await fn();
       } catch (e: any) {
+        console.log(e);
         lastError = e;
         const errorStr = e.toString();
         const isNonRetriable =
@@ -38,7 +39,9 @@ export class HttpClient implements GenericClient {
         }
         const delay = 1000 * Math.pow(2, attempt);
         console.warn(
-          `HTTP request failed (attempt ${attempt + 1}/${retries}), retrying in ${delay}ms...`,
+          `HTTP request failed (attempt ${
+            attempt + 1
+          }/${retries}), retrying in ${delay}ms...`,
           e.message
         );
         await new Promise((resolve) => setTimeout(resolve, delay));
@@ -146,12 +149,13 @@ export class HttpClient implements GenericClient {
     });
   }
 
-  async getModels() {
+  async getModels(type = "all") {
     return this.withRetry(async () => {
-      const response = await http.get(`${this.baseUrl}/v1/models`, {
+      const response = await http.get(`${this.baseUrl}/v1/models?type=${type}`, {
         headers: this.headers as Record<string, string>,
       });
 
+      console.log(response.data);
       const data = response.data?.data;
 
       return data.map((model: any) => ({

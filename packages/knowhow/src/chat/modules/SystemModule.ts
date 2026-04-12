@@ -28,7 +28,8 @@ export class SystemModule extends BaseChatModule {
       },
       {
         name: "clear",
-        description: "Clear chat history - AI will not remember previous messages",
+        description:
+          "Clear chat history - AI will not remember previous messages",
         handler: this.handleClearCommand.bind(this),
       },
     ];
@@ -52,6 +53,10 @@ export class SystemModule extends BaseChatModule {
       `\n\nCurrent Provider: ${currentProvider}\nCurrent Model: ${currentModel}\n\nWhich model would you like to use: `,
       models
     );
+
+    if (!selectedModel) {
+      return;
+    }
 
     this.chatService?.setContext({
       currentModel: selectedModel,
@@ -86,12 +91,16 @@ export class SystemModule extends BaseChatModule {
       providers
     );
 
+    if (!selectedProvider) {
+      return;
+    }
+
     // Get default model for new provider
     const ChatModelDefaults = {
-      openai: Models.openai.GPT_5,
-      anthropic: Models.anthropic.Sonnet4,
-      google: Models.google.Gemini_25_Flash_Preview,
-      xai: Models.xai.GrokCodeFast,
+      openai: Models.openai.GPT_53_Codex,
+      anthropic: Models.anthropic.Sonnet4_6,
+      google: Models.google.Gemini_3_Flash_Preview,
+      xai: Models.xai.Grok4_1_Fast_NonReasoning,
     };
 
     const newModel =

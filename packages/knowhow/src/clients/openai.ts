@@ -29,7 +29,17 @@ import {
   ChatCompletionMessageToolCall,
 } from "openai/resources/chat";
 
-import { EmbeddingModels, Models, OpenAiReasoningModels } from "../types";
+import {
+  EmbeddingModels,
+  Models,
+  OpenAiReasoningModels,
+  OpenAiImageModels,
+  OpenAiVideoModels,
+  OpenAiTTSModels,
+  OpenAiTranscriptionModels,
+  OpenAiEmbeddingModels,
+} from "../types";
+import { ModelModality } from "./types";
 
 const config = getConfigSync();
 
@@ -167,15 +177,23 @@ export class GenericOpenAiClient implements GenericClient {
     return total;
   }
 
-  async getModels() {
-    const models = await this.client.models.list();
-    return models.data.map((m) => {
-      return {
-        id: m.id,
-        object: m.object,
-        owned_by: m.owned_by,
+  async getModels(modality?: ModelModality): Promise<{ id: string }[]> {
+    if (modality) {
+      const map: Partial<Record<ModelModality, string[]>> = {
+        completion: Object.values(Models.openai),
+        embedding: OpenAiEmbeddingModels,
+        image: OpenAiImageModels,
+        audio: [...OpenAiTTSModels, ...OpenAiTranscriptionModels],
+        transcription: OpenAiTranscriptionModels,
+        video: OpenAiVideoModels,
       };
-    });
+      return (map[modality] ?? []).map((id) => ({ id }));
+    }
+    // No modality — live API call (backward compat)
+    const models = await this.client.models.list();
+    return models.data.map((m) => ({
+      id: m.id,
+    }));
   }
 
   async createEmbedding(options: EmbeddingOptions): Promise<EmbeddingResponse> {

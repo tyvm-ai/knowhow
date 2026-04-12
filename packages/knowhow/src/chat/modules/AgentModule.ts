@@ -250,14 +250,21 @@ export class AgentModule extends BaseChatModule {
       if (allAgents && allAgents[agentName]) {
         // Set selected agent in context and enable agent mode
         if (context) {
-          const selectedAgent = allAgents[agentName];
+          const selectedAgent = allAgents[agentName] as BaseAgent;
           context.selectedAgent = selectedAgent;
           context.agentMode = true;
           context.currentAgent = agentName;
           // Update context's model/provider to reflect the agent's settings
           // so /model and /provider commands show accurate information
-          context.currentModel = selectedAgent.getModel();
-          context.currentProvider = selectedAgent.getProvider();
+
+          const clientInfo = await selectedAgent.clientService.getClient(
+            undefined,
+            selectedAgent.getModel()
+          );
+
+          context.currentModel = clientInfo.model;
+          context.currentProvider = clientInfo.provider
+
           this.chatService.setMode("agent");
         }
 

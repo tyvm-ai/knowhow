@@ -27,7 +27,8 @@ import {
   ChatCompletionToolMessageParam,
 } from "openai/resources/chat";
 
-import { Models } from "../types";
+import { Models, XaiImageModels, XaiVideoModels } from "../types";
+import { ModelModality } from "./types";
 
 export class GenericXAIClient implements GenericClient {
   private client: OpenAI;
@@ -124,11 +125,17 @@ export class GenericXAIClient implements GenericClient {
     return total;
   }
 
-  async getModels() {
-    // XAI doesn't provide a model listing endpoint, so we'll return the static list
-    return Object.keys(Models.xai).map((key) => ({
-      id: Models.xai[key],
-    }));
+  async getModels(modality?: ModelModality): Promise<{ id: string }[]> {
+    if (modality) {
+      const map: Partial<Record<ModelModality, string[]>> = {
+        completion: Object.values(Models.xai),
+        image: XaiImageModels,
+        video: XaiVideoModels,
+      };
+      return (map[modality] ?? []).map((id) => ({ id }));
+    }
+    // No modality — return full static list (XAI has no /models endpoint)
+    return Object.values(Models.xai).map((id) => ({ id }));
   }
 
   async createEmbedding(options: EmbeddingOptions): Promise<EmbeddingResponse> {

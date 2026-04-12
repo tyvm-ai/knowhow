@@ -16,6 +16,9 @@ export class InputQueueManager {
   private static rl: readline.Interface | null = null;
   private static keypressListenerSetup = false;
 
+  // Tab completion state
+  private lastKeypressWasTab = false;
+
   // We keep one "live" buffer shared across stacked questions
   // (so typing is preserved when questions change)
   private currentLine = "";
@@ -57,27 +60,11 @@ export class InputQueueManager {
       historySize: 0,
 
       /**
-       * Use readline's built-in completion system so Tab does NOT insert a literal tab.
+       * Disable readline's built-in completion display - we handle Tab ourselves
+       * in the keypress listener to avoid readline's kRefreshLine overwriting
+       * small completion lists (lists that fit in 1-2 lines get erased).
        */
-      completer: (line: string) => {
-        const current = this.peek();
-        const opts = current?.options ?? [];
-        if (opts.length === 0) return [[], line];
-
-        // Identify the "word" at the end of the line that we want to complete
-        // (default readline behavior is word-based completion)
-        const lastSpace = Math.max(
-          line.lastIndexOf(" "),
-          line.lastIndexOf("\t")
-        );
-        const word = line.slice(lastSpace + 1); // the token to complete
-
-        const hits = opts.filter((c) => c.startsWith(word));
-
-        // Return [matches, wordToReplace]
-        // Readline will replace `word` with the selected match (or extend if unique)
-        return [hits, word];
-      },
+      completer: (line: string) => [[], line],
     });
 
     // When user presses Enter, buffer the line for paste detection
@@ -176,6 +163,16 @@ export class InputQueueManager {
           instance.historyIndex = -1;
           instance.savedLineBeforeHistory = "";
         }
+
+        // Handle Tab completion ourselves to avoid readline's kRefreshLine
+        // overwriting small completion lists (1-2 line lists get erased by readline).
+        if (key?.name === "tab") {
+          instance.handleTabCompletion();
+          return;
+        }
+
+        // Any non-tab keypress resets the "last was tab" state
+        instance.lastKeypressWasTab = false;
 
         // Custom Up/Down history navigation using only passed-in history
         if (key?.name === "up") {
@@ -309,6 +306,90 @@ export class InputQueueManager {
     }
 
     return out;
+  }
+
+  /**
+   * Handle Tab key completion manually.
+   *
+   * We do this ourselves instead of using readline's built-in completer because
+   * readline's kRefreshLine (called after displaying completions) uses
+   * clearScreenDown which erases small completion lists (1-2 lines) that fit
+   * within the terminal's current scroll region. Large lists scroll past and
+   * survive, but small lists get wiped out before the user can read them.
+   *
+   * Behavior:
+   * - First Tab: extend line to longest common prefix of matches (if possible)
+   * - Second consecutive Tab (no extension possible): print the matches list
+   */
+  private handleTabCompletion(): void {
+    const current = this.peek();
+    const opts = current?.options ?? [];
+
+    // Sync current line from readline before we do anything
+    this.syncFromReadline();
+    const line = this.currentLine;
+
+    if (opts.length === 0) {
+      this.lastKeypressWasTab = false;
+      return;
+    }
+
+    // Find the "word" to complete (everything after last space/tab)
+    const lastSpace = Math.max(line.lastIndexOf(" "), line.lastIndexOf("\t"));
+    const word = line.slice(lastSpace + 1);
+
+    const hits = opts.filter((c) => c.startsWith(word));
+
+    if (hits.length === 0) {
+      this.lastKeypressWasTab = false;
+      return;
+    }
+
+    const prefix = this.longestCommonPrefix(hits);
+
+    if (prefix.length > word.length) {
+      // Can extend - replace word with the longer common prefix
+      const before = line.slice(0, lastSpace + 1);
+      const newLine = before + prefix;
+      this.replaceLine(newLine);
+      this.currentLine = newLine;
+      this.lastKeypressWasTab = false;
+      return;
+    }
+
+    // No extension possible - show list on second consecutive Tab
+    if (!this.lastKeypressWasTab) {
+      // First tab with no extension: just set flag, user needs to tab again
+      this.lastKeypressWasTab = true;
+      return;
+    }
+
+    // Second consecutive tab: print the completions list
+    this.lastKeypressWasTab = false;
+    const columns = process.stdout.columns || 80;
+    const maxWidth = Math.max(...hits.map((h) => h.length)) + 2;
+    const numCols = Math.max(1, Math.floor(columns / maxWidth));
+    const rows: string[] = [];
+    for (let i = 0; i < hits.length; i += numCols) {
+      const row = hits.slice(i, i + numCols);
+      rows.push(row.map((h) => h.padEnd(maxWidth)).join(""));
+    }
+    // Write completions. We intentionally do NOT call rl.prompt() here because
+    // readline tracks the cursor row internally. When prompt(true) is called,
+    // readline moves the cursor back UP to where it thinks the prompt is and
+    // redraws — overwriting any completion output that fit within the same scroll
+    // region (i.e., small lists that didn't cause the terminal to scroll).
+    //
+    // Instead, we write the completions and then a fresh prompt line manually,
+    // without involving readline's cursor tracking at all.
+    const promptText = current!.question;
+    const inputText = this.currentLine;
+    process.stdout.write("\r\n" + rows.join("\r\n") + "\r\n" + promptText + inputText);
+    // Now sync readline's internal state to match what we drew manually.
+    // We replace the line content via ctrl+u then re-type it so readline's
+    // internal `line` buffer and cursor position are correct.
+    InputQueueManager.rl?.write(null, { ctrl: true, name: "u" });
+    if (inputText) InputQueueManager.rl?.write(inputText);
   }
 
   private render(): void {

@@ -132,8 +132,9 @@ export type McpConfig = {
 };
 
 export type ModelProvider = {
-  url: string;
+  url?: string;
   provider: string;
+  envKey?: string;
   headers?: { [key: string]: string };
   jwtFile?: string;
 };
