@@ -490,6 +490,23 @@ async function main() {
     });
 
   program
+    .command("cloudworker")
+    .description("Create or sync a cloud worker with your local knowhow config")
+    .option("--create", "Create a new cloud worker with synced config and files")
+    .option("--push <uid>", "Push/sync local config and files to an existing cloud worker")
+    .option("--name <name>", "Name for the cloud worker (used with --create)")
+    .option("--dry-run", "Print what would be synced without doing it")
+    .action(async (options) => {
+      try {
+        const { cloudWorker } = await import("./cloudWorker");
+        await cloudWorker(options);
+      } catch (error) {
+        console.error("Error running cloudworker:", error);
+        process.exit(1);
+      }
+    });
+
+  program
     .command("script")
     .description("Run a local tool script file using the executeScript sandbox")
     .option("--input-file <path>", "Path to a local .js/.ts script file to run")
