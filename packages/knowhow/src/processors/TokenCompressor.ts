@@ -131,7 +131,7 @@ export class TokenCompressor implements JsonCompressorStorage {
       200
     )}...\n[Use ${
       this.toolName
-    } tool with key "${firstKey}" to retrieve content. Follow NEXT_CHUNK_KEY references for complete content]\n[TIP: If this is JSON data, prefer using the jqToolResponse tool with the toolCallId instead — it parses ._data automatically and lets you filter/search without repeated expandTokens calls]`;
+    } tool with key "${firstKey}" to retrieve content. Follow NEXT_CHUNK_KEY references for complete content]\n[TIP: try jqToolResponse,grepToolResponse,tailToolResponse to filter/search/map without repeated expandTokens calls]`;
   }
 
   /**
@@ -142,13 +142,13 @@ export class TokenCompressor implements JsonCompressorStorage {
     if (content.includes("[COMPRESSED_STRING")) {
       return true;
     }
-    
+
     // Check for compressed JSON structure with schema key
     const parsed = this.tryParseJson(content);
     if (parsed && parsed._schema_key && typeof parsed._schema_key === "string") {
       return true;
     }
-    
+
     return false;
   }
 
@@ -241,7 +241,14 @@ export class TokenCompressor implements JsonCompressorStorage {
   public async compressMessage(message: Message) {
     // Compress content if it's a string
     if (typeof message.content === "string") {
-      message.content = this.compressContent(message.content);
+      const compressed = this.compressContent(message.content);
+      // If this is a tool message with a tool_call_id, append it to the compressed content
+      // so the agent knows which toolCallId to use for grepToolResponse/jqToolResponse/tailToolResponse
+      if (message.role === "tool" && message.tool_call_id && compressed !== message.content) {
+        message.content = compressed + `\n[toolCallId: ${message.tool_call_id}]`;
+      } else {
+        message.content = compressed;
+      }
     }
     // Handle array content (multimodal)
     else if (Array.isArray(message.content)) {
@@ -413,7 +420,7 @@ export const expandTokensDefinition: Tool = {
   function: {
     name: "expandTokens",
     description:
-      "Retrieve a chunk of compressed data that was stored during message processing. The returned content may contain a `NEXT_CHUNK_KEY` to retrieve subsequent chunks. NOTE: If the compressed data is JSON (e.g. a tool response), prefer using jqToolResponse instead — it lets you query the data directly using JQ without repeatedly calling expandTokens. Use expandTokens only for plain text/string data or when you need the raw content.",
+      "Retrieve a chunk of compressed data that was stored during message processing. The returned content may contain a `NEXT_CHUNK_KEY` to retrieve subsequent chunks. NOTE: Can also use jqToolResponse, grepToolResponse, tailToolResponse to access/filter/search compressed content without needing to expand all tokens.",
     parameters: {
       type: "object",
       positional: true,

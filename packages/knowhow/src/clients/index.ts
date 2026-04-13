@@ -18,119 +18,271 @@ import {
   FileUploadResponse,
   FileDownloadOptions,
   FileDownloadResponse,
+  ModelModality,
 } from "./types";
 import { GenericOpenAiClient } from "./openai";
 import { GenericAnthropicClient } from "./anthropic";
 import { GenericGeminiClient } from "./gemini";
-import { HttpClient } from "./http";
-import { EmbeddingModels, Models } from "../types";
-import { getConfig } from "../config";
-import {
-  GoogleImageModels,
-  GoogleVideoModels,
-  GoogleTTSModels,
-  OpenAiImageModels,
-  OpenAiVideoModels,
-  OpenAiTTSModels,
-  OpenAiTranscriptionModels,
-  XaiImageModels,
-  XaiVideoModels,
-} from "../types";
 import { GenericXAIClient } from "./xai";
 import { KnowhowGenericClient } from "./knowhow";
-import { loadKnowhowJwt } from "../services/KnowhowClient";
+import { HttpClient } from "./http";
+import { ModelProvider } from "../types";
+import { getConfig } from "../config";
+import { loadKnowhowJwt, KNOWHOW_API_URL } from "../services/KnowhowClient";
 import { ContextLimits } from "./contextLimits";
 
-export type ModelModality = "completion" | "embedding" | "image" | "audio" | "video";
+// ---------------------------------------------------------------------------
+// Built-in provider registry
+// Maps provider name → { clientClass } so AIClient knows how to instantiate
+// known providers without needing a url.
+// ---------------------------------------------------------------------------
 
-function envCheck(key: string): boolean {
-  const value = process.env[key];
-  if (!value) {
-    return false;
-  }
-  return true;
-}
+type ProviderRegistryEntry = {
+  /** Constructor that accepts up to two optional string args (e.g. apiKey or url, jwt) */
+  clientClass?: new (arg1?: string, arg2?: string) => GenericClient;
+  /** Custom factory — takes precedence over clientClass */
+  createClient?: (entry: ModelProvider) => GenericClient | null;
+};
+
+const BUILT_IN_PROVIDER_REGISTRY: Record<string, ProviderRegistryEntry> = {
+  openai: { clientClass: GenericOpenAiClient },
+  anthropic: { clientClass: GenericAnthropicClient },
+  google: { clientClass: GenericGeminiClient },
+  xai: { clientClass: GenericXAIClient },
+  knowhow: {
+    createClient: (entry: ModelProvider) => {
+      const jwt = loadKnowhowJwt();
+      if (!jwt) return null;
+      return new KnowhowGenericClient(KNOWHOW_API_URL, jwt);
+    },
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Default providers — pure data, no createClient logic here.
+// envKey: if set, the env var must be non-empty before this provider is init'd.
+// No envKey means the provider uses its own check (e.g. knowhow uses JWT file).
+// ---------------------------------------------------------------------------
+const DEFAULT_PROVIDERS: ModelProvider[] = [
+  { provider: "openai", envKey: "OPENAI_API_KEY" },
+  { provider: "anthropic", envKey: "ANTHROPIC_API_KEY" },
+  { provider: "google", envKey: "GEMINI_API_KEY" },
+  { provider: "xai", envKey: "XAI_API_KEY" },
+  { provider: "knowhow" },
+];
 
 export class AIClient {
-  clients = {
-    ...(envCheck("OPENAI_KEY") && { openai: new GenericOpenAiClient() }),
+  clients: Record<string, GenericClient> = {};
 
-    ...(envCheck("ANTHROPIC_API_KEY") && {
-      anthropic: new GenericAnthropicClient(),
-    }),
+  completionModels: Record<string, string[]> = {};
+  embeddingModels: Record<string, string[]> = {};
+  clientModels: Record<string, string[]> = {};
+  imageModels: Record<string, string[]> = {};
+  audioModels: Record<string, string[]> = {};
+  videoModels: Record<string, string[]> = {};
 
-    ...(envCheck("GEMINI_API_KEY") && { google: new GenericGeminiClient() }),
-    ...(envCheck("XAI_API_KEY") && { xai: new GenericXAIClient() }),
-    ...(loadKnowhowJwt() && { knowhow: new KnowhowGenericClient() }),
+  /** Internal registry: provider name → how to create + what models it has */
+  private providerRegistry: Record<string, ProviderRegistryEntry> = {
+    ...BUILT_IN_PROVIDER_REGISTRY,
   };
 
-  completionModels = {
-    ...(envCheck("OPENAI_KEY") && {
-      openai: Object.values(Models.openai),
-    }),
-    ...(envCheck("ANTHROPIC_API_KEY") && {
-      anthropic: Object.values(Models.anthropic),
-    }),
-    ...(envCheck("GEMINI_API_KEY") && {
-      google: Object.values(Models.google),
-    }),
-    ...(envCheck("XAI_API_KEY") && { xai: Object.values(Models.xai) }),
-  };
+  constructor() {
+    // _initDefaultProviders is async but we fire-and-forget here.
+    // Call registerModelProviders() or registerConfiguredModels() after construction
+    // if you need to await full registration.
+    this._initDefaultProviders();
+  }
 
-  embeddingModels = {
-    ...(envCheck("OPENAI_KEY") && {
-      openai: Object.values(EmbeddingModels.openai),
-    }),
-    ...(envCheck("GEMINI_API_KEY") && {
-      google: Object.values(EmbeddingModels.google),
-    }),
-  };
+  // ---------------------------------------------------------------------------
+  // Internal helpers
+  // ---------------------------------------------------------------------------
 
-  clientModels = {
-    ...(envCheck("OPENAI_KEY") && {
-      openai: [...this.completionModels.openai, ...this.embeddingModels.openai],
-    }),
-    ...(envCheck("ANTHROPIC_API_KEY") && {
-      anthropic: [...this.completionModels.anthropic],
-    }),
-    ...(envCheck("GEMINI_API_KEY") && {
-      google: [...this.completionModels.google, ...this.embeddingModels.google],
-    }),
-    ...(envCheck("XAI_API_KEY") && { xai: this.completionModels.xai }),
-  };
+  private async _initDefaultProviders() {
+    await this.registerModelProviders(DEFAULT_PROVIDERS);
+  }
 
-  imageModels: Record<string, string[]> = {
-    ...(envCheck("OPENAI_KEY") && {
-      openai: OpenAiImageModels,
-    }),
-    ...(envCheck("GEMINI_API_KEY") && {
-      google: GoogleImageModels,
-    }),
-    ...(envCheck("XAI_API_KEY") && {
-      xai: XaiImageModels,
-    }),
-  };
+  /**
+   * Resolve a GenericClient from a ModelProvider entry.
+   * Priority:
+   *  1. registry.createClient(entry)
+   *  2. registry.clientClass(envValue)
+   *  3. HttpClient(url, headers) + optional JWT
+   */
+  public resolveClient(entry: ModelProvider): GenericClient | null {
+    const reg = this.providerRegistry[entry.provider];
 
-  audioModels: Record<string, string[]> = {
-    ...(envCheck("OPENAI_KEY") && {
-      openai: [...OpenAiTTSModels, ...OpenAiTranscriptionModels],
-    }),
-    ...(envCheck("GEMINI_API_KEY") && {
-      google: GoogleTTSModels,
-    }),
-  };
+    // 1. Custom factory in registry
+    if (reg?.createClient) {
+      return reg.createClient(entry);
+    }
 
-  videoModels: Record<string, string[]> = {
-    ...(envCheck("OPENAI_KEY") && {
-      openai: OpenAiVideoModels,
-    }),
-    ...(envCheck("GEMINI_API_KEY") && {
-      google: GoogleVideoModels,
-    }),
-    ...(envCheck("XAI_API_KEY") && {
-      xai: XaiVideoModels,
-    }),
-  };
+    // 2. Known clientClass
+    if (reg?.clientClass) {
+      // Use the entry's envKey, or fall back to the DEFAULT_PROVIDERS envKey for this provider
+      const effectiveEnvKey =
+        entry.envKey ??
+        DEFAULT_PROVIDERS.find((p) => p.provider === entry.provider)?.envKey;
+
+      if (effectiveEnvKey) {
+        // envKey-based auth: env var must be present
+        const envValue = process.env[effectiveEnvKey];
+        if (!envValue) return null;
+        return new reg.clientClass(envValue);
+      }
+
+      // No envKey, no url — instantiate with no arg (client uses its own defaults)
+      return new reg.clientClass();
+    }
+
+    // 3. HTTP provider — requires url, no clientClass in registry
+    if (entry.url) {
+      const client = new HttpClient(entry.url, entry.headers);
+      if (entry.jwtFile) {
+        client.loadJwtFile(entry.jwtFile);
+      }
+      return client;
+    }
+
+    return null;
+  }
+
+  /**
+   * Register a client's models into all relevant modality buckets by calling
+   * client.getModels(modality) for each modality.
+   */
+  private async _registerClientModalities(
+    provider: string,
+    client: GenericClient
+  ) {
+    this.clients[provider] = client;
+
+    const modalities: ModelModality[] = [
+      "completion",
+      "embedding",
+      "image",
+      "audio",
+      "video",
+    ];
+    for (const modality of modalities) {
+      try {
+        const result = await client.getModels(modality);
+        const models = result.map((m) => m.id);
+
+        if (!models.length) continue;
+
+        switch (modality) {
+          case "completion":
+            this._mergeModels(this.completionModels, provider, models);
+            break;
+          case "embedding":
+            this._mergeModels(this.embeddingModels, provider, models);
+            break;
+          case "image":
+            this._mergeModels(this.imageModels, provider, models);
+            break;
+          case "audio":
+            this._mergeModels(this.audioModels, provider, models);
+            break;
+          case "video":
+            this._mergeModels(this.videoModels, provider, models);
+            break;
+        }
+        this._mergeModels(this.clientModels, provider, models);
+      } catch {
+        // modality not supported by this client — skip silently
+      }
+    }
+  }
+
+  private _mergeModels(
+    map: Record<string, string[]>,
+    provider: string,
+    models: string[]
+  ) {
+    const current = map[provider] || [];
+    map[provider] = Array.from(new Set([...current, ...models]));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Register model providers from a list of ModelProvider entries.
+   * This is the central registration method — registerConfiguredModels() calls this.
+   * For registry-known providers, uses getModels() for modality registration.
+   * For HTTP-only providers, falls back to loadProviderModels() (live /models call).
+   */
+  async registerModelProviders(providers: ModelProvider[]) {
+    for (const entry of providers) {
+      const client = this.resolveClient(entry);
+
+      if (!client) continue;
+
+      const reg = this.providerRegistry[entry.provider];
+
+      if (reg) {
+        // Registry-known provider: use client.getModels(modality) for registration
+        await this._registerClientModalities(entry.provider, client);
+      } else {
+        // HTTP provider (no registry entry): register client and fetch /models live
+        this.clients[entry.provider] = client;
+        try {
+          await this.loadProviderModels(entry.provider);
+        } catch (error) {
+          console.error(
+            `Failed to register models for provider ${entry.provider}:`,
+            error.message
+          );
+        }
+      }
+    }
+  }
+
+  async registerConfiguredModels() {
+    const config = await getConfig();
+    const modelProviders = config.modelProviders || [];
+
+    // If the config explicitly defines modelProviders, unregister only the
+    // default providers that are NOT present in the config — so omitting a
+    // provider from the config effectively disables it, but providers that
+    // appear in both defaults and config are not double-processed.
+    if (config.modelProviders !== undefined) {
+      const configProviderNames = new Set(
+        modelProviders.map((p) => p.provider)
+      );
+      for (const defaultEntry of DEFAULT_PROVIDERS) {
+        if (!configProviderNames.has(defaultEntry.provider)) {
+          this.unregisterProvider(defaultEntry.provider);
+        }
+      }
+    }
+
+    if (modelProviders.length > 0) {
+      await this.registerModelProviders(modelProviders);
+    }
+  }
+
+  /**
+   * Remove a provider and all its registered models from the client.
+   */
+  unregisterProvider(provider: string) {
+    delete this.clients[provider];
+    delete this.clientModels[provider];
+    delete this.completionModels[provider];
+    delete this.embeddingModels[provider];
+    delete this.imageModels[provider];
+    delete this.audioModels[provider];
+    delete this.videoModels[provider];
+  }
+
+  /**
+   * Register a custom client class or factory for a provider name.
+   * This allows external code (plugins, modules) to add first-party clients.
+   */
+  registerClientClass(provider: string, entry: ProviderRegistryEntry) {
+    this.providerRegistry[provider] = entry;
+  }
 
   getClient(provider: string, model?: string) {
     if (provider && !model) {
@@ -166,33 +318,9 @@ export class AIClient {
   }
 
   setKey(provider: string, apiKey: string) {
-    const { client } = this.getClient(provider); // Ensure provider is registered
+    const { client } = this.getClient(provider);
     client.setKey(apiKey);
     this.clients[provider].setKey(apiKey);
-  }
-
-  async registerConfiguredModels() {
-    const config = await getConfig();
-    const modelProviders = config.modelProviders || [];
-
-    for (const modelProvider of modelProviders) {
-      const client = new HttpClient(modelProvider.url, modelProvider.headers);
-
-      if (modelProvider.jwtFile) {
-        client.loadJwtFile(modelProvider.jwtFile);
-      }
-
-      this.registerClient(modelProvider.provider, client);
-
-      try {
-        await this.loadProviderModels(modelProvider.provider);
-      } catch (error) {
-        console.error(
-          `Failed to register models for provider ${modelProvider.provider}:`,
-          error.message
-        );
-      }
-    }
   }
 
   async loadProviderModels(provider: string) {
@@ -236,8 +364,7 @@ export class AIClient {
 
   /*
    * Some clients support multiple providers, most clients are single provider
-   * For the mult-provider clients, we register them with this method
-   * TODO: currently registering overwrites any existing providers, but a fallback list could be useful
+   * For the multi-provider clients, we register them with this method
    */
   registerClientProviderModels(
     client: GenericClient,
@@ -251,8 +378,6 @@ export class AIClient {
 
   registerEmbeddingModels(provider: string, models: string[]) {
     const currentModels = this.clientModels[provider] || [];
-    const currentEmbeddingModels = this.embeddingModels[provider] || [];
-
     this.clientModels[provider] = Array.from<string>(
       new Set(currentModels.concat(models))
     );
@@ -334,13 +459,12 @@ export class AIClient {
     return undefined;
   }
 
-  // detects these formats
+  // detects these formats:
   // "openai", "gpt-5"
   // "knowhow", "openai/gpt-5"
   // "", "openai/gpt-5"
   // "", openai/gpt-5
   // "", "knowhow/openai/gpt-5"
-  //
   detectProviderModel(provider: string, model?: string) {
     if (this.providerHasModel(provider, model)) {
       return { provider, model };
@@ -536,14 +660,13 @@ export class AIClient {
   }
 
   /*
+   * Some clients return models in the format "provider/model_name".
+   * This function parses those models into our {provider, model} format
+   * then creates a provider -> [models] map.
+   * The models will not have the provider prefix.
    *
-   * some clients return models in the format "provider/model_name"
-   * this function parses those models into our {provider, model} format
-   * then creates a provider -> [models] map
-   * the models will not have the provider prefix
-   *
-   * if the client doesn't return models in that format, use knownProvider
-   * to set the provider
+   * If the client doesn't return models in that format, use knownProvider
+   * to set the provider.
    */
   async parseProviderPrefixedModels(
     client: GenericClient,
@@ -612,18 +735,17 @@ export class AIClient {
 
   /**
    * Returns the context window limit (in tokens) for a given model.
-   * Optionally accepts a provider for future provider-specific overrides.
-   * Delegates to the registered client's getContextLimit() if available,
-   * so custom clients can provide their own context limits.
-   * Returns undefined if neither the client nor the global ContextLimits table knows the model.
+   * Delegates to the registered client's getContextLimit() if available.
+   * Falls back to the global ContextLimits table.
    */
-  getContextLimit(provider: string, model: string): { contextLimit: number; threshold: number } | undefined {
-    // Try the registered client first
+  getContextLimit(
+    provider: string,
+    model: string
+  ): { contextLimit: number; threshold: number } | undefined {
     const client = this.clients[provider];
     if (client?.getContextLimit) {
       return client.getContextLimit(model);
     }
-    // Fall back to the global ContextLimits table
     const contextLimit = ContextLimits[model];
     if (contextLimit === undefined) return undefined;
     return { contextLimit, threshold: contextLimit };

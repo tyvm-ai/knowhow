@@ -34,7 +34,6 @@ import {
   createAgent,
   agentConstructors,
   AgentName,
-  agents,
 } from "../../agents";
 import { ToolCallEvent } from "../../agents/base/base";
 import { KnowhowSimpleClient } from "../../services/KnowhowClient";
@@ -244,20 +243,28 @@ export class AgentModule extends BaseChatModule {
     }
 
     const agentName = args[0];
-    const allAgents = agents();
 
     try {
-      if (allAgents && allAgents[agentName]) {
+      if (agentConstructors[agentName as AgentName]) {
         // Set selected agent in context and enable agent mode
         if (context) {
-          const selectedAgent = allAgents[agentName];
-          context.selectedAgent = selectedAgent;
+          // Create a temporary agent instance to read its default model/provider
+          const agentContext = services().Agents.getAgentContext();
+          const tempAgent = createAgent(agentName as AgentName, agentContext) as BaseAgent;
+          context.selectedAgent = tempAgent;
           context.agentMode = true;
           context.currentAgent = agentName;
           // Update context's model/provider to reflect the agent's settings
           // so /model and /provider commands show accurate information
-          context.currentModel = selectedAgent.getModel();
-          context.currentProvider = selectedAgent.getProvider();
+
+          const clientInfo = await tempAgent.clientService.getClient(
+            undefined,
+            tempAgent.getModel()
+          );
+
+          context.currentModel = clientInfo.model;
+          context.currentProvider = clientInfo.provider;
+
           this.chatService.setMode("agent");
         }
 
@@ -435,16 +442,13 @@ export class AgentModule extends BaseChatModule {
    */
   async handleAgentsCommand(args: string[]): Promise<void> {
     try {
-      const allAgents = agents();
+      const agentNames = Object.keys(agentConstructors);
 
-      if (allAgents && Object.keys(allAgents).length > 0) {
-        const agentNames = Object.keys(allAgents);
+      if (agentNames.length > 0) {
 
         console.log("\nAvailable agents:");
-        Object.entries(allAgents).forEach(([name, agent]: [string, any]) => {
-          console.log(
-            `  - ${name}: ${(agent as any).description || "No description"}`
-          );
+        agentNames.forEach((name) => {
+          console.log(`  - ${name}`);
         });
         console.log("─".repeat(80), "\n");
 
@@ -462,8 +466,6 @@ export class AgentModule extends BaseChatModule {
         } else if (selectedAgent && selectedAgent.trim()) {
           console.log(`Agent "${selectedAgent.trim()}" not found.`);
         }
-      } else {
-        console.log("No agents available.");
       }
     } catch (error) {
       console.error("Error listing agents:", error);
@@ -516,18 +518,16 @@ Please continue from where you left off and complete the original request.
 
       console.log("🚀 Session resuming...");
       const context = this.chatService?.getContext();
-      const allAgents = agents();
-      const selectedAgent =
-        allAgents[session.agentName] || allAgents[context.currentAgent];
+      const agentName = session.agentName || context.currentAgent;
 
-      if (!selectedAgent) {
-        console.error(`Agent ${session.agentName} not found.`);
+      if (!agentName || !agentConstructors[agentName as AgentName]) {
+        console.error(`Agent ${agentName} not found.`);
         return;
       }
 
       // Start agent with Knowhow task context if available
       const { agent, taskId } = await this.setupAgent({
-        agentName: selectedAgent.name,
+        agentName,
         input: resumePrompt,
         messageId: session.knowhowMessageId,
         existingKnowhowTaskId: session.knowhowTaskId,
@@ -1003,6 +1003,8 @@ Please continue from where you left off and complete the original request.
         agentName: selectedAgent.name,
         input: initialInput,
         chatHistory,
+        model: selectedAgent.getModel(),
+        provider: selectedAgent.getProvider() as any,
         run: false, // Don't run yet, we need to set up event listeners first
       });
 

@@ -28,8 +28,20 @@ import {
   ChatCompletionToolMessageParam,
   ChatCompletionMessageToolCall,
 } from "openai/resources/chat";
+import { ResponseFunctionToolCall } from "openai/resources/responses/responses";
 
-import { EmbeddingModels, Models, OpenAiReasoningModels } from "../types";
+import {
+  EmbeddingModels,
+  Models,
+  OpenAiReasoningModels,
+  OpenAiResponsesOnlyModels,
+  OpenAiImageModels,
+  OpenAiVideoModels,
+  OpenAiTTSModels,
+  OpenAiTranscriptionModels,
+  OpenAiEmbeddingModels,
+} from "../types";
+import { ModelModality } from "./types";
 
 const config = getConfigSync();
 
@@ -87,6 +99,11 @@ export class GenericOpenAiClient implements GenericClient {
   async createChatCompletion(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
+    // Route to Responses API for models that don't support Chat Completions
+    if (OpenAiResponsesOnlyModels.includes(options.model)) {
+      return this.createChatResponse(options);
+    }
+
     const openaiMessages = options.messages.map((msg) => {
       if (msg.role === "tool") {
         return {
@@ -133,6 +150,184 @@ export class GenericOpenAiClient implements GenericClient {
       usd_cost: usdCost,
     };
   }
+  /**
+   * Creates a completion using the OpenAI Responses API.
+   * Used for models that only support the Responses API (e.g. gpt-5.3-codex, gpt-5.4).
+   * Translates Chat Completions message format to Responses API format and maps the
+   * response back to CompletionResponse.
+   */
+  /**
+   * Attempts to repair truncated JSON arguments from the Responses API.
+   * Codex sometimes returns function_call arguments with truncated JSON strings.
+   * This tries to close open strings/objects to produce valid JSON.
+   */
+  private repairTruncatedJson(args: string): string {
+    try {
+      JSON.parse(args);
+      return args; // Already valid
+    } catch {
+      // Try to repair by closing open structures
+      let repaired = args.trimEnd();
+      // Count open/close braces and brackets
+      let depth = 0;
+      let inString = false;
+      let escaped = false;
+      for (const ch of repaired) {
+        if (escaped) { escaped = false; continue; }
+        if (ch === '\\' && inString) { escaped = true; continue; }
+        if (ch === '"') { inString = !inString; continue; }
+        if (!inString) {
+          if (ch === '{' || ch === '[') depth++;
+          else if (ch === '}' || ch === ']') depth--;
+        }
+      }
+      // If we're inside a string, close it
+      if (inString) repaired += '"';
+      // Close any open objects/arrays
+      for (let i = 0; i < depth; i++) repaired += '}';
+      try {
+        JSON.parse(repaired);
+        return repaired;
+      } catch {
+        return args; // Return original if repair failed
+      }
+    }
+  }
+
+  async createChatResponse(
+    options: CompletionOptions
+  ): Promise<CompletionResponse> {
+    // Extract system message to use as instructions
+    const systemMessages = options.messages.filter(
+      (m) => m.role === "system"
+    );
+    const nonSystemMessages = options.messages.filter(
+      (m) => m.role !== "system"
+    );
+    const instructions = systemMessages
+      .map((m) => (typeof m.content === "string" ? m.content : ""))
+      .join("\n")
+      .trim() || undefined;
+
+    // Convert chat messages to Responses API input items
+    // The Responses API accepts: user/assistant/system messages and function_call_output items
+    const input: any[] = nonSystemMessages.map((msg) => {
+      if (msg.role === "tool") {
+        // tool result → function_call_output
+        return {
+          type: "function_call_output",
+          call_id: msg.tool_call_id,
+          output: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+        };
+      }
+      if (msg.role === "assistant" && msg.tool_calls?.length) {
+        // assistant message with tool calls → function_call items
+        return msg.tool_calls.map((tc) => ({
+          type: "function_call",
+          // id must start with 'fc_'; call_id is the original call_ ID used for function_call_output matching
+          id: tc.id.startsWith("fc") ? tc.id : `fc_${tc.id}`,
+          call_id: tc.id,
+          name: tc.function.name,
+          arguments: tc.function.arguments,
+        }));
+      }
+      // Regular user/assistant message
+      return {
+        role: msg.role,
+        content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+      };
+    }).flat();
+
+    // Convert Chat Completions tool definitions to Responses API FunctionTool format
+    const tools = options.tools?.map((tool) => ({
+      type: "function" as const,
+      name: tool.function.name,
+      description: tool.function.description,
+      parameters: tool.function.parameters as Record<string, unknown>,
+      strict: false,
+    }));
+
+    const response = await this.client.responses.create({
+      model: options.model as any,
+      input,
+      ...(instructions && { instructions }),
+      // Don't limit max_output_tokens for Responses API - codex truncates tool call arguments when limited
+      ...(OpenAiReasoningModels.includes(options.model) && {
+        max_output_tokens: Math.max(options.max_tokens || 0, 16000),
+        reasoning: { effort: this.reasoningEffort(options.messages) },
+      }),
+      ...(tools?.length && {
+        tools,
+        tool_choice: "auto",
+      }),
+      store: false,
+    } as any);
+
+    // Map Responses API usage to Chat Completions usage format
+    const usage = response.usage
+      ? {
+          prompt_tokens: response.usage.input_tokens,
+          completion_tokens: response.usage.output_tokens,
+          total_tokens:
+            response.usage.input_tokens + response.usage.output_tokens,
+        }
+      : undefined;
+
+    const usdCost = usage
+      ? this.calculateCost(options.model, usage)
+      : undefined;
+
+    // Collect text content and tool calls from the output items
+    let textContent: string | null = null;
+    const toolCalls: ChatCompletionMessageToolCall[] = [];
+
+    for (const item of response.output) {
+      if (item.type === "message") {
+        // ResponseOutputMessage
+        const msgItem = item as any;
+        for (const part of msgItem.content ?? []) {
+          if (part.type === "output_text") {
+            textContent = (textContent ?? "") + part.text;
+          }
+        }
+      } else if (item.type === "function_call") {
+        // ResponseFunctionToolCall
+        const fc = item as ResponseFunctionToolCall;
+        const repairedArgs = this.repairTruncatedJson(fc.arguments);
+        // Validate at the boundary - log if still invalid after repair
+        try {
+          JSON.parse(repairedArgs);
+        } catch (e) {
+          console.warn(`[Responses API] Invalid JSON arguments for ${fc.name} after repair: ${e.message}`);
+        }
+        toolCalls.push({
+          // Store call_id so function_call_output.call_id matches it in subsequent turns
+          id: fc.call_id,
+          type: "function",
+          function: {
+            name: fc.name,
+            arguments: repairedArgs,
+          },
+        });
+      }
+    }
+
+    return {
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content: textContent,
+            ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
+          },
+        },
+      ],
+      model: options.model,
+      usage,
+      usd_cost: usdCost,
+    };
+  }
+
 
   pricesPerMillion() {
     return OpenAiTextPricing;
@@ -167,15 +362,23 @@ export class GenericOpenAiClient implements GenericClient {
     return total;
   }
 
-  async getModels() {
-    const models = await this.client.models.list();
-    return models.data.map((m) => {
-      return {
-        id: m.id,
-        object: m.object,
-        owned_by: m.owned_by,
+  async getModels(modality?: ModelModality): Promise<{ id: string }[]> {
+    if (modality) {
+      const map: Partial<Record<ModelModality, string[]>> = {
+        completion: Object.values(Models.openai),
+        embedding: OpenAiEmbeddingModels,
+        image: OpenAiImageModels,
+        audio: [...OpenAiTTSModels, ...OpenAiTranscriptionModels],
+        transcription: OpenAiTranscriptionModels,
+        video: OpenAiVideoModels,
       };
-    });
+      return (map[modality] ?? []).map((id) => ({ id }));
+    }
+    // No modality — live API call (backward compat)
+    const models = await this.client.models.list();
+    return models.data.map((m) => ({
+      id: m.id,
+    }));
   }
 
   async createEmbedding(options: EmbeddingOptions): Promise<EmbeddingResponse> {
@@ -213,7 +416,7 @@ export class GenericOpenAiClient implements GenericClient {
 
     // Calculate cost: $0.006 per minute for Whisper
     const duration = typeof response === "object" && "duration" in response && typeof response.duration === "number"
-      ? response.duration 
+      ? response.duration
       : undefined;
     const usdCost = duration ? (duration / 60) * 0.006 : undefined;
 
@@ -398,7 +601,7 @@ export class GenericOpenAiClient implements GenericClient {
     if (!apiKey) throw new Error("OpenAI API key not set");
     const formData = new FormData();
     formData.append("purpose", "assistants");
-    const blob = new Blob([options.data], { type: options.mimeType || "application/octet-stream" });
+    const blob = new Blob([new Uint8Array(options.data)], { type: options.mimeType || "application/octet-stream" });
     formData.append("file", blob, options.fileName || "upload");
     const response = await fetch("https://api.openai.com/v1/files", {
       method: "POST",

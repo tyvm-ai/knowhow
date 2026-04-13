@@ -4,6 +4,7 @@ import * as os from "os";
 import gitignoreToGlob from "gitignore-to-glob";
 import { Prompts } from "./prompts";
 import { promisify } from "util";
+import { KNOWHOW_API_URL } from "./services/KnowhowClient";
 import {
   Config,
   Language,
@@ -85,7 +86,14 @@ const defaultConfig = {
     },
   ],
 
-  modelProviders: [{ url: "http://localhost:1234", provider: "lms" }],
+  modelProviders: [
+    { provider: "openai", envKey: "OPENAI_API_KEY" },
+    { provider: "anthropic", envKey: "ANTHROPIC_API_KEY" },
+    { provider: "google", envKey: "GEMINI_API_KEY" },
+    { provider: "xai", envKey: "XAI_API_KEY" },
+    { provider: "knowhow" },
+    { provider: "lms", url: "http://localhost:1234" },
+  ],
 
   ycmd: {
     enabled: false,

@@ -142,6 +142,27 @@ jobs:
         run: npx tsc --noEmit
         working-directory: packages/knowhow-module-s3
 
+  check-isolated-deps:
+    name: Isolated Dep Check (@tyvm/knowhow)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run isolated dependency check
+        run: bash scripts/check-isolated-deps.sh
+        working-directory: packages/knowhow
+
   security:
     name: Security Audit
     runs-on: ubuntu-latest

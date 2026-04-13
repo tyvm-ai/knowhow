@@ -1,3 +1,5 @@
+export type ModelModality = "completion" | "embedding" | "image" | "audio" | "video" | "transcription";
+
 export type MessageContent =
   | { type: "text"; text: string }
   | { type: "image_url"; image_url: { url: string } }
@@ -257,7 +259,11 @@ export interface GenericClient {
   uploadFile?(options: FileUploadOptions): Promise<FileUploadResponse>;
   /** Download a file from the provider's file storage */
   downloadFile?(options: FileDownloadOptions): Promise<FileDownloadResponse>;
-  getModels(): Promise<{ id: string }[]>;
+  /**
+   * When modality is provided, return only models for that modality (static list).
+   * When omitted, return ALL models (backward compat — may do a live API call).
+   */
+  getModels(modality?: ModelModality): Promise<{ id: string; modality?: ModelModality[] }[]>;
   /**
    * Returns the context window limit and compression threshold for a given model,
    * or undefined if the model is not known to this client.

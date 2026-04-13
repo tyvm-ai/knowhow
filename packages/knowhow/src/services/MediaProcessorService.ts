@@ -235,7 +235,10 @@ export class MediaProcessorService {
     for (const keyframe of keyframes) {
       const keyframePath = path.join(keyframesDir, keyframe);
       const keyframeName = path.parse(keyframe).name;
-      const keyframeDescriptionPath = path.join(keyframesDir, `${keyframeName}.json`);
+      const keyframeDescriptionPath = path.join(
+        keyframesDir,
+        `${keyframeName}.json`
+      );
       const descriptionExists = await fileExists(keyframeDescriptionPath);
 
       if (descriptionExists && reusePreviousKeyframes) {
@@ -262,7 +265,10 @@ export class MediaProcessorService {
       allKeyframes.push(keyframeJson);
     }
 
-    await fs.promises.writeFile(videoJsonPath, JSON.stringify(allKeyframes, null, 2));
+    await fs.promises.writeFile(
+      videoJsonPath,
+      JSON.stringify(allKeyframes, null, 2)
+    );
   }
 
   public async extractKeyframes(
@@ -287,7 +293,9 @@ export class MediaProcessorService {
   private async describeKeyframe(keyframePath: string) {
     const question =
       "Describe this image in detail, focusing on the main elements and actions visible.";
-    const base64 = await fs.promises.readFile(keyframePath, { encoding: "base64" });
+    const base64 = await fs.promises.readFile(keyframePath, {
+      encoding: "base64",
+    });
     const image = `data:image/jpeg;base64,${base64}`;
     return this.clients.createCompletion("openai", {
       model: "gpt-4o",
@@ -302,5 +310,87 @@ export class MediaProcessorService {
         },
       ],
     });
+  }
+
+  async *streamProcessVideo(
+    filePath: string,
+    reusePreviousTranscript = true,
+    chunkTime = 30
+  ) {
+    const parsed = path.parse(filePath);
+    const videoJson = `${parsed.dir}/${parsed.name}/video.json`;
+
+    console.log("Processing audio...");
+    const transcriptions = this.streamProcessAudio(
+      filePath,
+      reusePreviousTranscript,
+      chunkTime
+    );
+
+    console.log("Extracting keyframes...");
+    const videoAnalysis = this.streamKeyFrameExtraction(
+      filePath,
+      videoJson,
+      reusePreviousTranscript,
+      chunkTime
+    );
+
+    for await (const frame of videoAnalysis) {
+      const transcription = (await transcriptions.next())
+        ?.value as TranscriptChunk;
+      yield {
+        frame,
+        transcription: transcription || {
+          chunkPath: "",
+          text: "[missing transcript]",
+          usd_cost: 0,
+        },
+      };
+    }
+  }
+
+  async *streamProcessAudio(
+    filePath: string,
+    reusePreviousTranscript = true,
+    chunkTime = 30
+  ): AsyncGenerator<TranscriptChunk> {
+    const parsed = path.parse(filePath);
+    const outputPath = `${parsed.dir}/${parsed.name}/transcript.json`;
+
+    // Skip chunking if the full output exists
+    const exists = await fileExists(outputPath);
+    if (exists && reusePreviousTranscript) {
+      console.log(
+        `Transcription ${outputPath} already exists, using cached data`
+      );
+      const fileContent = await readFile(outputPath, "utf8");
+      const lines = outputPath.endsWith("txt")
+        ? fileContent.split("\n")
+        : JSON.parse(fileContent);
+
+      for (const line of lines) {
+        if (typeof line === "string") {
+          yield { chunkPath: "", text: line, usd_cost: 0 };
+        } else {
+          yield line as TranscriptChunk;
+        }
+      }
+      return;
+    }
+
+    const chunks = await this.chunk(
+      filePath,
+      parsed.dir,
+      chunkTime,
+      reusePreviousTranscript
+    );
+
+    for await (const chunk of this.streamTranscription(
+      chunks,
+      outputPath,
+      reusePreviousTranscript
+    )) {
+      yield chunk;
+    }
   }
 }

@@ -18,8 +18,12 @@ import {
   FileUploadResponse,
   FileDownloadOptions,
   FileDownloadResponse,
+  ModelModality,
 } from "./types";
-import { KnowhowSimpleClient, KNOWHOW_API_URL } from "../services/KnowhowClient";
+import {
+  KnowhowSimpleClient,
+  KNOWHOW_API_URL,
+} from "../services/KnowhowClient";
 
 const envUrl = KNOWHOW_API_URL;
 export class KnowhowGenericClient implements GenericClient {
@@ -45,9 +49,16 @@ export class KnowhowGenericClient implements GenericClient {
     return response.data;
   }
 
-  async getModels(): Promise<{ id: string }[]> {
-    const response = await this.client.getModels();
-    return response.data;
+  async getModels(
+    type = "all"
+  ): Promise<{ id: string; modality: ModelModality[] }[]> {
+    const response = await this.client.getModels(type);
+    return (
+      response.data?.data?.map((model) => ({
+        id: model.id,
+        modality: [model.type],
+      })) || []
+    );
   }
 
   async createAudioTranscription(

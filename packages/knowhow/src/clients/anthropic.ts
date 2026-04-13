@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { wait } from "../utils";
 import { AnthropicTextPricing } from "./pricing";
 import { ContextLimits } from "./contextLimits";
+import { ModelModality } from "./types";
 import { Models } from "../types";
 import {
   GenericClient,
@@ -467,11 +468,16 @@ export class GenericAnthropicClient implements GenericClient {
     return nonCachedInputCost + cacheWriteCost + cacheReadCost + outputCost;
   }
 
-  async getModels() {
+  async getModels(modality?: ModelModality): Promise<{ id: string }[]> {
+    if (modality) {
+      if (modality === "completion") {
+        return Object.values(Models.anthropic).map((id) => ({ id }));
+      }
+      return [];
+    }
+    // No modality — live API call (backward compat)
     const models = await this.client.models.list();
-    return models.data.map((m) => ({
-      id: m.id,
-    }));
+    return models.data.map((m) => ({ id: m.id }));
   }
 
   async createEmbedding(options: EmbeddingOptions): Promise<EmbeddingResponse> {

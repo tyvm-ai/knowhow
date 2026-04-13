@@ -13,9 +13,18 @@ import * as os from "os";
 import * as fsSync from "fs";
 import * as pathSync from "path";
 import { wait } from "../utils";
-import { EmbeddingModels, Models } from "../types";
+import {
+  EmbeddingModels,
+  Models,
+  GoogleImageModels,
+  GoogleVideoModels,
+  GoogleTTSModels,
+  GoogleEmbeddingModels,
+  GoogleReasoningModels,
+} from "../types";
 import { GeminiTextPricing } from "./pricing";
 import { ContextLimits } from "./contextLimits";
+import { ModelModality } from "./types";
 
 import {
   GenericClient,
@@ -587,12 +596,21 @@ export class GenericGeminiClient implements GenericClient {
     return cost;
   }
 
-  async getModels() {
+  async getModels(modality?: ModelModality): Promise<{ id: string }[]> {
+    if (modality) {
+      const map: Partial<Record<ModelModality, string[]>> = {
+        completion: GoogleReasoningModels,
+        embedding: GoogleEmbeddingModels,
+        image: GoogleImageModels,
+        audio: GoogleTTSModels,
+        video: GoogleVideoModels,
+      };
+      return (map[modality] ?? []).map((id) => ({ id }));
+    }
+    // No modality — live API call (backward compat)
     try {
       const models = await this.client.models.list();
-      return models.page.map((m) => ({
-        id: m.name!,
-      }));
+      return models.page.map((m) => ({ id: m.name! }));
     } catch (error) {
       console.error("Error fetching Google GenAI models:", error);
       throw error;
@@ -688,7 +706,7 @@ export class GenericGeminiClient implements GenericClient {
       const mimeType = audioPart.inlineData.mimeType || "audio/wav";
 
       // Gemini returns raw PCM (audio/L16) - convert to WAV format for playability
-      let audioBuffer = rawBuffer;
+      let audioBuffer: Buffer = rawBuffer;
       if (mimeType.includes("L16") || mimeType.includes("pcm")) {
         // Parse sample rate from mime type e.g. "audio/L16;codec=pcm;rate=24000"
         const rateMatch = mimeType.match(/rate=(\d+)/);
@@ -883,7 +901,7 @@ export class GenericGeminiClient implements GenericClient {
    */
   async uploadFile(options: FileUploadOptions): Promise<FileUploadResponse> {
     try {
-      const blob = new Blob([options.data], { type: options.mimeType });
+      const blob = new Blob([new Uint8Array(options.data)], { type: options.mimeType });
       const uploadedFile = await this.client.files.upload({
         file: blob,
         config: {
