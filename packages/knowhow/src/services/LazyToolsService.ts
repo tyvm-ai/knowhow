@@ -125,23 +125,24 @@ export class LazyToolsService extends ToolsService {
   async callTool(toolCall: ToolCall, enabledTools?: string[]) {
     const functionName = toolCall.function.name;
 
-    // If no explicit enabledTools list was provided and the tool isn't currently
-    // visible, check if it exists in allTools and auto-enable it
-    if (!enabledTools) {
-      const isCurrentlyEnabled = this.tools.some(
-        (t) => t.function.name === functionName
-      );
-      const existsInAll = this.allTools.some(
-        (t) => t.function.name === functionName
-      );
+    // If the tool isn't currently visible but exists in allTools, auto-enable it.
+    // This handles the case where the agent explicitly calls a tool without first
+    // enabling it via listAvailableTools/enableTools.
+    const isCurrentlyEnabled = this.tools.some(
+      (t) => t.function.name === functionName
+    );
+    const existsInAll = this.allTools.some(
+      (t) => t.function.name === functionName
+    );
 
-      if (!isCurrentlyEnabled && existsInAll) {
-        // Auto-enable by adding the tool name as an exact pattern
-        this.enableTools([functionName]);
-      }
+    if (!isCurrentlyEnabled && existsInAll) {
+      // Auto-enable by adding the tool name as an exact pattern
+      this.enableTools([functionName]);
     }
 
-    return super.callTool(toolCall, enabledTools ?? this.getToolNames());
+    // Always use the current enabled tool names after any auto-enable above,
+    // so the base class check sees the freshly-enabled tool in the allowed list.
+    return super.callTool(toolCall, this.getToolNames());
   }
 
   // Internal: Update visible tools based on patterns
