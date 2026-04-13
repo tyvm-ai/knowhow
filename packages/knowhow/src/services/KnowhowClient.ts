@@ -144,7 +144,6 @@ export class KnowhowSimpleClient {
         const currentOrg = orgs.find((org) => {
           return org.organizationId === orgId;
         });
-
       } catch (error) {
         throw new Error("Invalid JWT. Please login again.");
       }
@@ -203,13 +202,9 @@ export class KnowhowSimpleClient {
     }
   ) {
     await this.checkJwt();
-    return http.put(
-      `${this.baseUrl}/api/org-embeddings/${id}`,
-      data,
-      {
-        headers: this.headers,
-      }
-    );
+    return http.put(`${this.baseUrl}/api/org-embeddings/${id}`, data, {
+      headers: this.headers,
+    });
   }
 
   async createChatCompletion(options: CompletionOptions) {
@@ -234,9 +229,9 @@ export class KnowhowSimpleClient {
     );
   }
 
-  async getModels() {
+  async getModels(type = "all") {
     await this.checkJwt();
-    return http.get(`${this.baseUrl}/api/proxy/v1/models?type=all`, {
+    return http.get(`${this.baseUrl}/api/proxy/v1/models?type=${type}`, {
       headers: this.headers,
     });
   }
@@ -609,7 +604,11 @@ export class KnowhowSimpleClient {
       throw new Error(`File not found: ${filePath}`);
     }
 
-    await http.post(`${this.baseUrl}/api/org-files/upload/${file.id}/complete`, {}, { headers: this.headers });
+    await http.post(
+      `${this.baseUrl}/api/org-files/upload/${file.id}/complete`,
+      {},
+      { headers: this.headers }
+    );
   }
 
   /**
@@ -624,7 +623,8 @@ export class KnowhowSimpleClient {
 
     // Extract just the filename from the path
     const lastSlash = filePath.lastIndexOf("/");
-    const fileName = lastSlash >= 0 ? filePath.substring(lastSlash + 1) : filePath;
+    const fileName =
+      lastSlash >= 0 ? filePath.substring(lastSlash + 1) : filePath;
 
     // Get upload URL using the file ID
     const response = await http.post<{ uploadUrl: string }>(

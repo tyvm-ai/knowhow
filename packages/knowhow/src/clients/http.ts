@@ -18,7 +18,6 @@ export class HttpClient implements GenericClient {
       try {
         return await fn();
       } catch (e: any) {
-        console.log(e);
         lastError = e;
         const errorStr = e.toString();
         const isNonRetriable =
@@ -155,7 +154,6 @@ export class HttpClient implements GenericClient {
         headers: this.headers as Record<string, string>,
       });
 
-      console.log(response.data);
       const data = response.data?.data;
 
       return data.map((model: any) => ({

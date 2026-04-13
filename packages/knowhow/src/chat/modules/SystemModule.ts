@@ -41,8 +41,9 @@ export class SystemModule extends BaseChatModule {
 
   async handleModelCommand(args: string[]): Promise<void> {
     const context = this.chatService?.getContext();
-    const { Clients } = services();
 
+    const agent = context?.selectedAgent;
+    const Clients = agent.clientService;
     const currentProvider = context?.currentProvider || "openai";
     const currentModel = context?.currentModel || "gpt-4o";
 
@@ -62,7 +63,9 @@ export class SystemModule extends BaseChatModule {
       currentModel: selectedModel,
       currentProvider,
     });
-    console.log(`Model set to: ${selectedModel}`);
+    console.log(
+      `Model set to: ${selectedModel} for provider: ${currentProvider}`
+    );
 
     // Update currently active agent if any
     if (context?.selectedAgent) {
@@ -78,7 +81,9 @@ export class SystemModule extends BaseChatModule {
 
   async handleProviderCommand(args: string[]): Promise<void> {
     const context = this.chatService?.getContext();
-    const { Clients } = services();
+
+    const agent = context?.selectedAgent;
+    const Clients = agent.clientService;
 
     const currentProvider = context?.currentProvider || "openai";
     const currentModel = context?.currentModel || "gpt-4o";
@@ -101,6 +106,7 @@ export class SystemModule extends BaseChatModule {
       anthropic: Models.anthropic.Sonnet4_6,
       google: Models.google.Gemini_3_Flash_Preview,
       xai: Models.xai.Grok4_1_Fast_NonReasoning,
+      knowhow: "anthropic/" + Models.anthropic.Sonnet4_6,
     };
 
     const newModel =

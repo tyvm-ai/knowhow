@@ -241,7 +241,14 @@ export class TokenCompressor implements JsonCompressorStorage {
   public async compressMessage(message: Message) {
     // Compress content if it's a string
     if (typeof message.content === "string") {
-      message.content = this.compressContent(message.content);
+      const compressed = this.compressContent(message.content);
+      // If this is a tool message with a tool_call_id, append it to the compressed content
+      // so the agent knows which toolCallId to use for grepToolResponse/jqToolResponse/tailToolResponse
+      if (message.role === "tool" && message.tool_call_id && compressed !== message.content) {
+        message.content = compressed + `\n[toolCallId: ${message.tool_call_id}]`;
+      } else {
+        message.content = compressed;
+      }
     }
     // Handle array content (multimodal)
     else if (Array.isArray(message.content)) {

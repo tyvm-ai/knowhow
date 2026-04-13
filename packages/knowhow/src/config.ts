@@ -87,10 +87,11 @@ const defaultConfig = {
   ],
 
   modelProviders: [
-    { provider: "openai", envKey: "OPENAI_KEY" },
+    { provider: "openai", envKey: "OPENAI_API_KEY" },
     { provider: "anthropic", envKey: "ANTHROPIC_API_KEY" },
     { provider: "google", envKey: "GEMINI_API_KEY" },
     { provider: "xai", envKey: "XAI_API_KEY" },
+    { provider: "knowhow" },
     { provider: "lms", url: "http://localhost:1234" },
   ],
 

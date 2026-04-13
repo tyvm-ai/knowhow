@@ -49,6 +49,13 @@ const BUILT_IN_PROVIDER_REGISTRY: Record<string, ProviderRegistryEntry> = {
   anthropic: { clientClass: GenericAnthropicClient },
   google: { clientClass: GenericGeminiClient },
   xai: { clientClass: GenericXAIClient },
+  knowhow: {
+    createClient: (entry: ModelProvider) => {
+      const jwt = loadKnowhowJwt();
+      if (!jwt) return null;
+      return new KnowhowGenericClient(KNOWHOW_API_URL, jwt);
+    },
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -57,10 +64,11 @@ const BUILT_IN_PROVIDER_REGISTRY: Record<string, ProviderRegistryEntry> = {
 // No envKey means the provider uses its own check (e.g. knowhow uses JWT file).
 // ---------------------------------------------------------------------------
 const DEFAULT_PROVIDERS: ModelProvider[] = [
-  { provider: "openai", envKey: "OPENAI_KEY" },
+  { provider: "openai", envKey: "OPENAI_API_KEY" },
   { provider: "anthropic", envKey: "ANTHROPIC_API_KEY" },
   { provider: "google", envKey: "GEMINI_API_KEY" },
   { provider: "xai", envKey: "XAI_API_KEY" },
+  { provider: "knowhow" },
 ];
 
 export class AIClient {
@@ -110,9 +118,14 @@ export class AIClient {
 
     // 2. Known clientClass
     if (reg?.clientClass) {
-      if (entry.envKey) {
+      // Use the entry's envKey, or fall back to the DEFAULT_PROVIDERS envKey for this provider
+      const effectiveEnvKey =
+        entry.envKey ??
+        DEFAULT_PROVIDERS.find((p) => p.provider === entry.provider)?.envKey;
+
+      if (effectiveEnvKey) {
         // envKey-based auth: env var must be present
-        const envValue = process.env[entry.envKey];
+        const envValue = process.env[effectiveEnvKey];
         if (!envValue) return null;
         return new reg.clientClass(envValue);
       }
@@ -152,17 +165,9 @@ export class AIClient {
     ];
     for (const modality of modalities) {
       try {
-        console.log(
-          `Fetching models for provider ${provider}, modality ${modality}...`
-        );
         const result = await client.getModels(modality);
-        console.log(
-          `Registered models for provider ${provider}, modality ${modality}:`,
-          result
-        );
         const models = result.map((m) => m.id);
 
-        console.log("Fetched models for modality", models);
         if (!models.length) continue;
 
         switch (modality) {
@@ -211,20 +216,10 @@ export class AIClient {
   async registerModelProviders(providers: ModelProvider[]) {
     for (const entry of providers) {
       const client = this.resolveClient(entry);
-      console.log(
-        "Resolved client for provider",
-        entry.provider,
-        ":",
-        !!client
-      );
 
       if (!client) continue;
 
       const reg = this.providerRegistry[entry.provider];
-      console.log(
-        `Registering provider ${entry.provider} with client ${client.constructor.name}. Registry entry:`,
-        reg
-      );
 
       if (reg) {
         // Registry-known provider: use client.getModels(modality) for registration
@@ -253,7 +248,9 @@ export class AIClient {
     // provider from the config effectively disables it, but providers that
     // appear in both defaults and config are not double-processed.
     if (config.modelProviders !== undefined) {
-      const configProviderNames = new Set(modelProviders.map((p) => p.provider));
+      const configProviderNames = new Set(
+        modelProviders.map((p) => p.provider)
+      );
       for (const defaultEntry of DEFAULT_PROVIDERS) {
         if (!configProviderNames.has(defaultEntry.provider)) {
           this.unregisterProvider(defaultEntry.provider);

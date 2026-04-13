@@ -340,17 +340,47 @@ export class InputQueueManager {
 
     const hits = opts.filter((c) => c.startsWith(word));
 
-    if (hits.length === 0) {
+    let effectiveHits: string[];
+    let completionWord: string; // the replacement for `word` in the line
+
+    if (hits.length > 0) {
+      // Exact prefix matches: use normal longest-common-prefix logic
+      effectiveHits = hits;
+      completionWord = this.longestCommonPrefix(effectiveHits);
+    } else {
+      // Contains matches: find options that contain the typed word somewhere
+      const containsHits = opts.filter((c) => c.includes(word));
+      effectiveHits = containsHits;
+
+      if (containsHits.length > 0) {
+        // If there's only one match, complete to the full option string
+        if (containsHits.length === 1) {
+          completionWord = containsHits[0];
+        } else {
+        // For each match, find the position of `word` inside it, then take
+        // the substring from that position and find the longest common prefix
+        // of all those suffixes. This gives us the longest unambiguous extension
+        // starting from the user's typed word.
+        const suffixes = containsHits.map((c) => {
+          const idx = c.indexOf(word);
+          return c.slice(idx); // e.g. "opus-4-5" from "anthropic/claude-opus-4-5"
+        });
+        completionWord = this.longestCommonPrefix(suffixes);
+        }
+      } else {
+        completionWord = word;
+      }
+    }
+
+    if (effectiveHits.length === 0) {
       this.lastKeypressWasTab = false;
       return;
     }
 
-    const prefix = this.longestCommonPrefix(hits);
-
-    if (prefix.length > word.length) {
-      // Can extend - replace word with the longer common prefix
+    if (completionWord.length > word.length) {
+      // Can extend - replace word with the longer completion
       const before = line.slice(0, lastSpace + 1);
-      const newLine = before + prefix;
+      const newLine = before + completionWord;
       this.replaceLine(newLine);
       this.currentLine = newLine;
       this.lastKeypressWasTab = false;
@@ -367,11 +397,11 @@ export class InputQueueManager {
     // Second consecutive tab: print the completions list
     this.lastKeypressWasTab = false;
     const columns = process.stdout.columns || 80;
-    const maxWidth = Math.max(...hits.map((h) => h.length)) + 2;
+    const maxWidth = Math.max(...effectiveHits.map((h) => h.length)) + 2;
     const numCols = Math.max(1, Math.floor(columns / maxWidth));
     const rows: string[] = [];
-    for (let i = 0; i < hits.length; i += numCols) {
-      const row = hits.slice(i, i + numCols);
+    for (let i = 0; i < effectiveHits.length; i += numCols) {
+      const row = effectiveHits.slice(i, i + numCols);
       rows.push(row.map((h) => h.padEnd(maxWidth)).join(""));
     }
     // Write completions. We intentionally do NOT call rl.prompt() here because

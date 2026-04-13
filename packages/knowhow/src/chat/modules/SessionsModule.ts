@@ -18,7 +18,6 @@ import {
   WatcherBackedAgent,
 } from "../../services/index";
 import { TaskInfo, ChatSession } from "../types";
-import { agents } from "../../agents";
 import { KnowhowSimpleClient } from "../../services/KnowhowClient";
 import { messagesToRenderEvents } from "../renderer/messagesToRenderEvents";
 import { Marked } from "../../utils/index";
@@ -217,8 +216,7 @@ export class SessionsModule extends BaseChatModule {
       const taskInfo = taskRegistry.get(id)!;
       const renderer = this.agentModule.getRenderer();
       const context = this.chatService?.getContext();
-      const allAgents = agents();
-      const selectedAgent = allAgents[taskInfo.agentName];
+      const selectedAgent = taskInfo.agent;
 
       if (context && selectedAgent) {
         context.selectedAgent = selectedAgent;

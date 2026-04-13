@@ -360,7 +360,15 @@ export const OpenAiEmbeddingModels = [
   EmbeddingModels.openai.EmbeddingLarge3,
   EmbeddingModels.openai.EmbeddingSmall3,
 ];
-// export const OpenAiResponseOnlyModels = [Models.openai.Codex_Mini];
+
+// Models that ONLY support the Responses API (not Chat Completions)
+export const OpenAiResponsesOnlyModels = [
+  Models.openai.GPT_53_Codex,
+  Models.openai.GPT_54,
+  Models.openai.GPT_54_Mini,
+  Models.openai.GPT_54_Nano,
+  Models.openai.GPT_54_Pro,
+];
 
 export const GoogleReasoningModels = [
   Models.google.Gemini_31_Pro_Preview,
