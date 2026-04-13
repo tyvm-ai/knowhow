@@ -138,7 +138,7 @@ async function main() {
         console.log(`Current version: ${version}`);
 
         console.log("📦 Installing latest version from npm...");
-        execSync("npm install -g knowhow@latest", {
+        execSync("npm install -g @tyvm/knowhow@latest", {
           stdio: "inherit",
           encoding: "utf-8",
         });
