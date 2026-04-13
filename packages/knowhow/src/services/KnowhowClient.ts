@@ -648,4 +648,48 @@ export class KnowhowSimpleClient {
     );
     return response.data;
   }
+
+  // ============================================
+  // Cloud Worker Methods
+  // ============================================
+
+  /**
+   * List all cloud workers for the current user's org
+   */
+  async listCloudWorkers() {
+    await this.checkJwt();
+    return http.get<
+      { id: string; name: string; status: string; workerConfigJson?: Record<string, unknown> }[]
+    >(`${this.baseUrl}/api/cloud-workers`, { headers: this.headers });
+  }
+
+  /**
+   * Create a new cloud worker
+   */
+  async createCloudWorker(data: {
+    name: string;
+    workerConfigJson?: Record<string, unknown>;
+  }) {
+    await this.checkJwt();
+    return http.post<{ id: string; name: string; status: string; workerConfigJson?: Record<string, unknown> }>(
+      `${this.baseUrl}/api/cloud-workers`,
+      data,
+      { headers: this.headers }
+    );
+  }
+
+  /**
+   * Update an existing cloud worker
+   */
+  async updateCloudWorker(
+    id: string,
+    data: { workerConfigJson?: Record<string, unknown> }
+  ) {
+    await this.checkJwt();
+    return http.put<{ id: string; name: string; status: string; workerConfigJson?: Record<string, unknown> }>(
+      `${this.baseUrl}/api/cloud-workers/${id}`,
+      data,
+      { headers: this.headers }
+    );
+  }
 }
