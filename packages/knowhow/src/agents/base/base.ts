@@ -619,6 +619,17 @@ export abstract class BaseAgent implements IAgent {
         tool_choice: "auto",
       });
 
+      // If the agent was paused while the completion was in-flight, wait here
+      // before processing tool calls. This allows the user to send messages
+      // (via addPendingUserMessage) and prevents the agent from proceeding to
+      // tool calls (e.g. finalAnswer) without seeing those interactions.
+      if (this.status === this.eventTypes.pause) {
+        this.log(
+          "Agent was paused after completion, waiting before processing tool calls"
+        );
+        await this.unpaused();
+      }
+
       if (response?.usd_cost === undefined) {
         this.log(
           `Response cost is undefined: ${JSON.stringify(response, null, 2)}`,
@@ -685,6 +696,19 @@ export abstract class BaseAgent implements IAgent {
                 result: finalMessage.content || "Done",
               });
               const doneMsg = finalMessage.content || "Done";
+
+              // If user added pending messages after finalAnswer was called,
+              // continue running to respond to that feedback instead of returning
+              if (this.pendingUserMessages.length > 0) {
+                this.log(
+                  "finalAnswer called but pending user messages exist, continuing to respond to feedback"
+                );
+                messages.push(...this.pendingUserMessages);
+                this.pendingUserMessages = [];
+                this.updateCurrentThread(messages);
+                return this.call(userInput, messages);
+              }
+
               this.agentEvents.emit(this.eventTypes.done, doneMsg);
               this.status = this.eventTypes.done;
               return doneMsg;
