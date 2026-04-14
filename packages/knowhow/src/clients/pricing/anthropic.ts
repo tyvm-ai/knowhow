@@ -65,12 +65,6 @@ export const AnthropicTextPricing = {
     cache_hit: 0.3,
     output: 15.0,
   },
-  [Models.anthropic.Haiku3_5]: {
-    input: 0.8,
-    cache_write: 1.0,
-    cache_hit: 0.08,
-    output: 4.0,
-  },
   [Models.anthropic.Opus3]: {
     input: 15.0,
     cache_write: 18.75,

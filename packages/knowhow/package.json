@@ -9,6 +9,7 @@
   "scripts": {
     "test": "jest --testTimeout 300000",
     "test:debug": "node --inspect-brk ../../node_modules/jest/bin/jest.js --detectOpenHandles --forceExit --testTimeout 300000",
+    "build": "npm run compile",
     "compile": "npm run clean && tsc",
     "clean": "rm -rf ts_build",
     "node:build": "bash scripts/build-for-node.sh",

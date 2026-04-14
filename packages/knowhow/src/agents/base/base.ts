@@ -673,6 +673,13 @@ export abstract class BaseAgent implements IAgent {
           this.updateCurrentThread(messages);
 
           for (const toolCall of toolCalls) {
+            if(this.status === this.eventTypes.pause) {
+              this.log(
+                "Agent was paused before tool call, waiting before processing tool calls"
+              );
+              await this.unpaused();
+            }
+
             const toolMessages = await this.processToolMessages(toolCall);
             // Add the tool responses to the thread
             messages.push(...(toolMessages as Message[]));
@@ -687,16 +694,6 @@ export abstract class BaseAgent implements IAgent {
             );
 
             if (finalMessage) {
-              // Emit task completion event for plugins (like GitPlugin)
-              this.events.emit(this.eventTypes.agentTaskComplete, {
-                taskId:
-                  this.currentTaskId ||
-                  this.startTimeMs?.toString() ||
-                  Date.now().toString(),
-                result: finalMessage.content || "Done",
-              });
-              const doneMsg = finalMessage.content || "Done";
-
               // If user added pending messages after finalAnswer was called,
               // continue running to respond to that feedback instead of returning
               if (this.pendingUserMessages.length > 0) {
@@ -708,6 +705,17 @@ export abstract class BaseAgent implements IAgent {
                 this.updateCurrentThread(messages);
                 return this.call(userInput, messages);
               }
+
+              // Emit task completion event for plugins (like GitPlugin)
+              this.events.emit(this.eventTypes.agentTaskComplete, {
+                taskId:
+                  this.currentTaskId ||
+                  this.startTimeMs?.toString() ||
+                  Date.now().toString(),
+                result: finalMessage.content || "Done",
+              });
+              const doneMsg = finalMessage.content || "Done";
+
 
               this.agentEvents.emit(this.eventTypes.done, doneMsg);
               this.status = this.eventTypes.done;

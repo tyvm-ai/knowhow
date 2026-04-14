@@ -174,10 +174,6 @@ export const GeminiPricing: Record<string, GeminiModelPricing> = {
     output: 0.4,
     image_generation: 0.039,
   },
-  [Models.google.Gemini_20_Flash_Lite]: {
-    input: 0.075,
-    output: 0.3,
-  },
 
   // ── Gemini 1.5 (legacy) ───────────────────────────────────────────────────
   [Models.google.Gemini_15_Flash]: {

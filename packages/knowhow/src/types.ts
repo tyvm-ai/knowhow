@@ -89,9 +89,9 @@ export type Config = {
     auth?: {
       required?: boolean;
       passkey?: {
-        publicKey?: string;       // base64-encoded public key
-        credentialId?: string;    // base64-encoded credential ID
-        algorithm?: string;       // e.g. "ES256"
+        publicKey?: string; // base64-encoded public key
+        credentialId?: string; // base64-encoded credential ID
+        algorithm?: string; // e.g. "ES256"
       };
       sessionDurationHours?: number;
     };
@@ -187,19 +187,20 @@ export const Models = {
   anthropic: {
     Opus4_6: "claude-opus-4-6",
     Sonnet4_6: "claude-sonnet-4-6",
-    Opus4_5: "claude-opus-4-5-20251101",
-    Opus4: "claude-opus-4-20250514",
-    Opus4_1: "claude-opus-4-1-20250805",
-    Sonnet4_5: "claude-sonnet-4-5-20250929",
-    Haiku4_5: "claude-haiku-4-5-20251001",
-    Sonnet4: "claude-sonnet-4-20250514",
-    Sonnet3_7: "claude-3-7-sonnet-20250219",
-    Sonnet3_5: "claude-3-5-sonnet-20241022",
-    Haiku3_5: "claude-3-5-haiku-20241022",
-    Opus3: "claude-3-opus-20240229",
-    Haiku3: "claude-3-haiku-20240307",
+    Opus4_5: "claude-opus-4-5",
+    Opus4: "claude-opus-4",
+    Opus4_1: "claude-opus-4-1",
+    Sonnet4_5: "claude-sonnet-4-5",
+    Haiku4_5: "claude-haiku-4-5",
+    Sonnet4: "claude-sonnet-4",
+    Sonnet3_7: "claude-3-7-sonnet",
+    Sonnet3_5: "claude-3-5-sonnet",
+    Opus3: "claude-3-opus",
+    Haiku3: "claude-3-haiku",
   },
   xai: {
+    Grok_4_20_Reasoning: "grok-4.20-0309-reasoning",
+    Grok_4_20_NonReasoning: "grok-4.20-0309-non-reasoning",
     Grok4_1_Fast_Reasoning: "grok-4-1-fast-reasoning",
     Grok4_1_Fast_NonReasoning: "grok-4-1-fast-non-reasoning",
     GrokCodeFast: "grok-code-fast-1",
@@ -277,13 +278,13 @@ export const Models = {
     Gemini_25_Pro_Preview: "gemini-2.5-pro-preview-05-06",
     Gemini_25_Flash_Image: "gemini-2.5-flash-image",
     Gemini_25_Flash_Live: "gemini-2.5-flash-live-preview",
-    Gemini_25_Flash_Native_Audio: "gemini-2.5-flash-native-audio-preview-12-2025",
+    Gemini_25_Flash_Native_Audio:
+      "gemini-2.5-flash-native-audio-preview-12-2025",
     Gemini_25_Pro_TTS: "gemini-2.5-pro-preview-tts",
     // Gemini 2.0 (deprecated)
     Gemini_20_Flash: "gemini-2.0-flash",
     Gemini_20_Flash_Preview_Image_Generation:
       "gemini-2.0-flash-exp-image-generation",
-    Gemini_20_Flash_Lite: "gemini-2.0-flash-lite",
     // Gemini 1.5 (legacy)
     Gemini_15_Flash: "gemini-1.5-flash",
     Gemini_15_Flash_8B: "gemini-1.5-flash-8b",
@@ -380,7 +381,6 @@ export const GoogleReasoningModels = [
   Models.google.Gemini_25_Flash_Preview,
   Models.google.Gemini_25_Pro_Preview,
   Models.google.Gemini_20_Flash,
-  Models.google.Gemini_20_Flash_Lite,
   Models.google.Gemini_15_Flash,
   Models.google.Gemini_15_Flash_8B,
   Models.google.Gemini_15_Pro,
