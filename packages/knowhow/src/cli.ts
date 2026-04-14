@@ -38,6 +38,20 @@ import { readPromptFile } from "./ai";
 import { SetupModule } from "./chat/modules/SetupModule";
 import { CliChatService } from "./chat/CliChatService";
 
+// Handle unhandled promise rejections gracefully — particularly from MCP SDK
+// which fires errors via event emitters that can bypass Promise.allSettled.
+// Without this, a single failing MCP server (e.g. expired Notion token) will
+// crash the entire CLI with an unhandled rejection.
+process.on("unhandledRejection", (reason: unknown) => {
+  const message =
+    reason instanceof Error ? reason.message : String(reason);
+  // Only warn — don't exit. The MCP connect errors are recoverable;
+  // the server will simply be unavailable but others continue working.
+  console.warn(
+    `⚠ Unhandled MCP/async error (non-fatal): ${message}`
+  );
+});
+
 async function setupServices() {
   const { Agents, Mcp, Clients, Tools: OldTools } = services();
   const Tools = new LazyToolsService(); // eslint-disable-line no-shadow
@@ -74,7 +88,14 @@ async function setupServices() {
   Agents.setAgentContext(agentContext);
 
   console.log("🔌 Connecting to MCP...");
-  await Mcp.connectToConfigured(Tools);
+  try {
+    await Mcp.connectToConfigured(Tools);
+  } catch (mcpError) {
+    const msg = mcpError instanceof Error ? mcpError.message : String(mcpError);
+    console.warn(
+      `⚠ Some MCP servers failed to connect (continuing without them): ${msg}`
+    );
+  }
   console.log("Connecting to clients...");
   await Clients.registerConfiguredModels();
   console.log("✓ Services are set up and ready to go!");

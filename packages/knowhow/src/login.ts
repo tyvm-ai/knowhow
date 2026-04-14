@@ -49,20 +49,17 @@ export async function login(jwtFlag?: boolean): Promise<void> {
     );
 
     const config = await getConfig();
-    const proxyUrl = KNOWHOW_API_URL + "/api/proxy";
 
     if (!config.modelProviders) {
       config.modelProviders = [];
     }
 
     const hasProvider = config.modelProviders.find(
-      (provider) => provider.provider === "knowhow" && provider.url === proxyUrl
+      (provider) => provider.provider === "knowhow"
     );
     if (!hasProvider) {
       config.modelProviders.push({
         provider: "knowhow",
-        url: proxyUrl,
-        jwtFile: ".knowhow/.jwt",
       });
 
       await updateConfig(config);
