@@ -575,7 +575,9 @@ export class KnowhowSimpleClient {
    * Get presigned S3 URL for downloading a file from Knowhow FS.
    * First finds or creates the file by path, then gets its download URL.
    */
-  async getOrgFilePresignedDownloadUrl(filePath: string): Promise<string> {
+  async getOrgFilePresignedDownloadUrl(
+    filePath: string
+  ): Promise<{ downloadUrl: string; checksumSHA256: string | null }> {
     await this.checkJwt();
 
     // Find the file by path
@@ -585,12 +587,15 @@ export class KnowhowSimpleClient {
     }
 
     // Get download URL using the file ID
-    const response = await http.post<{ downloadUrl: string }>(
+    const response = await http.post<{ downloadUrl: string; checksumSHA256: string | null }>(
       `${this.baseUrl}/api/org-files/download/${file.id}`,
       {},
       { headers: this.headers }
     );
-    return response.data.downloadUrl;
+    return {
+      downloadUrl: response.data.downloadUrl,
+      checksumSHA256: response.data.checksumSHA256 ?? null,
+    };
   }
 
   /**

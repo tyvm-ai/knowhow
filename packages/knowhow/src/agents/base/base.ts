@@ -64,7 +64,13 @@ export abstract class BaseAgent implements IAgent {
   protected compressMinMessages = 30;
 
   protected threads = [] as Message[][];
+
+  // Message from users
   protected pendingUserMessages = [] as Message[];
+
+  // Internal messages
+  protected pendingMessages = [] as Message[];
+
   protected taskBreakdown = "";
   protected summaries = [] as string[];
   protected currentTaskId: string | null = null;
@@ -538,10 +544,14 @@ export abstract class BaseAgent implements IAgent {
 
   async kill() {
     this.log("Killing agent");
+    if (this.status === this.eventTypes.kill || this.status === this.eventTypes.done) {
+      this.log("Agent is already being killed or done, ignoring duplicate kill()", "warn");
+      return;
+    }
     this.agentEvents.emit(this.eventTypes.kill, this);
     this.status = this.eventTypes.kill;
 
-    this.addPendingUserMessage({
+    this.addPendingMessage({
       role: "user",
       content: `<Workflow>The user has requested the task to end, please call ${this.requiredToolNames} with a report of your ending state</Workflow>`,
     } as Message);
@@ -597,6 +607,11 @@ export abstract class BaseAgent implements IAgent {
       if (this.pendingUserMessages.length) {
         messages.push(...this.pendingUserMessages);
         this.pendingUserMessages = [];
+      }
+
+      if (this.pendingMessages.length) {
+        messages.push(...this.pendingMessages);
+        this.pendingMessages = [];
       }
 
       messages = this.formatInputMessages(messages);
@@ -673,7 +688,7 @@ export abstract class BaseAgent implements IAgent {
           this.updateCurrentThread(messages);
 
           for (const toolCall of toolCalls) {
-            if(this.status === this.eventTypes.pause) {
+            if (this.status === this.eventTypes.pause) {
               this.log(
                 "Agent was paused before tool call, waiting before processing tool calls"
               );
@@ -715,7 +730,6 @@ export abstract class BaseAgent implements IAgent {
                 result: finalMessage.content || "Done",
               });
               const doneMsg = finalMessage.content || "Done";
-
 
               this.agentEvents.emit(this.eventTypes.done, doneMsg);
               this.status = this.eventTypes.done;
@@ -908,7 +922,22 @@ export abstract class BaseAgent implements IAgent {
     });
   }
 
+  // A new message from system, non blocking
   addPendingMessage(message: Message) {
+    if (this.status === this.eventTypes.done) {
+      this.log("Agent is done, cannot take more messages", "warn");
+    } else {
+      const pendingMessages = this.pendingMessages.map((m) => m.content);
+      if (pendingMessages.includes(message.content)) {
+        // Ignore messages we already have queue'd up
+        return;
+      }
+      this.pendingMessages.push(message);
+    }
+  }
+
+  // A new message from users, blocks completion
+  addPendingUserMessage(message: Message) {
     if (this.status === this.eventTypes.done) {
       this.log("Agent is done, cannot take more messages", "warn");
     } else {
@@ -919,10 +948,6 @@ export abstract class BaseAgent implements IAgent {
       }
       this.pendingUserMessages.push(message);
     }
-  }
-
-  addPendingUserMessage(message: Message) {
-    this.addPendingMessage(message);
     this.events.emit(this.eventTypes.userSay, message.content);
   }
 

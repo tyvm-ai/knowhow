@@ -70,3 +70,55 @@ export async function saveAllFileHashes(files: string[], promptHash: string) {
 
   await saveHashes(hashes);
 }
+
+const UPLOAD_KEY = "upload";
+
+/**
+ * Returns true if the file has changed since the last successful upload
+ * (or if it has never been uploaded before)
+ */
+export async function hasFileChangedSinceUpload(
+  localPath: string,
+  hashes: any
+): Promise<boolean> {
+  if (!fs.existsSync(localPath)) return true;
+  const content = fs.readFileSync(localPath);
+  const currentHash = crypto.createHash("md5").update(content).digest("hex");
+  return hashes[localPath]?.[UPLOAD_KEY] !== currentHash;
+}
+
+/**
+ * Saves the hash of the file at the time of a successful upload
+ */
+export async function saveUploadHash(localPath: string) {
+  const hashes = await getHashes();
+  const content = fs.readFileSync(localPath);
+  const currentHash = crypto.createHash("md5").update(content).digest("hex");
+  if (!hashes[localPath]) {
+    hashes[localPath] = { fileHash: currentHash, promptHash: "" };
+  }
+  hashes[localPath][UPLOAD_KEY] = currentHash;
+  await saveHashes(hashes);
+}
+
+/**
+ * Compute SHA-256 of a local file, returned as base64 (matches S3 encoding)
+ */
+export function computeSHA256Base64(filePath: string): string {
+  const content = fs.readFileSync(filePath);
+  return crypto.createHash("sha256").update(content).digest("base64");
+}
+
+/**
+ * Returns true if the local file's SHA-256 matches the remote checksum,
+ * meaning the file is up-to-date and download can be skipped.
+ */
+export function isLocalFileMatchingRemote(
+  localPath: string,
+  remoteChecksumSHA256: string | null
+): boolean {
+  if (!remoteChecksumSHA256) return false;
+  if (!fs.existsSync(localPath)) return false;
+  const localChecksum = computeSHA256Base64(localPath);
+  return localChecksum === remoteChecksumSHA256;
+}
