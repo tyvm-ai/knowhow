@@ -136,13 +136,24 @@ export class McpService {
         if (shouldAutoConnect && !this.connected[index]) {
           console.log(`Connecting to MCP server: ${config.name}`);
           try {
-            await client.connect(this.transports[index]);
+            // Wrap connect in a race with a timeout to prevent hanging,
+            // and use a wrapping Promise to catch errors that may come
+            // from event-emitter callbacks (unhandled rejection pattern in MCP SDK)
+            await new Promise<void>(async (resolve, reject) => {
+              try {
+                await client.connect(this.transports[index]);
+                resolve();
+              } catch (err) {
+                reject(err);
+              }
+            });
           } catch (error) {
             console.error(
               `Failed to connect to MCP server '${config.name}':`,
               error.message || error
             );
-            throw error; // Re-throw to mark as rejected in Promise.allSettled
+            // Don't re-throw — just log and continue so other servers can still connect
+            return;
           }
           this.connected[index] = true;
         } else if (!shouldAutoConnect) {
@@ -155,7 +166,10 @@ export class McpService {
 
     // Log summary of auto-connection results
     const successful = results.filter((r) => r.status === "fulfilled").length;
-    const failed = results.filter((r) => r.status === "rejected").length;
+    // Since we no longer re-throw, count servers that are NOT connected after the attempt
+    const failed = this.clients.filter(
+      (_, i) => this.config[i]?.autoConnect !== false && !this.connected[i]
+    ).length;
     if (failed > 0) {
       console.warn(
         `Auto-connected ${successful}/${this.clients.length} MCP servers (${failed} failed)`

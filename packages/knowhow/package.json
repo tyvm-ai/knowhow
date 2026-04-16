@@ -1,6 +1,6 @@
 {
   "name": "@tyvm/knowhow",
-  "version": "0.0.98",
+  "version": "0.0.102",
   "description": "ai cli with plugins and agents",
   "main": "ts_build/src/index.js",
   "bin": {
@@ -9,8 +9,10 @@
   "scripts": {
     "test": "jest --testTimeout 300000",
     "test:debug": "node --inspect-brk ../../node_modules/jest/bin/jest.js --detectOpenHandles --forceExit --testTimeout 300000",
+    "build": "npm run compile",
     "compile": "npm run clean && tsc",
     "clean": "rm -rf ts_build",
+    "node:build": "bash scripts/build-for-node.sh",
     "start": "npm run compile && node --no-node-snapshot ts_build/src/server/index.js",
     "dataset:diffs:generate": "ts-node src/dataset/diffs/generate.ts",
     "dataset:diffs:jsonl": "ts-node src/dataset/diffs/jsonl.ts",

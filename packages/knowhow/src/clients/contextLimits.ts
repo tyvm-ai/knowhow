@@ -52,7 +52,6 @@ export const ContextLimits: Record<string, number> = {
   [Models.anthropic.Haiku4_5]: 200_000,
   [Models.anthropic.Sonnet3_7]: 200_000,
   [Models.anthropic.Sonnet3_5]: 200_000,
-  [Models.anthropic.Haiku3_5]: 200_000,
   [Models.anthropic.Opus3]: 200_000,
   [Models.anthropic.Haiku3]: 200_000,
 
@@ -74,7 +73,6 @@ export const ContextLimits: Record<string, number> = {
   [Models.google.Gemini_25_Pro_TTS]: 1_000_000,
   [Models.google.Gemini_20_Flash]: 1_000_000,
   [Models.google.Gemini_20_Flash_Preview_Image_Generation]: 1_000_000,
-  [Models.google.Gemini_20_Flash_Lite]: 1_000_000,
   [Models.google.Gemini_20_Flash_Live]: 1_000_000,
   [Models.google.Gemini_20_Flash_TTS]: 1_000_000,
   [Models.google.Gemini_15_Flash]: 1_000_000,

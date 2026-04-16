@@ -217,7 +217,12 @@ export class AIClient {
     for (const entry of providers) {
       const client = this.resolveClient(entry);
 
-      if (!client) continue;
+      if (!client) {
+        if (entry.provider === "knowhow") {
+          console.warn(`⚠️  Knowhow provider is not logged in. Run 'knowhow login' to enable Knowhow models.`);
+        }
+        continue;
+      }
 
       const reg = this.providerRegistry[entry.provider];
 
@@ -493,11 +498,19 @@ export class AIClient {
       return foundByModel;
     }
 
-    console.log("unable to find", {
-      provider,
-      model,
-      all: this.listAllModels(),
-    });
+    const allModels = this.listAllModels();
+    const hasKnowhowModels =
+      allModels["knowhow"] && allModels["knowhow"].length > 0;
+    const knowhowIsConfigured = Object.keys(allModels).includes("knowhow");
+
+    console.warn(`⚠️  Unable to find model '${model}' for provider '${provider}'.`);
+    console.warn(`   Available providers: ${Object.keys(allModels).join(", ") || "(none)"}`);
+
+    if (!hasKnowhowModels && !knowhowIsConfigured) {
+      console.warn(`   Tip: Run 'knowhow login' to enable Knowhow models.`);
+    } else if (!hasKnowhowModels) {
+      console.warn(`   Tip: The Knowhow provider returned no models. Try running 'knowhow login' to re-authenticate.`);
+    }
 
     return { provider, model };
   }

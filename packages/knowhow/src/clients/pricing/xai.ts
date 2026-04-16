@@ -1,6 +1,17 @@
 import { Models } from "../../types";
 
 export const XaiTextPricing = {
+
+  [Models.xai.Grok_4_20_Reasoning]: {
+    input: 2.0,
+    cache_hit: 0.20,
+    output: 6.0,
+  },
+  [Models.xai.Grok_4_20_NonReasoning]: {
+    input: 2.0,
+    cache_hit: 0.20,
+    output: 6.0,
+  },
   [Models.xai.Grok4_1_Fast_NonReasoning]: {
     input: 0.2,
     cache_hit: 0.05,

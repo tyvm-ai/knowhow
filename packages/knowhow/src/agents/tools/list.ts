@@ -459,6 +459,7 @@ export const includedTools = [
           },
         },
         required: ["provider"],
+        positional: true,
       },
       returns: {
         type: "object",
