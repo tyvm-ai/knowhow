@@ -24,6 +24,30 @@ import {
 } from "../clients";
 import { Config } from "../types";
 
+// Remote sync placeholder interfaces
+export interface CreateSessionPlaceholderRequest {
+  title?: string;
+  workerId?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface CreateSessionPlaceholderResponse {
+  sessionId: string;
+  orgId: string;
+}
+
+export interface CreateMessagePlaceholderRequest {
+  content: string;
+  agentName?: string;
+  modelName?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface CreateMessagePlaceholderResponse {
+  messageId: string;
+  taskId?: string;
+}
+
 // Chat Task interfaces
 export interface CreateMessageTaskRequest {
   messageId: string;
@@ -696,5 +720,42 @@ export class KnowhowSimpleClient {
       data,
       { headers: this.headers }
     );
+  }
+
+  // ============================================
+  // Remote Sync Placeholder Methods
+  // ============================================
+
+  /**
+   * Create a bare session stub without triggering AI inference.
+   * Used by the CLI remote sync feature to establish a remote session.
+   */
+  async createSessionPlaceholder(
+    request: CreateSessionPlaceholderRequest = {}
+  ): Promise<CreateSessionPlaceholderResponse> {
+    await this.checkJwt();
+    const response = await http.post<CreateSessionPlaceholderResponse>(
+      `${this.baseUrl}/api/chat/sessions/placeholder`,
+      request,
+      { headers: this.headers }
+    );
+    return response.data;
+  }
+
+  /**
+   * Create a message placeholder in a session without triggering AI inference.
+   * Used by the CLI remote sync feature to register a message before syncing threads.
+   */
+  async createMessagePlaceholder(
+    sessionId: string,
+    request: CreateMessagePlaceholderRequest
+  ): Promise<CreateMessagePlaceholderResponse> {
+    await this.checkJwt();
+    const response = await http.post<CreateMessagePlaceholderResponse>(
+      `${this.baseUrl}/api/chat/sessions/${sessionId}/messages/placeholder`,
+      request,
+      { headers: this.headers }
+    );
+    return response.data;
   }
 }

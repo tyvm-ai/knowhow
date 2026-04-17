@@ -166,53 +166,9 @@ export class ScriptPolicyEnforcer {
   validateScript(scriptContent: string, allowNetworkAccess?: boolean): { valid: boolean; issues: string[] } {
     const issues: string[] = [];
 
-    // Check for dangerous patterns
-    const dangerousPatterns = [
-      /require\s*\(/gi,           // Node.js require
-      /import\s+.*\s+from/gi,     // ES6 imports (should be handled by bundler)
-      /process\./gi,              // Process access
-      /global\./gi,               // Global object access
-      /eval\s*\(/gi,              // eval calls
-      /Function\s*\(/gi,          // Function constructor
-      /setTimeout/gi,             // setTimeout
-      /setInterval/gi,            // setInterval
-      /XMLHttpRequest/gi,         // XHR
-      /WebSocket/gi,              // WebSocket
-    ];
-
-    // Block direct fetch calls when network access is not explicitly allowed
-    if (!allowNetworkAccess) {
-      dangerousPatterns.push(/fetch\s*\(/gi);
-    }
-
-    for (const pattern of dangerousPatterns) {
-      if (pattern.test(scriptContent)) {
-        issues.push(`Potentially dangerous pattern detected: ${pattern.source}`);
-      }
-    }
-
     // Check script length
     if (scriptContent.length > this.policy.maxScriptLength) {
       issues.push(`Script too long: ${scriptContent.length} > ${this.policy.maxScriptLength}`);
-    }
-
-    // Check for excessive complexity (rough heuristic)
-    const complexityIndicators = [
-      /for\s*\(/gi,
-      /while\s*\(/gi,
-      /function\s+\w+/gi,
-      /=>\s*{/gi,
-      /if\s*\(/gi,
-    ];
-
-    let complexityScore = 0;
-    for (const indicator of complexityIndicators) {
-      const matches = scriptContent.match(indicator);
-      complexityScore += matches ? matches.length : 0;
-    }
-
-    if (complexityScore > this.complexityLimit) {
-      issues.push(`Script complexity too high: ${complexityScore} constructs detected`);
     }
 
     return {

@@ -29,6 +29,12 @@ export class AgentSyncFs {
   private agent: BaseAgent | undefined;
   private threadUpdateHandler: ((...args: any[]) => void) | undefined;
   private doneHandler: ((...args: any[]) => void) | undefined;
+  /**
+   * Tracks the most recent in-flight filesystem metadata update.
+   * The done handler awaits this before finalizing, preventing a race where
+   * the completion call writes before the last thread sync finishes.
+   */
+  private pendingThreadUpdatePromise: Promise<void> | null = null;
 
   constructor() {
     // Start cleanup process when created
@@ -294,8 +300,12 @@ export class AgentSyncFs {
       if (!this.taskId) return;
 
       try {
-        await this.updateMetadata(agent, true);
-        await this.checkForChanges(agent);
+        // Track the pending update so the done handler can await it.
+        this.pendingThreadUpdatePromise = (async () => {
+          await this.updateMetadata(agent, true);
+          await this.checkForChanges(agent);
+        })();
+        await this.pendingThreadUpdatePromise;
       } catch (error) {
         console.error(`❌ Error during threadUpdate sync:`, error);
       }
@@ -314,6 +324,17 @@ export class AgentSyncFs {
       // Store finalization promise so callers can await it (same pattern as AgentSyncKnowhowWeb)
       this.finalizationPromise = (async () => {
         try {
+          // Flush any in-flight thread update before finalizing.
+          // This prevents the race where a pending "inProgress: true" metadata write
+          // overwrites the finalization write.
+          if (this.pendingThreadUpdatePromise) {
+            console.log(`⏳ [AgentSyncFs] Awaiting pending thread update before finalizing...`);
+            await this.pendingThreadUpdatePromise.catch(() => {
+              // Ignore errors in pending update — we still want to finalize
+            });
+            this.pendingThreadUpdatePromise = null;
+          }
+
           await this.updateMetadata(agent, false, result);
           console.log(`✅ Completed filesystem sync for task: ${this.taskId}`);
           await this.cleanup();
@@ -435,5 +456,6 @@ export class AgentSyncFs {
     this.eventHandlersSetup = false;
     this.lastInputContent = "";
     this.finalizationPromise = null;
+    this.pendingThreadUpdatePromise = null;
   }
 }

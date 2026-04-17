@@ -8,8 +8,6 @@
   "keywords": [],
   "author": "Micah Riggan",
   "license": "MIT",
-  "devDependencies": {},
-  "dependencies": {},
   "private": true,
   "workspaces": [
     "packages/*"

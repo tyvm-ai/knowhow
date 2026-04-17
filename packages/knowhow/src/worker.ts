@@ -269,6 +269,8 @@ export async function worker(options?: {
   let connected = false;
   let tunnelHandler: TunnelHandler | null = null;
   let tunnelWs: WebSocket | null = null;
+  let lastJwt: string | null = null;
+  let unauthorizedJwt: string | null = null;
 
   // Check if tunnel is enabled
   const tunnelEnabled = config.worker?.tunnel?.enabled ?? false;
@@ -339,6 +341,7 @@ export async function worker(options?: {
   async function connectWebSocket() {
     const jwt = await loadJwt();
     console.log(`Connecting to ${API_URL}`);
+    lastJwt = jwt;
 
     // Reset the MCP server to avoid "Already connected to a transport" error on reconnects
     await mcpServer.reset();
@@ -377,6 +380,34 @@ export async function worker(options?: {
     const ws = new WebSocket(`${API_URL}/ws/worker`, {
       headers,
     });
+
+    // Listen for workerRegistered message from the backend before MCP transport takes over.
+    // The MCP transport will swallow non-JSONRPC messages silently, but we attach a raw
+    // listener here first to capture the workerId sent back by the backend after upsert.
+    const workerRegisteredHandler = async (data: any) => {
+      try {
+        const parsed = JSON.parse(
+          typeof data === "string" ? data : data.toString()
+        );
+        if (parsed?.type === "workerRegistered" && parsed?.workerId) {
+          const currentConfig = await getConfig();
+          const currentWorkerId = currentConfig.worker?.workerId;
+          if (currentWorkerId !== parsed.workerId) {
+            await updateConfig({
+              ...currentConfig,
+              worker: {
+                ...currentConfig.worker,
+                workerId: parsed.workerId,
+              },
+            });
+            console.log(`✅ Worker ID recorded: ${parsed.workerId}`);
+          }
+        }
+      } catch {
+        // Not our message — ignore parse errors
+      }
+    };
+    ws.on("message", workerRegisteredHandler);
 
     // Create separate WebSocket connection for tunnel if enabled
     let tunnelConnection: WebSocket | null = null;
@@ -437,9 +468,17 @@ export async function worker(options?: {
         console.log(
           `Tunnel WebSocket closed. Code: ${code}, Reason: ${reason.toString()}`
         );
-        console.log(
-          "Tunnel connection will reconnect on next connection cycle..."
-        );
+        if (code === 1008) {
+          unauthorizedJwt = lastJwt;
+          console.error(
+            "❌ Tunnel received Unauthorized (1008). The JWT may be expired."
+          );
+          console.error("   Pausing reconnection until JWT changes...");
+        } else {
+          console.log(
+            "Tunnel connection will reconnect on next connection cycle..."
+          );
+        }
 
         // Cleanup tunnel handler
         if (tunnelHandler) {
@@ -471,7 +510,6 @@ export async function worker(options?: {
       console.log(
         `WebSocket closed. Code: ${code}, Reason: ${reason.toString()}`
       );
-      console.log("Attempting to reconnect...");
 
       // Cleanup tunnel handler
       if (tunnelHandler) {
@@ -479,6 +517,21 @@ export async function worker(options?: {
       }
 
       connected = false;
+
+      // If we got an Unauthorized (1008) close, record the JWT that failed
+      // so we don't keep hammering the server with the same expired token
+      if (code === 1008) {
+        unauthorizedJwt = lastJwt;
+        console.error(
+          "❌ Worker received Unauthorized (1008). The JWT may be expired."
+        );
+        console.error(
+          "   Run 'knowhow login' to refresh your token, then restart the worker."
+        );
+        console.error("   Pausing reconnection until JWT changes...");
+      } else {
+        console.log("Attempting to reconnect...");
+      }
     });
 
     ws.on("error", (error) => {
@@ -498,6 +551,19 @@ export async function worker(options?: {
     } | null = null;
 
     if (!connected) {
+      // If we got an Unauthorized error, check if the JWT has changed before retrying
+      if (unauthorizedJwt !== null) {
+        const currentJwt = await loadJwt().catch(() => null);
+        if (currentJwt === unauthorizedJwt) {
+          // JWT hasn't changed - don't reconnect, just wait
+          await wait(5000);
+          continue;
+        }
+        // JWT changed - clear the unauthorized state and reconnect
+        console.log("🔄 JWT has changed, attempting to reconnect...");
+        unauthorizedJwt = null;
+      }
+
       console.log("Attempting to connect...");
       connection = await connectWebSocket();
     }

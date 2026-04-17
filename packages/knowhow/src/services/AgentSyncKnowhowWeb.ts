@@ -36,6 +36,12 @@ export class AgentSyncKnowhowWeb {
   private agent: BaseAgent | undefined;
   private threadUpdateHandler: ((...args: any[]) => void) | undefined;
   private doneHandler: ((...args: any[]) => void) | undefined;
+  /**
+   * Tracks the most recent in-flight thread update API call.
+   * The done handler awaits this before sending the finalization call,
+   * preventing a race where the completion overwrites a later in-progress update.
+   */
+  private pendingThreadUpdatePromise: Promise<void> | null = null;
 
   constructor(baseUrl: string = KNOWHOW_API_URL) {
     this.baseUrl = baseUrl;
@@ -240,11 +246,15 @@ export class AgentSyncKnowhowWeb {
       }
 
       try {
-        // Update task with current state
-        await this.updateChatTask(this.knowhowTaskId, agent, true);
+        // Track the pending thread update so the done handler can await it.
+        this.pendingThreadUpdatePromise = (async () => {
+          // Update task with current state
+          await this.updateChatTask(this.knowhowTaskId!, agent, true);
 
-        // Check for pending messages, pause, or kill status
-        await this.checkAndProcessPendingMessages(agent, this.knowhowTaskId);
+          // Check for pending messages, pause, or kill status
+          await this.checkAndProcessPendingMessages(agent, this.knowhowTaskId!);
+        })();
+        await this.pendingThreadUpdatePromise;
       } catch (error) {
         console.error(`❌ Error during threadUpdate sync:`, error);
         // Continue execution even if synchronization fails
@@ -264,6 +274,17 @@ export class AgentSyncKnowhowWeb {
       // Create a promise that tracks finalization
       this.finalizationPromise = (async () => {
         try {
+          // Flush any in-flight thread update before sending the completion call.
+          // This prevents the race where a "inProgress: true" update overtakes
+          // the "inProgress: false" finalization call.
+          if (this.pendingThreadUpdatePromise) {
+            console.log(`⏳ [AgentSync] Awaiting pending thread update before finalizing...`);
+            await this.pendingThreadUpdatePromise.catch(() => {
+              // Ignore errors in the pending update — we still want to finalize
+            });
+            this.pendingThreadUpdatePromise = null;
+          }
+
           console.log(
             `Updating Knowhow chat task on completion..., ${this.knowhowTaskId}`
           );
@@ -306,6 +327,7 @@ export class AgentSyncKnowhowWeb {
     this.knowhowTaskId = undefined;
     this.eventHandlersSetup = false;
     this.finalizationPromise = null;
+    this.pendingThreadUpdatePromise = null;
   }
 
   /**

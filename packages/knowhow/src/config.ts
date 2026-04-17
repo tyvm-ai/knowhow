@@ -109,6 +109,8 @@ const defaultConfig = {
       allowedPorts: [],
     },
   },
+
+  syncRemote: false,
 } as Config;
 
 const defaultLanguage = {

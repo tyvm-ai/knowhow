@@ -48,7 +48,6 @@ export class AgentModule extends BaseChatModule {
   // Service instances for task management, session management, and synchronization
   private taskRegistry: TaskRegistry;
   private sessionManager: SessionManager;
-  private syncer: SyncerService;
   /** Timestamp when this process started - used to filter sessions */
   private processStartTime: number = Date.now();
   /** Currently attached agent task ID */
@@ -60,6 +59,9 @@ export class AgentModule extends BaseChatModule {
   private _wireAgentEvents: EventService | undefined;
   private _wireTaskId: string | undefined;
   private _wireAgentName: string | undefined;
+  /** Optional reference to RemoteSyncModule for auto-sync on new tasks */
+  private remoteSyncModule: any | undefined;
+
   private _wireEventTypes:
     | { toolCall?: string; toolUsed?: string; agentSay?: string; done: string }
     | undefined;
@@ -68,8 +70,16 @@ export class AgentModule extends BaseChatModule {
     super();
     this.taskRegistry = new TaskRegistry();
     this.sessionManager = new SessionManager();
-    this.syncer = new SyncerService();
   }
+
+  /**
+   * Set the RemoteSyncModule reference for auto-sync support.
+   * Called from InternalChatModule after both modules are created.
+   */
+  public setRemoteSyncModule(module: any): void {
+    this.remoteSyncModule = module;
+  }
+
 
   getCommands(): ChatCommand[] {
     return [
@@ -645,11 +655,12 @@ Please continue from where you left off and complete the original request.
       // Save initial session
       this.saveSession(taskId, taskInfo, []);
 
-      // Reset sync services before setting up new task (removes old listeners)
-      this.syncer.reset();
+      // Create a fresh SyncerService per agent task so that detaching from one
+      // agent and starting another doesn't tear down the first agent's sync.
+      const syncer = new SyncerService();
 
       // Create sync task (SyncerService decides web vs fs internally)
-      const syncTaskId = await this.syncer.createTask({
+      const syncTaskId = await syncer.createTask({
         taskId,
         prompt: input,
         messageId: options.messageId,
@@ -658,14 +669,12 @@ Please continue from where you left off and complete the original request.
         agentName,
       });
 
-      // Update TaskInfo with the sync task ID
-      const webTaskId = this.syncer.getCreatedWebTaskId();
+      const webTaskId = syncer.getCreatedWebTaskId();
       knowhowTaskId = webTaskId;
       taskInfo.knowhowTaskId = webTaskId || syncTaskId;
       this.taskRegistry.register(taskId, taskInfo);
 
-      // Wire up event listeners on the agent
-      await this.syncer.setupAgentSync(agent, syncTaskId);
+      await syncer.setupAgentSync(agent, syncTaskId);
 
       // Set up session update listener
       const threadUpdateHandler = async (threadState: any) => {
@@ -784,7 +793,7 @@ Please continue from where you left off and complete the original request.
           taskInfo = this.taskRegistry.get(taskId);
 
           // Wait for AgentSync to finish before resolving
-          await this.syncer.waitForFinalization();
+          await syncer.waitForFinalization();
 
           if (taskInfo) {
             taskInfo.status = "completed";
@@ -1007,6 +1016,11 @@ Please continue from where you left off and complete the original request.
         provider: selectedAgent.getProvider() as any,
         run: false, // Don't run yet, we need to set up event listeners first
       });
+
+      // If auto-sync is enabled, push this task to the remote KnowHow app
+      if (this.remoteSyncModule?.isAutoSyncEnabled()) {
+        await this.remoteSyncModule.syncTask(taskId);
+      }
 
       await this.attachedAgentChatLoop(taskId, agent, formattedPrompt);
 
