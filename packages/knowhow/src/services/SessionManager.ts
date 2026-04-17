@@ -54,6 +54,7 @@ export class SessionManager {
         sessionId: taskId,
         knowhowMessageId: taskInfo.knowhowMessageId,
         knowhowTaskId: taskInfo.knowhowTaskId,
+        chatSessionId: taskInfo.chatSessionId,
         taskId,
         agentName: taskInfo.agentName,
         initialInput: taskInfo.initialInput,
@@ -99,6 +100,7 @@ export class SessionManager {
           // Update Knowhow task fields if they exist in TaskInfo
           session.knowhowMessageId = taskInfo.knowhowMessageId;
           session.knowhowTaskId = taskInfo.knowhowTaskId;
+          session.chatSessionId = taskInfo.chatSessionId;
         }
 
         fs.writeFileSync(sessionPath, JSON.stringify(session, null, 2));

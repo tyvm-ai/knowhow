@@ -39,6 +39,8 @@ export type Config = {
   promptsDir: string;
   lintCommands?: { [fileExtension: string]: string };
 
+  syncRemote?: boolean;
+
   micCommand?: string;
   defaultMic?: string;
 
@@ -83,6 +85,7 @@ export type Config = {
 
   worker?: {
     allowedTools?: string[];
+    workerId?: string;
     sandbox?: boolean;
     volumes?: string[];
     envFile?: string;

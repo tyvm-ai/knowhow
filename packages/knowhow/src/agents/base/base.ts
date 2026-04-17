@@ -731,6 +731,9 @@ export abstract class BaseAgent implements IAgent {
               });
               const doneMsg = finalMessage.content || "Done";
 
+              // Ensure the final thread state (including the finalAnswer result) is
+              // captured before emitting done, so syncers see the complete thread.
+              this.updateCurrentThread(messages);
               this.agentEvents.emit(this.eventTypes.done, doneMsg);
               this.status = this.eventTypes.done;
               return doneMsg;
