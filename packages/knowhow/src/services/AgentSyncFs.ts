@@ -18,13 +18,17 @@ export interface FsSyncOptions {
  * Creates files in .knowhow/processes/agents/{taskId}/ for status and input
  */
 export class AgentSyncFs {
+  /** Shared cleanup interval across all instances to avoid duplicate cleanup runs */
+  private static sharedCleanupInterval: NodeJS.Timeout | null = null;
+  private static sharedBasePath: string = ".knowhow/processes/agents";
+  private static cleanupStarted: boolean = false;
+
   private taskId: string | undefined;
   private basePath: string = ".knowhow/processes/agents";
   private taskPath: string | undefined;
   private eventHandlersSetup: boolean = false;
   private watcher: ReturnType<typeof watch> | null = null;
   private lastInputContent: string = "";
-  private cleanupInterval: NodeJS.Timeout | null = null;
   private finalizationPromise: Promise<void> | null = null;
   private agent: BaseAgent | undefined;
   private threadUpdateHandler: ((...args: any[]) => void) | undefined;
@@ -38,7 +42,7 @@ export class AgentSyncFs {
 
   constructor() {
     // Start cleanup process when created
-    this.startCleanupProcess();
+    AgentSyncFs.startSharedCleanupProcess();
   }
 
   /**
@@ -372,9 +376,9 @@ export class AgentSyncFs {
   /**
    * Clean up old task directories (older than 3 days)
    */
-  private async cleanupOldTasks(): Promise<void> {
+  private static async cleanupOldTasks(): Promise<void> {
     try {
-      const agentsPath = this.basePath;
+      const agentsPath = AgentSyncFs.sharedBasePath;
       
       // Check if directory exists
       try {
@@ -414,23 +418,27 @@ export class AgentSyncFs {
   /**
    * Start periodic cleanup process
    */
-  private startCleanupProcess(): void {
-    // Run cleanup every hour
-    this.cleanupInterval = setInterval(() => {
-      this.cleanupOldTasks();
+  private static startSharedCleanupProcess(): void {
+    if (AgentSyncFs.cleanupStarted) return;
+    AgentSyncFs.cleanupStarted = true;
+
+    // Run cleanup every hour (shared across all instances)
+    AgentSyncFs.sharedCleanupInterval = setInterval(() => {
+      AgentSyncFs.cleanupOldTasks();
     }, 60 * 60 * 1000);
 
     // Also run once on startup
-    this.cleanupOldTasks();
+    AgentSyncFs.cleanupOldTasks();
   }
 
   /**
    * Stop cleanup process
    */
   stopCleanup(): void {
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-      this.cleanupInterval = null;
+    if (AgentSyncFs.sharedCleanupInterval) {
+      clearInterval(AgentSyncFs.sharedCleanupInterval);
+      AgentSyncFs.sharedCleanupInterval = null;
+      AgentSyncFs.cleanupStarted = false;
     }
   }
 

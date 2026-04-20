@@ -73,6 +73,8 @@ export async function saveAllFileHashes(files: string[], promptHash: string) {
 
 const UPLOAD_KEY = "upload";
 
+const DOWNLOAD_KEY = "download";
+
 /**
  * Returns true if the file has changed since the last successful upload
  * (or if it has never been uploaded before)
@@ -98,6 +100,37 @@ export async function saveUploadHash(localPath: string) {
     hashes[localPath] = { fileHash: currentHash, promptHash: "" };
   }
   hashes[localPath][UPLOAD_KEY] = currentHash;
+  await saveHashes(hashes);
+}
+
+/**
+ * Returns true if the local file already matches the hash stored from
+ * the last successful download, meaning we can skip the download.
+ */
+export async function isLocalFileMatchingDownloadHash(
+  localPath: string,
+  hashes: any
+): Promise<boolean> {
+  if (!fs.existsSync(localPath)) return false;
+  const storedHash = hashes[localPath]?.[DOWNLOAD_KEY];
+  if (!storedHash) return false;
+  const content = fs.readFileSync(localPath);
+  const currentHash = crypto.createHash("sha256").update(content).digest("base64");
+  return storedHash === currentHash;
+}
+
+/**
+ * Saves the SHA-256 hash of the file after a successful download so we can
+ * skip unchanged files on the next sync.
+ */
+export async function saveDownloadHash(localPath: string) {
+  const hashes = await getHashes();
+  const content = fs.readFileSync(localPath);
+  const currentHash = crypto.createHash("sha256").update(content).digest("base64");
+  if (!hashes[localPath]) {
+    hashes[localPath] = { fileHash: currentHash, promptHash: "" };
+  }
+  hashes[localPath][DOWNLOAD_KEY] = currentHash;
   await saveHashes(hashes);
 }
 
