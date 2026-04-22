@@ -175,7 +175,7 @@ export class GenericXAIClient implements GenericClient {
     // Calculate cost based on model name
     const imageModel = options.model || "grok-imagine-image";
     const costPerImage =
-      XaiImagePricing[imageModel as keyof typeof XaiImagePricing] || 0.02;
+      XaiImagePricing[imageModel as keyof typeof XaiImagePricing]?.image_generation || 0.02;
     const usdCost = (options.n || 1) * costPerImage;
 
     return {
@@ -250,7 +250,7 @@ export class GenericXAIClient implements GenericClient {
     // Return immediately with the jobId – do NOT poll here.
     // Use getVideoStatus() to poll and downloadVideo() to fetch the result.
     const duration = options.duration || 5;
-    const pricePerSecond = XaiVideoPricing[model] || 0.07;
+    const pricePerSecond = XaiVideoPricing[model]?.video_generation || 0.07;
     const usdCost = duration * pricePerSecond;
 
     return {

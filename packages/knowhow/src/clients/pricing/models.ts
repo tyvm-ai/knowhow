@@ -12,38 +12,9 @@ import { OpenAiTextPricing } from "./openai";
 import { AnthropicTextPricing } from "./anthropic";
 import { GeminiPricing } from "./google";
 import { XaiTextPricing, XaiImagePricing, XaiVideoPricing } from "./xai";
+import { ModelPricing, ModelType, ModelCatalogEntry } from "./types";
 
-export type ModelType =
-  | "completion"
-  | "embedding"
-  | "image"
-  | "audio"
-  | "video"
-  | "transaction";
-
-export interface ModelPricing {
-  input: number;
-  output: number;
-  cached_input?: number;
-  cache_write?: number;
-  cache_hit?: number;
-  input_audio?: number;
-  output_audio?: number;
-  input_gt_200k?: number;
-  output_gt_200k?: number;
-  image_generation?: number;
-  video_generation?: number;
-}
-
-export interface ModelCatalogEntry {
-  id: string;
-  provider: string;
-  type: ModelType;
-  displayName: string;
-  pricing: ModelPricing;
-  /** Markup applied on top of base pricing (as a fraction, e.g. 0.025 = 2.5%) */
-  markupPercent: number;
-}
+export { ModelPricing, ModelType, ModelCatalogEntry };
 
 // ─── Platform markup ──────────────────────────────────────────────────────────
 
@@ -69,7 +40,6 @@ function completion(
     provider,
     type: "completion",
     displayName,
-    markupPercent: USAGE_MARKUP_PERCENT,
     pricing: {
       input: 0,
       output: 0,
@@ -90,7 +60,6 @@ function embedding(
     provider,
     type: "embedding",
     displayName,
-    markupPercent: USAGE_MARKUP_PERCENT,
     pricing: { input, output: 0 },
   };
 }
@@ -106,7 +75,6 @@ function image(
     provider,
     type: "image",
     displayName,
-    markupPercent: USAGE_MARKUP_PERCENT,
     pricing: { input: 0, output: 0, ...pricing },
   };
 }
@@ -122,7 +90,6 @@ function video(
     provider,
     type: "video",
     displayName,
-    markupPercent: USAGE_MARKUP_PERCENT,
     pricing: { input: 0, output: 0, video_generation },
   };
 }
@@ -138,7 +105,6 @@ function audio(
     provider,
     type: "audio",
     displayName,
-    markupPercent: USAGE_MARKUP_PERCENT,
     pricing: { input: 0, output: 0, ...pricing },
   };
 }
@@ -154,7 +120,6 @@ function transaction(
     provider,
     type: "transaction",
     displayName,
-    markupPercent: USAGE_MARKUP_PERCENT,
     pricing: { input: 0, output: 0, ...pricing },
   };
 }
@@ -271,10 +236,10 @@ export const XAI_MODEL_CATALOG: ModelCatalogEntry[] = [
   completion(Models.xai.Grok3FastBeta, "xai", "Grok 3 Fast Beta"),
   completion(Models.xai.Grok21212, "xai", "Grok 2"),
   // Image generation
-  image(Models.xai.GrokImagineImage, "xai", "Grok Imagine Image", { image_generation: XaiImagePricing["grok-imagine-image"] ?? 0.02 }),
-  image("grok-2-image-1212", "xai", "Grok 2 Image", { image_generation: XaiImagePricing["grok-2-image-1212"] ?? 0.07 }),
+  image(Models.xai.GrokImagineImage, "xai", "Grok Imagine Image", { image_generation: XaiImagePricing["grok-imagine-image"]?.image_generation ?? 0.02 }),
+  image("grok-2-image-1212", "xai", "Grok 2 Image", { image_generation: XaiImagePricing["grok-2-image-1212"]?.image_generation ?? 0.07 }),
   // Video generation
-  video(Models.xai.GrokImagineVideo, "xai", "Grok Imagine Video", XaiVideoPricing["grok-imagine-video"] ?? 0.05),
+  video(Models.xai.GrokImagineVideo, "xai", "Grok Imagine Video", XaiVideoPricing["grok-imagine-video"]?.video_generation ?? 0.05),
 ];
 
 // ─── Combined catalog ─────────────────────────────────────────────────────────

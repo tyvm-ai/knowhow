@@ -30,6 +30,32 @@ import { ModelProvider } from "../types";
 import { getConfig } from "../config";
 import { loadKnowhowJwt, KNOWHOW_API_URL } from "../services/KnowhowClient";
 import { ContextLimits } from "./contextLimits";
+import { OpenAiTextPricing } from "./pricing/openai";
+import { AnthropicTextPricing } from "./pricing/anthropic";
+import { GeminiPricing } from "./pricing/google";
+import {
+  XaiTextPricing,
+  XaiImagePricing,
+  XaiVideoPricing,
+} from "./pricing/xai";
+import type {
+  ModelPricing,
+  ModelType,
+  ModelCatalogEntry,
+} from "./pricing/types";
+export {
+  OpenAiTextPricing,
+  AnthropicTextPricing,
+  GeminiPricing,
+  XaiTextPricing,
+  XaiImagePricing,
+  XaiVideoPricing,
+};
+export type {
+  ModelPricing,
+  ModelType,
+  ModelCatalogEntry,
+} from "./pricing/types";
 
 // ---------------------------------------------------------------------------
 // Built-in provider registry
@@ -219,7 +245,9 @@ export class AIClient {
 
       if (!client) {
         if (entry.provider === "knowhow") {
-          console.warn(`⚠️  Knowhow provider is not logged in. Run 'knowhow login' to enable Knowhow models.`);
+          console.warn(
+            `⚠️  Knowhow provider is not logged in. Run 'knowhow login' to enable Knowhow models.`
+          );
         }
         continue;
       }
@@ -499,17 +527,22 @@ export class AIClient {
     }
 
     const allModels = this.listAllModels();
-    const hasKnowhowModels =
-      allModels["knowhow"] && allModels["knowhow"].length > 0;
+    const hasKnowhowModels = allModels.knowhow && allModels.knowhow.length > 0;
     const knowhowIsConfigured = Object.keys(allModels).includes("knowhow");
 
-    console.warn(`⚠️  Unable to find model '${model}' for provider '${provider}'.`);
-    console.warn(`   Available providers: ${Object.keys(allModels).join(", ") || "(none)"}`);
+    console.warn(
+      `⚠️  Unable to find model '${model}' for provider '${provider}'.`
+    );
+    console.warn(
+      `   Available providers: ${Object.keys(allModels).join(", ") || "(none)"}`
+    );
 
     if (!hasKnowhowModels && !knowhowIsConfigured) {
       console.warn(`   Tip: Run 'knowhow login' to enable Knowhow models.`);
     } else if (!hasKnowhowModels) {
-      console.warn(`   Tip: The Knowhow provider returned no models. Try running 'knowhow login' to re-authenticate.`);
+      console.warn(
+        `   Tip: The Knowhow provider returned no models. Try running 'knowhow login' to re-authenticate.`
+      );
     }
 
     return { provider, model };
@@ -762,6 +795,67 @@ export class AIClient {
     const contextLimit = ContextLimits[model];
     if (contextLimit === undefined) return undefined;
     return { contextLimit, threshold: contextLimit };
+  }
+
+  /**
+   * Returns pricing information for all known models, derived from the
+   * provider pricing maps.
+   *
+   * @param modelId  Optional model id filter (without provider prefix).
+   *                 If omitted, all models across all providers are returned.
+   */
+  getPrices(modelId?: string): ModelCatalogEntry[] {
+    const results: ModelCatalogEntry[] = [];
+
+    const addModels = (
+      models: Record<string, string[]>,
+      type: ModelType,
+      pricingMap: Record<string, ModelPricing>
+    ) => {
+      for (const [provider, ids] of Object.entries(models)) {
+        for (const id of ids) {
+          if (modelId && id !== modelId) continue;
+          if (!pricingMap[id]) continue;
+
+          const p = pricingMap[id];
+          results.push({
+            id,
+            provider,
+            type,
+            displayName: id,
+            pricing: p,
+          });
+        }
+      }
+    };
+
+    // Build a combined pricing map across all providers
+    const allTextPricing: Record<string, ModelPricing> = {
+      ...OpenAiTextPricing,
+      ...AnthropicTextPricing,
+      ...GeminiPricing,
+      ...XaiTextPricing,
+    };
+    const allImagePricing: Record<string, ModelPricing> = {
+      ...XaiImagePricing,
+    };
+    const allVideoPricing: Record<string, ModelPricing> = {
+      ...XaiVideoPricing,
+    };
+
+    addModels(this.completionModels, "completion", allTextPricing);
+    addModels(this.embeddingModels, "embedding", allTextPricing);
+    addModels(this.imageModels, "image", {
+      ...allTextPricing,
+      ...allImagePricing,
+    });
+    addModels(this.audioModels, "audio", allTextPricing);
+    addModels(this.videoModels, "video", {
+      ...allTextPricing,
+      ...allVideoPricing,
+    });
+
+    return results;
   }
 }
 

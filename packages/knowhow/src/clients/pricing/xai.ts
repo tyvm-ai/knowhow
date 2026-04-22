@@ -1,4 +1,5 @@
 import { Models } from "../../types";
+import { ModelPricing } from "./types";
 
 export const XaiTextPricing = {
 
@@ -60,14 +61,14 @@ export const XaiTextPricing = {
 
 // Image generation pricing: per image
 // Based on https://docs.x.ai/developers/models
-export const XaiImagePricing = {
-  "grok-imagine-image-pro": 0.07,
-  "grok-imagine-image": 0.02,
-  "grok-2-image-1212": 0.07,
+export const XaiImagePricing: Record<string, ModelPricing> = {
+  "grok-imagine-image-pro": { image_generation: 0.07 },
+  "grok-imagine-image": { image_generation: 0.02 },
+  "grok-2-image-1212": { image_generation: 0.07 },
 };
 
 // Video generation pricing: $0.05 per second
 // Based on https://docs.x.ai/developers/models
-export const XaiVideoPricing = {
-  "grok-imagine-video": 0.05, // per second
+export const XaiVideoPricing: Record<string, ModelPricing> = {
+  "grok-imagine-video": { video_generation: 0.05 }, // per second
 };
