@@ -687,6 +687,13 @@ export abstract class BaseAgent implements IAgent {
 
           this.updateCurrentThread(messages);
 
+          const truncationWarning = this.detectTruncatedToolCalls(toolCalls, response);
+          if (truncationWarning) {
+            messages.push(truncationWarning as Message);
+            this.updateCurrentThread(messages);
+            return this.call(userInput, messages);
+          }
+
           for (const toolCall of toolCalls) {
             if (this.status === this.eventTypes.pause) {
               this.log(
@@ -956,6 +963,60 @@ export abstract class BaseAgent implements IAgent {
 
   getMessagesLength(messages: Message[]) {
     return JSON.stringify(messages).split(" ").length;
+  }
+
+  /**
+   * Detects whether tool call arguments appear truncated due to hitting the output token limit.
+   * Two signals are checked:
+   *   1. Any tool call argument is empty or invalid JSON (hard truncation).
+   *   2. The model reported many output tokens but the total argument content received is tiny
+   *      relative to what those tokens should represent (soft/silent truncation).
+   *
+   * Returns a warning system message if truncation is detected, or null otherwise.
+   */
+  detectTruncatedToolCalls(
+    toolCalls: ToolCall[],
+    response: any
+  ): { role: string; content: string } | null {
+    const outputTokens: number = response?.usage?.completion_tokens || 0;
+    const totalArgLength = toolCalls.reduce(
+      (sum, tc) => sum + (tc.function?.arguments?.length || 0),
+      0
+    );
+
+    // Percentage-based heuristic: if actual arg chars are less than ~10% of the
+    // expected chars (outputTokens * 4 chars/token), the output was likely truncated.
+    // Only apply when outputTokens > 1000 to avoid false positives on small responses.
+    const expectedArgChars = outputTokens * 4;
+    const suspiciouslySmallArgs =
+      outputTokens > 1000 && totalArgLength < expectedArgChars * 0.1;
+
+    for (const toolCall of toolCalls) {
+      const args = toolCall.function?.arguments || "";
+      let isInvalidJson = false;
+      try {
+        JSON.parse(args);
+      } catch {
+        isInvalidJson = true;
+      }
+      if (isInvalidJson || args.trim() === "" || suspiciouslySmallArgs) {
+        this.log(
+          `Tool call '${toolCall.function?.name}' has malformed/truncated arguments — likely hit output token limit (outputTokens=${outputTokens}, argLength=${args.length})`,
+          "warn"
+        );
+        return {
+          role: "system",
+          content:
+            "⚠️ Output limit warning: Your last tool call had incomplete or missing arguments, which usually means you exceeded the output token limit mid-response. The model reported " +
+            outputTokens +
+            " output tokens but only " +
+            totalArgLength +
+            " characters of tool call arguments were received. Please write smaller, more concise content in your tool calls. Aim for no more than 4000 tokens of output per response. Break large responses into smaller pieces if needed.",
+        };
+      }
+    }
+
+    return null;
   }
 
   async getTaskBreakdown(messages: Message[]) {

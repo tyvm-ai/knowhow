@@ -55,7 +55,7 @@ export const includedTools = [
         properties: {
           command: {
             type: "string",
-            description: "The command to execute",
+            description: "The command to execute. 4000 tokens or less",
           },
           timeout: {
             type: "number",
@@ -346,7 +346,7 @@ export const includedTools = [
     function: {
       name: "writeFileChunk",
       description:
-        "Update or create files by writing in small chunks of text. Suitable for larger files, this tool allows incremental writing by calling it multiple times.",
+        "Update or create files by writing in small chunks of text. Suitable for larger files, this tool allows incremental writing by calling it multiple times. Write chunks of around 4000 tokens",
       parameters: {
         type: "object",
         positional: true,
@@ -358,7 +358,7 @@ export const includedTools = [
           },
           content: {
             type: "string",
-            description: "The chunk of content to write to the file",
+            description: "The chunk of content to write to the file. 4000 tokens or less",
           },
           isContinuing: {
             type: "boolean",
