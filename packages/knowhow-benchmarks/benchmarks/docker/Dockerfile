@@ -11,47 +11,46 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# Set working directory for the monorepo root
 WORKDIR /app
 
-# Copy package files for dependency caching
-COPY package*.json ./
-# Install main dependencies (cached until package.json changes)
-RUN npm install
+# Copy root package.json for workspace setup
+COPY package.json package-lock.json ./
 
-# Copy build configuration (cached until config changes)
-COPY tsconfig.json ./
+# Copy package.json files for all relevant workspace packages
+# (needed before npm install so workspaces are discovered)
+COPY packages/knowhow/package*.json ./packages/knowhow/
+COPY packages/knowhow-tunnel/package*.json ./packages/knowhow-tunnel/
+COPY packages/knowhow-benchmarks/package*.json ./packages/knowhow-benchmarks/
+COPY packages/knowhow-benchmarks/benchmarks/package*.json ./packages/knowhow-benchmarks/benchmarks/
 
-# Copy source code (this layer will be invalidated on source changes)
-COPY src/ ./src/
+# Install all workspace dependencies
+# This hoists shared deps to root node_modules and links @tyvm/knowhow as a workspace symlink
+RUN npm install --workspaces --include-workspace-root
 
-# Build the main project (will rebuild when source changes)
-RUN npm run compile
+# Copy knowhow source and build it from source
+# (This allows local changes to @tyvm/knowhow to be reflected in benchmarks)
+COPY packages/knowhow/tsconfig.json ./packages/knowhow/
+COPY packages/knowhow/src/ ./packages/knowhow/src/
 
-COPY . .
+# Build knowhow-tunnel first (required by knowhow)
+COPY packages/knowhow-tunnel/tsconfig.json ./packages/knowhow-tunnel/
+COPY packages/knowhow-tunnel/src/ ./packages/knowhow-tunnel/src/
+RUN cd packages/knowhow-tunnel && npm run build
 
-# Now set up benchmarks in a subdirectory
-WORKDIR /app/benchmarks
+RUN cd packages/knowhow && npm run compile
 
-# Copy benchmarks package.json for dependency caching
-COPY benchmarks/package*.json ./
+# Copy benchmarks source and build it
+COPY packages/knowhow-benchmarks/benchmarks/tsconfig.json ./packages/knowhow-benchmarks/benchmarks/
+COPY packages/knowhow-benchmarks/benchmarks/src/ ./packages/knowhow-benchmarks/benchmarks/src/
 
-# Create a symlink to make @tyvm/knowhow available
-RUN mkdir -p node_modules/@tyvm && \
-    ln -sf /app/dist node_modules/@tyvm/knowhow
+RUN cd packages/knowhow-benchmarks/benchmarks && npx tsc
 
-# Install benchmarks dependencies (cached until benchmarks package.json changes)
-RUN npm install
-
-# Copy benchmarks source and build configuration
-COPY benchmarks/src/ ./src/
-COPY benchmarks/tsconfig.json ./
-
-# Build benchmarks (will rebuild when benchmarks source changes)
-RUN npm run build
+# Copy scripts needed at runtime
+COPY packages/knowhow-benchmarks/benchmarks/scripts/ ./packages/knowhow-benchmarks/benchmarks/scripts/
 
 # Make CLI executable
-RUN chmod +x dist/cli.js
+RUN chmod +x packages/knowhow-benchmarks/benchmarks/dist/cli.js
 
 # Environment variables for AI providers
 ENV OPENAI_API_KEY=""
@@ -61,8 +60,8 @@ ENV XAI_API_KEY=""
 ENV CONTAINER=true
 
 # Create exercises directory and set working directory
-RUN mkdir -p /app/exercises
-WORKDIR /app/exercises
+RUN mkdir -p /exercises
+WORKDIR /exercises
 
-# Default command
-CMD ["node", "/app/benchmarks/dist/cli.js"]
+# Use ENTRYPOINT so docker run arguments are appended as CLI args
+ENTRYPOINT ["node", "/app/packages/knowhow-benchmarks/benchmarks/dist/cli.js"]

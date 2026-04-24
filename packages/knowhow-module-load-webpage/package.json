@@ -2,8 +2,8 @@
   "name": "@tyvm/knowhow-module-load-webpage",
   "version": "0.0.1",
   "description": "Playwright-based webpage loading tool for @tyvm/knowhow",
-  "main": "ts_build/src/index.js",
-  "types": "ts_build/src/index.d.ts",
+  "main": "ts_build/index.js",
+  "types": "ts_build/index.d.ts",
   "scripts": {
     "compile": "tsc",
     "test": "jest --testTimeout 300000",

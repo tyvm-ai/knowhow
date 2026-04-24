@@ -5,7 +5,9 @@ import * as fs from "fs";
 import * as path from "path";
 import chalk from "chalk";
 import ora from "ora";
-import { services, agents } from "../../ts_build/src/index";
+import { services, agents, processors } from "@tyvm/knowhow";
+import { ConsoleRenderer } from "@tyvm/knowhow/src/chat/renderer/ConsoleRenderer";
+const { XmlToolCallProcessor, HarmonyToolProcessor } = processors;
 import {
   BenchmarkConfig,
   BenchmarkResults,
@@ -13,10 +15,6 @@ import {
   Exercise,
 } from "./types";
 import { registerProvider } from "./providers";
-import {
-  XmlToolCallProcessor,
-  HarmonyToolProcessor,
-} from "../../ts_build/src/processors";
 import { EvaluatorRegistry } from "./evaluators";
 
 export class BenchmarkRunner {
@@ -26,6 +24,7 @@ export class BenchmarkRunner {
   private defaultServices = services.services();
   private defaultAgents = agents.agents(this.defaultServices);
   private selectedAgent: agents.BaseAgent;
+  private agentName = "";
   private model: string = "";
   private provider: string = "";
   private isShuttingDown: boolean = false;
@@ -54,12 +53,12 @@ export class BenchmarkRunner {
     this.defaultServices.Agents.registerAgent(this.defaultAgents.Developer);
 
     // Select the agent to use (default to Patcher)
-    const agentName = config.agent || "Patcher";
+    this.agentName = config.agent || "Patcher";
     this.selectedAgent =
-      this.defaultAgents[agentName as keyof typeof this.defaultAgents];
+      this.defaultAgents[this.agentName as keyof typeof this.defaultAgents];
 
     if (!this.selectedAgent) {
-      throw new Error(`Unknown agent: ${agentName}`);
+      throw new Error(`Unknown agent: ${this.agentName}`);
     }
 
     // Initialize test evaluator registry
@@ -134,7 +133,8 @@ export class BenchmarkRunner {
         custom.provider,
         custom.url,
         custom.headers,
-        this.defaultServices.Clients
+        this.defaultServices.Clients,
+        custom.timeout
       );
     }
 
@@ -187,6 +187,8 @@ export class BenchmarkRunner {
         { model: this.model, provider: this.provider as any },
       ]);
 
+      this.wireupLogging();
+
       spinner.succeed("Services initialized successfully");
       cleanupSpinner();
     } catch (error) {
@@ -194,6 +196,70 @@ export class BenchmarkRunner {
       cleanupSpinner();
       throw error;
     }
+  }
+
+  wireupLogging() {
+    const taskId = `benchmark-${Date.now()}`;
+    const renderer = new ConsoleRenderer();
+    const eventTypes = this.selectedAgent.eventTypes;
+    const agentEvents = this.selectedAgent.agentEvents;
+
+    agentEvents.setListener(
+      { key: "agentMode:render:log", event: eventTypes.agentLog },
+      (data: any) =>
+        renderer.render({
+          type: "log",
+          taskId,
+          agentName: data.agentName,
+          message: data.message,
+          level: data.level,
+          timestamp: data.timestamp,
+        })
+    );
+    agentEvents.setListener(
+      { key: "agentModule:render:status", event: eventTypes.agentStatus },
+      (data: any) =>
+        renderer.render({
+          type: "agentStatus",
+          taskId,
+          agentName: data.agentName,
+          statusMessage: data.statusMessage,
+          details: data.details,
+          timestamp: data.timestamp,
+        })
+    );
+    agentEvents.setListener(
+      { key: "agentModule:render:toolCall", event: eventTypes.toolCall },
+      (data: any) =>
+        renderer.render({
+          type: "toolCall",
+          taskId,
+          agentName: this.agentName,
+          toolCall: data.toolCall,
+        })
+    );
+    agentEvents.setListener(
+      { key: "agentModule:render:toolUsed", event: eventTypes.toolUsed },
+      (data: any) =>
+        renderer.render({
+          type: "toolResult",
+          taskId,
+          agentName: this.agentName,
+          toolCall: data.toolCall,
+          result: data.functionResp,
+        })
+    );
+    agentEvents.setListener(
+      { key: "agentModule:render:agentSay", event: eventTypes.agentSay },
+      (data: any) =>
+        renderer.render({
+          type: "agentMessage",
+          taskId,
+          agentName: this.agentName,
+          message: data.message,
+          role: "assistant",
+        })
+    );
   }
 
   async setupExercises(): Promise<void> {
