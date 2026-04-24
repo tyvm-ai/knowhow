@@ -1,5 +1,6 @@
 import { EventEmitter } from "events"; // kept for reference; agentEvents now uses EventService
 import {
+  CompletionResponse,
   GenericClient,
   Message,
   MessageContent,
@@ -544,8 +545,14 @@ export abstract class BaseAgent implements IAgent {
 
   async kill() {
     this.log("Killing agent");
-    if (this.status === this.eventTypes.kill || this.status === this.eventTypes.done) {
-      this.log("Agent is already being killed or done, ignoring duplicate kill()", "warn");
+    if (
+      this.status === this.eventTypes.kill ||
+      this.status === this.eventTypes.done
+    ) {
+      this.log(
+        "Agent is already being killed or done, ignoring duplicate kill()",
+        "warn"
+      );
       return;
     }
     this.agentEvents.emit(this.eventTypes.kill, this);
@@ -687,7 +694,10 @@ export abstract class BaseAgent implements IAgent {
 
           this.updateCurrentThread(messages);
 
-          const truncationWarning = this.detectTruncatedToolCalls(toolCalls, response);
+          const truncationWarning = this.detectTruncatedToolCalls(
+            toolCalls,
+            response
+          );
           if (truncationWarning) {
             messages.push(truncationWarning as Message);
             this.updateCurrentThread(messages);
@@ -976,9 +986,9 @@ export abstract class BaseAgent implements IAgent {
    */
   detectTruncatedToolCalls(
     toolCalls: ToolCall[],
-    response: any
+    response: CompletionResponse
   ): { role: string; content: string } | null {
-    const outputTokens: number = response?.usage?.completion_tokens || 0;
+    const outputTokens: number = response?.usage?.output_tokens || 0;
     const totalArgLength = toolCalls.reduce(
       (sum, tc) => sum + (tc.function?.arguments?.length || 0),
       0

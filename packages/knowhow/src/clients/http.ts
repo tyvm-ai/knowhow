@@ -10,7 +10,11 @@ import fs from "fs";
 import path from "path";
 
 export class HttpClient implements GenericClient {
-  constructor(private baseUrl: string, private headers = {}) {}
+  /** Timeout in milliseconds for HTTP requests. Default: 30000 (30s). Use 0 to disable. */
+  private timeout: number;
+  constructor(private baseUrl: string, private headers = {}, timeout?: number) {
+    this.timeout = timeout ?? 30000;
+  }
 
   private async withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
     let lastError: any;
@@ -85,7 +89,7 @@ export class HttpClient implements GenericClient {
         ...options,
         model: options.model,
         messages: options.messages,
-        max_tokens: options.max_tokens || 3000,
+        max_tokens: options.max_tokens || 4000,
 
         ...(options.tools && {
           tools: options.tools,
@@ -96,7 +100,7 @@ export class HttpClient implements GenericClient {
       const response = await http.post(
         `${this.baseUrl}/v1/chat/completions`,
         body,
-        { headers: this.headers as Record<string, string> }
+        { headers: this.headers as Record<string, string>, timeout: this.timeout }
       );
 
       const data = response.data;
@@ -129,7 +133,7 @@ export class HttpClient implements GenericClient {
           model: options.model,
           input: options.input,
         },
-        { headers: this.headers as Record<string, string> }
+        { headers: this.headers as Record<string, string>, timeout: this.timeout }
       );
 
       const data = response.data;
@@ -152,6 +156,7 @@ export class HttpClient implements GenericClient {
     return this.withRetry(async () => {
       const response = await http.get(`${this.baseUrl}/v1/models?type=${type}`, {
         headers: this.headers as Record<string, string>,
+        timeout: this.timeout,
       });
 
       const data = response.data?.data;

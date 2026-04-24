@@ -35,7 +35,8 @@ export class ModulesService {
     ];
 
     for (const modulePath of allModulePaths) {
-      const importedModule = require(modulePath) as KnowhowModule;
+      const rawModule = require(modulePath);
+      const importedModule = (rawModule.default || rawModule) as KnowhowModule;
       await importedModule.init({ config, cwd: process.cwd(), context });
 
       for (const agent of importedModule.agents) {

@@ -265,8 +265,14 @@ export async function uploadDirectory(
   for (const relFile of localFiles) {
     const localFilePath = localDir + relFile;
     const remoteFilePath = remoteDir + relFile;
-    await uploadFile(client, s3Service, remoteFilePath, localFilePath, dryRun);
-    count++;
+    try {
+      await uploadFile(client, s3Service, remoteFilePath, localFilePath, dryRun);
+      count++;
+    } catch (error) {
+      console.error(
+        `   ❌ Failed to upload ${localFilePath}, skipping: ${error.message}`
+      );
+    }
   }
   return count;
 }

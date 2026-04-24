@@ -406,7 +406,7 @@ export class GenericOpenAiClient implements GenericClient {
     }
 
     const response = await this.client.audio.transcriptions.create({
-      file: file,
+      file,
       model: options.model || "whisper-1",
       language: options.language,
       prompt: options.prompt,

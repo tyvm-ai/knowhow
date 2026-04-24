@@ -43,6 +43,7 @@ import type {
   ModelType,
   ModelCatalogEntry,
 } from "./pricing/types";
+import { GenericCerebrasClient } from "./cerebras";
 export {
   OpenAiTextPricing,
   AnthropicTextPricing,
@@ -75,6 +76,9 @@ const BUILT_IN_PROVIDER_REGISTRY: Record<string, ProviderRegistryEntry> = {
   anthropic: { clientClass: GenericAnthropicClient },
   google: { clientClass: GenericGeminiClient },
   xai: { clientClass: GenericXAIClient },
+  cerebras: {
+    clientClass: GenericCerebrasClient,
+  },
   knowhow: {
     createClient: (entry: ModelProvider) => {
       const jwt = loadKnowhowJwt();
@@ -94,6 +98,7 @@ const DEFAULT_PROVIDERS: ModelProvider[] = [
   { provider: "anthropic", envKey: "ANTHROPIC_API_KEY" },
   { provider: "google", envKey: "GEMINI_API_KEY" },
   { provider: "xai", envKey: "XAI_API_KEY" },
+  { provider: "cerebras", envKey: "CEREBRAS_API_KEY" },
   { provider: "knowhow" },
 ];
 
@@ -162,7 +167,7 @@ export class AIClient {
 
     // 3. HTTP provider — requires url, no clientClass in registry
     if (entry.url) {
-      const client = new HttpClient(entry.url, entry.headers);
+      const client = new HttpClient(entry.url, entry.headers, entry.timeout);
       if (entry.jwtFile) {
         client.loadJwtFile(entry.jwtFile);
       }

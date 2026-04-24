@@ -1,5 +1,4 @@
 import * as fs from "fs";
-import * as crypto from "crypto";
 import { createWriteStream, createReadStream } from "fs";
 import { pipeline, Readable } from "stream";
 import * as util from "util";
@@ -14,17 +13,11 @@ export class S3Service {
     try {
       const fileContent = fs.readFileSync(filePath);
       const fileStats = await fs.promises.stat(filePath);
-      const sha256Base64 = crypto
-        .createHash("sha256")
-        .update(fileContent)
-        .digest("base64");
 
       const response = await fetch(presignedUrl, {
         method: "PUT",
         headers: {
           "Content-Length": String(fileStats.size),
-          "x-amz-checksum-sha256": sha256Base64,
-          "x-amz-sdk-checksum-algorithm": "SHA256",
         },
         body: fileContent,
         // @ts-ignore

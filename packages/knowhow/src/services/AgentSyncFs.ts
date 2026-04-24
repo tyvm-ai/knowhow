@@ -121,7 +121,11 @@ export class AgentSyncFs {
   /**
    * Update metadata file with current agent state
    */
-  private async updateMetadata(agent: BaseAgent, inProgress: boolean, result?: string): Promise<void> {
+  private async updateMetadata(
+    agent: BaseAgent,
+    inProgress: boolean,
+    result?: string
+  ): Promise<void> {
     if (!this.taskPath) return;
 
     try {
@@ -137,7 +141,7 @@ export class AgentSyncFs {
 
       metadata.threads = agent.getThreads();
       metadata.totalCostUsd = agent.getTotalCostUsd();
-    metadata.agentName = agent.name;
+      metadata.agentName = agent.name;
       metadata.inProgress = inProgress;
       metadata.lastUpdate = new Date().toISOString();
 
@@ -147,7 +151,11 @@ export class AgentSyncFs {
         await this.writeStatus("completed");
       }
 
-      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
+      await fs.writeFile(
+        metadataPath,
+        JSON.stringify(metadata, null, 2),
+        "utf8"
+      );
     } catch (error) {
       console.error(`❌ Failed to update metadata:`, error);
     }
@@ -206,7 +214,9 @@ export class AgentSyncFs {
       // Check for new input/messages
       const input = await this.readInput();
       if (input && input !== this.lastInputContent && input.trim() !== "") {
-        console.log(`📬 New message received via filesystem for task ${this.taskId}`);
+        console.log(
+          `📬 New message received via filesystem for task ${this.taskId}`
+        );
         this.lastInputContent = input;
 
         agent.addPendingUserMessage({
@@ -234,7 +244,7 @@ export class AgentSyncFs {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
 
       const status = await this.readStatus();
-      
+
       if (status === "killed") {
         console.log(`🛑 Agent task ${this.taskId} killed while paused`);
         await agent.kill();
@@ -314,7 +324,10 @@ export class AgentSyncFs {
         console.error(`❌ Error during threadUpdate sync:`, error);
       }
     };
-    agent.agentEvents.on(agent.eventTypes.threadUpdate, this.threadUpdateHandler);
+    agent.agentEvents.on(
+      agent.eventTypes.threadUpdate,
+      this.threadUpdateHandler
+    );
 
     // Listen to completion event to finalize task (store reference for cleanup)
     this.doneHandler = (result: string) => {
@@ -323,7 +336,9 @@ export class AgentSyncFs {
         return;
       }
 
-      console.log(`🎯 [AgentSyncFs] Done event received for task: ${this.taskId}`);
+      console.log(
+        `🎯 [AgentSyncFs] Done event received for task: ${this.taskId}`
+      );
 
       // Store finalization promise so callers can await it (same pattern as AgentSyncKnowhowWeb)
       this.finalizationPromise = (async () => {
@@ -332,7 +347,9 @@ export class AgentSyncFs {
           // This prevents the race where a pending "inProgress: true" metadata write
           // overwrites the finalization write.
           if (this.pendingThreadUpdatePromise) {
-            console.log(`⏳ [AgentSyncFs] Awaiting pending thread update before finalizing...`);
+            console.log(
+              `⏳ [AgentSyncFs] Awaiting pending thread update before finalizing...`
+            );
             await this.pendingThreadUpdatePromise.catch(() => {
               // Ignore errors in pending update — we still want to finalize
             });
@@ -379,7 +396,7 @@ export class AgentSyncFs {
   private static async cleanupOldTasks(): Promise<void> {
     try {
       const agentsPath = AgentSyncFs.sharedBasePath;
-      
+
       // Check if directory exists
       try {
         await fs.access(agentsPath);
@@ -396,7 +413,7 @@ export class AgentSyncFs {
         if (!entry.isDirectory()) continue;
 
         const taskPath = path.join(agentsPath, entry.name);
-        
+
         try {
           const stats = await fs.stat(taskPath);
           const age = now - stats.mtimeMs;
@@ -449,11 +466,17 @@ export class AgentSyncFs {
     // Remove old event listeners from the agent before resetting
     if (this.agent) {
       if (this.threadUpdateHandler) {
-        this.agent.agentEvents.removeListener(this.agent.eventTypes.threadUpdate, this.threadUpdateHandler);
+        this.agent.agentEvents.removeListener(
+          this.agent.eventTypes.threadUpdate,
+          this.threadUpdateHandler
+        );
         this.threadUpdateHandler = undefined;
       }
       if (this.doneHandler) {
-        this.agent.agentEvents.removeListener(this.agent.eventTypes.done, this.doneHandler);
+        this.agent.agentEvents.removeListener(
+          this.agent.eventTypes.done,
+          this.doneHandler
+        );
         this.doneHandler = undefined;
       }
       this.agent = undefined;

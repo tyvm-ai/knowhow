@@ -141,6 +141,7 @@ export type ModelProvider = {
   envKey?: string;
   headers?: { [key: string]: string };
   jwtFile?: string;
+  timeout?: number;
 };
 
 export type AssistantConfig = {

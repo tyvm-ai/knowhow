@@ -28,7 +28,7 @@ export async function writeFileChunk(
       `File path and content are both required. We received: ${JSON.stringify({
         filePath,
         content,
-      })}. Make sure you write small chunks of content, otherwise you will hit output limits, resulting in content being empty.`
+      })}. Make sure you write small chunks of content (4k tokens), otherwise you will hit output limits, resulting in content being empty.`
     );
   }
 

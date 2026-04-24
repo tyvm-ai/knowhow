@@ -262,6 +262,10 @@ export const execCommand = async (
   continueInBackground?: boolean,
   logFileName?: string
 ): Promise<string> => {
+  if(!command || typeof command !== "string") {
+    throw new Error("Invalid command. We received a non-string value. Please ensure you are sending strings of 4k tokens or less.");
+  }
+
   const { stdout, stderr, timedOut, killed, pid, logPath } =
     await execWithTimeout(command, {
       timeout,
