@@ -144,6 +144,17 @@ export class KnowhowSimpleClient {
     this.setJwt(jwt);
   }
 
+  /**
+   * Reload the JWT from disk (useful after login refreshes the token).
+   */
+  refreshJwt() {
+    const freshJwt = loadKnowhowJwt();
+    if (freshJwt) {
+      this.setJwt(freshJwt);
+      this.jwtValidated = false;
+    }
+  }
+
   setJwt(jwt: string) {
     this.jwt = jwt;
     this.headers = {

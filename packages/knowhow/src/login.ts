@@ -29,7 +29,10 @@ export async function login(jwtFlag?: boolean): Promise<void> {
     // Use browser login as default method
     console.log("Starting browser-based authentication...");
     try {
-      const browserLoginService = new BrowserLoginService();
+      // Pass existing orgId from config (if any) so the browser pre-selects the right org
+      const existingConfig = await getConfig();
+      const existingOrgId = existingConfig?.orgId;
+      const browserLoginService = new BrowserLoginService(undefined, existingOrgId);
       await browserLoginService.login();
       console.log("Successfully authenticated via browser!");
     } catch (error) {
@@ -43,6 +46,7 @@ export async function login(jwtFlag?: boolean): Promise<void> {
   try {
     const storedJwt = await loadJwt();
     const { user, currentOrg } = await checkJwt(storedJwt);
+    const orgId = currentOrg?.organizationId;
 
     console.log(
       `Current user: ${user.email}, \nOrganization: ${currentOrg?.organization?.name} - ${currentOrg?.organization?.id}`
@@ -61,9 +65,13 @@ export async function login(jwtFlag?: boolean): Promise<void> {
       config.modelProviders.push({
         provider: "knowhow",
       });
-
-      await updateConfig(config);
     }
+    // Save orgId to config so sync:remote and other features use the correct org
+    if (orgId) {
+      config.orgId = orgId;
+    }
+
+    await updateConfig(config);
   } catch (error) {
     if (http.isHttpError(error) && error.response) {
       const errData = await error.response.json().catch(() => ({ message: "Unknown error" }));

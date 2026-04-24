@@ -38,6 +38,7 @@ export type Config = {
   openaiBaseUrl?: string;
   promptsDir: string;
   lintCommands?: { [fileExtension: string]: string };
+  orgId?: string;
 
   syncRemote?: boolean;
 

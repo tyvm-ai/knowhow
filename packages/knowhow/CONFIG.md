@@ -296,13 +296,16 @@ There are many commands you can call from a chat session, try TAB to see a list 
 
 ### knowhow chat: custom agents
 ```json
-  "assistants": [
+  "agents": [
     {
-      "name": "linter",
-      "description": "Clean up your code",
-      "instructions": "Read the files that are loaded via vim plugin and provide debugging and linter suggestions"
+      "name": "Example agent",
+      "description": "You can define agents in the config. They will have access to all tools.",
+      "instructions": "Reply to the user saying 'Hello, world!'",
+      "model": "gpt-4o-2024-08-06",
+      "provider": "openai"
     }
-  ]
+  ],
+
 ```
 You can configure new agents via the config above. This would create a new option when you use `agents` in a chat session.
 
