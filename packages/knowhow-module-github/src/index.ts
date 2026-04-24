@@ -43,7 +43,7 @@ async function githubDownloader(
   fs.writeFileSync(destinationPath, content);
 }
 
-const module: KnowhowModule = {
+const githubModule: KnowhowModule = {
   async init({ context }) {
     if (context?.Embeddings) {
       context.Embeddings.registerResolver("github", {
@@ -58,5 +58,5 @@ const module: KnowhowModule = {
   commands: [],
 };
 
-export default module;
+export default githubModule;
 export { GitHubPlugin };

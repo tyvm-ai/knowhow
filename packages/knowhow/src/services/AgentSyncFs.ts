@@ -141,6 +141,7 @@ export class AgentSyncFs {
 
       metadata.threads = agent.getThreads();
       metadata.totalCostUsd = agent.getTotalCostUsd();
+      metadata.tokenUsage = agent.getTokenUsage();
       metadata.agentName = agent.name;
       metadata.inProgress = inProgress;
       metadata.lastUpdate = new Date().toISOString();

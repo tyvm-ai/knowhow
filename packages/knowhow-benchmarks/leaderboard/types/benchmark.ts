@@ -1,3 +1,10 @@
+export interface TokenUsage {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCacheReadTokens: number;
+  totalCacheWriteTokens: number;
+}
+
 export interface BenchmarkConfig {
   language: string;
   maxExercises: number;
@@ -22,6 +29,7 @@ export interface ExerciseResult {
   timeElapsed: number;
   cost: number;
   startTime: string;
+  tokenUsage?: TokenUsage;
   endTime: string;
   errorMessage?: string;
   finalOutput?: string;
@@ -48,6 +56,11 @@ export interface BenchmarkResults {
     averageTurns: number;
     averageTime: number;
     successRate: number;
+    totalInputTokens?: number;
+    totalOutputTokens?: number;
+    totalCacheReadTokens?: number;
+    totalCacheWriteTokens?: number;
+    cacheHitRate?: number;
   };
   startTime: string;
   endTime: string;
@@ -63,5 +76,10 @@ export interface LeaderboardEntry {
   averageTime: number;
   averageTurns: number;
   totalRuns: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCacheReadTokens: number;
+  totalCacheWriteTokens: number;
+  cacheHitRate: number;
   lastRun: string;
 }

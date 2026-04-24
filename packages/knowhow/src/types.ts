@@ -142,6 +142,7 @@ export type ModelProvider = {
   headers?: { [key: string]: string };
   jwtFile?: string;
   timeout?: number;
+  extra_body?: Record<string, any>;
 };
 
 export type AssistantConfig = {

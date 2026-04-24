@@ -1,5 +1,12 @@
 import { TestResult } from './evaluators/types';
 
+export interface TokenUsage {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCacheReadTokens: number;
+  totalCacheWriteTokens: number;
+}
+
 export interface BenchmarkConfig {
   language: string;
   maxExercises: number;
@@ -24,6 +31,7 @@ export interface ExerciseResult {
   timeElapsed: number; // in seconds
   cost: number; // in dollars
   startTime: Date;
+  tokenUsage?: TokenUsage;
   endTime: Date;
   errorMessage?: string;
   finalOutput?: string;
@@ -49,6 +57,11 @@ export interface BenchmarkResults {
     averageTurns: number;
     averageTime: number;
     successRate: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    totalCacheReadTokens: number;
+    totalCacheWriteTokens: number;
+    cacheHitRate: number; // cacheReadTokens / (inputTokens + cacheReadTokens)
   };
   startTime: Date;
   endTime: Date;

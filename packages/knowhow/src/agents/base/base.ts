@@ -60,6 +60,10 @@ export abstract class BaseAgent implements IAgent {
   protected turnCount = 0;
   protected totalCostUsd = 0;
   protected currentThread = 0;
+  protected totalInputTokens = 0;
+  protected totalOutputTokens = 0;
+  protected totalCacheReadTokens = 0;
+  protected totalCacheWriteTokens = 0;
 
   protected compressThreshold = 30000;
   protected compressMinMessages = 30;
@@ -96,6 +100,7 @@ export abstract class BaseAgent implements IAgent {
     agentSay: "agent:say",
     agentNewTask: "agent:newTask",
     agentTaskComplete: "agent:taskComplete",
+    tokenUsage: "agent:tokenUsage",
   };
 
   public tools: ToolsService;
@@ -195,6 +200,10 @@ export abstract class BaseAgent implements IAgent {
     this.taskBreakdown = "";
     this.summaries = [];
     this.totalCostUsd = 0;
+    this.totalInputTokens = 0;
+    this.totalOutputTokens = 0;
+    this.totalCacheReadTokens = 0;
+    this.totalCacheWriteTokens = 0;
     this.status = this.eventTypes.inProgress;
     this.turnCount = 0;
     this.startTimeMs = Date.now();
@@ -368,6 +377,43 @@ export abstract class BaseAgent implements IAgent {
 
   getTotalCostUsd() {
     return this.totalCostUsd;
+  }
+
+  adjustTokenUsage(usage: any) {
+    if (!usage) return;
+    // Support both OpenAI-style (prompt_tokens/completion_tokens) and Anthropic-style (input_tokens/output_tokens)
+    const inputTokens = usage.input_tokens ?? usage.prompt_tokens ?? 0;
+    const outputTokens = usage.output_tokens ?? usage.completion_tokens ?? 0;
+
+    const cacheReadTokens =
+      usage.cache_read_input_tokens ?? usage.cache_read_tokens ?? 0;
+    const cacheWriteTokens =
+      usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? 0;
+
+    this.totalInputTokens += inputTokens;
+    this.totalOutputTokens += outputTokens;
+    this.totalCacheReadTokens += cacheReadTokens;
+    this.totalCacheWriteTokens += cacheWriteTokens;
+
+    this.agentEvents.emit(this.eventTypes.tokenUsage, {
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
+      totalInputTokens: this.totalInputTokens,
+      totalOutputTokens: this.totalOutputTokens,
+      totalCacheReadTokens: this.totalCacheReadTokens,
+      totalCacheWriteTokens: this.totalCacheWriteTokens,
+    });
+  }
+
+  getTokenUsage() {
+    return {
+      totalInputTokens: this.totalInputTokens,
+      totalOutputTokens: this.totalOutputTokens,
+      totalCacheReadTokens: this.totalCacheReadTokens,
+      totalCacheWriteTokens: this.totalCacheWriteTokens,
+    };
   }
 
   startNewThread(messages: Message[]) {
@@ -667,6 +713,7 @@ export abstract class BaseAgent implements IAgent {
       }
 
       this.adjustTotalCostUsd(response?.usd_cost);
+      this.adjustTokenUsage(response?.usage);
       this.log("agent response cost: " + response?.usd_cost);
 
       // Typically, there's only one choice in the array, but you could have many

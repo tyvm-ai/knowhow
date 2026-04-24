@@ -167,7 +167,11 @@ export class AIClient {
 
     // 3. HTTP provider — requires url, no clientClass in registry
     if (entry.url) {
-      const client = new HttpClient(entry.url, entry.headers, entry.timeout);
+      const client = new HttpClient(entry.url, {
+        headers: entry.headers,
+        timeout: entry.timeout,
+        extra_body: entry.extra_body,
+      });
       if (entry.jwtFile) {
         client.loadJwtFile(entry.jwtFile);
       }

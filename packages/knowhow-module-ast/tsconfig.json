@@ -14,5 +14,5 @@
     "sourceMap": true
   },
   "include": ["./src/**/*.ts", "./tests/**/*.ts"],
-  "exclude": ["node_modules", "tests/tree-sitter/test-files/**/*.ts"]
+  "exclude": ["node_modules", "tests/tree-sitter/test-files/**/*.ts", "tests/test-files/**/*.ts"]
 }

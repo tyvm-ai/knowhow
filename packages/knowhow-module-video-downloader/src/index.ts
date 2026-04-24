@@ -6,7 +6,7 @@ const plugins: ModulePlugin[] = [
   { name: "download", plugin: DownloaderPlugin }
 ];
 
-const module: KnowhowModule = {
+const videoDownloaderModule: KnowhowModule = {
   async init() {},
   tools: [],
   agents: [],
@@ -15,5 +15,5 @@ const module: KnowhowModule = {
   commands: [],
 };
 
-export default module;
+export default videoDownloaderModule;
 export { DownloaderPlugin, DownloaderService };

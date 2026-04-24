@@ -23,6 +23,11 @@ export async function GET(request: NextRequest) {
         averageCost: 0.05,
         averageTime: 145.2,
         averageTurns: 12.4,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalCacheReadTokens: 0,
+      totalCacheWriteTokens: 0,
+      cacheHitRate: 0,
         totalRuns: 1,
         lastRun: new Date().toISOString()
       }
@@ -106,6 +111,11 @@ function aggregateResults(results: BenchmarkResults[]): LeaderboardEntry[] {
         existing.averageCost = result.summary.totalCost / result.summary.totalExercises;
         existing.averageTime = result.summary.averageTime;
         existing.averageTurns = result.summary.averageTurns;
+        existing.totalInputTokens = result.summary.totalInputTokens ?? 0;
+        existing.totalOutputTokens = result.summary.totalOutputTokens ?? 0;
+        existing.totalCacheReadTokens = result.summary.totalCacheReadTokens ?? 0;
+        existing.totalCacheWriteTokens = result.summary.totalCacheWriteTokens ?? 0;
+        existing.cacheHitRate = result.summary.cacheHitRate ?? 0;
         existing.lastRun = result.endTime;
       }
     } else {
@@ -119,6 +129,11 @@ function aggregateResults(results: BenchmarkResults[]): LeaderboardEntry[] {
         averageCost: result.summary.totalCost / result.summary.totalExercises,
         averageTime: result.summary.averageTime,
         averageTurns: result.summary.averageTurns,
+        totalInputTokens: result.summary.totalInputTokens ?? 0,
+        totalOutputTokens: result.summary.totalOutputTokens ?? 0,
+        totalCacheReadTokens: result.summary.totalCacheReadTokens ?? 0,
+        totalCacheWriteTokens: result.summary.totalCacheWriteTokens ?? 0,
+        cacheHitRate: result.summary.cacheHitRate ?? 0,
         totalRuns: 1,
         lastRun: result.endTime
       };

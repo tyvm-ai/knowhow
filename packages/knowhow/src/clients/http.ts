@@ -9,11 +9,22 @@ import {
 import fs from "fs";
 import path from "path";
 
+export interface HttpClientOptions {
+  headers?: Record<string, string>;
+  timeout?: number;
+  extra_body?: Record<string, any>;
+}
+
 export class HttpClient implements GenericClient {
   /** Timeout in milliseconds for HTTP requests. Default: 30000 (30s). Use 0 to disable. */
   private timeout: number;
-  constructor(private baseUrl: string, private headers = {}, timeout?: number) {
-    this.timeout = timeout ?? 30000;
+  private headers: Record<string, string>;
+  private extra_body: Record<string, any>;
+
+  constructor(private baseUrl: string, options: HttpClientOptions = {}) {
+    this.headers = options.headers ?? {};
+    this.timeout = options.timeout ?? 30000;
+    this.extra_body = options.extra_body ?? {};
   }
 
   private async withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
@@ -90,6 +101,7 @@ export class HttpClient implements GenericClient {
         model: options.model,
         messages: options.messages,
         max_tokens: options.max_tokens || 4000,
+        ...this.extra_body,
 
         ...(options.tools && {
           tools: options.tools,

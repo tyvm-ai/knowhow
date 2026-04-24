@@ -634,46 +634,6 @@ export const includedTools = [
   {
     type: "function",
     function: {
-      name: "loadWebpage",
-      description:
-        "Load a webpage using a stealth browser to avoid bot detection. Can return either text content with console logs or a screenshot.",
-      parameters: {
-        type: "object",
-        positional: true,
-        properties: {
-          url: {
-            type: "string",
-            description: "The URL of the webpage to load",
-          },
-          mode: {
-            type: "string",
-            description:
-              "The mode for content extraction: 'text' for text content with console logs, 'screenshot' for a base64 encoded screenshot",
-            enum: ["text", "screenshot"],
-          },
-          waitForSelector: {
-            type: "string",
-            description:
-              "Optional CSS selector to wait for before extracting content",
-          },
-          timeout: {
-            type: "number",
-            description:
-              "Timeout in milliseconds for page loading (default: 30000)",
-          },
-        },
-        required: ["url"],
-      },
-      returns: {
-        type: "string",
-        description:
-          "The webpage content as text with console logs, or a base64 encoded screenshot",
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
       name: "stringReplace",
       description:
         "Replace exact string matches in multiple files. Performs global replacement of all occurrences of the find string with the replace string.",

@@ -57,6 +57,12 @@ export class LazyToolsService extends ToolsService {
     this.updateVisibleTools();
   }
 
+  // Override addTool (singular) to also route through allTools so that
+  // module-registered tools (via ModulesService.addTool) are tracked correctly.
+  addTool(tool: Tool) {
+    this.addTools([tool]);
+  }
+
   // Override getTools to return only enabled tools
   getTools() {
     return this.tools; // Returns filtered subset

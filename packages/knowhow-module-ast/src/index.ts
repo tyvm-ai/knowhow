@@ -29,11 +29,6 @@ const tools: ModuleTool[] = [
           },
           required: ["filePath"],
         },
-        returns: {
-          type: "string",
-          description:
-            "JSON object containing all available AST paths in the file",
-        },
       },
     },
   },
@@ -66,10 +61,6 @@ const tools: ModuleTool[] = [
           },
           required: ["filePath", "path", "newContent"],
         },
-        returns: {
-          type: "string",
-          description: "JSON object with edit result and updated file content",
-        },
       },
     },
   },
@@ -101,10 +92,6 @@ const tools: ModuleTool[] = [
           },
           required: ["filePath", "parentPath", "newContent"],
         },
-        returns: {
-          type: "string",
-          description: "JSON object with append result and updated file content",
-        },
       },
     },
   },
@@ -133,10 +120,6 @@ const tools: ModuleTool[] = [
           },
           required: ["filePath", "path"],
         },
-        returns: {
-          type: "string",
-          description: "JSON object with delete result and updated file content",
-        },
       },
     },
   },
@@ -163,11 +146,6 @@ const tools: ModuleTool[] = [
             },
           },
           required: ["filePath", "searchText"],
-        },
-        returns: {
-          type: "string",
-          description:
-            "JSON object containing AST path locations for the search text",
         },
       },
     },

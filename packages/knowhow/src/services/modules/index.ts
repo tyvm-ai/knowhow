@@ -2,7 +2,7 @@ import { getConfig, getGlobalConfig } from "../../config";
 import { KnowhowModule, ModuleContext } from "./types";
 import { ToolsService } from "../Tools";
 import { services } from "../";
-import { EventService } from "../EventService";
+import * as path from "path";
 
 export class ModulesService {
   async loadModulesFromConfig(context?: ModuleContext) {
@@ -35,9 +35,17 @@ export class ModulesService {
     ];
 
     for (const modulePath of allModulePaths) {
-      const rawModule = require(modulePath);
+      // Resolve relative paths relative to process.cwd() so that paths like
+      // "../../packages/knowhow-module-load-webpage" in knowhow.json work
+      // regardless of where the compiled output lives.
+      const resolvedPath = modulePath.startsWith(".")
+        ? path.resolve(process.cwd(), modulePath)
+        : modulePath;
+      const rawModule = require(resolvedPath);
       const importedModule = (rawModule.default || rawModule) as KnowhowModule;
+      console.log(`🔌 Loading module: ${modulePath} (resolved: ${resolvedPath})`);
       await importedModule.init({ config, cwd: process.cwd(), context });
+      console.log(`✅ Module initialized: ${modulePath} (tools: ${importedModule.tools.length}, agents: ${importedModule.agents.length}, plugins: ${importedModule.plugins.length}, clients: ${importedModule.clients.length})`);
 
       for (const agent of importedModule.agents) {
         agentService.registerAgent(agent);
