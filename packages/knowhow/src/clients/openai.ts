@@ -300,6 +300,10 @@ export class GenericOpenAiClient implements GenericClient {
           completion_tokens: response.usage.output_tokens,
           total_tokens:
             response.usage.input_tokens + response.usage.output_tokens,
+          prompt_tokens_details: {
+            cached_tokens:
+              response.usage.input_tokens_details?.cached_tokens ?? 0,
+          },
         }
       : undefined;
 

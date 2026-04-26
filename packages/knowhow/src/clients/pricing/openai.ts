@@ -156,6 +156,7 @@ export const OpenAiResponsesOnlyModels: string[] = [
   OpenAiModels.GPT_54_Nano,
   OpenAiModels.GPT_54_Pro,
   OpenAiModels.GPT_55_Pro,
+  OpenAiModels.GPT_55,
   OpenAiModels.GPT_5_Pro,
   OpenAiModels.o1,
   OpenAiModels.o1_Pro,

@@ -264,6 +264,10 @@ export class HttpClient implements GenericClient {
             prompt_tokens: data.usage.input_tokens,
             completion_tokens: data.usage.output_tokens,
             total_tokens: data.usage.input_tokens + data.usage.output_tokens,
+            prompt_tokens_details: {
+              cached_tokens:
+                data.usage.input_tokens_details?.cached_tokens ?? 0,
+            },
           }
         : undefined;
 

@@ -293,6 +293,19 @@ export abstract class BaseAgent implements IAgent {
     this.easyFinalAnswer = value;
   }
 
+  /**
+   * Detect if the model's response is a termination signal (e.g. "Done", "Complete", "Finished", "finalAnswer")
+   * This handles the case where an agent refuses to call finalAnswer and just says a short termination word.
+   */
+  protected isTerminationResponse(content: string): boolean {
+    const trimmed = content.trim();
+    // Short response (≤ 3 words) that matches a termination word/phrase
+    const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+    if (wordCount > 3) return false;
+    const terminationPattern = /^(done|complete|completed|finished|final\s*answer|task\s*complete|all\s*done|that'?s\s*(all|it)|ok(ay)?|yes)[.!]*$/i;
+    return terminationPattern.test(trimmed);
+  }
+
   getEnabledTools() {
     return this.tools
       .getTools()
@@ -826,6 +839,18 @@ export abstract class BaseAgent implements IAgent {
 
       // Early exit: not required to call tool
       const firstMessage = response.choices[0].message;
+      // Auto-detect termination words: if the model is just saying "Done", "Complete", etc.
+      if (
+        response.choices.length === 1 &&
+        firstMessage.content &&
+        this.isTerminationResponse(firstMessage.content)
+      ) {
+        this.log(`Termination word detected: "${firstMessage.content.trim()}", treating as finalAnswer`);
+        this.status = this.eventTypes.done;
+        this.agentEvents.emit(this.eventTypes.done, firstMessage.content);
+        return firstMessage.content;
+      }
+
       if (
         response.choices.length === 1 &&
         firstMessage.content &&
@@ -879,7 +904,7 @@ export abstract class BaseAgent implements IAgent {
         this.logStatus();
 
         const continuation = `<Workflow>
-        workflow continues until you call one of ${this.requiredToolNames}.\n
+        workflow continues until you call one of ${JSON.stringify(this.requiredToolNames)}.\n
         ${statusMessage}
         </Workflow>`;
 
