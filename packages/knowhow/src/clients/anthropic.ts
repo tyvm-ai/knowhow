@@ -413,6 +413,8 @@ export class GenericAnthropicClient implements GenericClient {
 
         model: options.model,
         usage: response.usage ? {
+          input_tokens: response.usage.input_tokens ?? 0,
+          output_tokens: response.usage.output_tokens ?? 0,
           prompt_tokens: response.usage.input_tokens ?? 0,
           completion_tokens: response.usage.output_tokens ?? 0,
           total_tokens: (response.usage.input_tokens ?? 0) + (response.usage.output_tokens ?? 0),

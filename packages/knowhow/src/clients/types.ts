@@ -73,6 +73,10 @@ export interface TokenUsage {
   prompt_tokens: number;
   /** Total output/completion tokens generated */
   completion_tokens: number;
+  /** Alternative field name for input tokens (some providers use this) */
+  input_tokens?: number;
+  /** Alternative field name for output tokens (some providers use this) */
+  output_tokens?: number;
   /** Convenience total (prompt + completion) */
   total_tokens?: number;
   /** Cache details */
