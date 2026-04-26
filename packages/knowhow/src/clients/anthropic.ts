@@ -207,7 +207,7 @@ export class GenericAnthropicClient implements GenericClient {
     const toolCalls = messages.flatMap((msg) => msg.tool_calls || []);
     const claudeMessages: MessageParam[] = messages
       .filter((msg) => msg.role !== "system")
-      .filter((msg) => msg.content)
+      .filter((msg) => msg.content || msg.role === "tool")
       .map((msg) => {
         if (msg.role === "tool") {
           const toolCall = toolCalls.find((tc) => tc.id === msg.tool_call_id);

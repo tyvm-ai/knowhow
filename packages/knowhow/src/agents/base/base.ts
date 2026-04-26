@@ -299,11 +299,25 @@ export abstract class BaseAgent implements IAgent {
    */
   protected isTerminationResponse(content: string): boolean {
     const trimmed = content.trim();
-    // Short response (≤ 3 words) that matches a termination word/phrase
+    // Short response (≤ 3 words) that matches a termination word/phrase exactly
     const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
-    if (wordCount > 3) return false;
-    const terminationPattern = /^(done|complete|completed|finished|final\s*answer|task\s*complete|all\s*done|that'?s\s*(all|it)|ok(ay)?|yes)[.!]*$/i;
-    return terminationPattern.test(trimmed);
+    if (wordCount <= 3) {
+      const terminationPattern = /^(done|complete|completed|finished|final\s*answer|task\s*complete|all\s*done|that'?s\s*(all|it)|ok(ay)?|yes)[.!]*$/i;
+      if (terminationPattern.test(trimmed)) return true;
+    }
+
+    // Check if the first 1-3 words indicate task completion (for longer responses)
+    // e.g. "Task complete: ...", "All done.", "No further changes needed.", "Confirmed complete."
+    const firstWords = trimmed.split(/\s+/).slice(0, 3).join(" ");
+    const firstWordPattern = /^(task\s*(complete|completed|done|finished)|all\s*done|no\s*(further|more|additional|changes|action)|confirmed?\s*(complete|done|finished|one\s*last)|nothing\s*(more|further|else)|standing\s*by|everything\s*is|still\s*confirmed|acknowledged|done\s*and|complete\s*(and|\.)|completed\s*successfully|no\s*additional|verified\s*and)/i;
+    if (firstWordPattern.test(firstWords)) return true;
+
+    // If easyFinalAnswer mode is on, also match response starting with "✅" or numbered confirmation lists
+    if (this.easyFinalAnswer) {
+      if (trimmed.startsWith("✅") || /^[\d\.\-\*]/.test(trimmed)) return true;
+    }
+
+    return false;
   }
 
   getEnabledTools() {
@@ -718,7 +732,7 @@ export abstract class BaseAgent implements IAgent {
           "warn"
         );
         const error = response as any;
-        if ("response" in error && "data" in error.response) {
+        if (error != null && "response" in error && "data" in error.response) {
           this.log(
             `Response data: ${JSON.stringify(error.response.data, null, 2)}`,
             "warn"
@@ -950,7 +964,7 @@ export abstract class BaseAgent implements IAgent {
 
       this.log(`Agent failed: ${e}`, "error");
 
-      if ("response" in e && "data" in e.response) {
+      if (e != null && typeof e === "object" && "response" in e && "data" in (e as any).response) {
         this.log(
           `Error response data: ${JSON.stringify(e.response.data, null, 2)}`,
           "error"
