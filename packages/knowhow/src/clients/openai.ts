@@ -176,7 +176,14 @@ export class GenericOpenAiClient implements GenericClient {
       })),
 
       model: options.model,
-      usage: response.usage,
+      usage: response.usage ? {
+        prompt_tokens: response.usage.prompt_tokens ?? 0,
+        completion_tokens: response.usage.completion_tokens ?? 0,
+        total_tokens: response.usage.total_tokens,
+        prompt_tokens_details: {
+          cached_tokens: response.usage.prompt_tokens_details?.cached_tokens ?? 0,
+        },
+      } : undefined,
       usd_cost: usdCost,
     };
   }

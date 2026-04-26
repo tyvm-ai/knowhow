@@ -26,7 +26,7 @@ import {
 } from "../types";
 import { GeminiTextPricing } from "./pricing";
 import { ContextLimits } from "./contextLimits";
-import { ModelModality } from "./types";
+import { ModelModality, TokenUsage } from "./types";
 
 import {
   GenericClient,
@@ -524,10 +524,22 @@ export class GenericGeminiClient implements GenericClient {
         ? this.calculateCost(options.model, usage)
         : undefined;
 
+      // Map cachedContentTokenCount → prompt_tokens_details.cached_tokens so that
+      // base.ts can read cache hit tokens via usage.prompt_tokens_details?.cached_tokens
+      const cachedTokens = (usage as any)?.cachedContentTokenCount ?? 0;
+      const usageWithCache: TokenUsage | undefined = usage
+        ? ({
+            prompt_tokens: (usage as any).promptTokenCount ?? 0,
+            completion_tokens: (usage as any).candidatesTokenCount ?? 0,
+            total_tokens: (usage as any).totalTokenCount,
+            prompt_tokens_details: { cached_tokens: cachedTokens },
+          } as TokenUsage)
+        : undefined;
+
       return {
         choices,
         model: options.model,
-        usage,
+        usage: usageWithCache,
         usd_cost: usdCost,
       };
     } catch (error) {

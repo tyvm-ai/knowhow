@@ -412,7 +412,13 @@ export class GenericAnthropicClient implements GenericClient {
         }),
 
         model: options.model,
-        usage: response.usage,
+        usage: response.usage ? {
+          prompt_tokens: response.usage.input_tokens ?? 0,
+          completion_tokens: response.usage.output_tokens ?? 0,
+          total_tokens: (response.usage.input_tokens ?? 0) + (response.usage.output_tokens ?? 0),
+          cache_creation_input_tokens: response.usage.cache_creation_input_tokens ?? 0,
+          cache_read_input_tokens: response.usage.cache_read_input_tokens ?? 0,
+        } : undefined,
         usd_cost: this.calculateCost(options.model, response.usage),
       };
     } catch (err) {

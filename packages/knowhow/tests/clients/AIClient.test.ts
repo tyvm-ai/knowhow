@@ -42,7 +42,7 @@ class FakeClient implements GenericClient {
         },
       ],
       model: options.model,
-      usage: { total_tokens: 100 },
+      usage: { prompt_tokens: 50, completion_tokens: 50, total_tokens: 100 },
     };
   }
 

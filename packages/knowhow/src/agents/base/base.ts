@@ -1081,7 +1081,7 @@ export abstract class BaseAgent implements IAgent {
     toolCalls: ToolCall[],
     response: CompletionResponse
   ): { role: string; content: string } | null {
-    const outputTokens: number = response?.usage?.output_tokens || 0;
+    const outputTokens: number = response?.usage?.completion_tokens || 0;
     const totalArgLength = toolCalls.reduce(
       (sum, tc) => sum + (tc.function?.arguments?.length || 0),
       0

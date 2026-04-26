@@ -63,13 +63,36 @@ export interface CompletionOptions {
   reasoning_effort?: "low" | "medium" | "high";
 }
 
+/**
+ * Normalised token-usage shape that every client must return.
+ * All clients must map their provider-specific field names into this structure
+ * so that base.ts can accurately track input/output and cache utilization.
+ */
+export interface TokenUsage {
+  /** Total input/prompt tokens consumed */
+  prompt_tokens: number;
+  /** Total output/completion tokens generated */
+  completion_tokens: number;
+  /** Convenience total (prompt + completion) */
+  total_tokens?: number;
+  /** Cache details */
+  prompt_tokens_details?: {
+    /** Tokens served from the prompt cache (reduces cost) */
+    cached_tokens: number;
+  };
+  /** Anthropic-style cache write tokens */
+  cache_creation_input_tokens?: number;
+  /** Anthropic-style cache read tokens (alternative field name) */
+  cache_read_input_tokens?: number;
+}
+
 export interface CompletionResponse {
   choices: {
     message: OutputMessage;
   }[];
 
   model: string;
-  usage: any;
+  usage: TokenUsage | undefined;
   usd_cost?: number;
 }
 
