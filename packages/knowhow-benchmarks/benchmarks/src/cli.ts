@@ -24,6 +24,7 @@ program
   .option("-m, --model <model>", "AI model to use", "gpt-4o-mini")
   .option("-p, --provider <provider>", "AI provider to use", "openai")
   .option("--max-turns <turns>", "Maximum turns per exercise", "30")
+  .option("--lazy-tools", "Use LazyToolsService instead of ToolsService for dynamic tool enabling/disabling")
   .option("--max-time <seconds>", "Maximum time per exercise in seconds", "300")
   .option("--max-cost <dollars>", "Maximum cost per exercise in dollars", "1.0")
   .option("--output <file>", "Output file for results", "results.json")
@@ -36,6 +37,7 @@ program
         maxExercises: parseInt(options.count),
         model: options.model,
         provider: options.provider,
+        lazyTools: options.lazyTools ?? false,
         limits: {
           maxTurns: parseInt(options.maxTurns),
           maxTime: parseInt(options.maxTime),

@@ -578,3 +578,177 @@ export async function worker(options?: {
     await wait(5000);
   }
 }
+
+/**
+ * Run tunnel-only mode: connects to the Knowhow tunnel WebSocket without
+ * registering any MCP tools. Useful for users who only want the web tunnel
+ * feature to expose local ports to the cloud.
+ */
+export async function tunnel(options?: {
+  share?: boolean;
+  unshare?: boolean;
+}) {
+  const config = await getConfig();
+
+  const isInsideDocker = process.env.KNOWHOW_DOCKER === "true";
+
+  // Determine localHost based on environment
+  let tunnelLocalHost = config.worker?.tunnel?.localHost;
+  if (!tunnelLocalHost) {
+    if (isInsideDocker) {
+      tunnelLocalHost = "host.docker.internal";
+      console.log(
+        "🐳 Docker detected: tunnel will use host.docker.internal to reach host services"
+      );
+    } else {
+      tunnelLocalHost = "127.0.0.1";
+    }
+  }
+
+  // Check for port mapping configuration
+  const portMapping = config.worker?.tunnel?.portMapping || {};
+  if (Object.keys(portMapping).length > 0) {
+    console.log("🔀 Port mapping configured:");
+    for (const [containerPort, hostPort] of Object.entries(portMapping)) {
+      console.log(`   Container port ${containerPort} → Host port ${hostPort}`);
+    }
+  }
+
+  const tunnelPorts = config.worker?.tunnel?.allowedPorts || [];
+  if (tunnelPorts.length === 0) {
+    console.warn(
+      "⚠️  No allowedPorts configured. Add worker.tunnel.allowedPorts to knowhow.json"
+    );
+  } else {
+    console.log(`🌐 Tunnel mode for ports: ${tunnelPorts.join(", ")}`);
+  }
+
+  // Extract tunnel domain from API_URL
+  function extractTunnelDomain(apiUrl: string): {
+    domain: string;
+    useHttps: boolean;
+  } {
+    try {
+      const url = new URL(apiUrl);
+      const useHttps = url.protocol === "https:";
+      if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+        return {
+          domain: `worker.${url.hostname}:${url.port || "80"}`,
+          useHttps,
+        };
+      }
+      return { domain: `worker.${url.hostname}`, useHttps };
+    } catch (err) {
+      console.error("Failed to parse API_URL for tunnel domain:", err);
+      return { domain: "worker.localhost:4000", useHttps: false };
+    }
+  }
+
+  let connected = false;
+  let tunnelHandler: TunnelHandler | null = null;
+  let lastJwt: string | null = null;
+  let unauthorizedJwt: string | null = null;
+
+  async function connectTunnel() {
+    const jwt = await loadJwt();
+    lastJwt = jwt;
+    console.log(`Connecting tunnel to ${API_URL}`);
+
+    const dir = process.cwd();
+    const homedir = os.homedir();
+    const hostname = process.env.WORKER_HOSTNAME || os.hostname();
+    const root =
+      process.env.WORKER_ROOT ||
+      (dir === homedir ? "~" : dir.replace(homedir, "~"));
+
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${jwt}`,
+      "User-Agent": `knowhow-tunnel/1.0.0/${hostname}`,
+      Root: root,
+    };
+
+    if (options?.share) {
+      headers.Shared = "true";
+      console.log("🔓 Tunnel shared with organization");
+    } else if (options?.unshare) {
+      headers.Shared = "false";
+      console.log("🔒 Tunnel is now private (unshared)");
+    } else {
+      console.log("🔒 Tunnel is private (only you can use it)");
+    }
+
+    const { domain: tunnelDomain, useHttps: tunnelUseHttps } =
+      extractTunnelDomain(API_URL);
+
+    const tunnelConnection = new WebSocket(`${API_URL}/ws/tunnel`, { headers });
+
+    tunnelConnection.on("open", () => {
+      console.log("🌐 Tunnel WebSocket connected");
+      connected = true;
+
+      const allowedPorts = config.worker?.tunnel?.allowedPorts || [];
+      const urlRewriter = (port: number, metadata?: any) => {
+        const workerId = metadata?.workerId;
+        const secret = metadata?.secret;
+        const subdomain = secret ? `${secret}-p${port}` : `${workerId}-p${port}`;
+        return `${subdomain}.${tunnelDomain}`;
+      };
+
+      const tunnelConfig = {
+        allowedPorts,
+        maxConcurrentStreams: config.worker?.tunnel?.maxConcurrentStreams || 50,
+        tunnelUseHttps,
+        localHost: tunnelLocalHost,
+        urlRewriter,
+        enableUrlRewriting: config.worker?.tunnel?.enableUrlRewriting !== false,
+        portMapping,
+        logLevel: "debug" as const,
+      };
+
+      tunnelHandler = createTunnelHandler(tunnelConnection, tunnelConfig);
+      console.log("🌐 Tunnel handler initialized");
+      console.log(tunnelConfig);
+    });
+
+    tunnelConnection.on("close", (code, reason) => {
+      console.log(`Tunnel WebSocket closed. Code: ${code}, Reason: ${reason.toString()}`);
+      if (code === 1008) {
+        unauthorizedJwt = lastJwt;
+        console.error("❌ Tunnel received Unauthorized (1008). The JWT may be expired.");
+        console.error("   Run 'knowhow login' to refresh your token, then restart.");
+        console.error("   Pausing reconnection until JWT changes...");
+      } else {
+        console.log("Tunnel connection will reconnect on next cycle...");
+      }
+      if (tunnelHandler) {
+        tunnelHandler.cleanup();
+        tunnelHandler = null;
+      }
+      connected = false;
+    });
+
+    tunnelConnection.on("error", (error) => {
+      console.error("Tunnel WebSocket error:", error);
+      connected = false;
+    });
+
+    return tunnelConnection;
+  }
+
+  while (true) {
+    if (!connected) {
+      if (unauthorizedJwt !== null) {
+        const currentJwt = await loadJwt().catch(() => null);
+        if (currentJwt === unauthorizedJwt) {
+          await wait(5000);
+          continue;
+        }
+        console.log("🔄 JWT has changed, attempting to reconnect tunnel...");
+        unauthorizedJwt = null;
+      }
+      console.log("Attempting to connect tunnel...");
+      await connectTunnel();
+    }
+    await wait(5000);
+  }
+}

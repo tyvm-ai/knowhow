@@ -484,6 +484,40 @@ export default function ModelDetailPage() {
               </dl>
             </div>
           </div>
+
+          {/* Token Usage */}
+          {(benchmarkData.summary.totalInputTokens || benchmarkData.summary.totalOutputTokens) ? (
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <h4 className="text-sm font-medium text-gray-500 mb-2">Token Usage</h4>
+              <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-gray-50 rounded p-3">
+                  <dt className="text-xs text-gray-500">Input Tokens</dt>
+                  <dd className="text-sm font-semibold text-gray-900 mt-1">
+                    {(benchmarkData.summary.totalInputTokens ?? 0).toLocaleString()}
+                  </dd>
+                </div>
+                <div className="bg-gray-50 rounded p-3">
+                  <dt className="text-xs text-gray-500">Output Tokens</dt>
+                  <dd className="text-sm font-semibold text-gray-900 mt-1">
+                    {(benchmarkData.summary.totalOutputTokens ?? 0).toLocaleString()}
+                  </dd>
+                </div>
+                <div className="bg-gray-50 rounded p-3">
+                  <dt className="text-xs text-gray-500">Cache Read Tokens</dt>
+                  <dd className="text-sm font-semibold text-gray-900 mt-1">
+                    {(benchmarkData.summary.totalCacheReadTokens ?? 0).toLocaleString()}
+                  </dd>
+                </div>
+                <div className="bg-gray-50 rounded p-3">
+                  <dt className="text-xs text-gray-500">Cache Write Tokens</dt>
+                  <dd className="text-sm font-semibold text-gray-900 mt-1">
+                    {(benchmarkData.summary.totalCacheWriteTokens ?? 0).toLocaleString()}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          ) : null}
+
           <div className="mt-4 pt-4 border-t border-gray-200">
             <div className="flex justify-between text-sm text-gray-500">
               <span>

@@ -6,6 +6,7 @@ import * as path from "path";
 import chalk from "chalk";
 import ora from "ora";
 import { services, agents, processors } from "@tyvm/knowhow";
+const { LazyToolsService } = services;
 import { ConsoleRenderer } from "@tyvm/knowhow/src/chat/renderer/ConsoleRenderer";
 const { XmlToolCallProcessor, HarmonyToolProcessor, Base64ImageProcessor, CustomVariables, JsonCompressor, TokenCompressor, ToolResponseCache } = processors;
 import {
@@ -27,6 +28,7 @@ export class BenchmarkRunner {
   private agentName = "";
   private model: string = "";
   private provider: string = "";
+  private runTimestamp: string = "";
   private isShuttingDown: boolean = false;
   private cleanup: (() => Promise<void>)[] = [];
   private activeSpinners: Set<any> = new Set();
@@ -129,13 +131,27 @@ export class BenchmarkRunner {
     await this.defaultServices.Clients.registerConfiguredModels();
     const customProviders = this.customProviders();
     for (const custom of customProviders) {
-      await registerProvider(
-        custom.provider,
-        custom.url,
-        custom.headers,
-        this.defaultServices.Clients,
-        custom.timeout
-      );
+      if (custom.url) {
+        // HTTP provider with explicit URL — register via registerProvider
+        await registerProvider(
+          custom.provider,
+          custom.url,
+          custom.headers,
+          this.defaultServices.Clients,
+          custom.timeout,
+          custom.extra_body
+        );
+      } else {
+        // Built-in provider (e.g. nvidia) — re-register to apply timeout/headers/extra_body
+        // via resolveClient → setOptions on the underlying HttpClient
+        await this.defaultServices.Clients.registerModelProviders([{
+          provider: custom.provider,
+          envKey: custom.envKey,
+          timeout: custom.timeout,
+          headers: custom.headers,
+          extra_body: custom.extra_body,
+        }]);
+      }
     }
 
     const { model, provider } =
@@ -172,10 +188,26 @@ export class BenchmarkRunner {
 
     try {
       // Define tools
-      this.defaultServices.Tools.defineTools(
-        agents.includedTools,
-        agents.tools
-      );
+      if (this.config.lazyTools) {
+        // Replace the ToolsService with a LazyToolsService
+        const lazyTools = new LazyToolsService();
+        lazyTools.setContext(this.defaultServices.Tools.getContext() as any);
+        (this.defaultServices as any).Tools = lazyTools;
+        // Update the agent's tools reference to the new LazyToolsService,
+        // since the agent captured a direct reference at construction time.
+        this.selectedAgent.tools = lazyTools;
+        lazyTools.addTools(agents.includedTools);
+        const toolFunctions = Object.fromEntries(
+          Object.entries(agents.tools).filter(([, v]) => typeof v === 'function')
+        ) as { [fnName: string]: (...args: any) => any };
+        lazyTools.addFunctions(toolFunctions);
+        console.log(chalk.cyan("🦥 Using LazyToolsService for dynamic tool management"));
+      } else {
+        this.defaultServices.Tools.defineTools(
+          agents.includedTools,
+          agents.tools
+        );
+      }
 
       // Connect to MCP servers
       await this.defaultServices.Mcp.connectToConfigured(
@@ -756,6 +788,7 @@ export class BenchmarkRunner {
 
     return {
       config: this.config,
+      commitHash: this.getCommitHash(),
       exercises: results,
       summary: {
         totalExercises: results.length,
@@ -810,10 +843,14 @@ export class BenchmarkRunner {
   private generateResultsPath(): string {
     const commitHash = this.getCommitHash();
     const dateStr = this.formatDateDash();
-    const modelFileName = `${this.provider}-${this.model.replace(
-      /\//g,
-      "-"
-    )}.json`;
+
+    // Generate a stable run timestamp once per run (lazy-initialized)
+    if (!this.runTimestamp) {
+      this.runTimestamp = String(Math.floor(Date.now() / 1000));
+    }
+
+    const toolMode = this.config.lazyTools ? "lazy" : "eager";
+    const modelFileName = `${this.provider}-${this.model.replace(/\//g, "-")}-${toolMode}-${this.runTimestamp}.json`;
 
     // Use different base paths for local vs container
     const baseDir = process.env.CONTAINER

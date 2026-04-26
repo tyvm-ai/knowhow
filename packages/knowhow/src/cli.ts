@@ -14,7 +14,7 @@ import { includedTools } from "./agents/tools/list";
 import * as allTools from "./agents/tools";
 import { LazyToolsService, services } from "./services";
 import { login } from "./login";
-import { worker } from "./worker";
+import { worker, tunnel } from "./worker";
 import { fileSync } from "./fileSync";
 import { KnowhowSimpleClient } from "./services/KnowhowClient";
 import { ModulesService } from "./services/modules";
@@ -541,6 +541,21 @@ async function main() {
         process.exit(1);
       }
     });
+
+  program
+    .command("tunnel")
+    .description(
+      "Start tunnel-only mode: expose local ports to the cloud without registering any tools"
+    )
+    .option(
+      "--share",
+      "Share this tunnel with your organization (allows other users to use it)"
+    )
+    .option("--unshare", "Make this tunnel private (only you can use it)")
+    .action(async (options) => {
+      await tunnel(options);
+    });
+
 
   program
     .command("script")

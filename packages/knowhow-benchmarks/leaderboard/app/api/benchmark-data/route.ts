@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
   try {
     const results = await loadAllBenchmarkResults();
 
+
     const leaderboardData = aggregateResults(results);
     return NextResponse.json(leaderboardData);
   } catch (error) {
@@ -20,6 +21,7 @@ export async function GET(request: NextRequest) {
         language: 'javascript',
         successRate: 85.5,
         totalExercises: 6,
+        toolMode: 'eager' as const,
         averageCost: 0.05,
         averageTime: 145.2,
         averageTurns: 12.4,
@@ -95,7 +97,8 @@ function aggregateResults(results: BenchmarkResults[]): LeaderboardEntry[] {
   const entriesMap = new Map<string, LeaderboardEntry>();
   
   for (const result of results) {
-    const key = `${result.config.model}-${result.config.provider}-${result.config.language}`;
+    const toolMode = result.config.lazyTools ? 'lazy' : 'eager';
+    const key = `${result.config.model}-${result.config.provider}-${result.config.language}-${toolMode}`;
     
     if (entriesMap.has(key)) {
       // Keep track of total runs, but only show most recent performance
@@ -123,6 +126,7 @@ function aggregateResults(results: BenchmarkResults[]): LeaderboardEntry[] {
       const entry: LeaderboardEntry = {
         model: result.config.model,
         provider: result.config.provider,
+        toolMode: result.config.lazyTools ? 'lazy' : 'eager',
         language: result.config.language,
         successRate: result.summary.successRate * 100, // Convert from decimal to percentage
         totalExercises: result.summary.totalExercises,

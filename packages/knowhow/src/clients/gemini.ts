@@ -16,10 +16,12 @@ import { wait } from "../utils";
 import {
   EmbeddingModels,
   Models,
+  GoogleThinkingLevelModels,
+  GoogleThinkingBudgetModels,
   GoogleImageModels,
   GoogleVideoModels,
   GoogleTTSModels,
-  GoogleEmbeddingModels,
+  GoogleEmbeddingModelsList,
   GoogleReasoningModels,
 } from "../types";
 import { GeminiTextPricing } from "./pricing";
@@ -389,9 +391,49 @@ export class GenericGeminiClient implements GenericClient {
     return [{ functionDeclarations }];
   }
 
+  /**
+   * Builds the thinkingConfig for Gemini models that support it.
+   * - Gemini 3.x models use thinkingLevel: "minimal" | "low" | "medium" | "high"
+   * - Gemini 2.5 models use thinkingBudget: number (0 = off, -1 = dynamic)
+   *
+   * Maps CompletionOptions.reasoning_effort to provider-specific values.
+   */
+  buildThinkingConfig(options: CompletionOptions): Record<string, unknown> | undefined {
+    const model = options.model;
+    const effort = options.reasoning_effort ?? "low";
+
+    // Gemini 3.x — use thinkingLevel
+    if (GoogleThinkingLevelModels.includes(model)) {
+      const levelMap: Record<string, string> = {
+        low: "low",
+        medium: "medium",
+        high: "high",
+      };
+      return {
+        thinkingLevel: levelMap[effort] ?? "low",
+      };
+    }
+
+    // Gemini 2.5 — use thinkingBudget
+    if (GoogleThinkingBudgetModels.includes(model)) {
+      // Map effort to token budget
+      const budgetMap: Record<string, number> = {
+        low: 1024,
+        medium: 8192,
+        high: -1, // dynamic
+      };
+      return {
+        thinkingBudget: budgetMap[effort] ?? 1024,
+      };
+    }
+
+    return undefined;
+  }
+
   async createChatCompletion(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
+    const thinkingConfig = this.buildThinkingConfig(options);
     const { systemInstruction, contents } = this.transformMessages(
       options.messages
     );
@@ -403,6 +445,7 @@ export class GenericGeminiClient implements GenericClient {
         contents,
         config: {
           systemInstruction,
+          thinkingConfig,
           tools: this.transformTools(options.tools),
           maxOutputTokens: options.max_tokens,
         },
@@ -600,7 +643,7 @@ export class GenericGeminiClient implements GenericClient {
     if (modality) {
       const map: Partial<Record<ModelModality, string[]>> = {
         completion: GoogleReasoningModels,
-        embedding: GoogleEmbeddingModels,
+        embedding: GoogleEmbeddingModelsList,
         image: GoogleImageModels,
         audio: GoogleTTSModels,
         video: GoogleVideoModels,

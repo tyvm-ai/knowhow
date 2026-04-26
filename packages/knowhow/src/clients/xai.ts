@@ -29,6 +29,7 @@ import {
 
 import { Models, XaiImageModels, XaiVideoModels } from "../types";
 import { ModelModality } from "./types";
+import { XaiReasoningModels, XaiResponsesOnlyModels } from "./pricing/xai";
 
 export class GenericXAIClient implements GenericClient {
   private client: OpenAI;
@@ -54,6 +55,11 @@ export class GenericXAIClient implements GenericClient {
   async createChatCompletion(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
+    // Route to Responses API for models that require it
+    if (XaiResponsesOnlyModels.includes(options.model)) {
+      return this.createChatResponse(options);
+    }
+
     const xaiMessages = options.messages.map((msg) => {
       if (msg.role === "tool") {
         return {
@@ -70,6 +76,10 @@ export class GenericXAIClient implements GenericClient {
       model: options.model,
       messages: xaiMessages,
       max_tokens: options.max_tokens,
+      ...(XaiReasoningModels.includes(options.model) && options.reasoning_effort && {
+        // grok-3-mini models support reasoning_effort: "low" | "medium" | "high"
+        reasoning_effort: options.reasoning_effort,
+      }),
       ...(options.tools && {
         tools: options.tools,
         tool_choice: "auto",
@@ -90,6 +100,146 @@ export class GenericXAIClient implements GenericClient {
 
       model: options.model,
       usage: response.usage,
+      usd_cost: usdCost,
+    };
+  }
+
+  /**
+   * Creates a completion using the xAI Responses API (/v1/responses).
+   * Used for grok-4.20 reasoning/non-reasoning and multi-agent models.
+   * Translates Chat Completions message format to Responses API format.
+   */
+  async createChatResponse(
+    options: CompletionOptions
+  ): Promise<CompletionResponse> {
+    const apiKey = this.apiKey || process.env.XAI_API_KEY;
+    if (!apiKey) {
+      throw new Error("XAI API key not set");
+    }
+
+    // Extract system messages as instructions
+    const systemMessages = options.messages.filter((m) => m.role === "system");
+    const nonSystemMessages = options.messages.filter((m) => m.role !== "system");
+    const instructions = systemMessages
+      .map((m) => (typeof m.content === "string" ? m.content : ""))
+      .join("\n")
+      .trim() || undefined;
+
+    // Convert chat messages to Responses API input items
+    const input: any[] = nonSystemMessages.map((msg) => {
+      if (msg.role === "tool") {
+        return {
+          type: "function_call_output",
+          call_id: msg.tool_call_id,
+          output: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+        };
+      }
+      if (msg.role === "assistant" && msg.tool_calls?.length) {
+        return msg.tool_calls.map((tc) => ({
+          type: "function_call",
+          id: tc.id.startsWith("fc") ? tc.id : `fc_${tc.id}`,
+          call_id: tc.id,
+          name: tc.function.name,
+          arguments: tc.function.arguments,
+        }));
+      }
+      return {
+        role: msg.role,
+        content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+      };
+    }).flat();
+
+    // Convert tool definitions to Responses API format
+    const tools = options.tools?.map((tool) => ({
+      type: "function" as const,
+      name: tool.function.name,
+      description: tool.function.description,
+      parameters: tool.function.parameters as Record<string, unknown>,
+      strict: false,
+    }));
+
+    // Resolve reasoning effort, clamping to supported levels if defined in pricing
+    const pricing = XaiTextPricing[options.model];
+    const supportedLevels = pricing?.reasoningLevels;
+    let reasoningEffort: string | undefined = options.reasoning_effort;
+    if (supportedLevels?.length) {
+      if (!reasoningEffort || !supportedLevels.includes(reasoningEffort)) {
+        reasoningEffort = supportedLevels[0];
+      }
+    }
+
+    const body: any = {
+      model: options.model,
+      input,
+      ...(instructions && { instructions }),
+      ...(options.max_tokens && { max_output_tokens: Math.max(options.max_tokens, 16_000) }),
+      ...(reasoningEffort && { reasoning: { effort: reasoningEffort } }),
+      ...(tools?.length && { tools, tool_choice: "auto" }),
+      store: false,
+    };
+
+    const response = await fetch("https://api.x.ai/v1/responses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`XAI Responses API error: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+
+    // Map usage
+    const usage = data.usage
+      ? {
+          prompt_tokens: data.usage.input_tokens,
+          completion_tokens: data.usage.output_tokens,
+          total_tokens: data.usage.input_tokens + data.usage.output_tokens,
+        }
+      : undefined;
+
+    const usdCost = usage ? this.calculateCost(options.model, usage) : undefined;
+
+    // Collect text content and tool calls from output items
+    let textContent: string | null = null;
+    const toolCalls: any[] = [];
+
+    for (const item of data.output ?? []) {
+      if (item.type === "message") {
+        for (const part of item.content ?? []) {
+          if (part.type === "output_text") {
+            textContent = (textContent ?? "") + part.text;
+          }
+        }
+      } else if (item.type === "function_call") {
+        toolCalls.push({
+          id: item.call_id,
+          type: "function",
+          function: {
+            name: item.name,
+            arguments: item.arguments,
+          },
+        });
+      }
+    }
+
+    return {
+      choices: [
+        {
+          message: {
+            role: "assistant",
+            content: textContent,
+            ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
+          },
+        },
+      ],
+      model: options.model,
+      usage,
       usd_cost: usdCost,
     };
   }

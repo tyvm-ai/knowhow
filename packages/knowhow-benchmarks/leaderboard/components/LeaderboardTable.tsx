@@ -61,7 +61,7 @@ export default function LeaderboardTable({ entries, showLanguageColumn = true }:
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full bg-white border border-gray-200 rounded-lg shadow-sm">
+      <table className="min-w-max w-full bg-white border border-gray-200 rounded-lg shadow-sm">
         <thead className="bg-gray-50">
           <tr>
             <th 
@@ -84,6 +84,12 @@ export default function LeaderboardTable({ entries, showLanguageColumn = true }:
                 Language {getSortIcon('language')}
               </th>
             )}
+          <th
+            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+            onClick={() => handleSort('toolMode')}
+          >
+            Tools {getSortIcon('toolMode')}
+          </th>
             <th 
               className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
               onClick={() => handleSort('successRate')}
@@ -115,6 +121,12 @@ export default function LeaderboardTable({ entries, showLanguageColumn = true }:
               Avg Turns {getSortIcon('averageTurns')}
             </th>
             <th 
+              className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+              onClick={() => handleSort('totalInputTokens')}
+            >
+              Input Tokens {getSortIcon('totalInputTokens')}
+            </th>
+            <th 
               className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
               onClick={() => handleSort('totalRuns')}
             >
@@ -125,7 +137,7 @@ export default function LeaderboardTable({ entries, showLanguageColumn = true }:
         <tbody className="bg-white divide-y divide-gray-200">
           {sortedEntries.map((entry) => (
             <tr 
-              key={`${entry.model}-${entry.provider}-${entry.language}`} 
+              key={`${entry.model}-${entry.provider}-${entry.language}-${entry.toolMode}`}
               className="hover:bg-gray-50 cursor-pointer transition-colors duration-150"
               onClick={() => handleRowClick(entry)}
               title="Click to view detailed results"
@@ -141,6 +153,15 @@ export default function LeaderboardTable({ entries, showLanguageColumn = true }:
                   {entry.language}
                 </td>
               )}
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                  entry.toolMode === 'lazy'
+                    ? 'bg-purple-100 text-purple-800'
+                    : 'bg-gray-100 text-gray-800'
+                }`}>
+                  {entry.toolMode === 'lazy' ? '🦥 lazy' : '⚡ eager'}
+                </span>
+              </td>
               <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${getStatusColor(entry.successRate)}`}>
                 {formatPercentage(entry.successRate)}
               </td>
@@ -155,6 +176,9 @@ export default function LeaderboardTable({ entries, showLanguageColumn = true }:
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 {entry.averageTurns.toFixed(1)}
+              </td>
+              <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                {entry.totalInputTokens > 0 ? entry.totalInputTokens.toLocaleString() : '—'}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 {entry.totalRuns}

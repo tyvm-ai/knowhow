@@ -44,6 +44,15 @@ import type {
   ModelCatalogEntry,
 } from "./pricing/types";
 import { GenericCerebrasClient } from "./cerebras";
+import { GenericGroqClient } from "./groq";
+import { GenericGitHubModelsClient } from "./github";
+import { GenericNvidiaClient } from "./nvidia";
+import { GenericOpenRouterClient } from "./openrouter";
+import { GenericDeepSeekClient } from "./deepseek";
+import { GenericMistralClient } from "./mistral";
+import { GitHubCopilotClient } from "./copilot";
+import { GenericLlamaClient } from "./llama";
+import { GenericFireworksClient } from "./fireworks";
 export {
   OpenAiTextPricing,
   AnthropicTextPricing,
@@ -79,6 +88,15 @@ const BUILT_IN_PROVIDER_REGISTRY: Record<string, ProviderRegistryEntry> = {
   cerebras: {
     clientClass: GenericCerebrasClient,
   },
+  groq: { clientClass: GenericGroqClient },
+  github: { clientClass: GenericGitHubModelsClient },
+  nvidia: { clientClass: GenericNvidiaClient },
+  openrouter: { clientClass: GenericOpenRouterClient },
+  deepseek: { clientClass: GenericDeepSeekClient },
+  mistral: { clientClass: GenericMistralClient },
+  "github-copilot": { clientClass: GitHubCopilotClient },
+  llama: { clientClass: GenericLlamaClient },
+  fireworks: { clientClass: GenericFireworksClient },
   knowhow: {
     createClient: (entry: ModelProvider) => {
       const jwt = loadKnowhowJwt();
@@ -100,6 +118,15 @@ const DEFAULT_PROVIDERS: ModelProvider[] = [
   { provider: "xai", envKey: "XAI_API_KEY" },
   { provider: "cerebras", envKey: "CEREBRAS_API_KEY" },
   { provider: "knowhow" },
+  { provider: "groq", envKey: "GROQ_API_KEY" },
+  { provider: "github", envKey: "GITHUB_TOKEN" },
+  { provider: "nvidia", envKey: "NVIDIA_API_KEY" },
+  { provider: "openrouter", envKey: "OPENROUTER_API_KEY" },
+  { provider: "deepseek", envKey: "DEEPSEEK_API_KEY" },
+  { provider: "mistral", envKey: "MISTRAL_API_KEY" },
+  { provider: "github-copilot", envKey: "GITHUB_COPILOT_TOKEN" },
+  { provider: "llama", envKey: "LLAMA_API_KEY" },
+  { provider: "fireworks", envKey: "FIREWORKS_API_KEY" },
 ];
 
 export class AIClient {
@@ -158,11 +185,31 @@ export class AIClient {
         // envKey-based auth: env var must be present
         const envValue = process.env[effectiveEnvKey];
         if (!envValue) return null;
-        return new reg.clientClass(envValue);
+        const client = new reg.clientClass(envValue);
+        // Apply any extra options (timeout, headers, extra_body) from config
+        if (client instanceof HttpClient) {
+          client.setOptions({
+            timeout: entry.timeout,
+            headers: entry.headers,
+            extra_body: entry.extra_body,
+          });
+          if (entry.pricing) client.setPrices(entry.pricing);
+        }
+        return client;
       }
 
       // No envKey, no url — instantiate with no arg (client uses its own defaults)
-      return new reg.clientClass();
+      const client = new reg.clientClass();
+      // Apply any extra options (timeout, headers, extra_body) from config
+      if (client instanceof HttpClient) {
+        client.setOptions({
+          timeout: entry.timeout,
+          headers: entry.headers,
+          extra_body: entry.extra_body,
+        });
+        if (entry.pricing) client.setPrices(entry.pricing);
+      }
+      return client;
     }
 
     // 3. HTTP provider — requires url, no clientClass in registry
@@ -175,6 +222,8 @@ export class AIClient {
       if (entry.jwtFile) {
         client.loadJwtFile(entry.jwtFile);
       }
+      // For custom HTTP providers, use entry.pricing if available
+      if (entry.pricing) client.setPrices(entry.pricing);
       return client;
     }
 
@@ -498,6 +547,52 @@ export class AIClient {
       return this.findModel(split.slice(1).join("/"));
     }
 
+    return undefined;
+  }
+
+  /**
+   * Normalize a model ID for fuzzy matching:
+   *   - lowercase
+   *   - replace dots with dashes (e.g. "claude-opus-4.7" → "claude-opus-4-7")
+   *   - strip variant suffixes like ":thinking", ":free"
+   *   - strip trailing date suffixes like "-20250514"
+   *   - strip trailing "-beta", "-preview", "-latest"
+   */
+  private static normalizeModelId(id: string): string {
+    return id
+      .toLowerCase()
+      .replace(/\./g, "-")
+      .replace(/:[^:]+$/, "")
+      .replace(/-\d{8}$/, "")
+      .replace(/-(beta|preview|latest|exp|rc\d*)$/i, "");
+  }
+
+  /**
+   * Fuzzy model lookup: given a model name (possibly without date suffix,
+   * with dots instead of dashes, etc.), find the best matching registered model.
+   *
+   * Example: "claude-3.7-sonnet" matches "claude-3-7-sonnet-20250219"
+   *          "gpt-4.1" matches "gpt-4.1" exactly
+   *
+   * @param modelQuery - the model name to search for (can be partial/normalized)
+   * @param provider   - optional provider to restrict search to
+   */
+  findModelFuzzy(modelQuery: string, provider?: string): { provider: string; model: string } | undefined {
+    const queryNorm = AIClient.normalizeModelId(modelQuery);
+    const providers = provider
+      ? [provider]
+      : Object.keys(this.clientModels);
+
+    for (const p of providers) {
+      const models = (this.clientModels[p] as string[]) ?? [];
+      for (const m of models) {
+        const mNorm = AIClient.normalizeModelId(m);
+        // Exact normalized match, OR our model is a dated variant of the query
+        if (mNorm === queryNorm || mNorm.startsWith(queryNorm + "-")) {
+          return { provider: p, model: m };
+        }
+      }
+    }
     return undefined;
   }
 
@@ -831,7 +926,6 @@ export class AIClient {
             id,
             provider,
             type,
-            displayName: id,
             pricing: p,
           });
         }
@@ -880,3 +974,12 @@ export * from "./gemini";
 export * from "./contextLimits";
 export * from "./xai";
 export * from "./knowhowMcp";
+export * from "./groq";
+export * from "./github";
+export * from "./nvidia";
+export * from "./openrouter";
+export * from "./deepseek";
+export * from "./mistral";
+export * from "./llama";
+export * from "./copilot";
+export * from "./fireworks";

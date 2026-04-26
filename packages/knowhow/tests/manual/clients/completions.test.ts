@@ -13,12 +13,17 @@ import * as fs from "fs";
 import * as path from "path";
 import { AIClient } from "../../../src/clients";
 import { Models } from "../../../src/types";
+import { OpenAiChatModels, OpenAiReasoningModels, OpenAiResponsesOnlyModels } from "../../../src/clients/pricing/openai";
+import { AnthropicTextModels, AnthropicLimitedAvailabilityModels } from "../../../src/clients/pricing/anthropic";
+import { GoogleTextModels } from "../../../src/clients/pricing/google";
+import { XaiTextModels, XaiDeprecatedTextModels } from "../../../src/clients/pricing/xai";
 
 const OUTPUT_FILE = path.join(__dirname, "completions.json");
 const PROMPT = "Say hello in 5 words.";
 
 // ─── Models to test ──────────────────────────────────────────────────────────
-// One or two representative, cheap/fast models per provider.
+// Derived from the canonical model constant lists per provider.
+// Only active (non-deprecated) models are included.
 
 interface ModelEntry {
   provider: string;
@@ -26,36 +31,35 @@ interface ModelEntry {
   envKey: string;
 }
 
+function openaiEntries(models: string[]): ModelEntry[] {
+  return models.map((model) => ({ provider: "openai", model, envKey: "OPENAI_KEY" }));
+}
+
+function anthropicEntries(models: string[]): ModelEntry[] {
+  return models.map((model) => ({ provider: "anthropic", model, envKey: "ANTHROPIC_API_KEY" }));
+}
+
+function googleEntries(models: string[]): ModelEntry[] {
+  return models.map((model) => ({ provider: "google", model, envKey: "GEMINI_API_KEY" }));
+}
+
+function xaiEntries(models: string[]): ModelEntry[] {
+  return models.map((model) => ({ provider: "xai", model, envKey: "XAI_API_KEY" }));
+}
+
 const TEST_MODELS: ModelEntry[] = [
-  // OpenAI
-  { provider: "openai", model: Models.openai.GPT_4o_Mini,  envKey: "OPENAI_KEY" },
-  { provider: "openai", model: Models.openai.GPT_41_Nano,  envKey: "OPENAI_KEY" },
-  { provider: "openai", model: Models.openai.GPT_54,  envKey: "OPENAI_KEY" },
-  { provider: "openai", model: Models.openai.GPT_54_Pro,  envKey: "OPENAI_KEY" },
-  { provider: "openai", model: Models.openai.GPT_54_Mini,  envKey: "OPENAI_KEY" },
-  { provider: "openai", model: Models.openai.GPT_54_Nano,  envKey: "OPENAI_KEY" },
-  { provider: "openai", model: Models.openai.GPT_53_Chat,  envKey: "OPENAI_KEY" },
-  { provider: "openai", model: Models.openai.GPT_53_Codex,  envKey: "OPENAI_KEY" },
+  // OpenAI — all active chat + reasoning models + responses-API models
+  // Deduplicate since some models appear in multiple lists
+  ...openaiEntries([...new Set([...OpenAiChatModels, ...OpenAiReasoningModels, ...OpenAiResponsesOnlyModels])]),
 
-  // Anthropic
-  { provider: "anthropic", model: Models.anthropic.Haiku4_5, envKey: "ANTHROPIC_API_KEY" },
-  { provider: "anthropic", model: Models.anthropic.Sonnet4_6, envKey: "ANTHROPIC_API_KEY" },
-  { provider: "anthropic", model: Models.anthropic.Opus4_6, envKey: "ANTHROPIC_API_KEY" },
+  // Anthropic — active text models (limited availability excluded)
+  ...anthropicEntries(AnthropicTextModels),
 
-  // Google
-  { provider: "google", model: Models.google.Gemini_25_Flash,      envKey: "GEMINI_API_KEY" },
-  { provider: "google", model: Models.google.Gemini_31_Flash_Lite_Preview,      envKey: "GEMINI_API_KEY" },
-  { provider: "google", model: Models.google.Gemini_31_Flash_Image_Preview,      envKey: "GEMINI_API_KEY" },
-  { provider: "google", model: Models.google.Gemini_31_Pro_Preview,      envKey: "GEMINI_API_KEY" },
+  // Google — all active text models
+  ...googleEntries(GoogleTextModels),
 
-  // XAI
-  { provider: "xai", model: Models.xai.Grok3MiniFastBeta, envKey: "XAI_API_KEY" },
-  { provider: "xai", model: Models.xai.Grok3MiniBeta,     envKey: "XAI_API_KEY" },
-  { provider: "xai", model: Models.xai.Grok4,     envKey: "XAI_API_KEY" },
-  { provider: "xai", model: Models.xai.Grok4_1_Fast_NonReasoning,     envKey: "XAI_API_KEY" },
-  { provider: "xai", model: Models.xai.Grok4_1_Fast_NonReasoning,     envKey: "XAI_API_KEY" },
-  { provider: "xai", model: Models.xai.Grok_4_20_NonReasoning,     envKey: "XAI_API_KEY" },
-  { provider: "xai", model: Models.xai.Grok_4_20_Reasoning,     envKey: "XAI_API_KEY" },
+  // XAI — active text models (deprecated grok-2 models excluded)
+  ...xaiEntries(XaiTextModels),
 ];
 
 // ─── Persistence helpers ──────────────────────────────────────────────────────
@@ -72,6 +76,7 @@ interface CompletionRecord {
     [key: string]: any;
   };
   usd_cost?: number;
+  durationMs?: number;
   testedAt: string;
 }
 
@@ -123,6 +128,7 @@ describe("Text Completions – multi-provider model verification", () => {
         console.log(`⏭  Skipping (already tested on ${rec.testedAt})`);
         console.log(`   Response : "${rec.response}"`);
         console.log(`   Cost     : $${rec.usd_cost?.toFixed(8) ?? "unknown"}`);
+        console.log(`   Duration : ${rec.durationMs != null ? rec.durationMs + "ms" : "unknown"}`);
         expect(rec.response).toBeTruthy();
         return;
       }
@@ -134,11 +140,18 @@ describe("Text Completions – multi-provider model verification", () => {
       }
 
       // ── Run completion ────────────────────────────────────────────────────
+      const startMs = Date.now();
       const response = await client.createCompletion(provider, {
         model,
         messages: [{ role: "user", content: PROMPT }],
-        max_tokens: 50,
+        max_tokens: 2000,
+        // Use low reasoning effort for all models that support it — keeps latency
+        // and cost down while still verifying the model responds successfully.
+        // For OpenAI this maps to reasoning_effort="low", for Gemini to
+        // thinkingLevel="low" or thinkingBudget=1024, etc.
+        reasoning_effort: "low",
       });
+      const durationMs = Date.now() - startMs;
 
       const text = response.choices[0]?.message?.content ?? "";
       expect(text).toBeTruthy();
@@ -149,6 +162,7 @@ describe("Text Completions – multi-provider model verification", () => {
         prompt: PROMPT,
         response: text,
         usage: response.usage ?? {},
+        durationMs,
         usd_cost: response.usd_cost,
         testedAt: new Date().toISOString(),
       };
@@ -161,6 +175,7 @@ describe("Text Completions – multi-provider model verification", () => {
       console.log(`   Response : "${text}"`);
       console.log(`   Tokens   : ${JSON.stringify(response.usage)}`);
       console.log(`   Cost     : $${response.usd_cost?.toFixed(8) ?? "unknown"}`);
+      console.log(`   Duration : ${durationMs}ms`);
     }, 60_000);
   }
 });

@@ -4,7 +4,6 @@ import { WebSocket } from "ws";
 export type Hashes = {
   [file: string]: {
     [promptHash: string]: string;
-
     promptHash: string;
     fileHash: string;
   };
@@ -39,37 +38,24 @@ export type Config = {
   promptsDir: string;
   lintCommands?: { [fileExtension: string]: string };
   orgId?: string;
-
   syncRemote?: boolean;
-
   micCommand?: string;
   defaultMic?: string;
-
   sources: GenerationSource[];
   embedSources: EmbedSource[];
   embeddingModel: string;
-
   skills?: string[];
-
   plugins: { enabled: string[]; disabled: string[] };
-
   chat?: {
-    /** Path to a custom root chat module (npm package or local file) */
     rootModule?: string;
-    /** Path to a custom renderer (npm package or local file, can be .ts) */
     renderer?: string;
-    /** Additional chat modules to load (npm packages or local files, can be .ts) */
     modules?: string[];
   };
-
   modules: string[];
-
   pluginPackages?: Record<string, string>;
-
   agents: Assistant[];
   mcps: McpConfig[];
   modelProviders: ModelProvider[];
-
   ycmd?: {
     enabled?: boolean;
     installPath?: string;
@@ -77,13 +63,11 @@ export type Config = {
     logLevel?: "debug" | "info" | "warning" | "error";
     completionTimeout?: number;
   };
-
   files?: {
-    remotePath: string; // path in Knowhow FS, e.g. "/docs/readme.md" or "/configs/"
-    localPath: string; // local path to write to, e.g. "./docs/readme.md" or "./configs/"
-    direction?: "download" | "upload" | "sync"; // default: "download"
+    remotePath: string;
+    localPath: string;
+    direction?: "download" | "upload" | "sync";
   }[];
-
   worker?: {
     allowedTools?: string[];
     workerId?: string;
@@ -93,24 +77,20 @@ export type Config = {
     auth?: {
       required?: boolean;
       passkey?: {
-        publicKey?: string; // base64-encoded public key
-        credentialId?: string; // base64-encoded credential ID
-        algorithm?: string; // e.g. "ES256"
+        publicKey?: string;
+        credentialId?: string;
+        algorithm?: string;
       };
       sessionDurationHours?: number;
     };
-    commandAuth?: {
-      [toolName: string]: "always" | "session" | "never";
-    };
+    commandAuth?: { [toolName: string]: "always" | "session" | "never" };
     tunnel?: {
       enabled?: boolean;
       allowedPorts?: number[];
       maxConcurrentStreams?: number;
-      portMapping?: {
-        [containerPort: number]: number; // containerPort -> hostPort
-      };
-      localHost?: string; // Default: "127.0.0.1", can be "host.docker.internal" for Docker
-      enableUrlRewriting?: boolean; // Enable URL rewriting for localhost URLs (default: true)
+      portMapping?: { [containerPort: number]: number };
+      localHost?: string;
+      enableUrlRewriting?: boolean;
     };
   };
 };
@@ -125,7 +105,7 @@ export type Assistant = {
 
 export type McpConfig = {
   name: string;
-  autoConnect?: boolean; // Default: true - connect at startup. Set to false for on-demand connection
+  autoConnect?: boolean;
   command?: string;
   url?: string;
   args?: string[];
@@ -143,6 +123,8 @@ export type ModelProvider = {
   jwtFile?: string;
   timeout?: number;
   extra_body?: Record<string, any>;
+  /** Optional pricing map (model id → per-million-token prices) passed to HttpClient.setPrices() */
+  pricing?: Record<string, { input?: number; output?: number; cached_input?: number; cache_hit?: number }>;
 };
 
 export type AssistantConfig = {
@@ -156,17 +138,13 @@ export interface Embeddable<T = any> {
   metadata: T;
 }
 
-export type MinimalEmbedding<T = any> = Pick<
-  Embeddable<T>,
-  "id" | "text" | "metadata"
->;
+export type MinimalEmbedding<T = any> = Pick<Embeddable<T>, "id" | "text" | "metadata">;
 
 export interface EmbeddingBase<T = any> extends Embeddable<T> {
   similarity?: number;
 }
 
 export type GptQuestionEmbedding = any & EmbeddingBase;
-
 export type DatasourceType = "file" | "url" | "text";
 
 export interface IDatasource {
@@ -189,150 +167,55 @@ export type ChatInteraction = {
   taskId: string;
 };
 
-export const Models = {
-  anthropic: {
-    Opus4_6: "claude-opus-4-6",
-    Sonnet4_6: "claude-sonnet-4-6",
-    Opus4_5: "claude-opus-4-5",
-    Opus4: "claude-opus-4",
-    Opus4_1: "claude-opus-4-1",
-    Sonnet4_5: "claude-sonnet-4-5",
-    Haiku4_5: "claude-haiku-4-5",
-    Sonnet4: "claude-sonnet-4",
-    Sonnet3_7: "claude-3-7-sonnet",
-    Sonnet3_5: "claude-3-5-sonnet",
-    Opus3: "claude-3-opus",
-    Haiku3: "claude-3-haiku",
-  },
-  xai: {
-    Grok_4_20_Reasoning: "grok-4.20-0309-reasoning",
-    Grok_4_20_NonReasoning: "grok-4.20-0309-non-reasoning",
-    Grok4_1_Fast_Reasoning: "grok-4-1-fast-reasoning",
-    Grok4_1_Fast_NonReasoning: "grok-4-1-fast-non-reasoning",
-    GrokCodeFast: "grok-code-fast-1",
-    Grok4: "grok-4-0709",
-    Grok3Beta: "grok-3-beta",
-    Grok3MiniBeta: "grok-3-mini-beta",
-    Grok3FastBeta: "grok-3-fast-beta",
-    Grok3MiniFastBeta: "grok-3-mini-fast-beta",
-    Grok21212: "grok-2-1212",
-    Grok2Vision1212: "grok-2-vision-1212",
-    GrokImagineImage: "grok-imagine-image",
-    GrokImagineVideo: "grok-imagine-video",
-  },
-  openai: {
-    GPT_54: "gpt-5.4",
-    GPT_54_Mini: "gpt-5.4-mini",
-    GPT_54_Nano: "gpt-5.4-nano",
-    GPT_54_Pro: "gpt-5.4-pro",
-    GPT_53_Chat: "gpt-5.3-chat-latest",
-    GPT_53_Codex: "gpt-5.3-codex",
-    GPT_5_2: "gpt-5.2",
-    GPT_5_1: "gpt-5.1",
-    GPT_5: "gpt-5",
-    GPT_5_Mini: "gpt-5-mini",
-    GPT_5_Nano: "gpt-5-nano",
-    GPT_41: "gpt-4.1-2025-04-14",
-    GPT_41_Mini: "gpt-4.1-mini-2025-04-14",
-    GPT_41_Nano: "gpt-4.1-nano-2025-04-14",
-    GPT_45: "gpt-4.5-preview-2025-02-27",
-    GPT_4o: "gpt-4o-2024-08-06",
-    GPT_4o_Audio: "gpt-4o-audio-preview-2024-12-17",
-    GPT_4o_Realtime: "gpt-4o-realtime-preview-2024-12-17",
-    GPT_4o_Mini: "gpt-4o-mini-2024-07-18",
-    GPT_4o_Mini_Audio: "gpt-4o-mini-audio-preview-2024-12-17",
-    GPT_4o_Mini_Realtime: "gpt-4o-mini-realtime-preview-2024-12-17",
-    o1: "o1-2024-12-17",
-    o1_Pro: "o1-pro-2025-03-19",
-    o3: "o3-2025-04-16",
-    o3_Pro: "o3-pro-2025-01-31",
-    o4_Mini: "o4-mini-2025-04-16",
-    o3_Mini: "o3-mini-2025-01-31",
-    o1_Mini: "o1-mini-2024-09-12",
-    GPT_4o_Mini_Search: "gpt-4o-mini-search-preview-2025-03-11",
-    GPT_4o_Search: "gpt-4o-search-preview-2025-03-11",
+// ─── Model IDs ────────────────────────────────────────────────────────────────
+// Each provider's pricing file is the single source of truth.
 
-    GPT_4o_Transcribe: "gpt-4o-transcribe",
-    GPT_4o_Mini_Transcribe: "gpt-4o-mini-transcribe",
-    GPT_Realtime_15: "gpt-realtime-1.5",
-    GPT_Realtime_Mini: "gpt-realtime-mini",
-    GPT_Image_15: "gpt-image-1.5",
-    GPT_Image_1_Mini: "gpt-image-1-mini",
-    TTS_1: "tts-1",
-    Whisper_1: "whisper-1",
-    DALL_E_3: "dall-e-3",
-    DALL_E_2: "dall-e-2",
-    Sora: "sora",
-    Sora_2: "sora-2",
-    Sora_2_Pro: "sora-2-pro",
-    // Computer_Use: "computer-use-preview-2025-03-11",
-    // Codex_Mini: "codex-mini-latest",
-  },
-  google: {
-    // Gemini 3.x
-    Gemini_31_Pro_Preview: "gemini-3.1-pro-preview",
-    Gemini_31_Flash_Image_Preview: "gemini-3.1-flash-image-preview",
-    Gemini_31_Flash_Lite_Preview: "gemini-3.1-flash-lite-preview",
-    Gemini_31_Flash_Live_Preview: "gemini-3.1-flash-live-preview",
-    Gemini_3_Flash_Preview: "gemini-3-flash-preview",
-    Gemini_3_Pro_Image_Preview: "gemini-3-pro-image-preview",
-    // Gemini 2.5
-    Gemini_25_Pro: "gemini-2.5-pro",
-    Gemini_25_Flash: "gemini-2.5-flash",
-    Gemini_25_Flash_Lite: "gemini-2.5-flash-lite",
-    Gemini_25_Flash_Preview: "gemini-2.5-flash-preview-05-20",
-    Gemini_25_Pro_Preview: "gemini-2.5-pro-preview-05-06",
-    Gemini_25_Flash_Image: "gemini-2.5-flash-image",
-    Gemini_25_Flash_Live: "gemini-2.5-flash-live-preview",
-    Gemini_25_Flash_Native_Audio:
-      "gemini-2.5-flash-native-audio-preview-12-2025",
-    Gemini_25_Pro_TTS: "gemini-2.5-pro-preview-tts",
-    // Gemini 2.0 (deprecated)
-    Gemini_20_Flash: "gemini-2.0-flash",
-    Gemini_20_Flash_Preview_Image_Generation:
-      "gemini-2.0-flash-exp-image-generation",
-    // Gemini 1.5 (legacy)
-    Gemini_15_Flash: "gemini-1.5-flash",
-    Gemini_15_Flash_8B: "gemini-1.5-flash-8b",
-    Gemini_15_Pro: "gemini-1.5-pro",
-    // Media generation
-    Imagen_3: "imagen-4.0-generate-001",
-    Imagen_4_Fast: "imagen-4.0-fast-generate-001",
-    Imagen_4_Ultra: "imagen-4.0-ultra-generate-001",
-    Veo_2: "veo-2.0-generate-001",
-    Veo_3: "veo-3.0-generate-001",
-    Veo_3_Fast: "veo-3.0-fast-generate-001",
-    Veo_3_1: "veo-3.1-generate-preview",
-    Veo_3_1_Fast: "veo-3.1-fast-generate-preview",
-    // Audio / Live
-    Gemini_20_Flash_Live: "gemini-2.0-flash-live-001",
-    Gemini_25_Flash_TTS: "gemini-2.5-flash-preview-tts",
-    Gemini_20_Flash_TTS: "gemini-2.0-flash-preview-tts",
-  },
+import { AnthropicModels, AnthropicTextModels } from "./clients/pricing/anthropic";
+import {
+  OpenAiModels, OpenAiEmbeddingModels,
+  OpenAiReasoningModels, OpenAiChatModels, OpenAiEmbeddingModelsList,
+  OpenAiResponsesOnlyModels, OpenAiImageModels, OpenAiVideoModels,
+  OpenAiTTSModels, OpenAiTranscriptionModels, OpenAiRealtimeModels,
+} from "./clients/pricing/openai";
+import {
+  GoogleModels, GoogleEmbeddingModels,
+  GoogleTextModels, GoogleImageModels, GoogleVideoModels,
+  GoogleTTSModels, GoogleEmbeddingModelsList, GoogleThinkingLevelModels, GoogleThinkingBudgetModels,
+} from "./clients/pricing/google";
+import {
+  XaiModels, XaiTextModels, XaiImageModels, XaiVideoModels, XaiResponsesOnlyModels, XaiReasoningModels,
+} from "./clients/pricing/xai";
+
+export const Models = {
+  anthropic: AnthropicModels,
+  xai: XaiModels,
+  openai: OpenAiModels,
+  google: GoogleModels,
 };
 
 export const EmbeddingModels = {
-  openai: {
-    EmbeddingAda2: "text-embedding-ada-002",
-    EmbeddingLarge3: "text-embedding-3-large",
-    EmbeddingSmall3: "text-embedding-3-small",
-  },
-  google: {
-    Gemini_Embedding: "gemini-embedding-exp",
-    Gemini_Embedding_001: "gemini-embedding-001",
-  },
+  openai: OpenAiEmbeddingModels,
+  google: GoogleEmbeddingModels,
 };
 
-export function getEnabledPlugins(
-  plugins: Config["plugins"] | undefined
-): string[] {
+// Re-export modality arrays for consumers
+export {
+  OpenAiReasoningModels, OpenAiChatModels, OpenAiEmbeddingModelsList,
+  OpenAiResponsesOnlyModels, OpenAiImageModels, OpenAiVideoModels,
+  OpenAiTTSModels, OpenAiTranscriptionModels, OpenAiRealtimeModels,
+  GoogleTextModels as GoogleReasoningModels,
+  GoogleImageModels, GoogleVideoModels, GoogleTTSModels, GoogleEmbeddingModelsList,
+  GoogleThinkingLevelModels, GoogleThinkingBudgetModels,
+  AnthropicTextModels,
+  XaiTextModels, XaiImageModels, XaiVideoModels, XaiResponsesOnlyModels, XaiReasoningModels,
+};
+
+export function getEnabledPlugins(plugins: Config["plugins"] | undefined): string[] {
   if (!plugins) return [];
   return plugins.enabled ?? [];
 }
 
-export function getDisabledPlugins(
-  plugins: Config["plugins"] | undefined
-): string[] {
+export function getDisabledPlugins(plugins: Config["plugins"] | undefined): string[] {
   if (!plugins) return [];
   return plugins.disabled ?? [];
 }
@@ -341,112 +224,3 @@ export const Providers = Object.keys(Models).reduce((obj, key) => {
   obj[key] = key;
   return obj;
 }, {}) as { [key in keyof typeof Models]: keyof typeof Models };
-
-export const OpenAiReasoningModels = [
-  Models.openai.o1,
-  Models.openai.o1_Mini,
-  Models.openai.o3_Mini,
-  Models.openai.o3,
-  Models.openai.o3_Pro,
-  Models.openai.o4_Mini,
-  Models.openai.GPT_54,
-  Models.openai.GPT_54_Mini,
-  Models.openai.GPT_54_Nano,
-  Models.openai.GPT_54_Pro,
-  Models.openai.GPT_53_Chat,
-  Models.openai.GPT_53_Codex,
-  Models.openai.GPT_5,
-  Models.openai.GPT_5_Mini,
-  Models.openai.GPT_5_Nano,
-  Models.openai.GPT_5_1,
-  Models.openai.GPT_5_2,
-];
-
-export const OpenAiEmbeddingModels = [
-  EmbeddingModels.openai.EmbeddingAda2,
-  EmbeddingModels.openai.EmbeddingLarge3,
-  EmbeddingModels.openai.EmbeddingSmall3,
-];
-
-// Models that ONLY support the Responses API (not Chat Completions)
-export const OpenAiResponsesOnlyModels = [
-  Models.openai.GPT_53_Codex,
-  Models.openai.GPT_54,
-  Models.openai.GPT_54_Mini,
-  Models.openai.GPT_54_Nano,
-  Models.openai.GPT_54_Pro,
-];
-
-export const GoogleReasoningModels = [
-  Models.google.Gemini_31_Pro_Preview,
-  Models.google.Gemini_31_Flash_Lite_Preview,
-  Models.google.Gemini_3_Flash_Preview,
-  Models.google.Gemini_25_Pro,
-  Models.google.Gemini_25_Flash,
-  Models.google.Gemini_25_Flash_Lite,
-  Models.google.Gemini_25_Flash_Preview,
-  Models.google.Gemini_25_Pro_Preview,
-  Models.google.Gemini_20_Flash,
-  Models.google.Gemini_15_Flash,
-  Models.google.Gemini_15_Flash_8B,
-  Models.google.Gemini_15_Pro,
-];
-
-export const GoogleImageModels = [
-  Models.google.Gemini_31_Flash_Image_Preview,
-  Models.google.Gemini_3_Pro_Image_Preview,
-  Models.google.Gemini_25_Flash_Image,
-  Models.google.Gemini_20_Flash_Preview_Image_Generation,
-  Models.google.Imagen_3,
-  Models.google.Imagen_4_Fast,
-  Models.google.Imagen_4_Ultra,
-];
-
-export const OpenAiImageModels = [
-  Models.openai.DALL_E_3,
-  Models.openai.DALL_E_2,
-  Models.openai.GPT_Image_15,
-  Models.openai.GPT_Image_1_Mini,
-];
-
-export const OpenAiVideoModels = [
-  Models.openai.Sora,
-  Models.openai.Sora_2,
-  Models.openai.Sora_2_Pro,
-];
-
-export const OpenAiTTSModels = [Models.openai.TTS_1];
-
-export const XaiImageModels = [Models.xai.GrokImagineImage];
-export const OpenAiTranscriptionModels = [
-  Models.openai.Whisper_1,
-  Models.openai.GPT_4o_Transcribe,
-  Models.openai.GPT_4o_Mini_Transcribe,
-];
-
-export const OpenAiRealtimeModels = [
-  Models.openai.GPT_4o_Realtime,
-  Models.openai.GPT_4o_Mini_Realtime,
-  Models.openai.GPT_Realtime_15,
-  Models.openai.GPT_Realtime_Mini,
-];
-export const XaiVideoModels = [Models.xai.GrokImagineVideo];
-
-export const GoogleTTSModels = [
-  Models.google.Gemini_25_Flash_TTS,
-  Models.google.Gemini_25_Pro_TTS,
-  Models.google.Gemini_20_Flash_TTS,
-];
-
-export const GoogleVideoModels = [
-  Models.google.Veo_2,
-  Models.google.Veo_3,
-  Models.google.Veo_3_Fast,
-  Models.google.Veo_3_1,
-  Models.google.Veo_3_1_Fast,
-];
-
-export const GoogleEmbeddingModels = [
-  EmbeddingModels.google.Gemini_Embedding,
-  EmbeddingModels.google.Gemini_Embedding_001,
-];

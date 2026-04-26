@@ -11,6 +11,7 @@ export interface BenchmarkConfig {
   model: string;
   provider: string;
   agent?: string;
+  lazyTools?: boolean;
   limits: BenchmarkLimits;
   outputFile: string;
 }
@@ -70,6 +71,7 @@ export interface LeaderboardEntry {
   model: string;
   provider: string;
   language: string;
+  toolMode: 'lazy' | 'eager';
   successRate: number;
   totalExercises: number;
   averageCost: number;

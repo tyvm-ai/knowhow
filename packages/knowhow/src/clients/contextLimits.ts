@@ -19,8 +19,8 @@ export const ContextLimits: Record<string, number> = {
   [Models.openai.GPT_5]: 1_000_000,
   [Models.openai.GPT_5_Mini]: 1_000_000,
   [Models.openai.GPT_5_Nano]: 1_000_000,
-  [Models.openai.GPT_5_1]: 1_000_000,
-  [Models.openai.GPT_5_2]: 1_000_000,
+  [Models.openai.GPT_51]: 1_000_000,
+  [Models.openai.GPT_52]: 1_000_000,
   [Models.openai.GPT_41]: 1_047_576,
   [Models.openai.GPT_41_Mini]: 1_047_576,
   [Models.openai.GPT_41_Nano]: 1_047_576,
@@ -43,6 +43,7 @@ export const ContextLimits: Record<string, number> = {
 
   // ─── Anthropic ────────────────────────────────────────────────────────────
   [Models.anthropic.Opus4_6]: 1_000_000,
+  [Models.anthropic.Opus4_6Fast]: 1_000_000,
   [Models.anthropic.Sonnet4_6]: 1_000_000,
   [Models.anthropic.Opus4_5]: 1_000_000,
   [Models.anthropic.Opus4]: 200_000,
@@ -54,6 +55,7 @@ export const ContextLimits: Record<string, number> = {
   [Models.anthropic.Sonnet3_5]: 200_000,
   [Models.anthropic.Opus3]: 200_000,
   [Models.anthropic.Haiku3]: 200_000,
+  [Models.anthropic.Haiku3_5]: 200_000,
 
   // ─── Google ───────────────────────────────────────────────────────────────
   [Models.google.Gemini_31_Pro_Preview]: 1_000_000,
@@ -82,6 +84,9 @@ export const ContextLimits: Record<string, number> = {
   // ─── xAI ──────────────────────────────────────────────────────────────────
   [Models.xai.Grok4_1_Fast_Reasoning]: 2_000_000,
   [Models.xai.Grok4_1_Fast_NonReasoning]: 2_000_000,
+  [Models.xai.Grok_4_20_Reasoning]: 131_072,
+  [Models.xai.Grok_4_20_NonReasoning]: 131_072,
+  [Models.xai.Grok_4_20_MultiAgent]: 2_000_000,
   [Models.xai.GrokCodeFast]: 2_000_000,
   [Models.xai.Grok4]: 131_072,
   [Models.xai.Grok3Beta]: 131_072,

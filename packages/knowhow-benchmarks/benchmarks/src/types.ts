@@ -13,6 +13,7 @@ export interface BenchmarkConfig {
   model: string;
   provider: string;
   agent?: string; // Agent type to use (default: 'Patcher')
+  lazyTools?: boolean; // Use LazyToolsService instead of ToolsService
   limits: BenchmarkLimits;
   outputFile: string;
 }
@@ -40,6 +41,7 @@ export interface ExerciseResult {
 export interface BenchmarkResults {
   config: BenchmarkConfig;
   exercises: ExerciseResult[];
+  commitHash?: string;
   summary: {
     totalExercises: number;
     testableExercises: number; // Exercises that had evaluatable tests

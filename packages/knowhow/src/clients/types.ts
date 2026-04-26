@@ -57,6 +57,10 @@ export interface CompletionOptions {
   tools?: Tool[];
   tool_choice?: "auto" | "none";
   max_tokens?: number;
+  /** Reasoning effort level for models that support it.
+   *  Maps to: OpenAI reasoning_effort, xAI reasoning.effort, Gemini thinkingLevel/thinkingBudget, Anthropic thinking budget.
+   *  "low" = minimal thinking, "medium" = balanced, "high" = maximum reasoning */
+  reasoning_effort?: "low" | "medium" | "high";
 }
 
 export interface CompletionResponse {

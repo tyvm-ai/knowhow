@@ -386,7 +386,8 @@ export abstract class BaseAgent implements IAgent {
     const outputTokens = usage.output_tokens ?? usage.completion_tokens ?? 0;
 
     const cacheReadTokens =
-      usage.cache_read_input_tokens ?? usage.cache_read_tokens ?? 0;
+      usage.cache_read_input_tokens ?? usage.cache_read_tokens ??
+      usage.prompt_tokens_details?.cached_tokens ?? 0;
     const cacheWriteTokens =
       usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? 0;
 
@@ -709,6 +710,12 @@ export abstract class BaseAgent implements IAgent {
             `Response data: ${JSON.stringify(error.response.data, null, 2)}`,
             "warn"
           );
+        }
+        if (!response?.choices) {
+          const errMsg =
+            (error?.error?.message ?? error?.message) ||
+            JSON.stringify(response);
+          throw new Error(`AI response error: ${errMsg}`);
         }
       }
 
@@ -1062,7 +1069,7 @@ export abstract class BaseAgent implements IAgent {
           "warn"
         );
         return {
-          role: "system",
+          role: "user",
           content:
             "⚠️ Output limit warning: Your last tool call had incomplete or missing arguments, which usually means you exceeded the output token limit mid-response. The model reported " +
             outputTokens +

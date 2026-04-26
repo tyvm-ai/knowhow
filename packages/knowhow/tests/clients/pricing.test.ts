@@ -5,6 +5,9 @@
  * Models that are image-only, video-only, TTS, transcription, realtime, or live streaming
  * are exempt from text pricing requirements — they should have their own pricing entries
  * in the appropriate pricing tables (image, video, audio, etc.).
+ * 
+ * Also verifies that every model in Models.* and EmbeddingModels.* has a catalog entry,
+ * ensuring the catalog stays in sync with the model definitions.
  */
 
 import {
@@ -27,6 +30,7 @@ import {
   GeminiTextPricing,
   AnthropicTextPricing,
   XaiTextPricing,
+  ALL_MODEL_CATALOG,
   XaiImagePricing,
   XaiVideoPricing,
 } from "../../src/clients/pricing";
@@ -140,5 +144,38 @@ describe("Model Pricing Coverage", () => {
         expect(entry).toBeDefined();
       });
     }
+
+describe("Model Catalog Coverage", () => {
+  /**
+   * Every model defined in Models.* and EmbeddingModels.* must have an entry
+   * in ALL_MODEL_CATALOG. This ensures the catalog stays in sync and is the
+   * single source of truth for model metadata and pricing.
+   */
+  const catalogIds = new Set(ALL_MODEL_CATALOG.map((m) => m.id));
+
+  describe("All Models.* entries are in the catalog", () => {
+    for (const [provider, providerModels] of Object.entries(Models)) {
+      for (const [modelKey, modelId] of Object.entries(
+        providerModels as Record<string, string>
+      )) {
+        it(`Models.${provider}.${modelKey} (${modelId}) is in ALL_MODEL_CATALOG`, () => {
+          expect(catalogIds.has(modelId)).toBe(true);
+        });
+      }
+    }
+  });
+
+  describe("All EmbeddingModels.* entries are in the catalog", () => {
+    for (const [provider, providerModels] of Object.entries(EmbeddingModels)) {
+      for (const [modelKey, modelId] of Object.entries(
+        providerModels as Record<string, string>
+      )) {
+        it(`EmbeddingModels.${provider}.${modelKey} (${modelId}) is in ALL_MODEL_CATALOG`, () => {
+          expect(catalogIds.has(modelId)).toBe(true);
+        });
+      }
+    }
+  });
+});
   });
 });
