@@ -10,6 +10,8 @@ get_current_version() {
 version_nightly() {
   local version
   version=$(get_current_version)
+  # Strip any existing pre-release suffix (e.g. -dev.xxx or -nightly.xxx)
+  version=$(echo "$version" | sed 's/-.*$//')
   local stamp
   stamp=$(date -u +%Y%m%d)
   local pre="${version}-nightly.${stamp}"
@@ -20,6 +22,8 @@ version_nightly() {
 version_dev() {
   local version
   version=$(get_current_version)
+  # Strip any existing pre-release suffix (e.g. -dev.xxx or -nightly.xxx)
+  version=$(echo "$version" | sed 's/-.*$//')
   local hash
   hash=$(git rev-parse --short HEAD)
   local pre="${version}-dev.${hash}"
