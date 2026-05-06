@@ -1,6 +1,6 @@
 {
   "name": "@tyvm/knowhow",
-  "version": "0.0.108-dev.bd8f104",
+  "version": "0.0.108-dev.126b29e",
   "description": "ai cli with plugins and agents",
   "main": "ts_build/src/index.js",
   "bin": {

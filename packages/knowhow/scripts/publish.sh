@@ -15,8 +15,14 @@ version_nightly() {
   local stamp
   stamp=$(date -u +%Y%m%d)
   local pre="${version}-nightly.${stamp}"
-  echo "Bumping version to: $pre"
-  npm version "$pre" --no-git-tag-version
+  local current
+  current=$(get_current_version)
+  if [ "$current" = "$pre" ]; then
+    echo "Version already set to: $pre (no change needed)"
+  else
+    echo "Bumping version to: $pre"
+    npm version "$pre" --no-git-tag-version
+  fi
 }
 
 version_dev() {
@@ -27,8 +33,14 @@ version_dev() {
   local hash
   hash=$(git rev-parse --short HEAD)
   local pre="${version}-dev.${hash}"
-  echo "Bumping version to: $pre"
-  npm version "$pre" --no-git-tag-version
+  local current
+  current=$(get_current_version)
+  if [ "$current" = "$pre" ]; then
+    echo "Version already set to: $pre (no change needed)"
+  else
+    echo "Bumping version to: $pre"
+    npm version "$pre" --no-git-tag-version
+  fi
 }
 
 case "$COMMAND" in
