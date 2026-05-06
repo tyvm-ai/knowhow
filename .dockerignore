@@ -1,0 +1,12 @@
+**/node_modules
+**/.knowhow
+**/dist
+**/.DS_Store
+**/*.log
+packages/knowhow/ts_build
+packages/knowhow-benchmarks/benchmarks/dist
+packages/knowhow-benchmarks/leaderboard
+packages/knowhow-module-*
+packages/knowhow-plugin-*
+packages/swagger-mcp
+packages/terminal

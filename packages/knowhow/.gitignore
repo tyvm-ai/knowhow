@@ -27,3 +27,4 @@ dist
 .next
 **/tsconfig.tsbuildinfo
 **/.env
+.playwright-mcp

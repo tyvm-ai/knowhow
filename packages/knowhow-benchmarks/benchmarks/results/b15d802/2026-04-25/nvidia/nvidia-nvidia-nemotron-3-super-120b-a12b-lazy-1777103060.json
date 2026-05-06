@@ -1,0 +1,729 @@
+{
+  "config": {
+    "language": "javascript",
+    "maxExercises": 10,
+    "model": "nvidia/nemotron-3-super-120b-a12b",
+    "provider": "nvidia",
+    "lazyTools": true,
+    "limits": {
+      "maxTurns": 30,
+      "maxTime": 300,
+      "maxCost": 1
+    },
+    "outputFile": "results.json"
+  },
+  "commitHash": "b15d802",
+  "exercises": [
+    {
+      "exerciseName": "accumulate",
+      "status": "failure",
+      "turns": 0,
+      "testResult": {
+        "passed": 0,
+        "failed": 1,
+        "total": 5,
+        "skipped": 4,
+        "success": false,
+        "output": "{\"numFailedTestSuites\":1,\"numFailedTests\":1,\"numPassedTestSuites\":0,\"numPassedTests\":0,\"numPendingTestSuites\":0,\"numPendingTests\":4,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":5,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1777103060138,\"success\":false,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"accumulate()\"],\"duration\":0,\"failureDetails\":[{}],\"failureMessages\":[\"Error: Remove this line and implement the function\\n    at accumulate (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/accumulate.js:7:9)\\n    at Object.<anonymous> (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/accumulate.spec.js:7:22)\\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/utils.js:298:28)\\n    at new Promise (<anonymous>)\\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/utils.js:231:10)\\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:316:40)\\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:252:3)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:126:9)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:121:9)\\n    at run (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:71:3)\\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-runner/build/runTest.js:367:16)\\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-runner/build/runTest.js:444:34)\"],\"fullName\":\"accumulate() accumulation empty\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"failed\",\"title\":\"accumulation empty\"},{\"ancestorTitles\":[\"accumulate()\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulate squares\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"accumulate squares\"},{\"ancestorTitles\":[\"accumulate()\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulate upcases\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"accumulate upcases\"},{\"ancestorTitles\":[\"accumulate()\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulate reversed strings\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"accumulate reversed strings\"},{\"ancestorTitles\":[\"accumulate()\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulate recursively\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"accumulate recursively\"}],\"endTime\":1777103060371,\"message\":\"  ● accumulate() › accumulation empty\\n\\n    Remove this line and implement the function\\n\\n      5 |\\n      6 | export const accumulate = () => {\\n    > 7 |   throw new Error('Remove this line and implement the function');\\n        |         ^\\n      8 | };\\n      9 |\\n\\n      at accumulate (accumulate.js:7:9)\\n      at Object.<anonymous> (accumulate.spec.js:7:22)\\n\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/accumulate.spec.js\",\"startTime\":1777103060150,\"status\":\"failed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 1,
+          "numFailedTests": 1,
+          "numPassedTestSuites": 0,
+          "numPassedTests": 0,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 4,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 5,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1777103060138,
+          "success": false,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [
+                    {}
+                  ],
+                  "failureMessages": [
+                    "Error: Remove this line and implement the function\n    at accumulate (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/accumulate.js:7:9)\n    at Object.<anonymous> (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/accumulate.spec.js:7:22)\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/utils.js:298:28)\n    at new Promise (<anonymous>)\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/utils.js:231:10)\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:316:40)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:252:3)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:126:9)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:121:9)\n    at run (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:71:3)\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-runner/build/runTest.js:367:16)\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-runner/build/runTest.js:444:34)"
+                  ],
+                  "fullName": "accumulate() accumulation empty",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "failed",
+                  "title": "accumulation empty"
+                },
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulate squares",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "accumulate squares"
+                },
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulate upcases",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "accumulate upcases"
+                },
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulate reversed strings",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "accumulate reversed strings"
+                },
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulate recursively",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "accumulate recursively"
+                }
+              ],
+              "endTime": 1777103060371,
+              "message": "  ● accumulate() › accumulation empty\n\n    Remove this line and implement the function\n\n      5 |\n      6 | export const accumulate = () => {\n    > 7 |   throw new Error('Remove this line and implement the function');\n        |         ^\n      8 | };\n      9 |\n\n      at accumulate (accumulate.js:7:9)\n      at Object.<anonymous> (accumulate.spec.js:7:22)\n",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/accumulate.spec.js",
+              "startTime": 1777103060150,
+              "status": "failed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 4.828,
+      "cost": 0,
+      "tokenUsage": {
+        "totalInputTokens": 0,
+        "totalOutputTokens": 0,
+        "totalCacheReadTokens": 0,
+        "totalCacheWriteTokens": 0
+      },
+      "startTime": "2026-04-25T07:44:15.564Z",
+      "endTime": "2026-04-25T07:44:20.392Z",
+      "errorMessage": "We have exhausted all model preferences."
+    },
+    {
+      "exerciseName": "acronym",
+      "status": "success",
+      "turns": 1,
+      "testResult": {
+        "passed": 0,
+        "failed": 1,
+        "total": 9,
+        "skipped": 8,
+        "success": false,
+        "output": "{\"numFailedTestSuites\":1,\"numFailedTests\":1,\"numPassedTestSuites\":0,\"numPassedTests\":0,\"numPendingTestSuites\":0,\"numPendingTests\":8,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":9,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1777103065111,\"success\":false,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":1,\"failureDetails\":[{}],\"failureMessages\":[\"Error: Remove this line and implement the function\\n    at parse (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/acronym.js:7:9)\\n    at Object.<anonymous> (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/acronym.spec.js:7:17)\\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/utils.js:298:28)\\n    at new Promise (<anonymous>)\\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/utils.js:231:10)\\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/run.js:316:40)\\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/run.js:252:3)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/run.js:126:9)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/run.js:121:9)\\n    at run (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/run.js:71:3)\\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-runner/build/runTest.js:367:16)\\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-runner/build/runTest.js:444:34)\"],\"fullName\":\"Acronyms are produced from title cased phrases\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"failed\",\"title\":\"title cased phrases\"},{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Acronyms are produced from other title cased phrases\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"other title cased phrases\"},{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Acronyms are produced from phrases with punctuation\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"phrases with punctuation\"},{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Acronyms are produced from phrases with all uppercase words\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"phrases with all uppercase words\"},{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Acronyms are produced from phrases with punctuation without whitespace\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"phrases with punctuation without whitespace\"},{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Acronyms are produced from long phrases\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"long phrases\"},{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Acronyms are produced from phrases with consecutive delimiters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"phrases with consecutive delimiters\"},{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Acronyms are produced from phrases with apostrophes\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"phrases with apostrophes\"},{\"ancestorTitles\":[\"Acronyms are produced from\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Acronyms are produced from phrases with underscore emphasis\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"phrases with underscore emphasis\"}],\"endTime\":1777103065348,\"message\":\"  ● Acronyms are produced from › title cased phrases\\n\\n    Remove this line and implement the function\\n\\n      5 |\\n      6 | export const parse = () => {\\n    > 7 |   throw new Error('Remove this line and implement the function');\\n        |         ^\\n      8 | };\\n      9 |\\n\\n      at parse (acronym.js:7:9)\\n      at Object.<anonymous> (acronym.spec.js:7:17)\\n\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/acronym.spec.js\",\"startTime\":1777103065124,\"status\":\"failed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 1,
+          "numFailedTests": 1,
+          "numPassedTestSuites": 0,
+          "numPassedTests": 0,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 8,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 9,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1777103065111,
+          "success": false,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": 1,
+                  "failureDetails": [
+                    {}
+                  ],
+                  "failureMessages": [
+                    "Error: Remove this line and implement the function\n    at parse (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/acronym.js:7:9)\n    at Object.<anonymous> (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/acronym.spec.js:7:17)\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/utils.js:298:28)\n    at new Promise (<anonymous>)\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/utils.js:231:10)\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/run.js:316:40)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/run.js:252:3)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/run.js:126:9)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/run.js:121:9)\n    at run (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/run.js:71:3)\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-runner/build/runTest.js:367:16)\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/node_modules/jest-runner/build/runTest.js:444:34)"
+                  ],
+                  "fullName": "Acronyms are produced from title cased phrases",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "failed",
+                  "title": "title cased phrases"
+                },
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Acronyms are produced from other title cased phrases",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "other title cased phrases"
+                },
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Acronyms are produced from phrases with punctuation",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "phrases with punctuation"
+                },
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Acronyms are produced from phrases with all uppercase words",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "phrases with all uppercase words"
+                },
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Acronyms are produced from phrases with punctuation without whitespace",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "phrases with punctuation without whitespace"
+                },
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Acronyms are produced from long phrases",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "long phrases"
+                },
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Acronyms are produced from phrases with consecutive delimiters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "phrases with consecutive delimiters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Acronyms are produced from phrases with apostrophes",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "phrases with apostrophes"
+                },
+                {
+                  "ancestorTitles": [
+                    "Acronyms are produced from"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Acronyms are produced from phrases with underscore emphasis",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "phrases with underscore emphasis"
+                }
+              ],
+              "endTime": 1777103065348,
+              "message": "  ● Acronyms are produced from › title cased phrases\n\n    Remove this line and implement the function\n\n      5 |\n      6 | export const parse = () => {\n    > 7 |   throw new Error('Remove this line and implement the function');\n        |         ^\n      8 | };\n      9 |\n\n      at parse (acronym.js:7:9)\n      at Object.<anonymous> (acronym.spec.js:7:17)\n",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/acronym/acronym.spec.js",
+              "startTime": 1777103065124,
+              "status": "failed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 4.951,
+      "cost": 0,
+      "tokenUsage": {
+        "totalInputTokens": 0,
+        "totalOutputTokens": 0,
+        "totalCacheReadTokens": 0,
+        "totalCacheWriteTokens": 0
+      },
+      "startTime": "2026-04-25T07:44:20.419Z",
+      "endTime": "2026-04-25T07:44:25.370Z",
+      "finalOutput": "Failed to parse URL from undefined/v1/chat/completions"
+    },
+    {
+      "exerciseName": "affine-cipher",
+      "status": "success",
+      "turns": 1,
+      "testResult": {
+        "passed": 0,
+        "failed": 2,
+        "total": 16,
+        "skipped": 14,
+        "success": false,
+        "output": "{\"numFailedTestSuites\":1,\"numFailedTests\":2,\"numPassedTestSuites\":0,\"numPassedTests\":0,\"numPendingTestSuites\":0,\"numPendingTests\":14,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":16,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1777103070272,\"success\":false,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":0,\"failureDetails\":[{}],\"failureMessages\":[\"Error: Remove this line and implement the function\\n    at encode (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/affine-cipher.js:2:9)\\n    at Object.<anonymous> (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/affine-cipher.spec.js:7:20)\\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:298:28)\\n    at new Promise (<anonymous>)\\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:231:10)\\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:316:40)\\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:252:3)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:126:9)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\\n    at run (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:71:3)\\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:367:16)\\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:444:34)\"],\"fullName\":\"Affine cipher encode encode yes\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"failed\",\"title\":\"encode yes\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode no\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"encode no\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode OMG\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"encode OMG\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode O M G\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"encode O M G\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode mindblowingly\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"encode mindblowingly\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode numbers\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"encode numbers\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode deep thought\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"encode deep thought\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode all the letters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"encode all the letters\"},{\"ancestorTitles\":[\"Affine cipher\",\"encode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher encode encode with a not coprime to m\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"encode with a not coprime to m\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":0,\"failureDetails\":[{}],\"failureMessages\":[\"Error: Remove this line and implement the function\\n    at decode (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/affine-cipher.js:6:9)\\n    at Object.<anonymous> (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/affine-cipher.spec.js:55:20)\\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:298:28)\\n    at new Promise (<anonymous>)\\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:231:10)\\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:316:40)\\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:252:3)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:126:9)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\\n    at run (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:71:3)\\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:367:16)\\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:444:34)\"],\"fullName\":\"Affine cipher decode decode exercism\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"failed\",\"title\":\"decode exercism\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode a sentence\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"decode a sentence\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode numbers\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"decode numbers\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode all the letters\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"decode all the letters\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode with no spaces in input\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"decode with no spaces in input\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode with too many spaces\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"decode with too many spaces\"},{\"ancestorTitles\":[\"Affine cipher\",\"decode\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"Affine cipher decode decode with a not coprime to m\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"decode with a not coprime to m\"}],\"endTime\":1777103070525,\"message\":\"  ● Affine cipher › encode › encode yes\\n\\n    Remove this line and implement the function\\n\\n      1 | export const encode = (phrase, key) => {\\n    > 2 |   throw new Error('Remove this line and implement the function');\\n        |         ^\\n      3 | };\\n      4 |\\n      5 | export const decode = (phrase, key) => {\\n\\n      at encode (affine-cipher.js:2:9)\\n      at Object.<anonymous> (affine-cipher.spec.js:7:20)\\n\\n  ● Affine cipher › decode › decode exercism\\n\\n    Remove this line and implement the function\\n\\n      4 |\\n      5 | export const decode = (phrase, key) => {\\n    > 6 |   throw new Error('Remove this line and implement the function');\\n        |         ^\\n      7 | };\\n      8 |\\n\\n      at decode (affine-cipher.js:6:9)\\n      at Object.<anonymous> (affine-cipher.spec.js:55:20)\\n\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/affine-cipher.spec.js\",\"startTime\":1777103070284,\"status\":\"failed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 1,
+          "numFailedTests": 2,
+          "numPassedTestSuites": 0,
+          "numPassedTests": 0,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 14,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 16,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1777103070272,
+          "success": false,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [
+                    {}
+                  ],
+                  "failureMessages": [
+                    "Error: Remove this line and implement the function\n    at encode (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/affine-cipher.js:2:9)\n    at Object.<anonymous> (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/affine-cipher.spec.js:7:20)\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:298:28)\n    at new Promise (<anonymous>)\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:231:10)\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:316:40)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:252:3)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:126:9)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\n    at run (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:71:3)\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:367:16)\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:444:34)"
+                  ],
+                  "fullName": "Affine cipher encode encode yes",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "failed",
+                  "title": "encode yes"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode no",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "encode no"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode OMG",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "encode OMG"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode O M G",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "encode O M G"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode mindblowingly",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "encode mindblowingly"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode numbers",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "encode numbers"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode deep thought",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "encode deep thought"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode all the letters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "encode all the letters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "encode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher encode encode with a not coprime to m",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "encode with a not coprime to m"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [
+                    {}
+                  ],
+                  "failureMessages": [
+                    "Error: Remove this line and implement the function\n    at decode (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/affine-cipher.js:6:9)\n    at Object.<anonymous> (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/affine-cipher.spec.js:55:20)\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:298:28)\n    at new Promise (<anonymous>)\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/utils.js:231:10)\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:316:40)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:252:3)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:126:9)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:121:9)\n    at run (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/run.js:71:3)\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:367:16)\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/node_modules/jest-runner/build/runTest.js:444:34)"
+                  ],
+                  "fullName": "Affine cipher decode decode exercism",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "failed",
+                  "title": "decode exercism"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode a sentence",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "decode a sentence"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode numbers",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "decode numbers"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode all the letters",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "decode all the letters"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode with no spaces in input",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "decode with no spaces in input"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode with too many spaces",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "decode with too many spaces"
+                },
+                {
+                  "ancestorTitles": [
+                    "Affine cipher",
+                    "decode"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "Affine cipher decode decode with a not coprime to m",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "decode with a not coprime to m"
+                }
+              ],
+              "endTime": 1777103070525,
+              "message": "  ● Affine cipher › encode › encode yes\n\n    Remove this line and implement the function\n\n      1 | export const encode = (phrase, key) => {\n    > 2 |   throw new Error('Remove this line and implement the function');\n        |         ^\n      3 | };\n      4 |\n      5 | export const decode = (phrase, key) => {\n\n      at encode (affine-cipher.js:2:9)\n      at Object.<anonymous> (affine-cipher.spec.js:7:20)\n\n  ● Affine cipher › decode › decode exercism\n\n    Remove this line and implement the function\n\n      4 |\n      5 | export const decode = (phrase, key) => {\n    > 6 |   throw new Error('Remove this line and implement the function');\n        |         ^\n      7 | };\n      8 |\n\n      at decode (affine-cipher.js:6:9)\n      at Object.<anonymous> (affine-cipher.spec.js:55:20)\n",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/affine-cipher/affine-cipher.spec.js",
+              "startTime": 1777103070284,
+              "status": "failed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 5.145,
+      "cost": 0,
+      "tokenUsage": {
+        "totalInputTokens": 0,
+        "totalOutputTokens": 0,
+        "totalCacheReadTokens": 0,
+        "totalCacheWriteTokens": 0
+      },
+      "startTime": "2026-04-25T07:44:25.397Z",
+      "endTime": "2026-04-25T07:44:30.542Z",
+      "finalOutput": "Failed to parse URL from undefined/v1/chat/completions"
+    }
+  ],
+  "summary": {
+    "totalExercises": 3,
+    "successCount": 2,
+    "testableExercises": 3,
+    "testsPassedCount": 0,
+    "testsFailedCount": 3,
+    "testPassRate": 0,
+    "agentSuccessRate": 0.6666666666666666,
+    "failureCount": 1,
+    "timeoutCount": 0,
+    "costLimitCount": 0,
+    "turnLimitCount": 0,
+    "totalTime": 14.924,
+    "totalCost": 0,
+    "averageTurns": 0.6666666666666666,
+    "averageTime": 4.974666666666667,
+    "successRate": 0,
+    "totalInputTokens": 0,
+    "totalOutputTokens": 0,
+    "totalCacheReadTokens": 0,
+    "totalCacheWriteTokens": 0,
+    "cacheHitRate": 0
+  },
+  "startTime": "2026-04-25T07:44:15.475Z",
+  "endTime": "2026-04-25T07:44:30.542Z"
+}

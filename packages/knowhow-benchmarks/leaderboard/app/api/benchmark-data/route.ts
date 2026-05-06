@@ -7,6 +7,7 @@ export async function GET(request: NextRequest) {
   try {
     const results = await loadAllBenchmarkResults();
 
+
     const leaderboardData = aggregateResults(results);
     return NextResponse.json(leaderboardData);
   } catch (error) {
@@ -20,9 +21,15 @@ export async function GET(request: NextRequest) {
         language: 'javascript',
         successRate: 85.5,
         totalExercises: 6,
+        toolMode: 'eager' as const,
         averageCost: 0.05,
         averageTime: 145.2,
         averageTurns: 12.4,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalCacheReadTokens: 0,
+      totalCacheWriteTokens: 0,
+      cacheHitRate: 0,
         totalRuns: 1,
         lastRun: new Date().toISOString()
       }
@@ -90,7 +97,8 @@ function aggregateResults(results: BenchmarkResults[]): LeaderboardEntry[] {
   const entriesMap = new Map<string, LeaderboardEntry>();
   
   for (const result of results) {
-    const key = `${result.config.model}-${result.config.provider}-${result.config.language}`;
+    const toolMode = result.config.lazyTools ? 'lazy' : 'eager';
+    const key = `${result.config.model}-${result.config.provider}-${result.config.language}-${toolMode}`;
     
     if (entriesMap.has(key)) {
       // Keep track of total runs, but only show most recent performance
@@ -106,6 +114,11 @@ function aggregateResults(results: BenchmarkResults[]): LeaderboardEntry[] {
         existing.averageCost = result.summary.totalCost / result.summary.totalExercises;
         existing.averageTime = result.summary.averageTime;
         existing.averageTurns = result.summary.averageTurns;
+        existing.totalInputTokens = result.summary.totalInputTokens ?? 0;
+        existing.totalOutputTokens = result.summary.totalOutputTokens ?? 0;
+        existing.totalCacheReadTokens = result.summary.totalCacheReadTokens ?? 0;
+        existing.totalCacheWriteTokens = result.summary.totalCacheWriteTokens ?? 0;
+        existing.cacheHitRate = result.summary.cacheHitRate ?? 0;
         existing.lastRun = result.endTime;
       }
     } else {
@@ -113,12 +126,18 @@ function aggregateResults(results: BenchmarkResults[]): LeaderboardEntry[] {
       const entry: LeaderboardEntry = {
         model: result.config.model,
         provider: result.config.provider,
+        toolMode: result.config.lazyTools ? 'lazy' : 'eager',
         language: result.config.language,
         successRate: result.summary.successRate * 100, // Convert from decimal to percentage
         totalExercises: result.summary.totalExercises,
         averageCost: result.summary.totalCost / result.summary.totalExercises,
         averageTime: result.summary.averageTime,
         averageTurns: result.summary.averageTurns,
+        totalInputTokens: result.summary.totalInputTokens ?? 0,
+        totalOutputTokens: result.summary.totalOutputTokens ?? 0,
+        totalCacheReadTokens: result.summary.totalCacheReadTokens ?? 0,
+        totalCacheWriteTokens: result.summary.totalCacheWriteTokens ?? 0,
+        cacheHitRate: result.summary.cacheHitRate ?? 0,
         totalRuns: 1,
         lastRun: result.endTime
       };

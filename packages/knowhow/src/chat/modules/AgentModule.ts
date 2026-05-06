@@ -30,11 +30,7 @@ import {
   Base64ImageProcessor,
 } from "../../processors/index";
 import { TaskInfo } from "../types";
-import {
-  createAgent,
-  agentConstructors,
-  AgentName,
-} from "../../agents";
+import { createAgent, agentConstructors, AgentName } from "../../agents";
 import { ToolCallEvent } from "../../agents/base/base";
 import { KnowhowSimpleClient } from "../../services/KnowhowClient";
 
@@ -79,7 +75,6 @@ export class AgentModule extends BaseChatModule {
   public setRemoteSyncModule(module: any): void {
     this.remoteSyncModule = module;
   }
-
 
   getCommands(): ChatCommand[] {
     return [
@@ -260,7 +255,10 @@ export class AgentModule extends BaseChatModule {
         if (context) {
           // Create a temporary agent instance to read its default model/provider
           const agentContext = services().Agents.getAgentContext();
-          const tempAgent = createAgent(agentName as AgentName, agentContext) as BaseAgent;
+          const tempAgent = createAgent(
+            agentName as AgentName,
+            agentContext
+          ) as BaseAgent;
           context.selectedAgent = tempAgent;
           context.agentMode = true;
           context.currentAgent = agentName;
@@ -455,7 +453,6 @@ export class AgentModule extends BaseChatModule {
       const agentNames = Object.keys(agentConstructors);
 
       if (agentNames.length > 0) {
-
         console.log("\nAvailable agents:");
         agentNames.forEach((name) => {
           console.log(`  - ${name}`);
@@ -503,39 +500,52 @@ export class AgentModule extends BaseChatModule {
         console.error(`Session ${sessionId} not found.`);
         return;
       }
-      const lastThread = session.threads[session.threads.length - 1];
       console.log(`\n🔄 Resuming session: ${sessionId}`);
       console.log(`Agent: ${session.agentName}`);
       console.log(`Original task: ${session.initialInput}`);
       console.log(`Status: ${session.status}`);
 
-      const reason = resumeReason
-        ? `Reason for resuming:  ${resumeReason}`
-        : "";
+      // Build resume prompt (same pattern as resumeFromMessages)
+      const resumePrompt = [
+        "You are resuming a previously started task.",
+        session.initialInput ? `ORIGINAL REQUEST: ${session.initialInput}` : "",
+        "Please continue from where you left off and complete the original request.",
+        resumeReason ? `Reason for resuming: ${resumeReason}` : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
 
-      // Create resume prompt
-      const resumePrompt = `You are resuming a previously started task. Here's the context:
-ORIGINAL REQUEST:
-      ${session.initialInput}
+      // Restore the full message history from the last thread
+      const threads = session.threads || [];
+      const lastThread = threads.length > 0 ? threads[threads.length - 1] : [];
+      const resumeMessages = [...lastThread];
 
-LAST Progress State:
-      ${JSON.stringify(lastThread)}
+      // Append the resume prompt to the last user message (or add a new one)
+      const reversedIndex = [...lastThread]
+        .reverse()
+        .findIndex((e) => e.role === "user" && typeof e.content === "string");
 
-Please continue from where you left off and complete the original request.
-        ${reason}
-
-`;
+      if (reversedIndex === -1) {
+        resumeMessages.push({ role: "user", content: resumePrompt });
+      } else {
+        const actualIndex = lastThread.length - 1 - reversedIndex;
+        resumeMessages[actualIndex] = {
+          ...resumeMessages[actualIndex],
+          content: resumeMessages[actualIndex].content + `\n\n<Workflow>[RESUME CONTEXT]: ${resumePrompt}</Workflow>`,
+        };
+      }
 
       console.log("🚀 Session resuming...");
       const context = this.chatService?.getContext();
       const agentName = session.agentName || context.currentAgent;
+      const previousAgentMode = context?.agentMode;
 
       if (!agentName || !agentConstructors[agentName as AgentName]) {
         console.error(`Agent ${agentName} not found.`);
         return;
       }
 
-      // Start agent with Knowhow task context if available
+      // Start agent with Knowhow task context and restored message history
       const { agent, taskId } = await this.setupAgent({
         agentName,
         input: resumePrompt,
@@ -544,7 +554,20 @@ Please continue from where you left off and complete the original request.
         chatHistory: [],
         run: false, // Don't run yet, we need to set up event listeners first
       });
-      await this.attachedAgentChatLoop(taskId, agent, resumePrompt);
+
+      // After resume finishes, revert to normal chat (non-agent mode) so the
+      // user can start a fresh conversation instead of staying locked in agent mode.
+      agent.agentEvents.once(agent.eventTypes.done, () => {
+        const ctx = this.chatService?.getContext();
+        if (ctx && !previousAgentMode) {
+          ctx.agentMode = false;
+          ctx.selectedAgent = undefined;
+          ctx.currentAgent = undefined;
+          this.chatService?.disableMode("agent");
+        }
+      });
+
+      await this.attachedAgentChatLoop(taskId, agent, resumePrompt, resumeMessages);
     } catch (error) {
       console.error(
         `Failed to resume session ${sessionId}:`,
@@ -1033,7 +1056,8 @@ Please continue from where you left off and complete the original request.
   async attachedAgentChatLoop(
     taskId: string,
     agent: AttachableAgent,
-    initialInput?: string
+    initialInput?: string,
+    initialMessages?: any[]
   ): Promise<void> {
     try {
       let agentFinalOutput: string | undefined;
@@ -1075,7 +1099,7 @@ Please continue from where you left off and complete the original request.
 
           if (context.chatHistory) {
             const found = context.chatHistory.find((h) => h.taskId === taskId);
-            found.output = agentFinalOutput;
+            if (found) found.output = agentFinalOutput;
           }
 
           resolve("done");
@@ -1088,7 +1112,8 @@ Please continue from where you left off and complete the original request.
       if (initialInput) {
         const taskInfo = this.taskRegistry.get(taskId);
         (agent as BaseAgent).call(
-          taskInfo?.formattedPrompt || taskInfo?.initialInput || initialInput
+          taskInfo?.formattedPrompt || taskInfo?.initialInput || initialInput,
+          initialMessages
         );
       }
     } catch (error) {

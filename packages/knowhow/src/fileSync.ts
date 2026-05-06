@@ -5,7 +5,7 @@ import { loadJwt } from "./login";
 import { getConfig } from "./config";
 import { services } from "./services";
 import { S3Service } from "./services/S3";
-import { getHashes, hasFileChangedSinceUpload, saveUploadHash, isLocalFileMatchingRemote } from "./hashes";
+import { getHashes, hasFileChangedSinceUpload, saveUploadHash, isLocalFileMatchingRemote, isLocalFileMatchingDownloadHash, saveDownloadHash } from "./hashes";
 
 export interface FileSyncOptions {
   upload?: boolean;
@@ -145,12 +145,21 @@ async function downloadFile(
   }
 
   try {
+    // Fast-path: check stored download hash before hitting the API
+    const hashes = await getHashes();
+    if (await isLocalFileMatchingDownloadHash(localPath, hashes)) {
+      console.log(`   ✓ Skipping ${localPath} (matches stored download hash)`);
+      return;
+    }
+
     // Get presigned download URL + remote checksum
     const { downloadUrl, checksumSHA256 } = await client.getOrgFilePresignedDownloadUrl(remotePath);
 
     // Skip if local file matches remote checksum
     if (isLocalFileMatchingRemote(localPath, checksumSHA256)) {
       console.log(`   ✓ Skipping ${localPath} (matches remote checksum)`);
+      // Store the hash so future syncs can skip without hitting the API
+      await saveDownloadHash(localPath);
       return;
     }
 
@@ -162,6 +171,9 @@ async function downloadFile(
 
     // Download file using presigned URL
     await s3Service.downloadFromPresignedUrl(downloadUrl, localPath);
+
+    // Save download hash so we can skip unchanged files next time
+    await saveDownloadHash(localPath);
 
     // Get file size for logging
     const stats = fs.statSync(localPath);
@@ -253,8 +265,14 @@ export async function uploadDirectory(
   for (const relFile of localFiles) {
     const localFilePath = localDir + relFile;
     const remoteFilePath = remoteDir + relFile;
-    await uploadFile(client, s3Service, remoteFilePath, localFilePath, dryRun);
-    count++;
+    try {
+      await uploadFile(client, s3Service, remoteFilePath, localFilePath, dryRun);
+      count++;
+    } catch (error) {
+      console.error(
+        `   ❌ Failed to upload ${localFilePath}, skipping: ${error.message}`
+      );
+    }
   }
   return count;
 }
@@ -284,7 +302,8 @@ async function downloadDirectory(
     const fullPath = f.folderPath.endsWith("/")
       ? f.folderPath + f.fileName
       : f.folderPath + "/" + f.fileName;
-    return fullPath.startsWith(remoteDir);
+    // Exclude directory placeholder entries (empty fileName) and only include real files
+    return f.fileName !== "" && fullPath.startsWith(remoteDir);
   });
 
   if (matchingFiles.length === 0) {

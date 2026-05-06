@@ -1,5 +1,6 @@
 import { EventEmitter } from "events"; // kept for reference; agentEvents now uses EventService
 import {
+  CompletionResponse,
   GenericClient,
   Message,
   MessageContent,
@@ -59,6 +60,10 @@ export abstract class BaseAgent implements IAgent {
   protected turnCount = 0;
   protected totalCostUsd = 0;
   protected currentThread = 0;
+  protected totalInputTokens = 0;
+  protected totalOutputTokens = 0;
+  protected totalCacheReadTokens = 0;
+  protected totalCacheWriteTokens = 0;
 
   protected compressThreshold = 30000;
   protected compressMinMessages = 30;
@@ -95,6 +100,7 @@ export abstract class BaseAgent implements IAgent {
     agentSay: "agent:say",
     agentNewTask: "agent:newTask",
     agentTaskComplete: "agent:taskComplete",
+    tokenUsage: "agent:tokenUsage",
   };
 
   public tools: ToolsService;
@@ -194,6 +200,10 @@ export abstract class BaseAgent implements IAgent {
     this.taskBreakdown = "";
     this.summaries = [];
     this.totalCostUsd = 0;
+    this.totalInputTokens = 0;
+    this.totalOutputTokens = 0;
+    this.totalCacheReadTokens = 0;
+    this.totalCacheWriteTokens = 0;
     this.status = this.eventTypes.inProgress;
     this.turnCount = 0;
     this.startTimeMs = Date.now();
@@ -283,6 +293,33 @@ export abstract class BaseAgent implements IAgent {
     this.easyFinalAnswer = value;
   }
 
+  /**
+   * Detect if the model's response is a termination signal (e.g. "Done", "Complete", "Finished", "finalAnswer")
+   * This handles the case where an agent refuses to call finalAnswer and just says a short termination word.
+   */
+  protected isTerminationResponse(content: string): boolean {
+    const trimmed = content.trim();
+    // Short response (≤ 3 words) that matches a termination word/phrase exactly
+    const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+    if (wordCount <= 3) {
+      const terminationPattern = /^(done|complete|completed|finished|final\s*answer|task\s*complete|all\s*done|that'?s\s*(all|it)|ok(ay)?|yes)[.!]*$/i;
+      if (terminationPattern.test(trimmed)) return true;
+    }
+
+    // Check if the first 1-3 words indicate task completion (for longer responses)
+    // e.g. "Task complete: ...", "All done.", "No further changes needed.", "Confirmed complete."
+    const firstWords = trimmed.split(/\s+/).slice(0, 3).join(" ");
+    const firstWordPattern = /^(task\s*(complete|completed|done|finished)|all\s*done|no\s*(further|more|additional|changes|action)|confirmed?\s*(complete|done|finished|one\s*last)|nothing\s*(more|further|else)|standing\s*by|everything\s*is|still\s*confirmed|acknowledged|done\s*and|complete\s*(and|\.)|completed\s*successfully|no\s*additional|verified\s*and)/i;
+    if (firstWordPattern.test(firstWords)) return true;
+
+    // If easyFinalAnswer mode is on, also match response starting with "✅" or numbered confirmation lists
+    if (this.easyFinalAnswer) {
+      if (trimmed.startsWith("✅") || /^[\d\.\-\*]/.test(trimmed)) return true;
+    }
+
+    return false;
+  }
+
   getEnabledTools() {
     return this.tools
       .getTools()
@@ -367,6 +404,44 @@ export abstract class BaseAgent implements IAgent {
 
   getTotalCostUsd() {
     return this.totalCostUsd;
+  }
+
+  adjustTokenUsage(usage: any) {
+    if (!usage) return;
+    // Support both OpenAI-style (prompt_tokens/completion_tokens) and Anthropic-style (input_tokens/output_tokens)
+    const inputTokens = usage.input_tokens ?? usage.prompt_tokens ?? 0;
+    const outputTokens = usage.output_tokens ?? usage.completion_tokens ?? 0;
+
+    const cacheReadTokens =
+      usage.cache_read_input_tokens ?? usage.cache_read_tokens ??
+      usage.prompt_tokens_details?.cached_tokens ?? 0;
+    const cacheWriteTokens =
+      usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? 0;
+
+    this.totalInputTokens += inputTokens;
+    this.totalOutputTokens += outputTokens;
+    this.totalCacheReadTokens += cacheReadTokens;
+    this.totalCacheWriteTokens += cacheWriteTokens;
+
+    this.agentEvents.emit(this.eventTypes.tokenUsage, {
+      inputTokens,
+      outputTokens,
+      cacheReadTokens,
+      cacheWriteTokens,
+      totalInputTokens: this.totalInputTokens,
+      totalOutputTokens: this.totalOutputTokens,
+      totalCacheReadTokens: this.totalCacheReadTokens,
+      totalCacheWriteTokens: this.totalCacheWriteTokens,
+    });
+  }
+
+  getTokenUsage() {
+    return {
+      totalInputTokens: this.totalInputTokens,
+      totalOutputTokens: this.totalOutputTokens,
+      totalCacheReadTokens: this.totalCacheReadTokens,
+      totalCacheWriteTokens: this.totalCacheWriteTokens,
+    };
   }
 
   startNewThread(messages: Message[]) {
@@ -544,8 +619,14 @@ export abstract class BaseAgent implements IAgent {
 
   async kill() {
     this.log("Killing agent");
-    if (this.status === this.eventTypes.kill || this.status === this.eventTypes.done) {
-      this.log("Agent is already being killed or done, ignoring duplicate kill()", "warn");
+    if (
+      this.status === this.eventTypes.kill ||
+      this.status === this.eventTypes.done
+    ) {
+      this.log(
+        "Agent is already being killed or done, ignoring duplicate kill()",
+        "warn"
+      );
       return;
     }
     this.agentEvents.emit(this.eventTypes.kill, this);
@@ -632,6 +713,7 @@ export abstract class BaseAgent implements IAgent {
         messages,
         tools: this.getEnabledTools(),
         tool_choice: "auto",
+        long_ttl_cache: this.runTime() > 300_000,
       });
 
       // If the agent was paused while the completion was in-flight, wait here
@@ -651,15 +733,22 @@ export abstract class BaseAgent implements IAgent {
           "warn"
         );
         const error = response as any;
-        if ("response" in error && "data" in error.response) {
+        if (error != null && "response" in error && "data" in error.response) {
           this.log(
             `Response data: ${JSON.stringify(error.response.data, null, 2)}`,
             "warn"
           );
         }
+        if (!response?.choices) {
+          const errMsg =
+            (error?.error?.message ?? error?.message) ||
+            JSON.stringify(response);
+          throw new Error(`AI response error: ${errMsg}`);
+        }
       }
 
       this.adjustTotalCostUsd(response?.usd_cost);
+      this.adjustTokenUsage(response?.usage);
       this.log("agent response cost: " + response?.usd_cost);
 
       // Typically, there's only one choice in the array, but you could have many
@@ -686,6 +775,16 @@ export abstract class BaseAgent implements IAgent {
           );
 
           this.updateCurrentThread(messages);
+
+          const truncationWarning = this.detectTruncatedToolCalls(
+            toolCalls,
+            response
+          );
+          if (truncationWarning) {
+            messages.push(truncationWarning as Message);
+            this.updateCurrentThread(messages);
+            return this.call(userInput, messages);
+          }
 
           for (const toolCall of toolCalls) {
             if (this.status === this.eventTypes.pause) {
@@ -755,6 +854,18 @@ export abstract class BaseAgent implements IAgent {
 
       // Early exit: not required to call tool
       const firstMessage = response.choices[0].message;
+      // Auto-detect termination words: if the model is just saying "Done", "Complete", etc.
+      if (
+        response.choices.length === 1 &&
+        firstMessage.content &&
+        this.isTerminationResponse(firstMessage.content)
+      ) {
+        this.log(`Termination word detected: "${firstMessage.content.trim()}", treating as finalAnswer`);
+        this.status = this.eventTypes.done;
+        this.agentEvents.emit(this.eventTypes.done, firstMessage.content);
+        return firstMessage.content;
+      }
+
       if (
         response.choices.length === 1 &&
         firstMessage.content &&
@@ -808,7 +919,7 @@ export abstract class BaseAgent implements IAgent {
         this.logStatus();
 
         const continuation = `<Workflow>
-        workflow continues until you call one of ${this.requiredToolNames}.\n
+        workflow continues until you call one of ${JSON.stringify(this.requiredToolNames)}.\n
         ${statusMessage}
         </Workflow>`;
 
@@ -854,7 +965,7 @@ export abstract class BaseAgent implements IAgent {
 
       this.log(`Agent failed: ${e}`, "error");
 
-      if ("response" in e && "data" in e.response) {
+      if (e != null && typeof e === "object" && "response" in e && "data" in (e as any).response) {
         this.log(
           `Error response data: ${JSON.stringify(e.response.data, null, 2)}`,
           "error"
@@ -956,6 +1067,60 @@ export abstract class BaseAgent implements IAgent {
 
   getMessagesLength(messages: Message[]) {
     return JSON.stringify(messages).split(" ").length;
+  }
+
+  /**
+   * Detects whether tool call arguments appear truncated due to hitting the output token limit.
+   * Two signals are checked:
+   *   1. Any tool call argument is empty or invalid JSON (hard truncation).
+   *   2. The model reported many output tokens but the total argument content received is tiny
+   *      relative to what those tokens should represent (soft/silent truncation).
+   *
+   * Returns a warning system message if truncation is detected, or null otherwise.
+   */
+  detectTruncatedToolCalls(
+    toolCalls: ToolCall[],
+    response: CompletionResponse
+  ): { role: string; content: string } | null {
+    const outputTokens: number = response?.usage?.completion_tokens || 0;
+    const totalArgLength = toolCalls.reduce(
+      (sum, tc) => sum + (tc.function?.arguments?.length || 0),
+      0
+    );
+
+    // Percentage-based heuristic: if actual arg chars are less than ~10% of the
+    // expected chars (outputTokens * 4 chars/token), the output was likely truncated.
+    // Only apply when outputTokens > 1000 to avoid false positives on small responses.
+    const expectedArgChars = outputTokens * 4;
+    const suspiciouslySmallArgs =
+      outputTokens > 1000 && totalArgLength < expectedArgChars * 0.1;
+
+    for (const toolCall of toolCalls) {
+      const args = toolCall.function?.arguments || "";
+      let isInvalidJson = false;
+      try {
+        JSON.parse(args);
+      } catch {
+        isInvalidJson = true;
+      }
+      if (isInvalidJson || args.trim() === "" || suspiciouslySmallArgs) {
+        this.log(
+          `Tool call '${toolCall.function?.name}' has malformed/truncated arguments — likely hit output token limit (outputTokens=${outputTokens}, argLength=${args.length})`,
+          "warn"
+        );
+        return {
+          role: "user",
+          content:
+            "⚠️ Output limit warning: Your last tool call had incomplete or missing arguments, which usually means you exceeded the output token limit mid-response. The model reported " +
+            outputTokens +
+            " output tokens but only " +
+            totalArgLength +
+            " characters of tool call arguments were received. Please write smaller, more concise content in your tool calls. Aim for no more than 4000 tokens of output per response. Break large responses into smaller pieces if needed.",
+        };
+      }
+    }
+
+    return null;
   }
 
   async getTaskBreakdown(messages: Message[]) {

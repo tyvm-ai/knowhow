@@ -12,5 +12,12 @@
     "test": "cd benchmarks && npm test"
   },
   "author": "Micah Riggan",
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "commander": "^9.5.0",
+    "ora": "^5.4.1"
+  }
 }

@@ -53,7 +53,7 @@ export const executeScriptDefinition: Tool = {
       properties: {
         script: {
           type: "string",
-          description: "The TypeScript code to execute",
+          description: "The TypeScript code to execute. 4000 tokens or less",
         },
         maxToolCalls: {
           type: "number",

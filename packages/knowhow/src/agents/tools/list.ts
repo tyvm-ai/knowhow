@@ -55,7 +55,7 @@ export const includedTools = [
         properties: {
           command: {
             type: "string",
-            description: "The command to execute",
+            description: "The command to execute. 4000 tokens or less",
           },
           timeout: {
             type: "number",
@@ -346,7 +346,7 @@ export const includedTools = [
     function: {
       name: "writeFileChunk",
       description:
-        "Update or create files by writing in small chunks of text. Suitable for larger files, this tool allows incremental writing by calling it multiple times.",
+        "Update or create files by writing in small chunks of text. Suitable for larger files, this tool allows incremental writing by calling it multiple times. Write chunks of around 4000 tokens",
       parameters: {
         type: "object",
         positional: true,
@@ -358,7 +358,7 @@ export const includedTools = [
           },
           content: {
             type: "string",
-            description: "The chunk of content to write to the file",
+            description: "The chunk of content to write to the file. 4000 tokens or less",
           },
           isContinuing: {
             type: "boolean",
@@ -628,46 +628,6 @@ export const includedTools = [
       returns: {
         type: "object",
         description: "The embedding response from the AI provider",
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "loadWebpage",
-      description:
-        "Load a webpage using a stealth browser to avoid bot detection. Can return either text content with console logs or a screenshot.",
-      parameters: {
-        type: "object",
-        positional: true,
-        properties: {
-          url: {
-            type: "string",
-            description: "The URL of the webpage to load",
-          },
-          mode: {
-            type: "string",
-            description:
-              "The mode for content extraction: 'text' for text content with console logs, 'screenshot' for a base64 encoded screenshot",
-            enum: ["text", "screenshot"],
-          },
-          waitForSelector: {
-            type: "string",
-            description:
-              "Optional CSS selector to wait for before extracting content",
-          },
-          timeout: {
-            type: "number",
-            description:
-              "Timeout in milliseconds for page loading (default: 30000)",
-          },
-        },
-        required: ["url"],
-      },
-      returns: {
-        type: "string",
-        description:
-          "The webpage content as text with console logs, or a base64 encoded screenshot",
       },
     },
   },

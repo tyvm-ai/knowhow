@@ -16,15 +16,17 @@ import { wait } from "../utils";
 import {
   EmbeddingModels,
   Models,
+  GoogleThinkingLevelModels,
+  GoogleThinkingBudgetModels,
   GoogleImageModels,
   GoogleVideoModels,
   GoogleTTSModels,
-  GoogleEmbeddingModels,
+  GoogleEmbeddingModelsList,
   GoogleReasoningModels,
 } from "../types";
 import { GeminiTextPricing } from "./pricing";
 import { ContextLimits } from "./contextLimits";
-import { ModelModality } from "./types";
+import { ModelModality, TokenUsage } from "./types";
 
 import {
   GenericClient,
@@ -389,9 +391,49 @@ export class GenericGeminiClient implements GenericClient {
     return [{ functionDeclarations }];
   }
 
+  /**
+   * Builds the thinkingConfig for Gemini models that support it.
+   * - Gemini 3.x models use thinkingLevel: "minimal" | "low" | "medium" | "high"
+   * - Gemini 2.5 models use thinkingBudget: number (0 = off, -1 = dynamic)
+   *
+   * Maps CompletionOptions.reasoning_effort to provider-specific values.
+   */
+  buildThinkingConfig(options: CompletionOptions): Record<string, unknown> | undefined {
+    const model = options.model;
+    const effort = options.reasoning_effort ?? "low";
+
+    // Gemini 3.x — use thinkingLevel
+    if (GoogleThinkingLevelModels.includes(model)) {
+      const levelMap: Record<string, string> = {
+        low: "low",
+        medium: "medium",
+        high: "high",
+      };
+      return {
+        thinkingLevel: levelMap[effort] ?? "low",
+      };
+    }
+
+    // Gemini 2.5 — use thinkingBudget
+    if (GoogleThinkingBudgetModels.includes(model)) {
+      // Map effort to token budget
+      const budgetMap: Record<string, number> = {
+        low: 1024,
+        medium: 8192,
+        high: -1, // dynamic
+      };
+      return {
+        thinkingBudget: budgetMap[effort] ?? 1024,
+      };
+    }
+
+    return undefined;
+  }
+
   async createChatCompletion(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
+    const thinkingConfig = this.buildThinkingConfig(options);
     const { systemInstruction, contents } = this.transformMessages(
       options.messages
     );
@@ -403,6 +445,7 @@ export class GenericGeminiClient implements GenericClient {
         contents,
         config: {
           systemInstruction,
+          thinkingConfig,
           tools: this.transformTools(options.tools),
           maxOutputTokens: options.max_tokens,
         },
@@ -481,10 +524,22 @@ export class GenericGeminiClient implements GenericClient {
         ? this.calculateCost(options.model, usage)
         : undefined;
 
+      // Map cachedContentTokenCount → prompt_tokens_details.cached_tokens so that
+      // base.ts can read cache hit tokens via usage.prompt_tokens_details?.cached_tokens
+      const cachedTokens = (usage as any)?.cachedContentTokenCount ?? 0;
+      const usageWithCache: TokenUsage | undefined = usage
+        ? ({
+            prompt_tokens: (usage as any).promptTokenCount ?? 0,
+            completion_tokens: (usage as any).candidatesTokenCount ?? 0,
+            total_tokens: (usage as any).totalTokenCount,
+            prompt_tokens_details: { cached_tokens: cachedTokens },
+          } as TokenUsage)
+        : undefined;
+
       return {
         choices,
         model: options.model,
-        usage,
+        usage: usageWithCache,
         usd_cost: usdCost,
       };
     } catch (error) {
@@ -600,7 +655,7 @@ export class GenericGeminiClient implements GenericClient {
     if (modality) {
       const map: Partial<Record<ModelModality, string[]>> = {
         completion: GoogleReasoningModels,
-        embedding: GoogleEmbeddingModels,
+        embedding: GoogleEmbeddingModelsList,
         image: GoogleImageModels,
         audio: GoogleTTSModels,
         video: GoogleVideoModels,

@@ -247,6 +247,9 @@ export class RemoteSyncModule extends BaseChatModule {
     const registry = this.agentModule.getTaskRegistry();
     const taskInfo = registry.get(taskId);
 
+    // Refresh JWT in case it was updated since client was instantiated (e.g. after knowhow login)
+    this.client.refreshJwt();
+
     if (!taskInfo) {
       console.log(
         `⚠️  Task "${taskId}" not found in registry.`

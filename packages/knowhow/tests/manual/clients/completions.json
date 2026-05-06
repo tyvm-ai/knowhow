@@ -1,209 +1,27 @@
 {
-  "anthropic::claude-haiku-4-5-20251001": {
-    "provider": "anthropic",
-    "model": "claude-haiku-4-5-20251001",
+  "openai::gpt-4o-2024-08-06": {
+    "provider": "openai",
+    "model": "gpt-4o-2024-08-06",
     "prompt": "Say hello in 5 words.",
-    "response": "Hello, how are you today?",
-    "usage": {
-      "input_tokens": 15,
-      "cache_creation_input_tokens": 0,
-      "cache_read_input_tokens": 0,
-      "cache_creation": {
-        "ephemeral_5m_input_tokens": 0,
-        "ephemeral_1h_input_tokens": 0
-      },
-      "output_tokens": 10,
-      "service_tier": "standard",
-      "inference_geo": "not_available"
-    },
-    "usd_cost": 0.00006500000000000001,
-    "testedAt": "2026-04-14T19:18:23.775Z"
-  },
-  "anthropic::claude-sonnet-4-6": {
-    "provider": "anthropic",
-    "model": "claude-sonnet-4-6",
-    "prompt": "Say hello in 5 words.",
-    "response": "\"Hello there, how are you?\"",
-    "usage": {
-      "input_tokens": 15,
-      "cache_creation_input_tokens": 0,
-      "cache_read_input_tokens": 0,
-      "cache_creation": {
-        "ephemeral_5m_input_tokens": 0,
-        "ephemeral_1h_input_tokens": 0
-      },
-      "output_tokens": 11,
-      "service_tier": "standard",
-      "inference_geo": "global"
-    },
-    "usd_cost": 0.00021,
-    "testedAt": "2026-04-14T19:18:24.981Z"
-  },
-  "anthropic::claude-opus-4-6": {
-    "provider": "anthropic",
-    "model": "claude-opus-4-6",
-    "prompt": "Say hello in 5 words.",
-    "response": "Hello there, how are you?",
-    "usage": {
-      "input_tokens": 15,
-      "cache_creation_input_tokens": 0,
-      "cache_read_input_tokens": 0,
-      "cache_creation": {
-        "ephemeral_5m_input_tokens": 0,
-        "ephemeral_1h_input_tokens": 0
-      },
-      "output_tokens": 10,
-      "service_tier": "standard",
-      "inference_geo": "global"
-    },
-    "usd_cost": 0.000325,
-    "testedAt": "2026-04-14T19:18:27.010Z"
-  },
-  "google::gemini-3.1-flash-lite-preview": {
-    "provider": "google",
-    "model": "gemini-3.1-flash-lite-preview",
-    "prompt": "Say hello in 5 words.",
-    "response": "Hello, it is nice meeting.",
-    "usage": {
-      "promptTokenCount": 8,
-      "candidatesTokenCount": 7,
-      "totalTokenCount": 15,
-      "promptTokensDetails": [
-        {
-          "modality": "TEXT",
-          "tokenCount": 8
-        }
-      ]
-    },
-    "usd_cost": 0.000002,
-    "testedAt": "2026-04-14T19:18:35.317Z"
-  },
-  "google::gemini-3.1-flash-image-preview": {
-    "provider": "google",
-    "model": "gemini-3.1-flash-image-preview",
-    "prompt": "Say hello in 5 words.",
-    "response": "Hello there, welcome everyone, goodbye. \n",
-    "usage": {
-      "promptTokenCount": 8,
-      "candidatesTokenCount": 10,
-      "totalTokenCount": 18,
-      "promptTokensDetails": [
-        {
-          "modality": "TEXT",
-          "tokenCount": 8
-        }
-      ]
-    },
-    "usd_cost": 0.000004,
-    "testedAt": "2026-04-14T19:18:38.564Z"
-  },
-  "xai::grok-3-mini-fast-beta": {
-    "provider": "xai",
-    "model": "grok-3-mini-fast-beta",
-    "prompt": "Say hello in 5 words.",
-    "response": "Hello, this is Grok here.",
+    "response": "Hello there, hope you're well!",
     "usage": {
       "prompt_tokens": 14,
-      "completion_tokens": 8,
-      "total_tokens": 554,
-      "prompt_tokens_details": {
-        "text_tokens": 14,
-        "audio_tokens": 0,
-        "image_tokens": 0,
-        "cached_tokens": 5
-      },
-      "completion_tokens_details": {
-        "reasoning_tokens": 532,
-        "audio_tokens": 0,
-        "accepted_prediction_tokens": 0,
-        "rejected_prediction_tokens": 0
-      },
-      "num_sources_used": 0,
-      "cost_in_usd_ticks": 2730750
-    },
-    "usd_cost": 0.0000404,
-    "testedAt": "2026-04-14T19:18:52.696Z"
-  },
-  "xai::grok-3-mini-beta": {
-    "provider": "xai",
-    "model": "grok-3-mini-beta",
-    "prompt": "Say hello in 5 words.",
-    "response": "Hello, I am Grok here.",
-    "usage": {
-      "prompt_tokens": 14,
-      "completion_tokens": 8,
-      "total_tokens": 549,
-      "prompt_tokens_details": {
-        "text_tokens": 14,
-        "audio_tokens": 0,
-        "image_tokens": 0,
-        "cached_tokens": 3
-      },
-      "completion_tokens_details": {
-        "reasoning_tokens": 527,
-        "audio_tokens": 0,
-        "accepted_prediction_tokens": 0,
-        "rejected_prediction_tokens": 0
-      },
-      "num_sources_used": 0,
-      "cost_in_usd_ticks": 2710250
-    },
-    "usd_cost": 0.0000082,
-    "testedAt": "2026-04-14T19:19:03.041Z"
-  },
-  "xai::grok-4-0709": {
-    "provider": "xai",
-    "model": "grok-4-0709",
-    "prompt": "Say hello in 5 words.",
-    "response": "Hello, how are you today?",
-    "usage": {
-      "prompt_tokens": 691,
       "completion_tokens": 7,
-      "total_tokens": 849,
+      "total_tokens": 21,
       "prompt_tokens_details": {
-        "text_tokens": 691,
-        "audio_tokens": 0,
-        "image_tokens": 0,
-        "cached_tokens": 679
-      },
-      "completion_tokens_details": {
-        "reasoning_tokens": 151,
-        "audio_tokens": 0,
-        "accepted_prediction_tokens": 0,
-        "rejected_prediction_tokens": 0
-      },
-      "num_sources_used": 0,
-      "cost_in_usd_ticks": 29152500
-    },
-    "usd_cost": 0.0021780000000000002,
-    "testedAt": "2026-04-14T19:19:06.403Z"
-  },
-  "xai::grok-4-1-fast-non-reasoning": {
-    "provider": "xai",
-    "model": "grok-4-1-fast-non-reasoning",
-    "prompt": "Say hello in 5 words.",
-    "response": "Hello, world! How are you today?",
-    "usage": {
-      "prompt_tokens": 175,
-      "completion_tokens": 9,
-      "total_tokens": 184,
-      "prompt_tokens_details": {
-        "text_tokens": 175,
-        "audio_tokens": 0,
-        "image_tokens": 0,
-        "cached_tokens": 161
+        "cached_tokens": 0,
+        "audio_tokens": 0
       },
       "completion_tokens_details": {
         "reasoning_tokens": 0,
         "audio_tokens": 0,
         "accepted_prediction_tokens": 0,
         "rejected_prediction_tokens": 0
-      },
-      "num_sources_used": 0,
-      "cost_in_usd_ticks": 153500
+      }
     },
-    "usd_cost": 0.00004755,
-    "testedAt": "2026-04-14T19:19:06.825Z"
+    "durationMs": 695,
+    "usd_cost": 0.00010499999999999999,
+    "testedAt": "2026-04-25T18:37:10.117Z"
   },
   "openai::gpt-4o-mini-2024-07-18": {
     "provider": "openai",
@@ -225,14 +43,39 @@
         "rejected_prediction_tokens": 0
       }
     },
+    "durationMs": 464,
     "usd_cost": 0.000006300000000000001,
-    "testedAt": "2026-04-14T19:20:03.349Z"
+    "testedAt": "2026-04-25T18:37:10.602Z"
   },
-  "openai::gpt-4.1-nano-2025-04-14": {
+  "openai::gpt-4o-2024-11-20": {
     "provider": "openai",
-    "model": "gpt-4.1-nano-2025-04-14",
+    "model": "gpt-4o-2024-11-20",
     "prompt": "Say hello in 5 words.",
-    "response": "Hello! How are you today?",
+    "response": "Hello! Hi there! Greetings, friend!",
+    "usage": {
+      "prompt_tokens": 14,
+      "completion_tokens": 9,
+      "total_tokens": 23,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "durationMs": 593,
+    "usd_cost": 0.000125,
+    "testedAt": "2026-04-25T18:37:11.202Z"
+  },
+  "openai::gpt-4.1-2025-04-14": {
+    "provider": "openai",
+    "model": "gpt-4.1-2025-04-14",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, how are you today?",
     "usage": {
       "prompt_tokens": 14,
       "completion_tokens": 7,
@@ -248,70 +91,19 @@
         "rejected_prediction_tokens": 0
       }
     },
-    "usd_cost": 0.0000042000000000000004,
-    "testedAt": "2026-04-14T19:20:04.374Z"
+    "durationMs": 573,
+    "usd_cost": 0.000084,
+    "testedAt": "2026-04-25T18:37:11.779Z"
   },
-  "openai::gpt-5.4": {
+  "openai::gpt-4.1-mini-2025-04-14": {
     "provider": "openai",
-    "model": "gpt-5.4",
+    "model": "gpt-4.1-mini-2025-04-14",
     "prompt": "Say hello in 5 words.",
-    "response": "Hello! Hope you're doing well.",
+    "response": "Hello! Hope you're doing well!",
     "usage": {
-      "prompt_tokens": 13,
-      "completion_tokens": 111,
-      "total_tokens": 124
-    },
-    "usd_cost": 0.0016975,
-    "testedAt": "2026-04-14T19:20:06.964Z"
-  },
-  "openai::gpt-5.4-pro": {
-    "provider": "openai",
-    "model": "gpt-5.4-pro",
-    "prompt": "Say hello in 5 words.",
-    "response": "Hello, have a wonderful day!",
-    "usage": {
-      "prompt_tokens": 13,
-      "completion_tokens": 157,
-      "total_tokens": 170
-    },
-    "usd_cost": 0.028650000000000002,
-    "testedAt": "2026-04-14T19:20:26.803Z"
-  },
-  "openai::gpt-5.4-mini": {
-    "provider": "openai",
-    "model": "gpt-5.4-mini",
-    "prompt": "Say hello in 5 words.",
-    "response": "Hello, how are you today?",
-    "usage": {
-      "prompt_tokens": 13,
-      "completion_tokens": 46,
-      "total_tokens": 59
-    },
-    "usd_cost": 0.00021674999999999998,
-    "testedAt": "2026-04-14T19:20:27.900Z"
-  },
-  "openai::gpt-5.4-nano": {
-    "provider": "openai",
-    "model": "gpt-5.4-nano",
-    "prompt": "Say hello in 5 words.",
-    "response": "Hello! How are you doing?",
-    "usage": {
-      "prompt_tokens": 13,
-      "completion_tokens": 11,
-      "total_tokens": 24
-    },
-    "usd_cost": 0.00001635,
-    "testedAt": "2026-04-14T19:20:28.644Z"
-  },
-  "openai::gpt-5.3-chat-latest": {
-    "provider": "openai",
-    "model": "gpt-5.3-chat-latest",
-    "prompt": "Say hello in 5 words.",
-    "response": "Hello there, nice to meet.",
-    "usage": {
-      "prompt_tokens": 13,
-      "completion_tokens": 16,
-      "total_tokens": 29,
+      "prompt_tokens": 14,
+      "completion_tokens": 7,
+      "total_tokens": 21,
       "prompt_tokens_details": {
         "cached_tokens": 0,
         "audio_tokens": 0
@@ -323,45 +115,353 @@
         "rejected_prediction_tokens": 0
       }
     },
-    "usd_cost": 0.00024675,
-    "testedAt": "2026-04-14T19:20:30.469Z"
+    "durationMs": 1969,
+    "usd_cost": 0.000016800000000000002,
+    "testedAt": "2026-04-25T18:37:13.752Z"
   },
-  "openai::gpt-5.3-codex": {
+  "openai::gpt-4.1-nano-2025-04-14": {
     "provider": "openai",
-    "model": "gpt-5.3-codex",
+    "model": "gpt-4.1-nano-2025-04-14",
     "prompt": "Say hello in 5 words.",
-    "response": "Hello there, hope you're doing great!",
+    "response": "Hello, I hope you're well!",
+    "usage": {
+      "prompt_tokens": 14,
+      "completion_tokens": 7,
+      "total_tokens": 21,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "durationMs": 461,
+    "usd_cost": 0.0000042000000000000004,
+    "testedAt": "2026-04-25T18:37:14.216Z"
+  },
+  "openai::gpt-5.4": {
+    "provider": "openai",
+    "model": "gpt-5.4",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, hope you're doing well!",
     "usage": {
       "prompt_tokens": 13,
       "completion_tokens": 12,
       "total_tokens": 25
     },
-    "usd_cost": 0.00019075,
-    "testedAt": "2026-04-14T19:20:31.376Z"
+    "durationMs": 1834,
+    "usd_cost": 0.00021250000000000002,
+    "testedAt": "2026-04-25T18:37:16.162Z"
   },
-  "google::gemini-3.1-pro-preview": {
-    "provider": "google",
-    "model": "gemini-3.1-pro-preview",
+  "openai::gpt-5.4-mini": {
+    "provider": "openai",
+    "model": "gpt-5.4-mini",
     "prompt": "Say hello in 5 words.",
-    "response": "Hello,",
+    "response": "Hello, nice to meet you.",
     "usage": {
-      "promptTokenCount": 8,
-      "candidatesTokenCount": 2,
-      "totalTokenCount": 54,
-      "promptTokensDetails": [
-        {
-          "modality": "TEXT",
-          "tokenCount": 8
-        }
-      ],
-      "thoughtsTokenCount": 44
+      "prompt_tokens": 13,
+      "completion_tokens": 69,
+      "total_tokens": 82
     },
-    "usd_cost": 0.000016,
-    "testedAt": "2026-04-14T19:20:41.040Z"
+    "durationMs": 2288,
+    "usd_cost": 0.00032025,
+    "testedAt": "2026-04-25T18:37:18.452Z"
   },
-  "anthropic::claude-haiku-4-5": {
+  "openai::gpt-5.5": {
+    "provider": "openai",
+    "model": "gpt-5.5",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, hope you’re doing well.",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 11,
+      "total_tokens": 24,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "durationMs": 1346,
+    "usd_cost": 0.000395,
+    "testedAt": "2026-04-25T18:37:19.803Z"
+  },
+  "openai::gpt-5.4-nano": {
+    "provider": "openai",
+    "model": "gpt-5.4-nano",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, nice to meet you!",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 12,
+      "total_tokens": 25
+    },
+    "durationMs": 1155,
+    "usd_cost": 0.0000176,
+    "testedAt": "2026-04-25T18:37:21.085Z"
+  },
+  "openai::gpt-5.4-pro": {
+    "provider": "openai",
+    "model": "gpt-5.4-pro",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello! Hope you are well.",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 137,
+      "total_tokens": 150
+    },
+    "durationMs": 36087,
+    "usd_cost": 0.025050000000000003,
+    "testedAt": "2026-04-25T18:37:57.177Z"
+  },
+  "openai::gpt-5.3-chat-latest": {
+    "provider": "openai",
+    "model": "gpt-5.3-chat-latest",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, hope you're well.",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 80,
+      "total_tokens": 93,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 64,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "durationMs": 1681,
+    "usd_cost": 0.0011427499999999999,
+    "testedAt": "2026-04-25T18:37:58.860Z"
+  },
+  "openai::gpt-5.3-codex": {
+    "provider": "openai",
+    "model": "gpt-5.3-codex",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, hope you're well.",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 84,
+      "total_tokens": 97
+    },
+    "durationMs": 2141,
+    "usd_cost": 0.00119875,
+    "testedAt": "2026-04-25T18:38:01.009Z"
+  },
+  "openai::gpt-5.1": {
+    "provider": "openai",
+    "model": "gpt-5.1",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, wishing you a wonderful day.",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 23,
+      "total_tokens": 36,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 6,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "durationMs": 621,
+    "usd_cost": 0.00024625,
+    "testedAt": "2026-04-25T18:38:06.594Z"
+  },
+  "openai::gpt-5.2": {
+    "provider": "openai",
+    "model": "gpt-5.2",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, nice to meet you.",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 11,
+      "total_tokens": 24,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "durationMs": 713,
+    "usd_cost": 0.00017675000000000001,
+    "testedAt": "2026-04-25T18:38:07.312Z"
+  },
+  "openai::o3-2025-04-16": {
+    "provider": "openai",
+    "model": "o3-2025-04-16",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, hope you're well.",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 89,
+      "total_tokens": 102,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 64,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "durationMs": 1733,
+    "usd_cost": 0.0007379999999999999,
+    "testedAt": "2026-04-25T18:38:19.286Z"
+  },
+  "anthropic::claude-opus-4-7": {
     "provider": "anthropic",
-    "model": "claude-haiku-4-5",
+    "model": "claude-opus-4-7",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, nice to meet you!",
+    "usage": {
+      "input_tokens": 21,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 15,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    },
+    "durationMs": 1247,
+    "usd_cost": 0.00048,
+    "testedAt": "2026-04-25T18:38:27.108Z"
+  },
+  "anthropic::claude-opus-4-6": {
+    "provider": "anthropic",
+    "model": "claude-opus-4-6",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, how are you?",
+    "usage": {
+      "input_tokens": 15,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 10,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    },
+    "durationMs": 1873,
+    "usd_cost": 0.000325,
+    "testedAt": "2026-04-25T18:38:28.985Z"
+  },
+  "anthropic::claude-sonnet-4-6": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-6",
+    "prompt": "Say hello in 5 words.",
+    "response": "\"Hello there, how are you?\"",
+    "usage": {
+      "input_tokens": 15,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 11,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    },
+    "durationMs": 1421,
+    "usd_cost": 0.00021,
+    "testedAt": "2026-04-25T18:38:30.545Z"
+  },
+  "anthropic::claude-opus-4-5-20251101": {
+    "provider": "anthropic",
+    "model": "claude-opus-4-5-20251101",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, my dear friend!",
+    "usage": {
+      "input_tokens": 15,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 10,
+      "service_tier": "standard",
+      "inference_geo": "not_available"
+    },
+    "durationMs": 938,
+    "usd_cost": 0.000325,
+    "testedAt": "2026-04-25T18:38:31.487Z"
+  },
+  "anthropic::claude-opus-4-1-20250805": {
+    "provider": "anthropic",
+    "model": "claude-opus-4-1-20250805",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, how are you?",
+    "usage": {
+      "input_tokens": 15,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 10,
+      "service_tier": "standard",
+      "inference_geo": "not_available"
+    },
+    "durationMs": 1407,
+    "usd_cost": 0.000975,
+    "testedAt": "2026-04-25T18:38:32.900Z"
+  },
+  "anthropic::claude-sonnet-4-5-20250929": {
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-5-20250929",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, hope you're doing well!",
+    "usage": {
+      "input_tokens": 15,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 11,
+      "service_tier": "standard",
+      "inference_geo": "not_available"
+    },
+    "durationMs": 1033,
+    "usd_cost": 0.00021,
+    "testedAt": "2026-04-25T18:38:33.937Z"
+  },
+  "anthropic::claude-haiku-4-5-20251001": {
+    "provider": "anthropic",
+    "model": "claude-haiku-4-5-20251001",
     "prompt": "Say hello in 5 words.",
     "response": "Hello, how are you today?",
     "usage": {
@@ -376,12 +476,13 @@
       "service_tier": "standard",
       "inference_geo": "not_available"
     },
+    "durationMs": 711,
     "usd_cost": 0.00006500000000000001,
-    "testedAt": "2026-04-14T19:21:44.319Z"
+    "testedAt": "2026-04-25T18:38:34.652Z"
   },
-  "google::gemini-2.5-flash": {
+  "google::gemini-3.1-pro-preview": {
     "provider": "google",
-    "model": "gemini-2.5-flash",
+    "model": "gemini-3.1-pro-preview",
     "prompt": "Say hello in 5 words.",
     "response": "Hello there",
     "usage": {
@@ -396,8 +497,124 @@
       ],
       "thoughtsTokenCount": 44
     },
+    "durationMs": 3618,
+    "usd_cost": 0.000016,
+    "testedAt": "2026-04-25T18:38:38.275Z"
+  },
+  "google::gemini-3.1-flash-lite-preview": {
+    "provider": "google",
+    "model": "gemini-3.1-flash-lite-preview",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, how are you today?",
+    "usage": {
+      "promptTokenCount": 8,
+      "candidatesTokenCount": 7,
+      "totalTokenCount": 15,
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 8
+        }
+      ]
+    },
+    "durationMs": 2535,
+    "usd_cost": 0.000002,
+    "testedAt": "2026-04-25T18:38:40.814Z"
+  },
+  "google::gemini-2.5-flash": {
+    "provider": "google",
+    "model": "gemini-2.5-flash",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, how are you?",
+    "usage": {
+      "promptTokenCount": 8,
+      "candidatesTokenCount": 7,
+      "totalTokenCount": 40,
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 8
+        }
+      ],
+      "thoughtsTokenCount": 25
+    },
+    "durationMs": 2738,
     "usd_cost": 0.0000024,
-    "testedAt": "2026-04-14T19:21:50.097Z"
+    "testedAt": "2026-04-25T18:38:52.002Z"
+  },
+  "google::gemini-2.5-flash-lite": {
+    "provider": "google",
+    "model": "gemini-2.5-flash-lite",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, how are you today?",
+    "usage": {
+      "promptTokenCount": 8,
+      "candidatesTokenCount": 7,
+      "totalTokenCount": 15,
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 8
+        }
+      ]
+    },
+    "durationMs": 2516,
+    "usd_cost": 8.000000000000001e-7,
+    "testedAt": "2026-04-25T18:38:54.522Z"
+  },
+  "google::gemini-2.0-flash": {
+    "provider": "google",
+    "model": "gemini-2.0-flash",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, how are you?\n",
+    "usage": {
+      "promptTokenCount": 7,
+      "candidatesTokenCount": 8,
+      "totalTokenCount": 15,
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 7
+        }
+      ],
+      "candidatesTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 8
+        }
+      ]
+    },
+    "durationMs": 2730,
+    "usd_cost": 7.000000000000001e-7,
+    "testedAt": "2026-04-25T18:39:07.830Z"
+  },
+  "xai::grok-4.20-0309-reasoning": {
+    "provider": "xai",
+    "model": "grok-4.20-0309-reasoning",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there my friendly acquaintance.",
+    "usage": {
+      "prompt_tokens": 131,
+      "completion_tokens": 6,
+      "total_tokens": 817,
+      "prompt_tokens_details": {
+        "text_tokens": 131,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "cached_tokens": 64
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 680,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "num_sources_used": 0,
+      "cost_in_usd_ticks": 42628000
+    },
+    "durationMs": 7107,
+    "usd_cost": 0.0003108,
+    "testedAt": "2026-04-25T18:39:23.397Z"
   },
   "xai::grok-4.20-0309-non-reasoning": {
     "provider": "xai",
@@ -423,32 +640,427 @@
       "num_sources_used": 0,
       "cost_in_usd_ticks": 1848000
     },
-    "testedAt": "2026-04-14T19:28:47.420Z"
+    "durationMs": 506,
+    "usd_cost": 0.00031279999999999996,
+    "testedAt": "2026-04-25T18:39:23.908Z"
   },
-  "xai::grok-4.20-0309-reasoning": {
+  "xai::grok-4-1-fast-reasoning": {
     "provider": "xai",
-    "model": "grok-4.20-0309-reasoning",
+    "model": "grok-4-1-fast-reasoning",
     "prompt": "Say hello in 5 words.",
-    "response": "Hello there how are you?",
+    "response": "Hello, how are you today?",
     "usage": {
-      "prompt_tokens": 131,
-      "completion_tokens": 6,
-      "total_tokens": 1170,
+      "prompt_tokens": 163,
+      "completion_tokens": 7,
+      "total_tokens": 350,
       "prompt_tokens_details": {
-        "text_tokens": 131,
+        "text_tokens": 163,
         "audio_tokens": 0,
         "image_tokens": 0,
-        "cached_tokens": 64
+        "cached_tokens": 154
       },
       "completion_tokens_details": {
-        "reasoning_tokens": 1033,
+        "reasoning_tokens": 180,
         "audio_tokens": 0,
         "accepted_prediction_tokens": 0,
         "rejected_prediction_tokens": 0
       },
       "num_sources_used": 0,
-      "cost_in_usd_ticks": 63808000
+      "cost_in_usd_ticks": 1030000
     },
-    "testedAt": "2026-04-14T19:28:53.889Z"
+    "durationMs": 2057,
+    "usd_cost": 0.000043799999999999994,
+    "testedAt": "2026-04-25T18:39:25.970Z"
+  },
+  "xai::grok-4-1-fast-non-reasoning": {
+    "provider": "xai",
+    "model": "grok-4-1-fast-non-reasoning",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, how are you today?",
+    "usage": {
+      "prompt_tokens": 175,
+      "completion_tokens": 7,
+      "total_tokens": 182,
+      "prompt_tokens_details": {
+        "text_tokens": 175,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "cached_tokens": 164
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "num_sources_used": 0,
+      "cost_in_usd_ticks": 139000
+    },
+    "durationMs": 370,
+    "usd_cost": 0.0000467,
+    "testedAt": "2026-04-25T18:39:26.344Z"
+  },
+  "xai::grok-code-fast-1": {
+    "provider": "xai",
+    "model": "grok-code-fast-1",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, how are you today?",
+    "usage": {
+      "prompt_tokens": 211,
+      "completion_tokens": 7,
+      "total_tokens": 399,
+      "prompt_tokens_details": {
+        "text_tokens": 211,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "cached_tokens": 202
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 181,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "num_sources_used": 0,
+      "cost_in_usd_ticks": 2878400
+    },
+    "durationMs": 7847,
+    "usd_cost": 0.00005674,
+    "testedAt": "2026-04-25T18:39:34.195Z"
+  },
+  "xai::grok-4-0709": {
+    "provider": "xai",
+    "model": "grok-4-0709",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, how are you today?",
+    "usage": {
+      "prompt_tokens": 691,
+      "completion_tokens": 7,
+      "total_tokens": 849,
+      "prompt_tokens_details": {
+        "text_tokens": 691,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "cached_tokens": 679
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 151,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "num_sources_used": 0,
+      "cost_in_usd_ticks": 29152500
+    },
+    "durationMs": 3228,
+    "usd_cost": 0.0021780000000000002,
+    "testedAt": "2026-04-25T18:39:37.428Z"
+  },
+  "xai::grok-3-beta": {
+    "provider": "xai",
+    "model": "grok-3-beta",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, how are you today?",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 7,
+      "total_tokens": 20,
+      "prompt_tokens_details": {
+        "text_tokens": 13,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "cached_tokens": 2
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "num_sources_used": 0,
+      "cost_in_usd_ticks": 1395000
+    },
+    "durationMs": 816,
+    "usd_cost": 0.000144,
+    "testedAt": "2026-04-25T18:39:38.247Z"
+  },
+  "xai::grok-3-mini-beta": {
+    "provider": "xai",
+    "model": "grok-3-mini-beta",
+    "prompt": "Say hello in 5 words.",
+    "response": "Grok says hello to you.",
+    "usage": {
+      "prompt_tokens": 14,
+      "completion_tokens": 7,
+      "total_tokens": 509,
+      "prompt_tokens_details": {
+        "text_tokens": 14,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "cached_tokens": 3
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 488,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "num_sources_used": 0,
+      "cost_in_usd_ticks": 2510250
+    },
+    "durationMs": 6813,
+    "usd_cost": 0.0000077,
+    "testedAt": "2026-04-25T18:39:45.064Z"
+  },
+  "xai::grok-3-fast-beta": {
+    "provider": "xai",
+    "model": "grok-3-fast-beta",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, how are you today?",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 7,
+      "total_tokens": 20,
+      "prompt_tokens_details": {
+        "text_tokens": 13,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "cached_tokens": 3
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "num_sources_used": 0,
+      "cost_in_usd_ticks": 1372500
+    },
+    "durationMs": 565,
+    "usd_cost": 0.00023999999999999998,
+    "testedAt": "2026-04-25T18:39:45.633Z"
+  },
+  "xai::grok-3-mini-fast-beta": {
+    "provider": "xai",
+    "model": "grok-3-mini-fast-beta",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, how are you today?",
+    "usage": {
+      "prompt_tokens": 14,
+      "completion_tokens": 7,
+      "total_tokens": 383,
+      "prompt_tokens_details": {
+        "text_tokens": 14,
+        "audio_tokens": 0,
+        "image_tokens": 0,
+        "cached_tokens": 13
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 362,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      },
+      "num_sources_used": 0,
+      "cost_in_usd_ticks": 1857750
+    },
+    "durationMs": 5408,
+    "usd_cost": 0.000036400000000000004,
+    "testedAt": "2026-04-25T18:39:51.045Z"
+  },
+  "openai::gpt-5": {
+    "provider": "openai",
+    "model": "gpt-5",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, hope you're well.",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 106,
+      "total_tokens": 119
+    },
+    "durationMs": 2405,
+    "usd_cost": 0.0016225,
+    "testedAt": "2026-04-25T19:05:25.355Z"
+  },
+  "openai::o3-mini-2025-01-31": {
+    "provider": "openai",
+    "model": "o3-mini-2025-01-31",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, wonderful world of friendship.",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 276,
+      "total_tokens": 289,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 256,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "durationMs": 2445,
+    "usd_cost": 0.0012287,
+    "testedAt": "2026-04-25T19:33:05.624Z"
+  },
+  "openai::o4-mini-2025-04-16": {
+    "provider": "openai",
+    "model": "o4-mini-2025-04-16",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello everyone, how are you?",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 153,
+      "total_tokens": 166,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 128,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "durationMs": 1683,
+    "usd_cost": 0.0006875,
+    "testedAt": "2026-04-25T19:33:07.310Z"
+  },
+  "google::gemini-2.5-pro": {
+    "provider": "google",
+    "model": "gemini-2.5-pro",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, how are you doing?",
+    "usage": {
+      "promptTokenCount": 8,
+      "candidatesTokenCount": 7,
+      "totalTokenCount": 770,
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 8
+        }
+      ],
+      "thoughtsTokenCount": 755
+    },
+    "durationMs": 9273,
+    "usd_cost": 0.00001,
+    "testedAt": "2026-04-25T19:33:16.676Z"
+  },
+  "openai::gpt-5-mini": {
+    "provider": "openai",
+    "model": "gpt-5-mini",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there! How are you?",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 168,
+      "total_tokens": 181
+    },
+    "durationMs": 4383,
+    "usd_cost": 0.00033925,
+    "testedAt": "2026-04-25T19:35:30.290Z"
+  },
+  "openai::gpt-5-nano": {
+    "provider": "openai",
+    "model": "gpt-5-nano",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, how are you?",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 183,
+      "total_tokens": 196
+    },
+    "durationMs": 3005,
+    "usd_cost": 0.00007385,
+    "testedAt": "2026-04-25T19:35:33.300Z"
+  },
+  "openai::o1-2024-12-17": {
+    "provider": "openai",
+    "model": "o1-2024-12-17",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello friend, you look fantastic.",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 1470,
+      "total_tokens": 1483
+    },
+    "durationMs": 8587,
+    "usd_cost": 0.088395,
+    "testedAt": "2026-04-25T19:35:42.292Z"
+  },
+  "openai::o1-pro-2025-03-19": {
+    "provider": "openai",
+    "model": "o1-pro-2025-03-19",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello friend, how are you?",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 462,
+      "total_tokens": 475
+    },
+    "durationMs": 19789,
+    "usd_cost": 0.27915,
+    "testedAt": "2026-04-25T19:36:02.086Z"
+  },
+  "openai::gpt-5-pro": {
+    "provider": "openai",
+    "model": "gpt-5-pro",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, how are you?",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 230,
+      "total_tokens": 243
+    },
+    "durationMs": 31028,
+    "usd_cost": 0.027795,
+    "testedAt": "2026-04-25T19:41:48.693Z"
+  },
+  "openai::gpt-5.2-pro": {
+    "provider": "openai",
+    "model": "gpt-5.2-pro",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, how are you?",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 11,
+      "total_tokens": 24
+    },
+    "durationMs": 5591,
+    "usd_cost": 0.002121,
+    "testedAt": "2026-04-25T19:41:54.294Z"
+  },
+  "openai::gpt-5.5-pro": {
+    "provider": "openai",
+    "model": "gpt-5.5-pro",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, hope you're doing well!",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 57,
+      "total_tokens": 70
+    },
+    "durationMs": 6021,
+    "usd_cost": 0.01065,
+    "testedAt": "2026-04-25T19:42:00.322Z"
+  },
+  "xai::grok-4.20-multi-agent-0309": {
+    "provider": "xai",
+    "model": "grok-4.20-multi-agent-0309",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, how are you?",
+    "usage": {
+      "prompt_tokens": 23833,
+      "completion_tokens": 3569,
+      "total_tokens": 27402
+    },
+    "durationMs": 14929,
+    "usd_cost": 0.06908,
+    "testedAt": "2026-04-25T20:02:50.839Z"
   }
 }

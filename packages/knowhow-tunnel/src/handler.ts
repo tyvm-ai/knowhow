@@ -2,37 +2,74 @@ import WebSocket from "ws";
 import { TunnelProxy } from "./proxy";
 import {
   TunnelConfig,
-  TunnelMessage,
-  TunnelMessageType,
+  AnyTunnelMessage,
+  TunnelAddon,
+  TunnelAddonContext,
 } from "./types";
 import { parseTunnelMessage } from "./protocol";
 import { Logger } from "./utils";
+import { TunnelPortForwardingAddon } from "./addon";
 
 /**
  * Tunnel Handler
- * Main entry point for handling tunnel messages over WebSocket
+ * Main entry point for handling tunnel messages over WebSocket.
+ *
+ * Supports pluggable TunnelAddons via `use()`.  The built-in port-forwarding
+ * behaviour is automatically registered as the first addon so that existing
+ * behaviour is fully preserved.
  */
 export class TunnelHandler {
   private proxy: TunnelProxy;
   private logger: Logger;
   private ws: WebSocket;
+  private addons: TunnelAddon[] = [];
+  private ctx!: TunnelAddonContext;
 
   constructor(ws: WebSocket, config: TunnelConfig = {}) {
     this.ws = ws;
     this.logger = new Logger(config.logLevel || "info");
-    
+
     // Create proxy with send message function
     this.proxy = new TunnelProxy(config, (message: string) => {
-      this.sendMessage(message);
+      this.sendRaw(message);
     });
 
+    // Build the addon context (shared by all addons)
+    this.ctx = {
+      send: (message) => {
+        this.sendRaw(JSON.stringify(message));
+      },
+    };
+
+    // Auto-register the port-forwarding addon so existing behaviour is preserved
+    this.addons.push(new TunnelPortForwardingAddon(this.proxy));
+
     this.setupWebSocketHandlers();
+  }
+
+  /**
+   * Register an addon.  Addons are called in registration order.
+   * The built-in TunnelPortForwardingAddon is always registered first.
+   */
+  use(addon: TunnelAddon): this {
+    this.addons.push(addon);
+    // If we're already "connected" (ws is open), fire onConnect immediately
+    if (this.ws.readyState === WebSocket.OPEN && addon.onConnect) {
+      addon.onConnect(this.ctx);
+    }
+    return this;
   }
 
   /**
    * Setup WebSocket message handlers
    */
   private setupWebSocketHandlers(): void {
+    this.ws.on("open", () => {
+      for (const addon of this.addons) {
+        if (addon.onConnect) addon.onConnect(this.ctx);
+      }
+    });
+
     this.ws.on("message", async (data: WebSocket.Data) => {
       try {
         await this.handleMessage(data);
@@ -52,12 +89,11 @@ export class TunnelHandler {
   }
 
   /**
-   * Handle incoming message from WebSocket
+   * Handle incoming message from WebSocket — route to matching addons
    */
   private async handleMessage(data: WebSocket.Data): Promise<void> {
-    // Convert data to string if it's JSON
     let messageStr: string;
-    
+
     if (Buffer.isBuffer(data)) {
       messageStr = data.toString("utf8");
     } else if (typeof data === "string") {
@@ -69,68 +105,56 @@ export class TunnelHandler {
       return;
     }
 
-    // Try to parse as JSON
-    let message: TunnelMessage;
+    let message: AnyTunnelMessage;
     try {
-      message = parseTunnelMessage(messageStr);
+      // parseTunnelMessage validates known types; for unknown (addon) types we
+      // do a raw parse so addons still receive them.
+      try {
+        message = parseTunnelMessage(messageStr) as AnyTunnelMessage;
+      } catch {
+        const raw = JSON.parse(messageStr);
+        message = raw as AnyTunnelMessage;
+      }
     } catch (err: any) {
       this.logger.error("Failed to parse tunnel message:", err.message);
       return;
     }
 
-    // Route message to appropriate handler
-    switch (message.type) {
-      case TunnelMessageType.REQUEST:
-        await this.proxy.handleRequest(message);
-        break;
+    const msgType: string = (message as any).type;
 
-      case TunnelMessageType.DATA:
-        {
-          const data = this.decodeData(message.data);
-          this.proxy.handleData(message.streamId, data);
-        }
-        break;
+    // Route to all addons that declare they handle this message type
+    let handled = false;
+    for (const addon of this.addons) {
+      if (this.addonHandles(addon, msgType)) {
+        handled = true;
+        await addon.onMessage(message, this.ctx);
+      }
+    }
 
-      case TunnelMessageType.END:
-        this.proxy.handleEnd(message.streamId);
-        break;
-
-      case TunnelMessageType.WS_UPGRADE:
-        await this.proxy.handleWsUpgrade(message);
-        break;
-
-      case TunnelMessageType.WS_DATA:
-        {
-          const data = this.decodeData(message.data);
-          this.proxy.handleWsData(message.streamId, data, message.isBinary);
-        }
-        break;
-
-      case TunnelMessageType.WS_CLOSE:
-        this.proxy.handleWsClose(message.streamId, message.code, message.reason);
-        break;
-
-      default:
-        this.logger.warn("Unknown message type:", (message as any).type);
+    if (!handled) {
+      this.logger.warn("No addon handled message type:", msgType);
     }
   }
 
   /**
-   * Decode data from message (handle base64 encoding)
+   * Check whether an addon's `handles` list matches a given message type.
+   * Supports exact strings and prefix patterns ending with "_".
    */
-  private decodeData(data: Buffer | string): Buffer {
-    if (Buffer.isBuffer(data)) {
-      return data;
+  private addonHandles(addon: TunnelAddon, msgType: string): boolean {
+    for (const pattern of addon.handles) {
+      if (pattern.endsWith("_")) {
+        if (msgType.startsWith(pattern)) return true;
+      } else {
+        if (msgType === pattern) return true;
+      }
     }
-    
-    // Assume base64 encoded string
-    return Buffer.from(data, "base64");
+    return false;
   }
 
   /**
-   * Send message over WebSocket
+   * Send raw string over WebSocket
    */
-  private sendMessage(message: string): void {
+  private sendRaw(message: string): void {
     if (this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(message);
     } else {
@@ -152,6 +176,9 @@ export class TunnelHandler {
    */
   cleanup(): void {
     this.proxy.cleanup();
+    for (const addon of this.addons) {
+      if (addon.onDisconnect) addon.onDisconnect();
+    }
   }
 }
 

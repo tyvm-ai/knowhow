@@ -14,9 +14,10 @@ import { includedTools } from "./agents/tools/list";
 import * as allTools from "./agents/tools";
 import { LazyToolsService, services } from "./services";
 import { login } from "./login";
-import { worker } from "./worker";
+import { worker, tunnel } from "./worker";
 import { fileSync } from "./fileSync";
 import { KnowhowSimpleClient } from "./services/KnowhowClient";
+import { ModulesService } from "./services/modules";
 import {
   startAllWorkers,
   listWorkerPaths,
@@ -56,6 +57,7 @@ async function setupServices() {
   const { Agents, Mcp, Clients, Tools: OldTools } = services();
   const Tools = new LazyToolsService(); // eslint-disable-line no-shadow
 
+  // Load modules from config first so module-provided tools/agents/plugins are available
   // We need to wireup the LazyTools to be connected to the same singletons that are in services()
   Tools.setContext({
     ...OldTools.getContext(),
@@ -99,6 +101,19 @@ async function setupServices() {
   console.log("Connecting to clients...");
   await Clients.registerConfiguredModels();
   console.log("✓ Services are set up and ready to go!");
+
+  // Load modules (tools, plugins, agents) from knowhow.json config
+  console.log("📦 Loading modules from config...");
+  const modulesService = new ModulesService();
+  await modulesService.loadModulesFromConfig({
+    Agents,
+    Embeddings: services().Embeddings,
+    Plugins: services().Plugins,
+    Clients,
+    // Use LazyToolsService so module-provided tools are visible to agents and scripts
+    Tools: Tools as any,
+    MediaProcessor: services().MediaProcessor,
+  });
 
   // Return both LazyToolsService (for agents) and OldTools (plain ToolsService with all tools for scripts)
   return { Tools, Clients, PlainTools: OldTools };
@@ -515,17 +530,37 @@ async function main() {
     .description("Create or sync a cloud worker with your local knowhow config")
     .option("--create", "Create a new cloud worker with synced config and files")
     .option("--push <uid>", "Push/sync local config and files to an existing cloud worker")
+    .option("--pull <id>", "Pull the latest workerConfigJson from a cloud worker and update local config")
     .option("--name <name>", "Name for the cloud worker (used with --create)")
     .option("--dry-run", "Print what would be synced without doing it")
     .action(async (options) => {
       try {
-        const { cloudWorker } = await import("./cloudWorker");
-        await cloudWorker(options);
+        const { cloudWorker, pullCloudWorkerConfig } = await import("./cloudWorker");
+        if (options.pull) {
+          await pullCloudWorkerConfig({ id: options.pull });
+        } else {
+          await cloudWorker(options);
+        }
       } catch (error) {
         console.error("Error running cloudworker:", error);
         process.exit(1);
       }
     });
+
+  program
+    .command("tunnel")
+    .description(
+      "Start tunnel-only mode: expose local ports to the cloud without registering any tools"
+    )
+    .option(
+      "--share",
+      "Share this tunnel with your organization (allows other users to use it)"
+    )
+    .option("--unshare", "Make this tunnel private (only you can use it)")
+    .action(async (options) => {
+      await tunnel(options);
+    });
+
 
   program
     .command("script")

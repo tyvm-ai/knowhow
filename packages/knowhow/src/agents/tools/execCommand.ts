@@ -3,6 +3,7 @@ import { promisify } from "util";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { services, ToolsService } from "../../services";
 
 export const execAsync = promisify(exec);
 
@@ -256,12 +257,32 @@ const execWithTimeout = async (
 };
 
 // Public tool
-export const execCommand = async (
+export async function execCommand(
   command: string,
   timeout?: number,
   continueInBackground?: boolean,
   logFileName?: string
-): Promise<string> => {
+): Promise<string> {
+  if (!command || typeof command !== "string") {
+    throw new Error("Invalid command. We received a non-string value. Please ensure you are sending strings of 4k tokens or less.");
+  }
+
+  // Get context from bound ToolsService (same pattern as writeFile)
+  const toolService = (
+    this instanceof ToolsService ? this : services().Tools
+  ) as ToolsService;
+  const context = toolService.getContext();
+
+  // Emit pre-run blocking event — handlers can throw to block the command
+  if (context.Events) {
+    await context.Events.emitBlocking("exec:pre-run", {
+      command,
+      timeout,
+      continueInBackground,
+      logFileName,
+    });
+  }
+
   const { stdout, stderr, timedOut, killed, pid, logPath } =
     await execWithTimeout(command, {
       timeout,
@@ -294,6 +315,32 @@ export const execCommand = async (
    *    : "";
    */
 
-  // return `$ ${command}${statusMsg}\n${trimmed}${trimmedMsg}`;
-  return `$ ${command}${statusMsg}\n${output}`;
+  const result = `$ ${command}${statusMsg}\n${output}`;
+
+  // Emit post-run blocking event — handlers can append extra context
+  let eventResults: any[] = [];
+  if (context.Events) {
+    eventResults = await context.Events.emitBlocking("exec:post-run", {
+      command,
+      timeout,
+      continueInBackground,
+      logFileName,
+      stdout,
+      stderr,
+      timedOut,
+      killed,
+      pid,
+      logPath,
+      output,
+    });
+  }
+
+  // Append any additional context returned by post-run handlers
+  let eventResultsText = "";
+  if (eventResults && eventResults.length > 0) {
+    eventResultsText =
+      "\n\nAdditional Information:\n" + JSON.stringify(eventResults, null, 2);
+  }
+
+  return result + eventResultsText;
 };

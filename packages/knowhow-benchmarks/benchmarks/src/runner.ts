@@ -5,7 +5,10 @@ import * as fs from "fs";
 import * as path from "path";
 import chalk from "chalk";
 import ora from "ora";
-import { services, agents } from "../../ts_build/src/index";
+import { services, agents, processors } from "@tyvm/knowhow";
+const { LazyToolsService } = services;
+import { ConsoleRenderer } from "@tyvm/knowhow/src/chat/renderer/ConsoleRenderer";
+const { XmlToolCallProcessor, HarmonyToolProcessor, Base64ImageProcessor, CustomVariables, JsonCompressor, TokenCompressor, ToolResponseCache } = processors;
 import {
   BenchmarkConfig,
   BenchmarkResults,
@@ -13,10 +16,6 @@ import {
   Exercise,
 } from "./types";
 import { registerProvider } from "./providers";
-import {
-  XmlToolCallProcessor,
-  HarmonyToolProcessor,
-} from "../../ts_build/src/processors";
 import { EvaluatorRegistry } from "./evaluators";
 
 export class BenchmarkRunner {
@@ -26,8 +25,10 @@ export class BenchmarkRunner {
   private defaultServices = services.services();
   private defaultAgents = agents.agents(this.defaultServices);
   private selectedAgent: agents.BaseAgent;
+  private agentName = "";
   private model: string = "";
   private provider: string = "";
+  private runTimestamp: string = "";
   private isShuttingDown: boolean = false;
   private cleanup: (() => Promise<void>)[] = [];
   private activeSpinners: Set<any> = new Set();
@@ -54,12 +55,12 @@ export class BenchmarkRunner {
     this.defaultServices.Agents.registerAgent(this.defaultAgents.Developer);
 
     // Select the agent to use (default to Patcher)
-    const agentName = config.agent || "Patcher";
+    this.agentName = config.agent || "Patcher";
     this.selectedAgent =
-      this.defaultAgents[agentName as keyof typeof this.defaultAgents];
+      this.defaultAgents[this.agentName as keyof typeof this.defaultAgents];
 
     if (!this.selectedAgent) {
-      throw new Error(`Unknown agent: ${agentName}`);
+      throw new Error(`Unknown agent: ${this.agentName}`);
     }
 
     // Initialize test evaluator registry
@@ -130,12 +131,27 @@ export class BenchmarkRunner {
     await this.defaultServices.Clients.registerConfiguredModels();
     const customProviders = this.customProviders();
     for (const custom of customProviders) {
-      await registerProvider(
-        custom.provider,
-        custom.url,
-        custom.headers,
-        this.defaultServices.Clients
-      );
+      if (custom.url) {
+        // HTTP provider with explicit URL — register via registerProvider
+        await registerProvider(
+          custom.provider,
+          custom.url,
+          custom.headers,
+          this.defaultServices.Clients,
+          custom.timeout,
+          custom.extra_body
+        );
+      } else {
+        // Built-in provider (e.g. nvidia) — re-register to apply timeout/headers/extra_body
+        // via resolveClient → setOptions on the underlying HttpClient
+        await this.defaultServices.Clients.registerModelProviders([{
+          provider: custom.provider,
+          envKey: custom.envKey,
+          timeout: custom.timeout,
+          headers: custom.headers,
+          extra_body: custom.extra_body,
+        }]);
+      }
     }
 
     const { model, provider } =
@@ -172,10 +188,26 @@ export class BenchmarkRunner {
 
     try {
       // Define tools
-      this.defaultServices.Tools.defineTools(
-        agents.includedTools,
-        agents.tools
-      );
+      if (this.config.lazyTools) {
+        // Replace the ToolsService with a LazyToolsService
+        const lazyTools = new LazyToolsService();
+        lazyTools.setContext(this.defaultServices.Tools.getContext() as any);
+        (this.defaultServices as any).Tools = lazyTools;
+        // Update the agent's tools reference to the new LazyToolsService,
+        // since the agent captured a direct reference at construction time.
+        this.selectedAgent.tools = lazyTools;
+        lazyTools.addTools(agents.includedTools);
+        const toolFunctions = Object.fromEntries(
+          Object.entries(agents.tools).filter(([, v]) => typeof v === 'function')
+        ) as { [fnName: string]: (...args: any) => any };
+        lazyTools.addFunctions(toolFunctions);
+        console.log(chalk.cyan("🦥 Using LazyToolsService for dynamic tool management"));
+      } else {
+        this.defaultServices.Tools.defineTools(
+          agents.includedTools,
+          agents.tools
+        );
+      }
 
       // Connect to MCP servers
       await this.defaultServices.Mcp.connectToConfigured(
@@ -187,6 +219,8 @@ export class BenchmarkRunner {
         { model: this.model, provider: this.provider as any },
       ]);
 
+      this.wireupLogging();
+
       spinner.succeed("Services initialized successfully");
       cleanupSpinner();
     } catch (error) {
@@ -194,6 +228,70 @@ export class BenchmarkRunner {
       cleanupSpinner();
       throw error;
     }
+  }
+
+  wireupLogging() {
+    const taskId = `benchmark-${Date.now()}`;
+    const renderer = new ConsoleRenderer();
+    const eventTypes = this.selectedAgent.eventTypes;
+    const agentEvents = this.selectedAgent.agentEvents;
+
+    agentEvents.setListener(
+      { key: "agentMode:render:log", event: eventTypes.agentLog },
+      (data: any) =>
+        renderer.render({
+          type: "log",
+          taskId,
+          agentName: data.agentName,
+          message: data.message,
+          level: data.level,
+          timestamp: data.timestamp,
+        })
+    );
+    agentEvents.setListener(
+      { key: "agentModule:render:status", event: eventTypes.agentStatus },
+      (data: any) =>
+        renderer.render({
+          type: "agentStatus",
+          taskId,
+          agentName: data.agentName,
+          statusMessage: data.statusMessage,
+          details: data.details,
+          timestamp: data.timestamp,
+        })
+    );
+    agentEvents.setListener(
+      { key: "agentModule:render:toolCall", event: eventTypes.toolCall },
+      (data: any) =>
+        renderer.render({
+          type: "toolCall",
+          taskId,
+          agentName: this.agentName,
+          toolCall: data.toolCall,
+        })
+    );
+    agentEvents.setListener(
+      { key: "agentModule:render:toolUsed", event: eventTypes.toolUsed },
+      (data: any) =>
+        renderer.render({
+          type: "toolResult",
+          taskId,
+          agentName: this.agentName,
+          toolCall: data.toolCall,
+          result: data.functionResp,
+        })
+    );
+    agentEvents.setListener(
+      { key: "agentModule:render:agentSay", event: eventTypes.agentSay },
+      (data: any) =>
+        renderer.render({
+          type: "agentMessage",
+          taskId,
+          agentName: this.agentName,
+          message: data.message,
+          role: "assistant",
+        })
+    );
   }
 
   async setupExercises(): Promise<void> {
@@ -361,6 +459,7 @@ export class BenchmarkRunner {
         testResult,
         timeElapsed,
         cost: result.cost,
+        tokenUsage: result.tokenUsage,
         startTime,
         endTime,
         errorMessage: result.error,
@@ -412,6 +511,7 @@ export class BenchmarkRunner {
     prompt += `Work in the current directory where all the exercise files are located.`;
     prompt += `Your score will be based on whether the tests run, and how many total passed from the file`;
     prompt += `You are allowed to run the tests as many times as your want while you work.`;
+    prompt += `Don't overthink. You are timed. The faster you can get to ALL working tests the better your score.`;
 
     return prompt;
   }
@@ -423,14 +523,17 @@ export class BenchmarkRunner {
     success: boolean;
     turns: number;
     cost: number;
+    tokenUsage: { totalInputTokens: number; totalOutputTokens: number; totalCacheReadTokens: number; totalCacheWriteTokens: number };
     error?: string;
     output?: string;
   }> {
+    const agent = this.selectedAgent;
     let turns = 0;
     let totalCost = 0;
     let success = false;
     let error: string | undefined;
     let output = "";
+    let tokenUsage = { totalInputTokens: 0, totalOutputTokens: 0, totalCacheReadTokens: 0, totalCacheWriteTokens: 0 };
     const toolUsage = {} as Record<string, number>;
 
     // Check for shutdown before starting agent
@@ -443,10 +546,10 @@ export class BenchmarkRunner {
       const eventHandlers = {
         threadUpdate: (messages: any) => {
           // Turn count is tracked internally by the agent
-          totalCost = this.selectedAgent.getTotalCostUsd();
-          turns = this.selectedAgent.getTurnCount();
+          totalCost = agent.getTotalCostUsd();
+          turns = agent.getTurnCount();
         },
-        [this.selectedAgent.eventTypes.toolUsed]: (call: any) => {
+        [agent.eventTypes.toolUsed]: (call: any) => {
           const name = call.toolCall.function.name;
           toolUsage[name] = toolUsage[name] || 0;
           toolUsage[name] += 1;
@@ -458,8 +561,9 @@ export class BenchmarkRunner {
         },
         done: (data: any) => {
           success = !data.error;
-          totalCost = this.selectedAgent.getTotalCostUsd();
-          turns = this.selectedAgent.getTurnCount();
+          totalCost = agent.getTotalCostUsd();
+          turns = agent.getTurnCount();
+          tokenUsage = agent.getTokenUsage();
           if (data.error) {
             error = data.error;
           }
@@ -471,7 +575,7 @@ export class BenchmarkRunner {
 
       // Add event listeners
       Object.entries(eventHandlers).forEach(([event, handler]) => {
-        this.selectedAgent.agentEvents.on(event, handler);
+        agent.agentEvents.on(event, handler);
       });
 
       // Set limits on the agent before calling
@@ -485,9 +589,28 @@ export class BenchmarkRunner {
         this.selectedAgent.setMaxRunTime(this.config.limits.maxTime * 1000); // Convert seconds to milliseconds
       }
 
-      this.selectedAgent.messageProcessor.setProcessors("post_call", [
+
+      const caching = [
+        new ToolResponseCache(agent.tools).createProcessor(),
+        new TokenCompressor(agent.tools).createProcessor((msg) =>
+          Boolean(msg.role === "tool" && msg.tool_call_id)
+        ),
+      ];
+
+      agent.messageProcessor.setProcessors("pre_call", [
+        new Base64ImageProcessor(agent.tools).createProcessor(),
+        ...caching,
+        new CustomVariables(agent.tools).createProcessor(),
+      ]);
+
+      agent.messageProcessor.setProcessors("post_call", [
         new XmlToolCallProcessor().createProcessor(),
         new HarmonyToolProcessor().createProcessor(),
+      ]);
+
+      agent.messageProcessor.setProcessors("post_tools", [
+        new Base64ImageProcessor(agent.tools).createProcessor(),
+        ...caching,
       ]);
 
       // Change to exercise directory
@@ -496,8 +619,8 @@ export class BenchmarkRunner {
 
       try {
         // Call the agent directly with the prompt
-        this.selectedAgent.newTask();
-        const result = await this.selectedAgent.call(prompt);
+        agent.newTask();
+        const result = await agent.call(prompt);
 
         // Extract final output from result
         if (result && typeof result === "string") {
@@ -516,6 +639,9 @@ export class BenchmarkRunner {
         if (this.selectedAgent.getTurnCount) {
           turns = this.selectedAgent.getTurnCount();
         }
+        if (this.selectedAgent.getTokenUsage) {
+          tokenUsage = this.selectedAgent.getTokenUsage();
+        }
       } finally {
         // Restore original directory
         process.chdir(originalCwd);
@@ -530,6 +656,7 @@ export class BenchmarkRunner {
         success,
         turns,
         cost: totalCost,
+        tokenUsage,
         output,
       };
     } catch (err) {
@@ -538,6 +665,7 @@ export class BenchmarkRunner {
         success: false,
         turns,
         cost: totalCost,
+        tokenUsage,
         error: errorMessage,
       };
     }
@@ -650,9 +778,17 @@ export class BenchmarkRunner {
       (sum, r) => sum + r.timeElapsed,
       0
     );
+    const totalInputTokens = results.reduce((sum, r) => sum + (r.tokenUsage?.totalInputTokens ?? 0), 0);
+    const totalOutputTokens = results.reduce((sum, r) => sum + (r.tokenUsage?.totalOutputTokens ?? 0), 0);
+    const totalCacheReadTokens = results.reduce((sum, r) => sum + (r.tokenUsage?.totalCacheReadTokens ?? 0), 0);
+    const totalCacheWriteTokens = results.reduce((sum, r) => sum + (r.tokenUsage?.totalCacheWriteTokens ?? 0), 0);
+    const cacheHitRate = (totalInputTokens + totalCacheReadTokens) > 0
+      ? totalCacheReadTokens / (totalInputTokens + totalCacheReadTokens)
+      : 0;
 
     return {
       config: this.config,
+      commitHash: this.getCommitHash(),
       exercises: results,
       summary: {
         totalExercises: results.length,
@@ -671,6 +807,11 @@ export class BenchmarkRunner {
         averageTurns: totalTurns / results.length || 0,
         averageTime: totalExerciseTime / results.length || 0,
         successRate: actualSuccessRate,
+        totalInputTokens,
+        totalOutputTokens,
+        totalCacheReadTokens,
+        totalCacheWriteTokens,
+        cacheHitRate,
       },
       startTime,
       endTime,
@@ -702,10 +843,14 @@ export class BenchmarkRunner {
   private generateResultsPath(): string {
     const commitHash = this.getCommitHash();
     const dateStr = this.formatDateDash();
-    const modelFileName = `${this.provider}-${this.model.replace(
-      /\//g,
-      "-"
-    )}.json`;
+
+    // Generate a stable run timestamp once per run (lazy-initialized)
+    if (!this.runTimestamp) {
+      this.runTimestamp = String(Math.floor(Date.now() / 1000));
+    }
+
+    const toolMode = this.config.lazyTools ? "lazy" : "eager";
+    const modelFileName = `${this.provider}-${this.model.replace(/\//g, "-")}-${toolMode}-${this.runTimestamp}.json`;
 
     // Use different base paths for local vs container
     const baseDir = process.env.CONTAINER
@@ -818,6 +963,14 @@ export class BenchmarkRunner {
     console.log(chalk.blue("\n📈 Performance Metrics:"));
     console.log(
       chalk.white(`Total Cost: $${results.summary.totalCost.toFixed(4)}`)
+    );
+    console.log(chalk.blue("\n🔢 Token Usage:"));
+    console.log(chalk.white(`  Input tokens:       ${results.summary.totalInputTokens.toLocaleString()}`));
+    console.log(chalk.white(`  Output tokens:      ${results.summary.totalOutputTokens.toLocaleString()}`));
+    console.log(chalk.white(`  Cache read tokens:  ${results.summary.totalCacheReadTokens.toLocaleString()}`));
+    console.log(chalk.white(`  Cache write tokens: ${results.summary.totalCacheWriteTokens.toLocaleString()}`));
+    console.log(
+      chalk.white(`  Cache hit rate:     ${(results.summary.cacheHitRate * 100).toFixed(1)}%`)
     );
     console.log(chalk.gray(`Results saved to: ${this.generateResultsPath()}`));
   }

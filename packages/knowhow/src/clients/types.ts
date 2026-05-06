@@ -57,6 +57,44 @@ export interface CompletionOptions {
   tools?: Tool[];
   tool_choice?: "auto" | "none";
   max_tokens?: number;
+  /** Reasoning effort level for models that support it.
+   *  Maps to: OpenAI reasoning_effort, xAI reasoning.effort, Gemini thinkingLevel/thinkingBudget, Anthropic thinking budget.
+   *  "low" = minimal thinking, "medium" = balanced, "high" = maximum reasoning */
+  reasoning_effort?: "low" | "medium" | "high";
+  /**
+   * When true, hints to the client that this task is long-running and it should
+   * use a long-TTL cache where available.
+   * - Anthropic: enables the `extended-cache-ttl-2025-02-19` beta and sets
+   *   `cache_control.ttl` to 3600 (1 hour) instead of the default 5-minute ephemeral cache.
+   */
+  long_ttl_cache?: boolean;
+}
+
+/**
+ * Normalised token-usage shape that every client must return.
+ * All clients must map their provider-specific field names into this structure
+ * so that base.ts can accurately track input/output and cache utilization.
+ */
+export interface TokenUsage {
+  /** Total input/prompt tokens consumed */
+  prompt_tokens: number;
+  /** Total output/completion tokens generated */
+  completion_tokens: number;
+  /** Alternative field name for input tokens (some providers use this) */
+  input_tokens?: number;
+  /** Alternative field name for output tokens (some providers use this) */
+  output_tokens?: number;
+  /** Convenience total (prompt + completion) */
+  total_tokens?: number;
+  /** Cache details */
+  prompt_tokens_details?: {
+    /** Tokens served from the prompt cache (reduces cost) */
+    cached_tokens: number;
+  };
+  /** Anthropic-style cache write tokens */
+  cache_creation_input_tokens?: number;
+  /** Anthropic-style cache read tokens (alternative field name) */
+  cache_read_input_tokens?: number;
 }
 
 export interface CompletionResponse {
@@ -65,7 +103,7 @@ export interface CompletionResponse {
   }[];
 
   model: string;
-  usage: any;
+  usage: TokenUsage | undefined;
   usd_cost?: number;
 }
 

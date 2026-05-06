@@ -29,7 +29,7 @@ const tools: ModuleTool[] = [
   },
 ];
 
-const module: KnowhowModule = {
+const loadWebpageModule: KnowhowModule = {
   async init() {},
   tools,
   agents: [],
@@ -38,5 +38,5 @@ const module: KnowhowModule = {
   commands: [],
 };
 
-export default module;
+export default loadWebpageModule;
 export { loadWebpage };

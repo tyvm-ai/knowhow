@@ -56,7 +56,7 @@ async function s3Download(
   );
 }
 
-const module: KnowhowModule = {
+const s3Module: KnowhowModule = {
   async init({ context }) {
     if (context?.Embeddings) {
       context.Embeddings.registerResolver("s3", {
@@ -74,4 +74,4 @@ const module: KnowhowModule = {
   commands: [],
 };
 
-export default module;
+export default s3Module;

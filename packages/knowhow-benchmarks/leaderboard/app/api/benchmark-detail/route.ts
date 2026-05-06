@@ -28,6 +28,17 @@ function findBenchmarkFiles(dir: string): string[] {
   return files;
 }
 
+// Extract commit hash from file path: results/{commitHash}/{date}/{provider}/file.json
+function extractCommitFromPath(filePath: string): string | undefined {
+  // Normalize to forward slashes and split
+  const parts = filePath.replace(/\\/g, '/').split('/');
+  const resultsIdx = parts.lastIndexOf('results');
+  if (resultsIdx !== -1 && parts.length > resultsIdx + 1) {
+    return parts[resultsIdx + 1];
+  }
+  return undefined;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const model = searchParams.get('model');
@@ -98,6 +109,10 @@ export async function GET(request: NextRequest) {
 
         // Validate that we have the expected structure
         if (benchmarkData.exercises && benchmarkData.summary && benchmarkData.config) {
+          // Use commitHash from JSON, fallback to extracting from file path
+          if (!benchmarkData.commitHash) {
+            benchmarkData.commitHash = extractCommitFromPath(filePath);
+          }
           allResults.push(benchmarkData);
           filePathMap.set(benchmarkData, filePath);
         }

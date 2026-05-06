@@ -30,6 +30,42 @@ import { ModelProvider } from "../types";
 import { getConfig } from "../config";
 import { loadKnowhowJwt, KNOWHOW_API_URL } from "../services/KnowhowClient";
 import { ContextLimits } from "./contextLimits";
+import { OpenAiTextPricing } from "./pricing/openai";
+import { AnthropicTextPricing } from "./pricing/anthropic";
+import { GeminiPricing } from "./pricing/google";
+import {
+  XaiTextPricing,
+  XaiImagePricing,
+  XaiVideoPricing,
+} from "./pricing/xai";
+import type {
+  ModelPricing,
+  ModelType,
+  ModelCatalogEntry,
+} from "./pricing/types";
+import { GenericCerebrasClient } from "./cerebras";
+import { GenericGroqClient } from "./groq";
+import { GenericGitHubModelsClient } from "./github";
+import { GenericNvidiaClient } from "./nvidia";
+import { GenericOpenRouterClient } from "./openrouter";
+import { GenericDeepSeekClient } from "./deepseek";
+import { GenericMistralClient } from "./mistral";
+import { GitHubCopilotClient } from "./copilot";
+import { GenericLlamaClient } from "./llama";
+import { GenericFireworksClient } from "./fireworks";
+export {
+  OpenAiTextPricing,
+  AnthropicTextPricing,
+  GeminiPricing,
+  XaiTextPricing,
+  XaiImagePricing,
+  XaiVideoPricing,
+};
+export type {
+  ModelPricing,
+  ModelType,
+  ModelCatalogEntry,
+} from "./pricing/types";
 
 // ---------------------------------------------------------------------------
 // Built-in provider registry
@@ -49,6 +85,18 @@ const BUILT_IN_PROVIDER_REGISTRY: Record<string, ProviderRegistryEntry> = {
   anthropic: { clientClass: GenericAnthropicClient },
   google: { clientClass: GenericGeminiClient },
   xai: { clientClass: GenericXAIClient },
+  cerebras: {
+    clientClass: GenericCerebrasClient,
+  },
+  groq: { clientClass: GenericGroqClient },
+  github: { clientClass: GenericGitHubModelsClient },
+  nvidia: { clientClass: GenericNvidiaClient },
+  openrouter: { clientClass: GenericOpenRouterClient },
+  deepseek: { clientClass: GenericDeepSeekClient },
+  mistral: { clientClass: GenericMistralClient },
+  "github-copilot": { clientClass: GitHubCopilotClient },
+  llama: { clientClass: GenericLlamaClient },
+  fireworks: { clientClass: GenericFireworksClient },
   knowhow: {
     createClient: (entry: ModelProvider) => {
       const jwt = loadKnowhowJwt();
@@ -68,7 +116,17 @@ const DEFAULT_PROVIDERS: ModelProvider[] = [
   { provider: "anthropic", envKey: "ANTHROPIC_API_KEY" },
   { provider: "google", envKey: "GEMINI_API_KEY" },
   { provider: "xai", envKey: "XAI_API_KEY" },
+  { provider: "cerebras", envKey: "CEREBRAS_API_KEY" },
   { provider: "knowhow" },
+  { provider: "groq", envKey: "GROQ_API_KEY" },
+  { provider: "github", envKey: "GITHUB_TOKEN" },
+  { provider: "nvidia", envKey: "NVIDIA_API_KEY" },
+  { provider: "openrouter", envKey: "OPENROUTER_API_KEY" },
+  { provider: "deepseek", envKey: "DEEPSEEK_API_KEY" },
+  { provider: "mistral", envKey: "MISTRAL_API_KEY" },
+  { provider: "github-copilot", envKey: "GITHUB_COPILOT_TOKEN" },
+  { provider: "llama", envKey: "LLAMA_API_KEY" },
+  { provider: "fireworks", envKey: "FIREWORKS_API_KEY" },
 ];
 
 export class AIClient {
@@ -127,19 +185,45 @@ export class AIClient {
         // envKey-based auth: env var must be present
         const envValue = process.env[effectiveEnvKey];
         if (!envValue) return null;
-        return new reg.clientClass(envValue);
+        const client = new reg.clientClass(envValue);
+        // Apply any extra options (timeout, headers, extra_body) from config
+        if (client instanceof HttpClient) {
+          client.setOptions({
+            timeout: entry.timeout,
+            headers: entry.headers,
+            extra_body: entry.extra_body,
+          });
+          if (entry.pricing) client.setPrices(entry.pricing);
+        }
+        return client;
       }
 
       // No envKey, no url — instantiate with no arg (client uses its own defaults)
-      return new reg.clientClass();
+      const client = new reg.clientClass();
+      // Apply any extra options (timeout, headers, extra_body) from config
+      if (client instanceof HttpClient) {
+        client.setOptions({
+          timeout: entry.timeout,
+          headers: entry.headers,
+          extra_body: entry.extra_body,
+        });
+        if (entry.pricing) client.setPrices(entry.pricing);
+      }
+      return client;
     }
 
     // 3. HTTP provider — requires url, no clientClass in registry
     if (entry.url) {
-      const client = new HttpClient(entry.url, entry.headers);
+      const client = new HttpClient(entry.url, {
+        headers: entry.headers,
+        timeout: entry.timeout,
+        extra_body: entry.extra_body,
+      });
       if (entry.jwtFile) {
         client.loadJwtFile(entry.jwtFile);
       }
+      // For custom HTTP providers, use entry.pricing if available
+      if (entry.pricing) client.setPrices(entry.pricing);
       return client;
     }
 
@@ -219,7 +303,9 @@ export class AIClient {
 
       if (!client) {
         if (entry.provider === "knowhow") {
-          console.warn(`⚠️  Knowhow provider is not logged in. Run 'knowhow login' to enable Knowhow models.`);
+          console.warn(
+            `⚠️  Knowhow provider is not logged in. Run 'knowhow login' to enable Knowhow models.`
+          );
         }
         continue;
       }
@@ -464,6 +550,52 @@ export class AIClient {
     return undefined;
   }
 
+  /**
+   * Normalize a model ID for fuzzy matching:
+   *   - lowercase
+   *   - replace dots with dashes (e.g. "claude-opus-4.7" → "claude-opus-4-7")
+   *   - strip variant suffixes like ":thinking", ":free"
+   *   - strip trailing date suffixes like "-20250514"
+   *   - strip trailing "-beta", "-preview", "-latest"
+   */
+  private static normalizeModelId(id: string): string {
+    return id
+      .toLowerCase()
+      .replace(/\./g, "-")
+      .replace(/:[^:]+$/, "")
+      .replace(/-\d{8}$/, "")
+      .replace(/-(beta|preview|latest|exp|rc\d*)$/i, "");
+  }
+
+  /**
+   * Fuzzy model lookup: given a model name (possibly without date suffix,
+   * with dots instead of dashes, etc.), find the best matching registered model.
+   *
+   * Example: "claude-3.7-sonnet" matches "claude-3-7-sonnet-20250219"
+   *          "gpt-4.1" matches "gpt-4.1" exactly
+   *
+   * @param modelQuery - the model name to search for (can be partial/normalized)
+   * @param provider   - optional provider to restrict search to
+   */
+  findModelFuzzy(modelQuery: string, provider?: string): { provider: string; model: string } | undefined {
+    const queryNorm = AIClient.normalizeModelId(modelQuery);
+    const providers = provider
+      ? [provider]
+      : Object.keys(this.clientModels);
+
+    for (const p of providers) {
+      const models = (this.clientModels[p] as string[]) ?? [];
+      for (const m of models) {
+        const mNorm = AIClient.normalizeModelId(m);
+        // Exact normalized match, OR our model is a dated variant of the query
+        if (mNorm === queryNorm || mNorm.startsWith(queryNorm + "-")) {
+          return { provider: p, model: m };
+        }
+      }
+    }
+    return undefined;
+  }
+
   // detects these formats:
   // "openai", "gpt-5"
   // "knowhow", "openai/gpt-5"
@@ -499,17 +631,22 @@ export class AIClient {
     }
 
     const allModels = this.listAllModels();
-    const hasKnowhowModels =
-      allModels["knowhow"] && allModels["knowhow"].length > 0;
+    const hasKnowhowModels = allModels.knowhow && allModels.knowhow.length > 0;
     const knowhowIsConfigured = Object.keys(allModels).includes("knowhow");
 
-    console.warn(`⚠️  Unable to find model '${model}' for provider '${provider}'.`);
-    console.warn(`   Available providers: ${Object.keys(allModels).join(", ") || "(none)"}`);
+    console.warn(
+      `⚠️  Unable to find model '${model}' for provider '${provider}'.`
+    );
+    console.warn(
+      `   Available providers: ${Object.keys(allModels).join(", ") || "(none)"}`
+    );
 
     if (!hasKnowhowModels && !knowhowIsConfigured) {
       console.warn(`   Tip: Run 'knowhow login' to enable Knowhow models.`);
     } else if (!hasKnowhowModels) {
-      console.warn(`   Tip: The Knowhow provider returned no models. Try running 'knowhow login' to re-authenticate.`);
+      console.warn(
+        `   Tip: The Knowhow provider returned no models. Try running 'knowhow login' to re-authenticate.`
+      );
     }
 
     return { provider, model };
@@ -763,6 +900,66 @@ export class AIClient {
     if (contextLimit === undefined) return undefined;
     return { contextLimit, threshold: contextLimit };
   }
+
+  /**
+   * Returns pricing information for all known models, derived from the
+   * provider pricing maps.
+   *
+   * @param modelId  Optional model id filter (without provider prefix).
+   *                 If omitted, all models across all providers are returned.
+   */
+  getPrices(modelId?: string): ModelCatalogEntry[] {
+    const results: ModelCatalogEntry[] = [];
+
+    const addModels = (
+      models: Record<string, string[]>,
+      type: ModelType,
+      pricingMap: Record<string, ModelPricing>
+    ) => {
+      for (const [provider, ids] of Object.entries(models)) {
+        for (const id of ids) {
+          if (modelId && id !== modelId) continue;
+          if (!pricingMap[id]) continue;
+
+          const p = pricingMap[id];
+          results.push({
+            id,
+            provider,
+            type,
+            pricing: p,
+          });
+        }
+      }
+    };
+
+    // Build a combined pricing map across all providers
+    const allTextPricing: Record<string, ModelPricing> = {
+      ...OpenAiTextPricing,
+      ...AnthropicTextPricing,
+      ...GeminiPricing,
+      ...XaiTextPricing,
+    };
+    const allImagePricing: Record<string, ModelPricing> = {
+      ...XaiImagePricing,
+    };
+    const allVideoPricing: Record<string, ModelPricing> = {
+      ...XaiVideoPricing,
+    };
+
+    addModels(this.completionModels, "completion", allTextPricing);
+    addModels(this.embeddingModels, "embedding", allTextPricing);
+    addModels(this.imageModels, "image", {
+      ...allTextPricing,
+      ...allImagePricing,
+    });
+    addModels(this.audioModels, "audio", allTextPricing);
+    addModels(this.videoModels, "video", {
+      ...allTextPricing,
+      ...allVideoPricing,
+    });
+
+    return results;
+  }
 }
 
 export const Clients = new AIClient();
@@ -777,3 +974,12 @@ export * from "./gemini";
 export * from "./contextLimits";
 export * from "./xai";
 export * from "./knowhowMcp";
+export * from "./groq";
+export * from "./github";
+export * from "./nvidia";
+export * from "./openrouter";
+export * from "./deepseek";
+export * from "./mistral";
+export * from "./llama";
+export * from "./copilot";
+export * from "./fireworks";

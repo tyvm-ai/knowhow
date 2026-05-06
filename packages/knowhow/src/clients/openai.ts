@@ -34,12 +34,14 @@ import {
   EmbeddingModels,
   Models,
   OpenAiReasoningModels,
+  OpenAiChatModels,
   OpenAiResponsesOnlyModels,
   OpenAiImageModels,
   OpenAiVideoModels,
   OpenAiTTSModels,
   OpenAiTranscriptionModels,
-  OpenAiEmbeddingModels,
+  OpenAiEmbeddingModelsList,
+  OpenAiRealtimeModels,
 } from "../types";
 import { ModelModality } from "./types";
 
@@ -64,7 +66,11 @@ export class GenericOpenAiClient implements GenericClient {
   reasoningEffort(
     messages: CompletionOptions["messages"]
   ): "low" | "medium" | "high" {
-    const effortMap = {
+    return this.detectReasoningEffort(messages);
+  }
+
+  detectReasoningEffort(messages: CompletionOptions["messages"]): "low" | "medium" | "high" {
+    const effortMap: Record<string, "low" | "medium" | "high"> = {
       ultrathink: "high",
       "think hard": "high",
       "reason hard": "high",
@@ -96,6 +102,30 @@ export class GenericOpenAiClient implements GenericClient {
     return "medium"; // Default to medium if no specific effort is mentioned
   }
 
+  resolveReasoningEffort(options: CompletionOptions): "low" | "medium" | "high" {
+    return options.reasoning_effort ?? this.detectReasoningEffort(options.messages);
+  }
+
+  /**
+   * Resolves the reasoning effort for a specific model, clamping to the model's
+   * supported levels if `reasoningLevels` is set in its pricing entry.
+   * If the requested level is not supported, picks the lowest supported level.
+   */
+  resolveReasoningEffortForModel(options: CompletionOptions): string {
+    const requested = options.reasoning_effort ?? this.detectReasoningEffort(options.messages);
+    const pricing = OpenAiTextPricing[options.model];
+    const supportedLevels = pricing?.reasoningLevels;
+    if (!supportedLevels || supportedLevels.length === 0) {
+      return requested;
+    }
+    // If the requested level is supported, use it
+    if (supportedLevels.includes(requested)) {
+      return requested;
+    }
+    // Otherwise use the first (lowest) supported level
+    return supportedLevels[0];
+  }
+
   async createChatCompletion(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
@@ -122,8 +152,8 @@ export class GenericOpenAiClient implements GenericClient {
       max_tokens: options.max_tokens,
       ...(OpenAiReasoningModels.includes(options.model) && {
         max_tokens: undefined,
-        max_completion_tokens: Math.max(options.max_tokens, 100),
-        reasoning_effort: this.reasoningEffort(options.messages),
+        max_completion_tokens: Math.max(options.max_tokens ?? 0, 16_000),
+        reasoning_effort: this.resolveReasoningEffort(options),
       }),
 
       ...(options.tools && {
@@ -146,7 +176,14 @@ export class GenericOpenAiClient implements GenericClient {
       })),
 
       model: options.model,
-      usage: response.usage,
+      usage: response.usage ? {
+        prompt_tokens: response.usage.prompt_tokens ?? 0,
+        completion_tokens: response.usage.completion_tokens ?? 0,
+        total_tokens: response.usage.total_tokens,
+        prompt_tokens_details: {
+          cached_tokens: response.usage.prompt_tokens_details?.cached_tokens ?? 0,
+        },
+      } : undefined,
       usd_cost: usdCost,
     };
   }
@@ -254,7 +291,7 @@ export class GenericOpenAiClient implements GenericClient {
       // Don't limit max_output_tokens for Responses API - codex truncates tool call arguments when limited
       ...(OpenAiReasoningModels.includes(options.model) && {
         max_output_tokens: Math.max(options.max_tokens || 0, 16000),
-        reasoning: { effort: this.reasoningEffort(options.messages) },
+        reasoning: { effort: this.resolveReasoningEffortForModel(options) },
       }),
       ...(tools?.length && {
         tools,
@@ -270,6 +307,10 @@ export class GenericOpenAiClient implements GenericClient {
           completion_tokens: response.usage.output_tokens,
           total_tokens:
             response.usage.input_tokens + response.usage.output_tokens,
+          prompt_tokens_details: {
+            cached_tokens:
+              response.usage.input_tokens_details?.cached_tokens ?? 0,
+          },
         }
       : undefined;
 
@@ -349,14 +390,14 @@ export class GenericOpenAiClient implements GenericClient {
       ("prompt_tokens_details" in usage &&
         usage.prompt_tokens_details?.cached_tokens) ||
       0;
-    const cachedInputCost = (cachedInputTokens * pricing.cached_input) / 1e6;
+    const cachedInputCost = (cachedInputTokens * (pricing.cached_input ?? 0)) / 1e6;
 
     const inputTokens = usage.prompt_tokens;
-    const inputCost = ((inputTokens - cachedInputCost) * pricing.input) / 1e6;
+    const inputCost = ((inputTokens - cachedInputTokens) * (pricing.input ?? 0)) / 1e6;
 
     const outputTokens =
       ("completion_tokens" in usage && usage?.completion_tokens) || 0;
-    const outputCost = (outputTokens * pricing.output) / 1e6;
+    const outputCost = (outputTokens * (pricing.output ?? 0)) / 1e6;
 
     const total = cachedInputCost + inputCost + outputCost;
     return total;
@@ -365,8 +406,8 @@ export class GenericOpenAiClient implements GenericClient {
   async getModels(modality?: ModelModality): Promise<{ id: string }[]> {
     if (modality) {
       const map: Partial<Record<ModelModality, string[]>> = {
-        completion: Object.values(Models.openai),
-        embedding: OpenAiEmbeddingModels,
+        completion: [...new Set([...OpenAiChatModels, ...OpenAiResponsesOnlyModels])],
+        embedding: OpenAiEmbeddingModelsList,
         image: OpenAiImageModels,
         audio: [...OpenAiTTSModels, ...OpenAiTranscriptionModels],
         transcription: OpenAiTranscriptionModels,
@@ -406,7 +447,7 @@ export class GenericOpenAiClient implements GenericClient {
     }
 
     const response = await this.client.audio.transcriptions.create({
-      file: file,
+      file,
       model: options.model || "whisper-1",
       language: options.language,
       prompt: options.prompt,

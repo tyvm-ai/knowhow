@@ -1,11 +1,19 @@
 import { TestResult } from './evaluators/types';
 
+export interface TokenUsage {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalCacheReadTokens: number;
+  totalCacheWriteTokens: number;
+}
+
 export interface BenchmarkConfig {
   language: string;
   maxExercises: number;
   model: string;
   provider: string;
   agent?: string; // Agent type to use (default: 'Patcher')
+  lazyTools?: boolean; // Use LazyToolsService instead of ToolsService
   limits: BenchmarkLimits;
   outputFile: string;
 }
@@ -24,6 +32,7 @@ export interface ExerciseResult {
   timeElapsed: number; // in seconds
   cost: number; // in dollars
   startTime: Date;
+  tokenUsage?: TokenUsage;
   endTime: Date;
   errorMessage?: string;
   finalOutput?: string;
@@ -32,6 +41,7 @@ export interface ExerciseResult {
 export interface BenchmarkResults {
   config: BenchmarkConfig;
   exercises: ExerciseResult[];
+  commitHash?: string;
   summary: {
     totalExercises: number;
     testableExercises: number; // Exercises that had evaluatable tests
@@ -49,6 +59,11 @@ export interface BenchmarkResults {
     averageTurns: number;
     averageTime: number;
     successRate: number;
+    totalInputTokens: number;
+    totalOutputTokens: number;
+    totalCacheReadTokens: number;
+    totalCacheWriteTokens: number;
+    cacheHitRate: number; // cacheReadTokens / (inputTokens + cacheReadTokens)
   };
   startTime: Date;
   endTime: Date;

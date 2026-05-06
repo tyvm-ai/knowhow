@@ -18,13 +18,17 @@ export interface FsSyncOptions {
  * Creates files in .knowhow/processes/agents/{taskId}/ for status and input
  */
 export class AgentSyncFs {
+  /** Shared cleanup interval across all instances to avoid duplicate cleanup runs */
+  private static sharedCleanupInterval: NodeJS.Timeout | null = null;
+  private static sharedBasePath: string = ".knowhow/processes/agents";
+  private static cleanupStarted: boolean = false;
+
   private taskId: string | undefined;
   private basePath: string = ".knowhow/processes/agents";
   private taskPath: string | undefined;
   private eventHandlersSetup: boolean = false;
   private watcher: ReturnType<typeof watch> | null = null;
   private lastInputContent: string = "";
-  private cleanupInterval: NodeJS.Timeout | null = null;
   private finalizationPromise: Promise<void> | null = null;
   private agent: BaseAgent | undefined;
   private threadUpdateHandler: ((...args: any[]) => void) | undefined;
@@ -38,7 +42,7 @@ export class AgentSyncFs {
 
   constructor() {
     // Start cleanup process when created
-    this.startCleanupProcess();
+    AgentSyncFs.startSharedCleanupProcess();
   }
 
   /**
@@ -117,7 +121,11 @@ export class AgentSyncFs {
   /**
    * Update metadata file with current agent state
    */
-  private async updateMetadata(agent: BaseAgent, inProgress: boolean, result?: string): Promise<void> {
+  private async updateMetadata(
+    agent: BaseAgent,
+    inProgress: boolean,
+    result?: string
+  ): Promise<void> {
     if (!this.taskPath) return;
 
     try {
@@ -133,7 +141,8 @@ export class AgentSyncFs {
 
       metadata.threads = agent.getThreads();
       metadata.totalCostUsd = agent.getTotalCostUsd();
-    metadata.agentName = agent.name;
+      metadata.tokenUsage = agent.getTokenUsage();
+      metadata.agentName = agent.name;
       metadata.inProgress = inProgress;
       metadata.lastUpdate = new Date().toISOString();
 
@@ -143,7 +152,11 @@ export class AgentSyncFs {
         await this.writeStatus("completed");
       }
 
-      await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
+      await fs.writeFile(
+        metadataPath,
+        JSON.stringify(metadata, null, 2),
+        "utf8"
+      );
     } catch (error) {
       console.error(`❌ Failed to update metadata:`, error);
     }
@@ -202,7 +215,9 @@ export class AgentSyncFs {
       // Check for new input/messages
       const input = await this.readInput();
       if (input && input !== this.lastInputContent && input.trim() !== "") {
-        console.log(`📬 New message received via filesystem for task ${this.taskId}`);
+        console.log(
+          `📬 New message received via filesystem for task ${this.taskId}`
+        );
         this.lastInputContent = input;
 
         agent.addPendingUserMessage({
@@ -230,7 +245,7 @@ export class AgentSyncFs {
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
 
       const status = await this.readStatus();
-      
+
       if (status === "killed") {
         console.log(`🛑 Agent task ${this.taskId} killed while paused`);
         await agent.kill();
@@ -310,7 +325,10 @@ export class AgentSyncFs {
         console.error(`❌ Error during threadUpdate sync:`, error);
       }
     };
-    agent.agentEvents.on(agent.eventTypes.threadUpdate, this.threadUpdateHandler);
+    agent.agentEvents.on(
+      agent.eventTypes.threadUpdate,
+      this.threadUpdateHandler
+    );
 
     // Listen to completion event to finalize task (store reference for cleanup)
     this.doneHandler = (result: string) => {
@@ -319,7 +337,9 @@ export class AgentSyncFs {
         return;
       }
 
-      console.log(`🎯 [AgentSyncFs] Done event received for task: ${this.taskId}`);
+      console.log(
+        `🎯 [AgentSyncFs] Done event received for task: ${this.taskId}`
+      );
 
       // Store finalization promise so callers can await it (same pattern as AgentSyncKnowhowWeb)
       this.finalizationPromise = (async () => {
@@ -328,7 +348,9 @@ export class AgentSyncFs {
           // This prevents the race where a pending "inProgress: true" metadata write
           // overwrites the finalization write.
           if (this.pendingThreadUpdatePromise) {
-            console.log(`⏳ [AgentSyncFs] Awaiting pending thread update before finalizing...`);
+            console.log(
+              `⏳ [AgentSyncFs] Awaiting pending thread update before finalizing...`
+            );
             await this.pendingThreadUpdatePromise.catch(() => {
               // Ignore errors in pending update — we still want to finalize
             });
@@ -372,10 +394,10 @@ export class AgentSyncFs {
   /**
    * Clean up old task directories (older than 3 days)
    */
-  private async cleanupOldTasks(): Promise<void> {
+  private static async cleanupOldTasks(): Promise<void> {
     try {
-      const agentsPath = this.basePath;
-      
+      const agentsPath = AgentSyncFs.sharedBasePath;
+
       // Check if directory exists
       try {
         await fs.access(agentsPath);
@@ -392,7 +414,7 @@ export class AgentSyncFs {
         if (!entry.isDirectory()) continue;
 
         const taskPath = path.join(agentsPath, entry.name);
-        
+
         try {
           const stats = await fs.stat(taskPath);
           const age = now - stats.mtimeMs;
@@ -414,23 +436,27 @@ export class AgentSyncFs {
   /**
    * Start periodic cleanup process
    */
-  private startCleanupProcess(): void {
-    // Run cleanup every hour
-    this.cleanupInterval = setInterval(() => {
-      this.cleanupOldTasks();
+  private static startSharedCleanupProcess(): void {
+    if (AgentSyncFs.cleanupStarted) return;
+    AgentSyncFs.cleanupStarted = true;
+
+    // Run cleanup every hour (shared across all instances)
+    AgentSyncFs.sharedCleanupInterval = setInterval(() => {
+      AgentSyncFs.cleanupOldTasks();
     }, 60 * 60 * 1000);
 
     // Also run once on startup
-    this.cleanupOldTasks();
+    AgentSyncFs.cleanupOldTasks();
   }
 
   /**
    * Stop cleanup process
    */
   stopCleanup(): void {
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-      this.cleanupInterval = null;
+    if (AgentSyncFs.sharedCleanupInterval) {
+      clearInterval(AgentSyncFs.sharedCleanupInterval);
+      AgentSyncFs.sharedCleanupInterval = null;
+      AgentSyncFs.cleanupStarted = false;
     }
   }
 
@@ -441,11 +467,17 @@ export class AgentSyncFs {
     // Remove old event listeners from the agent before resetting
     if (this.agent) {
       if (this.threadUpdateHandler) {
-        this.agent.agentEvents.removeListener(this.agent.eventTypes.threadUpdate, this.threadUpdateHandler);
+        this.agent.agentEvents.removeListener(
+          this.agent.eventTypes.threadUpdate,
+          this.threadUpdateHandler
+        );
         this.threadUpdateHandler = undefined;
       }
       if (this.doneHandler) {
-        this.agent.agentEvents.removeListener(this.agent.eventTypes.done, this.doneHandler);
+        this.agent.agentEvents.removeListener(
+          this.agent.eventTypes.done,
+          this.doneHandler
+        );
         this.doneHandler = undefined;
       }
       this.agent = undefined;

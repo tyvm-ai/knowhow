@@ -304,15 +304,20 @@ export class SessionsModule extends BaseChatModule {
   async handleResumeCommand(args: string[]): Promise<void> {
     const sessionManager = this.agentModule.getSessionManager();
 
-    if (args.length === 0) {
+    if (args.length === 0 || args[0] === "--all") {
       // Interactive: show saved sessions for selection
-      const savedSessions = sessionManager.listAvailableSessions();
+      const showAll = args[0] === "--all";
+      const allSessions = sessionManager.listAvailableSessions();
+      const savedSessions = showAll ? allSessions : allSessions.slice(0, 10);
       if (savedSessions.length === 0) {
         console.log("No saved sessions found to resume.");
         return;
       }
 
       this.printSavedSessionsTable(savedSessions);
+      if (!showAll && allSessions.length > 10) {
+        console.log(`   ... and ${allSessions.length - 10} more. Use /resume --all to see all sessions.`);
+      }
 
       const allIds = savedSessions.map((s) => s.sessionId);
       const selectedId = await this.selectByNumber(

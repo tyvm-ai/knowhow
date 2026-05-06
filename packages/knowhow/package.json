@@ -1,6 +1,6 @@
 {
   "name": "@tyvm/knowhow",
-  "version": "0.0.102",
+  "version": "0.0.108-dev.126b29e",
   "description": "ai cli with plugins and agents",
   "main": "ts_build/src/index.js",
   "bin": {
@@ -20,7 +20,14 @@
     "check:isolated": "bash scripts/check-isolated-deps.sh",
     "lint": "tslint ./src/**/*.ts",
     "lint:deps": "depcheck --config=.depcheckrc",
-    "lint:all": "npm run lint && npm run lint:deps"
+    "lint:all": "npm run lint && npm run lint:deps",
+    "check:model-pricing": "ts-node scripts/check-model-pricing.ts",
+    "version:nightly": "bash scripts/publish.sh version:nightly",
+    "version:dev": "bash scripts/publish.sh version:dev",
+    "publish:nightly": "bash scripts/publish.sh nightly",
+    "publish:dev": "bash scripts/publish.sh dev",
+    "publish:latest": "bash scripts/publish.sh stable",
+    "publish:stable": "bash scripts/publish.sh stable"
   },
   "keywords": [],
   "author": "Micah Riggan",

@@ -26,7 +26,7 @@ interface RetrieveTokenResponse {
 export class BrowserLoginService {
   private baseUrl: string;
 
-  constructor(baseUrl: string = KNOWHOW_API_URL) {
+  constructor(baseUrl: string = KNOWHOW_API_URL, private orgId?: string) {
     if (!baseUrl) {
       throw new BrowserLoginError(
         "KNOWHOW_API_URL environment variable not set"
@@ -52,11 +52,16 @@ export class BrowserLoginService {
       spinner.start("Opening browser for authentication");
 
       // Step 2: Open browser
-      await openBrowser(sessionData.browserUrl);
+      let browserUrl = sessionData.browserUrl;
+      // Append orgId as query string so the frontend can pre-select the correct organization
+      if (this.orgId) {
+        const separator = browserUrl.includes("?") ? "&" : "?";
+        browserUrl = `${browserUrl}${separator}orgId=${encodeURIComponent(this.orgId)}`;
+      }
+      await openBrowser(browserUrl);
       console.log(
-        `\nIf the browser didn't open automatically, please visit: ${sessionData.browserUrl}\n`
+        `\nIf the browser didn't open automatically, please visit: ${browserUrl}\n`
       );
-
       spinner.stop();
       spinner.start("Waiting for browser authentication");
 

@@ -2,8 +2,8 @@
   "name": "@tyvm/knowhow-module-s3",
   "version": "0.0.1",
   "description": "S3 embeddings resolver module for @tyvm/knowhow",
-  "main": "ts_build/src/index.js",
-  "types": "ts_build/src/index.d.ts",
+  "main": "ts_build/index.js",
+  "types": "ts_build/index.d.ts",
   "scripts": {
     "compile": "tsc",
     "prepublishOnly": "npm run compile"

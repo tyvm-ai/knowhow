@@ -138,6 +138,23 @@ export async function upload() {
       if (!source.remoteId) {
         throw new Error("remoteId is required for knowhow uploads");
       }
+      // Warn if the local embeddingModel differs from the one stored on the backend
+      try {
+        const remoteEmbedding = await knowhowApiClient.getOrgEmbedding(source.remoteId);
+        const localModel = config.embeddingModel || EmbeddingModels.openai.EmbeddingAda2;
+        const remoteModel = remoteEmbedding?.modelName;
+        if (remoteModel && remoteModel !== localModel) {
+          console.warn(
+            `⚠️  WARNING: Embedding model mismatch for "${remoteEmbedding.name}" (remoteId: ${source.remoteId}).\n` +
+            `   Local config.embeddingModel:  ${localModel}\n` +
+            `   Backend embedding modelName:  ${remoteModel}\n` +
+            `   Vectors generated with different models are not comparable — search results will be incorrect.\n` +
+            `   Update your config.embeddingModel to "${remoteModel}" or update the backend embedding to "${localModel}".`
+          );
+        }
+      } catch (e) {
+        // Non-fatal — don't block upload if metadata fetch fails
+      }
       const url = await knowhowApiClient.getPresignedUploadUrl(source);
       console.log("Uploading to", url);
       await AwsS3.uploadToPresignedUrl(url, source.output);
