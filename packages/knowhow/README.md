@@ -362,3 +362,48 @@ For command usage and behavior details, see:
 - Website: https://knowhow.tyvm.ai
 - Twitter/X: https://x.com/micahriggan
 - npm: https://www.npmjs.com/package/@tyvm/knowhow
+
+---
+
+## 🚧 Dev & Nightly Releases
+
+Knowhow publishes unstable/preview builds under separate npm dist-tags so that regular users on `latest` are never affected.
+
+### Installing a pre-release build
+
+```bash
+# Latest nightly (date-stamped)
+npm install -g @tyvm/knowhow@nightly
+
+# Latest dev snapshot (git-hash-stamped)
+npm install -g @tyvm/knowhow@dev
+
+# Pin a specific pre-release version
+npm install -g @tyvm/knowhow@0.0.108-nightly.20250428
+```
+
+### How dist-tags work
+
+| Tag | Installed by default? | Audience |
+|-----|-----------------------|---------|
+| `latest` | ✅ Yes (`npm install @tyvm/knowhow`) | All stable users |
+| `nightly` | ❌ No (must opt-in) | Testers / early adopters |
+| `dev` | ❌ No (must opt-in) | Developers / contributors |
+
+Publishing a `nightly` or `dev` release **never moves the `latest` tag**, so existing users won't receive unstable code through normal updates.
+
+### Publishing scripts (for maintainers)
+
+```bash
+# Publish a date-stamped nightly (e.g. 0.0.108-nightly.20250428)
+npm run publish:nightly
+
+# Publish a git-hash-stamped dev snapshot (e.g. 0.0.108-dev.abc1234)
+npm run publish:dev
+
+# Publish a stable release to `latest`
+npm version patch   # or minor / major
+npm run publish:stable
+```
+
+> **Note:** `publish:nightly` and `publish:dev` automatically version-bump the `package.json` with a pre-release suffix before publishing and do **not** create a git tag, keeping your git history clean.

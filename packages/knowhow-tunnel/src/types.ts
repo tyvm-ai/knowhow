@@ -13,6 +13,12 @@ export enum TunnelMessageType {
   WS_UPGRADE = "TUNNEL_WS_UPGRADE",
   WS_DATA = "TUNNEL_WS_DATA",
   WS_CLOSE = "TUNNEL_WS_CLOSE",
+  // PTY addon message types
+  PTY_OPEN = "TUNNEL_PTY_OPEN",
+  PTY_DATA = "TUNNEL_PTY_DATA",
+  PTY_RESIZE = "TUNNEL_PTY_RESIZE",
+  PTY_CLOSE = "TUNNEL_PTY_CLOSE",
+  PTY_EXIT = "TUNNEL_PTY_EXIT",
 }
 
 /**
@@ -169,3 +175,93 @@ export interface StreamState {
   deadlineTimer?: NodeJS.Timeout;
   idleTimer?: NodeJS.Timeout;
 }
+
+// ─── PTY Message Types ────────────────────────────────────────────────────────
+
+/**
+ * Backend → Worker: open a PTY session
+ */
+export interface TunnelPtyOpen {
+  type: TunnelMessageType.PTY_OPEN;
+  streamId: string;
+  command: string;
+  args?: string[];
+  cols: number;
+  rows: number;
+  env?: Record<string, string>;
+}
+
+/**
+ * Bidirectional: PTY output (worker → backend) or keyboard input (backend → worker)
+ */
+export interface TunnelPtyData {
+  type: TunnelMessageType.PTY_DATA;
+  streamId: string;
+  data: string; // base64 encoded
+}
+
+/**
+ * Backend → Worker: resize the PTY window
+ */
+export interface TunnelPtyResize {
+  type: TunnelMessageType.PTY_RESIZE;
+  streamId: string;
+  cols: number;
+  rows: number;
+}
+
+/**
+ * Backend → Worker: close the PTY session
+ */
+export interface TunnelPtyClose {
+  type: TunnelMessageType.PTY_CLOSE;
+  streamId: string;
+}
+
+/**
+ * Worker → Backend: PTY process exited
+ */
+export interface TunnelPtyExit {
+  type: TunnelMessageType.PTY_EXIT;
+  streamId: string;
+  exitCode: number;
+}
+
+export type TunnelPtyMessage =
+  | TunnelPtyOpen
+  | TunnelPtyData
+  | TunnelPtyResize
+  | TunnelPtyClose
+  | TunnelPtyExit;
+
+// ─── Addon Interface ──────────────────────────────────────────────────────────
+
+/**
+ * Context passed to addon message handlers
+ */
+export interface TunnelAddonContext {
+  /** Send a message back over the tunnel WebSocket */
+  send(message: TunnelMessage | TunnelPtyMessage): void;
+}
+
+/**
+ * TunnelAddon — pluggable handler for tunnel messages.
+ *
+ * Addons register the message types they handle via `handles`.
+ * Each entry can be an exact type string ("TUNNEL_REQUEST") or
+ * a prefix ending with "_" ("TUNNEL_PTY_") that matches all PTY types.
+ */
+export interface TunnelAddon {
+  name: string;
+  /**
+   * List of exact type strings OR prefix strings ending with "_".
+   * e.g. ["TUNNEL_PTY_"] matches PTY_OPEN, PTY_DATA, PTY_RESIZE, etc.
+   */
+  handles: string[];
+  onConnect?(ctx: TunnelAddonContext): void;
+  onMessage(message: TunnelMessage | TunnelPtyMessage, ctx: TunnelAddonContext): void | Promise<void>;
+  onDisconnect?(): void;
+}
+
+// Extend the union type to include PTY messages
+export type AnyTunnelMessage = TunnelMessage | TunnelPtyMessage;

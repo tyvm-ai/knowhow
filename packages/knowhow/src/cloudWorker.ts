@@ -4,8 +4,13 @@ import { KnowhowSimpleClient, KNOWHOW_API_URL } from "./services/KnowhowClient";
 import { loadJwt } from "./login";
 import { getConfig, updateConfig, getLanguageConfig } from "./config";
 import { services } from "./services";
-import { Language, Config } from "./types";
+import { Language, Config, McpConfig } from "./types";
 import { S3Service } from "./services/S3";
+
+export interface CloudWorkerPullOptions {
+  id: string;
+  apiUrl?: string;
+}
 
 export interface CloudWorkerOptions {
   create?: boolean;
@@ -329,4 +334,73 @@ export async function cloudWorker(options: CloudWorkerOptions) {
   } else {
     console.log(`\n✅ Cloud worker sync complete!`);
   }
+}
+
+/**
+ * Pull the latest workerConfigJson from the cloud worker API and update the
+ * local knowhow.json config to match.
+ *
+ * This is the "pull" half of the config sync cycle.  After running this,
+ * you can reload the worker's MCPs (in-process) via the reloadConfig
+ * WebSocket message or by calling `knowhow worker` again.
+ *
+ * Merged fields from workerConfigJson:
+ *   - mcps        → overwrites config.mcps
+ *   - modules     → overwrites config.modules  (optional, only if present)
+ *   - plugins     → overwrites config.plugins  (optional, only if present)
+ *   - agents      → overwrites config.agents   (optional, only if present)
+ */
+export async function pullCloudWorkerConfig(options: CloudWorkerPullOptions) {
+  const { id, apiUrl = KNOWHOW_API_URL } = options;
+
+  // Load JWT
+  const jwt = await loadJwt();
+  if (!jwt) {
+    console.error("❌ No JWT token found. Please run 'knowhow login' first.");
+    process.exit(1);
+  }
+
+  const client = new KnowhowSimpleClient(apiUrl, jwt);
+
+  console.log(`🔄 Pulling config for cloud worker ${id}...`);
+
+  const resp = await client.getCloudWorker(id);
+  const remoteWorker = resp.data;
+
+  if (!remoteWorker) {
+    console.error(`❌ Cloud worker ${id} not found.`);
+    process.exit(1);
+  }
+
+  const remoteConfig = (remoteWorker.workerConfigJson ?? {}) as {
+    mcps?: McpConfig[];
+    modules?: string[];
+    plugins?: Config["plugins"];
+    agents?: Config["agents"];
+  };
+
+  // Load current local config
+  const localConfig = await getConfig();
+
+  // Merge remote fields into local config
+  if (remoteConfig.mcps !== undefined) {
+    localConfig.mcps = remoteConfig.mcps;
+  }
+  if (remoteConfig.modules !== undefined) {
+    localConfig.modules = remoteConfig.modules;
+  }
+  if (remoteConfig.plugins !== undefined) {
+    localConfig.plugins = remoteConfig.plugins;
+  }
+  if (remoteConfig.agents !== undefined) {
+    localConfig.agents = remoteConfig.agents;
+  }
+
+  await updateConfig(localConfig);
+
+  const mcpCount = remoteConfig.mcps?.length ?? 0;
+  console.log(`✅ Config pulled! ${mcpCount} MCP(s) now configured locally.`);
+  console.log(`   Run 'knowhow worker' or trigger reloadConfig to apply changes.`);
+
+  return { mcps: remoteConfig.mcps, modules: remoteConfig.modules };
 }

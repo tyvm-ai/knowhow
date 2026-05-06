@@ -713,6 +713,7 @@ export abstract class BaseAgent implements IAgent {
         messages,
         tools: this.getEnabledTools(),
         tool_choice: "auto",
+        long_ttl_cache: this.runTime() > 300_000,
       });
 
       // If the agent was paused while the completion was in-flight, wait here

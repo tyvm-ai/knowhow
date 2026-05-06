@@ -6,7 +6,7 @@ import { loadJwt } from "./login";
 import { services } from "./services";
 import { PasskeySetupService } from "./workers/auth/PasskeySetup";
 import { WorkerPasskeyAuthService } from "./workers/auth/WorkerPasskeyAuth";
-import { makeUnlockTool, makeLockTool } from "./workers/tools";
+import { makeUnlockTool, makeLockTool, makeReloadConfigTool } from "./workers/tools";
 import { McpServerService } from "./services/Mcp";
 import * as allTools from "./agents/tools";
 import workerTools from "./workers/tools";
@@ -14,6 +14,7 @@ import { wait } from "./utils";
 import { getConfig, updateConfig } from "./config";
 import { KNOWHOW_API_URL } from "./services/KnowhowClient";
 import { registerWorkerPath } from "./workerRegistry";
+import { ModulesService } from "./services/modules";
 
 const API_URL = KNOWHOW_API_URL;
 
@@ -264,6 +265,22 @@ export async function worker(options?: {
     console.log("🔑 Auth tools registered: unlock, lock");
   }
 
+  // Register the reloadConfig tool so agents can hot-reload MCPs/config
+  // without restarting the worker process.
+  // Uses a closure over `toolsToUse` so the tool can update it in-place.
+  const { reloadConfig, reloadConfigDefinition } = makeReloadConfigTool(
+    Mcp,
+    Tools,
+    mcpServer,
+    (newTools) => {
+      toolsToUse = newTools;
+    }
+  );
+  Tools.addFunctions({ reloadConfig });
+  toolsToUse = [...toolsToUse, reloadConfigDefinition];
+
+  console.log("🔄 reloadConfig tool registered");
+
   mcpServer.createServer(clientName, clientVersion).withTools(toolsToUse);
 
   let connected = false;
@@ -403,6 +420,33 @@ export async function worker(options?: {
             console.log(`✅ Worker ID recorded: ${parsed.workerId}`);
           }
         }
+
+        // Hot-reload: re-read config, reconnect MCPs, and rebuild the tool list
+        // without restarting the worker process.
+        if (parsed?.type === "reloadConfig") {
+          console.log("🔄 Received reloadConfig — reloading MCPs, modules and tools...");
+          try {
+            // Re-read fresh config from disk
+            const freshConfig = await getConfig();
+
+            // Close all existing MCP connections
+            await Mcp.closeAll();
+
+            // Reconnect from fresh config and re-register tools
+            await Mcp.connectToConfigured(Tools);
+
+            // Rebuild the allowed tools list from fresh config
+            const allowedToolNames = freshConfig.worker?.allowedTools ?? Tools.getToolNames();
+            toolsToUse = Tools.getToolsByNames(allowedToolNames);
+
+            // Update the MCP server with new tool list
+            mcpServer.withTools(toolsToUse);
+
+            console.log(`✅ Config reloaded: ${toolsToUse.length} tools active`);
+          } catch (err) {
+            console.error("❌ Failed to reload config:", err);
+          }
+        }
       } catch {
         // Not our message — ignore parse errors
       }
@@ -462,6 +506,16 @@ export async function worker(options?: {
         tunnelHandler = createTunnelHandler(tunnelConnection!, tunnelConfig);
         console.log("🌐 Tunnel handler initialized");
         console.log(tunnelConfig);
+
+        // Let modules that need the tunnel handler register their addons now
+        const tunnelModulesService = new ModulesService();
+        const { Agents, Embeddings, Plugins, Clients, Tools, MediaProcessor } = services();
+        tunnelModulesService.loadModulesFromConfig({
+          Agents, Embeddings, Plugins, Clients, Tools, MediaProcessor,
+          Tunnel: tunnelHandler,
+        }).catch((err) => {
+          console.error("Failed to load tunnel modules:", err);
+        });
       });
 
       tunnelConnection.on("close", (code, reason) => {
@@ -708,6 +762,16 @@ export async function tunnel(options?: {
       tunnelHandler = createTunnelHandler(tunnelConnection, tunnelConfig);
       console.log("🌐 Tunnel handler initialized");
       console.log(tunnelConfig);
+
+      // Let modules that need the tunnel handler register their addons now
+      const tunnelModulesService2 = new ModulesService();
+      const { Agents: A2, Embeddings: E2, Plugins: P2, Clients: C2, Tools: T2, MediaProcessor: MP2 } = services();
+      tunnelModulesService2.loadModulesFromConfig({
+        Agents: A2, Embeddings: E2, Plugins: P2, Clients: C2, Tools: T2, MediaProcessor: MP2,
+        Tunnel: tunnelHandler,
+      }).catch((err) => {
+        console.error("Failed to load tunnel modules:", err);
+      });
     });
 
     tunnelConnection.on("close", (code, reason) => {

@@ -1,0 +1,30 @@
+{
+  "name": "@tyvm/knowhow-module-terminal",
+  "version": "0.0.1",
+  "description": "Terminal addon module for @tyvm/knowhow — portless PTY over the tunnel WebSocket",
+  "main": "ts_build/index.js",
+  "types": "ts_build/index.d.ts",
+  "scripts": {
+    "compile": "tsc",
+    "prepublishOnly": "npm run compile"
+  },
+  "keywords": [
+    "knowhow",
+    "terminal",
+    "pty",
+    "tunnel"
+  ],
+  "author": "Tyvm AI",
+  "license": "MIT",
+  "peerDependencies": {
+    "@tyvm/knowhow": "*"
+  },
+  "dependencies": {
+    "@tyvm/knowhow-tunnel": "*",
+    "node-pty": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.39",
+    "typescript": "^5.0.0"
+  }
+}

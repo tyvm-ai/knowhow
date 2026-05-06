@@ -20,9 +20,12 @@ export class EmbeddingPlugin extends PluginBase {
 
   constructor(context) {
     super(context);
-    
+
     // Subscribe to file:post-edit events
-    this.context.Events.on("file:post-edit", this.handleFilePostEdit.bind(this));
+    this.context.Events.on(
+      "file:post-edit",
+      this.handleFilePostEdit.bind(this)
+    );
   }
 
   async embed() {
@@ -68,10 +71,12 @@ export class EmbeddingPlugin extends PluginBase {
       this.log(`Reading entry ${entry.id}`);
     }
 
-    const contextLength = JSON.stringify(context).split(" ").length;
+    const ids = context.map((entry) => entry.id);
+
+    const contextLength = JSON.stringify(ids).split(" ").length;
     this.log(`Found ${context.length} entries. Loading ${contextLength} words`);
 
-    return `EMBEDDING PLUGIN: Our knowledgebase contains this information which can be used to answer the question:
-    ${JSON.stringify(context)}`;
+    return `EMBEDDING PLUGIN: Our knowledgebase indicates these embedding entries may be related to the question:
+    ${JSON.stringify(ids)}`;
   }
 }

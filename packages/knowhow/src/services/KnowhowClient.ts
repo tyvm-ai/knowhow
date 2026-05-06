@@ -171,11 +171,9 @@ export class KnowhowSimpleClient {
       try {
         this.jwtValidated = true;
         const response = await this.me();
-
         const user = response.data.user;
         const orgs = user.orgs;
         const orgId = response.data.orgId;
-
         const currentOrg = orgs.find((org) => {
           return org.organizationId === orgId;
         });
@@ -225,6 +223,17 @@ export class KnowhowSimpleClient {
 
     const presignedUrl = presignedUrlResp.data.downloadUrl;
     return presignedUrl;
+  }
+
+  async getOrgEmbedding(id: string) {
+    await this.checkJwt();
+    const resp = await http.get(
+      `${this.baseUrl}/api/org-embeddings/${id}`,
+      {
+        headers: this.headers,
+      }
+    );
+    return resp.data as { id: string; modelName: string; name: string; [key: string]: unknown };
   }
 
   async updateEmbeddingMetadata(
@@ -714,6 +723,17 @@ export class KnowhowSimpleClient {
     return http.post<{ id: string; name: string; status: string; workerConfigJson?: Record<string, unknown> }>(
       `${this.baseUrl}/api/cloud-workers`,
       data,
+      { headers: this.headers }
+    );
+  }
+
+  /**
+   * Get a single cloud worker by ID
+   */
+  async getCloudWorker(id: string) {
+    await this.checkJwt();
+    return http.get<{ id: string; name: string; status: string; workerConfigJson?: Record<string, unknown> }>(
+      `${this.baseUrl}/api/cloud-workers/${id}`,
       { headers: this.headers }
     );
   }

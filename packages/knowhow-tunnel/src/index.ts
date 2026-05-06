@@ -5,6 +5,7 @@
 
 export { TunnelHandler, createTunnelHandler } from "./handler";
 export { TunnelProxy } from "./proxy";
+export { TunnelPortForwardingAddon } from "./addon";
 export {
   TunnelConfig,
   TunnelMessage,
@@ -19,6 +20,17 @@ export {
   TunnelWsClose,
   UrlRewriterCallback,
   StreamState,
+  // PTY types
+  TunnelPtyOpen,
+  TunnelPtyData,
+  TunnelPtyResize,
+  TunnelPtyClose,
+  TunnelPtyExit,
+  TunnelPtyMessage,
+  AnyTunnelMessage,
+  // Addon interface
+  TunnelAddon,
+  TunnelAddonContext,
 } from "./types";
 export {
   parseTunnelMessage,

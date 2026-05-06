@@ -530,12 +530,17 @@ async function main() {
     .description("Create or sync a cloud worker with your local knowhow config")
     .option("--create", "Create a new cloud worker with synced config and files")
     .option("--push <uid>", "Push/sync local config and files to an existing cloud worker")
+    .option("--pull <id>", "Pull the latest workerConfigJson from a cloud worker and update local config")
     .option("--name <name>", "Name for the cloud worker (used with --create)")
     .option("--dry-run", "Print what would be synced without doing it")
     .action(async (options) => {
       try {
-        const { cloudWorker } = await import("./cloudWorker");
-        await cloudWorker(options);
+        const { cloudWorker, pullCloudWorkerConfig } = await import("./cloudWorker");
+        if (options.pull) {
+          await pullCloudWorkerConfig({ id: options.pull });
+        } else {
+          await cloudWorker(options);
+        }
       } catch (error) {
         console.error("Error running cloudworker:", error);
         process.exit(1);

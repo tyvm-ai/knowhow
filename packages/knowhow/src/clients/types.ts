@@ -61,6 +61,13 @@ export interface CompletionOptions {
    *  Maps to: OpenAI reasoning_effort, xAI reasoning.effort, Gemini thinkingLevel/thinkingBudget, Anthropic thinking budget.
    *  "low" = minimal thinking, "medium" = balanced, "high" = maximum reasoning */
   reasoning_effort?: "low" | "medium" | "high";
+  /**
+   * When true, hints to the client that this task is long-running and it should
+   * use a long-TTL cache where available.
+   * - Anthropic: enables the `extended-cache-ttl-2025-02-19` beta and sets
+   *   `cache_control.ttl` to 3600 (1 hour) instead of the default 5-minute ephemeral cache.
+   */
+  long_ttl_cache?: boolean;
 }
 
 /**

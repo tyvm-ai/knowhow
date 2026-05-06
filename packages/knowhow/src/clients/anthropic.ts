@@ -40,11 +40,11 @@ export class GenericAnthropicClient implements GenericClient {
     });
   }
 
-  handleToolCaching(tools: Anthropic.Tool[]) {
+  handleToolCaching(tools: Anthropic.Tool[], longTtl = false) {
     const lastTool = tools[tools.length - 1];
 
     if (lastTool) {
-      lastTool.cache_control = { type: "ephemeral" };
+      lastTool.cache_control = longTtl ? { type: "ephemeral", ttl: "1h" } as any : { type: "ephemeral" };
     }
   }
 
@@ -94,7 +94,7 @@ export class GenericAnthropicClient implements GenericClient {
     return cleaned;
   }
 
-  transformTools(tools?: Tool[]): Anthropic.Tool[] {
+  transformTools(tools?: Tool[], longTtl = false): Anthropic.Tool[] {
     if (!tools) {
       return [];
     }
@@ -104,7 +104,7 @@ export class GenericAnthropicClient implements GenericClient {
       input_schema: this.cleanSchemaForAnthropic(tool.function.parameters) as any,
     }));
 
-    this.handleToolCaching(transformed);
+    this.handleToolCaching(transformed, longTtl);
 
     return transformed;
   }
@@ -153,16 +153,16 @@ export class GenericAnthropicClient implements GenericClient {
     return messages;
   }
 
-  cacheLastContent(message: MessageParam) {
+  cacheLastContent(message: MessageParam, longTtl = false) {
     if (Array.isArray(message.content)) {
       const lastMessage = message.content[message.content.length - 1];
       if (
         lastMessage.type !== "thinking" &&
         lastMessage.type !== "redacted_thinking"
       ) {
-        lastMessage.cache_control = {
-          type: "ephemeral",
-        };
+        lastMessage.cache_control = longTtl
+          ? ({ type: "ephemeral", ttl: "1h" } as any)
+          : { type: "ephemeral" };
       }
     }
   }
@@ -179,7 +179,7 @@ export class GenericAnthropicClient implements GenericClient {
     }
   }
 
-  handleMessageCaching(groupedMessages: MessageParam[]) {
+  handleMessageCaching(groupedMessages: MessageParam[], longTtl = false) {
     this.handleClearingCache(groupedMessages);
 
     // find the last two messages and mark them as ephemeral
@@ -189,7 +189,7 @@ export class GenericAnthropicClient implements GenericClient {
 
     for (const m of lastTwoUserMessages) {
       if (Array.isArray(m.content)) {
-        this.cacheLastContent(m);
+        this.cacheLastContent(m, longTtl);
       }
     }
   }
@@ -203,7 +203,7 @@ export class GenericAnthropicClient implements GenericClient {
     }
   }
 
-  transformMessages(messages: Message[]): MessageParam[] {
+  transformMessages(messages: Message[], longTtl = false): MessageParam[] {
     const toolCalls = messages.flatMap((msg) => msg.tool_calls || []);
     const claudeMessages: MessageParam[] = messages
       .filter((msg) => msg.role !== "system")
@@ -302,7 +302,7 @@ export class GenericAnthropicClient implements GenericClient {
 
     const groupedMessages = this.combineMessages(claudeMessages);
 
-    this.handleMessageCaching(groupedMessages);
+    this.handleMessageCaching(groupedMessages, longTtl);
 
     return groupedMessages;
   }
@@ -349,14 +349,15 @@ export class GenericAnthropicClient implements GenericClient {
   async createChatCompletion(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
+    const longTtl = !!options.long_ttl_cache;
     const systemMessage = options.messages
       .filter((msg) => msg.role === "system")
       .map((msg) => msg.content || "")
       .join("\n");
 
-    const claudeMessages = this.transformMessages(options.messages);
+    const claudeMessages = this.transformMessages(options.messages, longTtl);
 
-    const tools = this.transformTools(options.tools);
+    const tools = this.transformTools(options.tools, longTtl);
     try {
       const response = await this.client.messages.create({
         model: options.model,
@@ -365,7 +366,7 @@ export class GenericAnthropicClient implements GenericClient {
           ? [
               {
                 text: systemMessage,
-                cache_control: { type: "ephemeral" },
+                cache_control: longTtl ? ({ type: "ephemeral", ttl: "1h" } as any) : { type: "ephemeral" },
                 type: "text",
               },
             ]
@@ -424,7 +425,7 @@ export class GenericAnthropicClient implements GenericClient {
         usd_cost: this.calculateCost(options.model, response.usage),
       };
     } catch (err) {
-      if ("headers" in err && err.headers["x-should-retry"] === "true") {
+      if ("headers" in err && err.headers?.["x-should-retry"] === "true") {
         console.warn("Retrying failed request", err);
         await wait(2500);
         return this.createChatCompletion(options);

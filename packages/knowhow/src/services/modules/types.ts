@@ -9,6 +9,7 @@ import { PluginService } from "../../plugins/plugins";
 import { AIClient } from "../../clients";
 import { ToolsService } from "../Tools";
 import { MediaProcessorService } from "../MediaProcessorService";
+import { TunnelHandler } from "@tyvm/knowhow-tunnel";
 
 /*
  *
@@ -53,6 +54,7 @@ export interface ModuleContext {
   Clients: AIClient;
   Tools: ToolsService;
   MediaProcessor?: MediaProcessorService;
+  Tunnel?: TunnelHandler;
 }
 
 export interface KnowhowModule {
