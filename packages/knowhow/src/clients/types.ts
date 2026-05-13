@@ -1,4 +1,10 @@
-export type ModelModality = "completion" | "embedding" | "image" | "audio" | "video" | "transcription";
+export type ModelModality =
+  | "completion"
+  | "embedding"
+  | "image"
+  | "audio"
+  | "video"
+  | "transcription";
 
 export type MessageContent =
   | { type: "text"; text: string }
@@ -8,7 +14,7 @@ export type MessageContent =
 
 export interface Message {
   role: "system" | "user" | "assistant" | "tool";
-  content?: string | MessageContent[];
+  content?: string | MessageContent[] | null;
 
   name?: string;
   tool_call_id?: string;
@@ -16,7 +22,7 @@ export interface Message {
 }
 
 export interface OutputMessage extends Message {
-  content: string;
+  content?: string | null;
 }
 
 export interface ToolProp {
@@ -301,7 +307,9 @@ export interface GenericClient {
    * When modality is provided, return only models for that modality (static list).
    * When omitted, return ALL models (backward compat — may do a live API call).
    */
-  getModels(modality?: ModelModality): Promise<{ id: string; modality?: ModelModality[] }[]>;
+  getModels(
+    modality?: ModelModality
+  ): Promise<{ id: string; modality?: ModelModality[] }[]>;
   /**
    * Returns the context window limit and compression threshold for a given model,
    * or undefined if the model is not known to this client.

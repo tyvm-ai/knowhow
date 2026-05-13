@@ -382,7 +382,7 @@ export class JsonCompressor {
             i + currentChunk.length - 1
           }]\nPreview: ${chunkString.substring(0, 100)}...\n[Use ${
             this.toolName
-          } tool with key "${key}" to retrieve this chunk]`;
+          } tool with key "${key}" to retrieve this chunk]\n[TIP: try jqToolResponse,grepToolResponse,tailToolResponse to filter/search/map without repeated ${this.toolName} calls - especially useful for JSON data]`;
           finalArray.unshift(stub); // Add stub to the start of our final result.
 
           currentChunk = [];
@@ -453,7 +453,7 @@ export class JsonCompressor {
           result
         ).join(", ")}\nPreview: ${objectAsString.substring(0, 200)}...\n[Use ${
           this.toolName
-        } tool with key "${key}" to retrieve full content]`;
+        } tool with key "${key}" to retrieve full content]\n[TIP: try jqToolResponse,grepToolResponse,tailToolResponse to filter/search/map without repeated ${this.toolName} calls - especially useful for JSON data]`;
       }
       return result;
     }
@@ -486,7 +486,7 @@ export class JsonCompressor {
           200
         )}...\n[Use ${
           this.toolName
-        } tool with key "${key}" to retrieve full content]`;
+        } tool with key "${key}" to retrieve full content]\n[TIP: try jqToolResponse,grepToolResponse,tailToolResponse to filter/search/map without repeated ${this.toolName} calls - especially useful for JSON data]`;
       }
       return obj;
     }

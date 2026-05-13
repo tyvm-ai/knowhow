@@ -317,6 +317,15 @@ export abstract class BaseAgent implements IAgent {
       if (trimmed.startsWith("✅") || /^[\d\.\-\*]/.test(trimmed)) return true;
     }
 
+    // Detect JSON-wrapped finalAnswer output, e.g. {"answer":"..."} or {"finalAnswer":"..."}
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === "object") {
+        if (typeof parsed.answer === "string") return true;
+        if (typeof parsed.finalAnswer === "string") return true;
+      }
+    } catch (_) {}
+
     return false;
   }
 
