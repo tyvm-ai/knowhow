@@ -52,7 +52,6 @@ export type Config = {
     modules?: string[];
   };
   modules: string[];
-  pluginPackages?: Record<string, string>;
   agents: Assistant[];
   mcps: McpConfig[];
   modelProviders: ModelProvider[];

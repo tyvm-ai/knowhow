@@ -37,7 +37,6 @@ function makeContext(overrides?: Partial<ModuleContext>): ModuleContext {
     } as any,
     Plugins: {
       registerPlugin: jest.fn(),
-      loadPluginsFromConfig: jest.fn().mockResolvedValue(undefined),
     } as any,
     Clients: {
       registerClient: jest.fn(),
@@ -169,30 +168,6 @@ describe("ModulesService.loadModulesFromConfig", () => {
 
     expect(context.Plugins.registerPlugin).toHaveBeenCalledWith("test-plugin", mockPluginInstance);
     spy.mockRestore();
-  });
-
-  it("should call loadPluginsFromConfig with both global and local configs", async () => {
-    const localConfig = {
-      modules: [],
-      pluginPackages: { asana: "@knowhow/plugin-asana" },
-    } as unknown as Config;
-    const globalConfig = {
-      modules: [],
-      pluginPackages: { linear: "@knowhow/plugin-linear" },
-    } as unknown as Config;
-
-    mockGetConfig.mockResolvedValue(localConfig);
-    mockGetGlobalConfig.mockResolvedValue(globalConfig);
-
-    const service = new ModulesService();
-    const context = makeContext();
-
-    await service.loadModulesFromConfig(context);
-
-    // pluginService.loadPluginsFromConfig should be called twice: once for local, once for global
-    expect(context.Plugins.loadPluginsFromConfig).toHaveBeenCalledTimes(2);
-    expect(context.Plugins.loadPluginsFromConfig).toHaveBeenCalledWith(localConfig);
-    expect(context.Plugins.loadPluginsFromConfig).toHaveBeenCalledWith(globalConfig);
   });
 
   it("should load modules from both global and local config paths", async () => {

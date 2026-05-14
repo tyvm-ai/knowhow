@@ -1,5 +1,4 @@
 import { Plugin, PluginContext } from "./types";
-import { Config } from "../types";
 import { VimPlugin } from "./vim";
 import { LinterPlugin } from "./LinterPlugin";
 import { LanguagePlugin } from "./language";
@@ -47,26 +46,6 @@ export class PluginService {
     const instance: Plugin = new PluginCtor(this); // assumes default export
     this.pluginMap.set(instance.meta.key, instance);
     return instance.meta.key;
-  }
-
-  /**
-   * Load plugins from config's pluginPackages map.
-   * Each entry maps a plugin key to an npm package name or file path.
-   * Errors are caught and logged as warnings without crashing.
-   */
-  async loadPluginsFromConfig(config: Config): Promise<void> {
-    const pluginPackages = config.pluginPackages || {};
-    for (const [key, spec] of Object.entries(pluginPackages)) {
-      try {
-        await this.loadPlugin(spec);
-      } catch (error) {
-        this.events?.log(
-          "PluginService",
-          `Failed to load plugin "${key}" from "${spec}": ${error instanceof Error ? error.message : error}`,
-          "warn"
-        );
-      }
-    }
   }
 
   /** Disable a plugin by its key; returns `true` if found. */

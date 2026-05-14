@@ -14,9 +14,10 @@ export class ModulesService {
     return { ...defaultContext, ...overrides };
   }
 
-  async loadModulesFromConfig(context?: ModuleContext) {
-    const config = await getConfig();
-
+  async loadModulesFrom(
+    config: { modules: string[] } & any,
+    context?: ModuleContext
+  ) {
     // If no context provided, fall back to global singletons
     if (!context) {
       context = { ...(await this.getDefaultContext()) };
@@ -29,11 +30,7 @@ export class ModulesService {
     const clients = context.Clients;
 
     // Load from global config (~/.knowhow/knowhow.json) first, then local config
-    const globalConfig = await getGlobalConfig();
-    const allModulePaths = [
-      ...(globalConfig.modules || []),
-      ...(config.modules || []),
-    ];
+    const allModulePaths = config.modules;
 
     for (const modulePath of allModulePaths) {
       // Resolve relative paths relative to process.cwd() so that paths like
@@ -76,11 +73,20 @@ export class ModulesService {
         clients.registerModels(client.provider, client.models);
       }
     }
+  }
 
-    // Also load plugins directly from config's pluginPackages map
-    if (pluginService) {
-      await pluginService.loadPluginsFromConfig(config);
-      await pluginService.loadPluginsFromConfig(globalConfig);
-    }
+  async loadModulesFromConfig(context?: ModuleContext) {
+    const config = await getConfig();
+
+    const globalConfig = await getGlobalConfig();
+    const allModulePaths = [
+      ...(globalConfig.modules || []),
+      ...(config.modules || []),
+    ];
+
+    return this.loadModulesFrom(
+      { ...config, modules: allModulePaths },
+      context
+    );
   }
 }
