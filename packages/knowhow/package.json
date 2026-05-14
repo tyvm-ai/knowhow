@@ -1,6 +1,6 @@
 {
   "name": "@tyvm/knowhow",
-  "version": "0.0.108-dev.879609c",
+  "version": "0.0.108-dev.2f8dbe5",
   "description": "ai cli with plugins and agents",
   "main": "ts_build/src/index.js",
   "bin": {
@@ -55,7 +55,7 @@
     "@inquirer/editor": "^4.2.18",
     "@modelcontextprotocol/sdk": "^1.13.3",
     "@simplewebauthn/server": "^13.3.0",
-    "@tyvm/knowhow-tunnel": "0.0.4",
+    "@tyvm/knowhow-tunnel": "0.0.5",
     "commander": "^14.0.0",
     "diff": "^5.2.0",
     "express": "^4.19.2",
