@@ -415,11 +415,11 @@ export class JsonCompressor {
       
       // Store objects on FIRST occurrence so second occurrence can reference it
       // We increment seenCount above, so after increment:
-      // seenCount=1: first occurrence (just incremented from 0 to 1), store it
-      // seenCount>=2: we already stored it on first occurrence, should be in dedup map
+      // seenCount=0: first occurrence (before increment), store it
+      // seenCount>=1: we already stored it on first occurrence, should be in dedup map
       // Note: This means we store proactively - first occurrence gets stored AND returned in full
       // Second+ occurrences will find it in the dedup map and return a reference
-      const isFirstOccurrence = seenCount === 1;
+      const isFirstOccurrence = seenCount === 0;
 
       // Process the object - apply low-signal detection
       const objWithLowSignalCompressed = this.compressObjectWithLowSignalDetection(obj, path);

@@ -308,6 +308,22 @@ export async function getGlobalConfig(): Promise<Config> {
   }
 }
 
+export async function updateGlobalConfig(config: Config) {
+  if (!config || typeof config !== "object") {
+    throw new Error("Invalid config object");
+  }
+
+  const globalConfigDir = getGlobalConfigDir();
+  await mkdir(globalConfigDir, { recursive: true });
+  const globalConfigPath = path.join(globalConfigDir, "knowhow.json");
+
+  if (fs.existsSync(globalConfigPath)) {
+    await fs.promises.copyFile(globalConfigPath, globalConfigPath + ".bak");
+  }
+
+  await writeFile(globalConfigPath, JSON.stringify(config, null, 2));
+}
+
 export async function migrateConfig() {
   // Apply migrations, used to keep config structure up to date.
   if (!fs.existsSync(".knowhow/knowhow.json")) {
