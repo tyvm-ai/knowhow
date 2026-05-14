@@ -1,6 +1,5 @@
 import { getConfig, getGlobalConfig } from "../../config";
 import { KnowhowModule, ModuleContext } from "./types";
-import { ToolsService } from "../Tools";
 import { services } from "../";
 import * as path from "path";
 
@@ -16,20 +15,13 @@ export class ModulesService {
 
   async loadModulesFrom(
     config: { modules: string[] } & any,
-    context?: ModuleContext
+    context?: Partial<ModuleContext>
   ) {
     // If no context provided, fall back to global singletons
     if (!context) {
       context = { ...(await this.getDefaultContext()) };
     }
 
-    // Use the toolsService from context
-    const toolsService = context.Tools;
-    const agentService = context.Agents;
-    const pluginService = context.Plugins;
-    const clients = context.Clients;
-
-    // Load from global config (~/.knowhow/knowhow.json) first, then local config
     const allModulePaths = config.modules;
 
     for (const modulePath of allModulePaths) {
@@ -44,33 +36,40 @@ export class ModulesService {
       console.log(
         `🔌 Loading module: ${modulePath} (resolved: ${resolvedPath})`
       );
-      await importedModule.init({ config, cwd: process.cwd(), context });
+      await importedModule.init({ config, cwd: process.cwd(), context: context as ModuleContext });
       console.log(
         `✅ Module initialized: ${modulePath} (tools: ${importedModule.tools.length}, agents: ${importedModule.agents.length}, plugins: ${importedModule.plugins.length}, clients: ${importedModule.clients.length})`
       );
 
-      for (const agent of importedModule.agents) {
-        agentService.registerAgent(agent);
+      // Only register tools/agents/plugins/clients if the relevant services
+      // are available in context (they may not be during early CLI command registration)
+      if (context.Agents) {
+        for (const agent of importedModule.agents) {
+          context.Agents.registerAgent(agent);
+        }
       }
 
-      for (const tool of importedModule.tools) {
-        toolsService.addTool(tool.definition);
-        toolsService.setFunction(tool.definition.function.name, tool.handler);
+      if (context.Tools) {
+        for (const tool of importedModule.tools) {
+          context.Tools.addTool(tool.definition);
+          context.Tools.setFunction(tool.definition.function.name, tool.handler);
+        }
       }
 
-      for (const plugin of importedModule.plugins) {
-        const pluginContext = {
-          ...context,
-        };
-        pluginService.registerPlugin(
-          plugin.name,
-          new plugin.plugin(pluginContext as any)
-        );
+      if (context.Plugins) {
+        for (const plugin of importedModule.plugins) {
+          context.Plugins.registerPlugin(
+            plugin.name,
+            new plugin.plugin(context as any)
+          );
+        }
       }
 
-      for (const client of importedModule.clients) {
-        clients.registerClient(client.provider, client.client);
-        clients.registerModels(client.provider, client.models);
+      if (context.Clients) {
+        for (const client of importedModule.clients) {
+          context.Clients.registerClient(client.provider, client.client);
+          context.Clients.registerModels(client.provider, client.models);
+        }
       }
     }
   }

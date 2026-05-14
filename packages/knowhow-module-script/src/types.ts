@@ -1,4 +1,4 @@
-import { Message } from '../../clients/types';
+import { Message } from '@tyvm/knowhow/ts_build/src/clients/types';
 
 // Basic trace event interface
 export interface TraceEvent {

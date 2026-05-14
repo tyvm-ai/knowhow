@@ -1,4 +1,5 @@
 import { Plugin, PluginContext } from "../../plugins/types";
+import { Command } from "commander";
 import { IAgent } from "../../agents/interface";
 import { Tool } from "../../clients/types";
 import { Config } from "../../types";
@@ -55,6 +56,7 @@ export interface ModuleContext {
   Tools: ToolsService;
   MediaProcessor?: MediaProcessorService;
   Tunnel?: TunnelHandler;
+  Program?: Command;
 }
 
 export interface KnowhowModule {

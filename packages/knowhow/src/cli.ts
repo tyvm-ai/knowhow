@@ -2,7 +2,6 @@
 import * as fs from "fs";
 import * as fsPromises from "fs/promises";
 import * as path from "path";
-import * as os from "os";
 import { Command } from "commander";
 import { execSync } from "child_process";
 import { version } from "../package.json";
@@ -28,7 +27,7 @@ import {
 import { agents } from "./agents";
 import { startChat } from "./chat";
 import { getConfiguredEmbeddingMap, queryEmbedding } from "./embeddings";
-import { getConfig } from "./config";
+import { getConfig, getGlobalConfig } from "./config";
 import { getEnabledPlugins } from "./types";
 import { marked } from "marked";
 import { BaseAgent } from "./agents/base/base";
@@ -587,65 +586,6 @@ async function main() {
     });
 
   program
-    .command("script")
-    .description("Run a local tool script file using the executeScript sandbox")
-    .option("--input-file <path>", "Path to a local .js/.ts script file to run")
-    .option(
-      "--allow-network",
-      "Allow fetch() calls in the script (disabled by default for security)"
-    )
-    .action(async (options) => {
-      try {
-        if (!options.inputFile) {
-          console.error(
-            "Error: Provide --input-file <path> to the script file to run"
-          );
-          process.exit(1);
-        }
-
-        // Run a local script file
-        const scriptPath = path.resolve(options.inputFile);
-        if (!fs.existsSync(scriptPath)) {
-          console.error(`Error: Script file not found: ${scriptPath}`);
-          process.exit(1);
-        }
-        const scriptContent = fs.readFileSync(scriptPath, "utf-8");
-
-        const { Tools, Clients } = await setupServices();
-
-        // Enable all tools on the LazyToolsService so scripts can access MCP tools
-        // (LazyToolsService starts with only meta-tools enabled; we need all for scripts)
-        Tools.enableTools(["*"]);
-
-        const { ScriptExecutor } = await import(
-          "./services/script-execution/ScriptExecutor"
-        );
-        const executor = new ScriptExecutor(Tools, Clients);
-        const result = await executor.execute({
-          script: scriptContent,
-          policy: {
-            allowNetworkAccess: !!options.allowNetwork,
-          },
-          quotas: {
-            maxExecutionTimeMs: 5 * 60 * 1000, // 5 minutes for CLI scripts
-          },
-        });
-
-        if (result.consoleOutput?.length) {
-          console.log(result.consoleOutput.join("\n"));
-        }
-        console.log(JSON.stringify(result.result, null, 2));
-        if (!result.success) {
-          console.error("Script error:", result.error);
-          process.exit(1);
-        }
-      } catch (error) {
-        console.error("Error running script:", error);
-        process.exit(1);
-      }
-    });
-
-  program
     .command("github-credentials [action]")
     .description(
       "Git credential helper for GitHub. Use as: git config credential.helper 'knowhow github-credentials'"
@@ -715,6 +655,21 @@ async function main() {
         process.exit(1);
       }
     });
+
+  // Load global modules early (before parse) so they can register CLI subcommands.
+  // We pass only the Program in context — no services are spun up at this stage.
+  // Each module's command action is responsible for calling setupServices() as needed.
+  try {
+    const globalConfig = await getGlobalConfig();
+    if (globalConfig.modules?.length) {
+      const earlyModulesService = new ModulesService();
+      await earlyModulesService.loadModulesFrom(globalConfig, {
+        Program: program,
+      });
+    }
+  } catch (e) {
+    // Non-fatal: if global modules fail to load for CLI registration, continue
+  }
 
   await program.parseAsync(process.argv);
 }

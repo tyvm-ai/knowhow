@@ -1,26 +1,25 @@
-import { ScriptExecutor } from "../../../services/script-execution/ScriptExecutor";
-import { ToolsService } from "../../../services/Tools";
-import {
-  ExecutionRequest,
-  ExecutionResult,
-} from "../../../services/script-execution/types";
-import { services } from "../../../services";
+import { ToolsService } from "@tyvm/knowhow/ts_build/src/services/Tools";
+import { services } from "@tyvm/knowhow/ts_build/src/services";
+import { ScriptExecutor } from "./ScriptExecutor";
 
-export async function executeScript({
-  script,
-  maxToolCalls,
-  maxTokens,
-  maxExecutionTimeMs,
-  maxCostUsd,
-  allowNetworkAccess,
-}: {
-  script: string;
-  maxToolCalls?: number;
-  maxTokens?: number;
-  maxExecutionTimeMs?: number;
-  maxCostUsd?: number;
-  allowNetworkAccess?: boolean;
-}) {
+export async function executeScript(
+  this: ToolsService | void,
+  {
+    script,
+    maxToolCalls,
+    maxTokens,
+    maxExecutionTimeMs,
+    maxCostUsd,
+    allowNetworkAccess,
+  }: {
+    script: string;
+    maxToolCalls?: number;
+    maxTokens?: number;
+    maxExecutionTimeMs?: number;
+    maxCostUsd?: number;
+    allowNetworkAccess?: boolean;
+  }
+) {
   try {
     // Get context from bound ToolsService
     const toolService = (
@@ -56,7 +55,6 @@ export async function executeScript({
       .filter((e) => e.type.includes("violation") || e.type.includes("error"))
       .map((e) => e.data);
 
-    // Format the response
     return {
       success: result.success,
       result: result.result,

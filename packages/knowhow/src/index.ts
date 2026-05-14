@@ -53,6 +53,7 @@ export * as ai from "./ai";
 
 // Export module system types for external modules
 export * from "./services/modules/types";
+export { ModulesService } from "./services/modules";
 // Export plugin types for external plugins
 export { PluginBase } from "./plugins/PluginBase";
 export { PluginMeta, Plugin, PluginContext } from "./plugins/types";

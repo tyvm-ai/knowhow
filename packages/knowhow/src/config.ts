@@ -168,6 +168,27 @@ export async function init() {
   console.log("Initializing global knowhow config at ~/.knowhow");
   const globalConfigDir = await ensureGlobalConfigDir();
 
+  // Ensure the script module is registered in the global config so that
+  // `knowhow script` and the `executeScript` tool are available everywhere.
+  const SCRIPT_MODULE = "@tyvm/knowhow-module-script";
+  const globalConfigPath = path.join(globalConfigDir, "knowhow.json");
+  try {
+    const rawGlobal = fs.existsSync(globalConfigPath)
+      ? fs.readFileSync(globalConfigPath, "utf8")
+      : JSON.stringify(defaultConfig, null, 2);
+    const globalConf = JSON.parse(rawGlobal) as Config;
+    if (!globalConf.modules) {
+      globalConf.modules = [];
+    }
+    if (!globalConf.modules.includes(SCRIPT_MODULE)) {
+      globalConf.modules.push(SCRIPT_MODULE);
+      fs.writeFileSync(globalConfigPath, JSON.stringify(globalConf, null, 2));
+      console.log(`✅ Added ${SCRIPT_MODULE} to ~/.knowhow/knowhow.json modules`);
+    }
+  } catch (e) {
+    console.warn(`⚠ Could not update global config to add script module:`, e);
+  }
+
   // create the folder structure
   console.log("Initializing local knowhow config at ./.knowhow");
   await mkdir(".knowhow", { recursive: true });

@@ -1,0 +1,29 @@
+{
+  "name": "@tyvm/knowhow-module-script",
+  "version": "0.0.1",
+  "description": "Script execution module for @tyvm/knowhow — isolated-vm sandbox",
+  "main": "ts_build/index.js",
+  "types": "ts_build/index.d.ts",
+  "scripts": {
+    "compile": "tsc",
+    "prepublishOnly": "npm run compile"
+  },
+  "keywords": [
+    "knowhow",
+    "script",
+    "isolated-vm",
+    "sandbox"
+  ],
+  "author": "Tyvm AI",
+  "license": "MIT",
+  "peerDependencies": {
+    "@tyvm/knowhow": "*"
+  },
+  "dependencies": {
+    "isolated-vm": "^5.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.6.3",
+    "typescript": "^5.0.0"
+  }
+}

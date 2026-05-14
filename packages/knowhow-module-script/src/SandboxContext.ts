@@ -1,9 +1,9 @@
-import { AIClient } from "../../clients";
+import { AIClient } from "@tyvm/knowhow/ts_build/src/clients";
 import { ScriptTracer } from "./ScriptTracer";
 import { ScriptPolicyEnforcer } from "./ScriptPolicy";
 import { Artifact, QuotaUsage } from "./types";
-import { Message } from "../../clients/types";
-import { ToolsService } from "../Tools";
+import { Message } from "@tyvm/knowhow/ts_build/src/clients/types";
+import { ToolsService } from "@tyvm/knowhow/ts_build/src/services/Tools";
 
 /**
  * Provides the execution context for scripts with controlled access to tools and AI

@@ -1,4 +1,4 @@
-import { Tool } from "../../../clients";
+import { Tool } from "@tyvm/knowhow/ts_build/src/clients";
 
 /**
  * Tool for executing TypeScript scripts in a secure sandbox
@@ -7,7 +7,7 @@ export const executeScriptDefinition: Tool = {
   type: "function",
   function: {
     name: "executeScript",
-    description: `Used to contruct a script that calls tools and analyzes data, not for general purpose scripting.
+    description: `Used to construct a script that calls tools and analyzes data, not for general purpose scripting.
 
     This is most useful for complex workflows of tool calls that need conditional logic based off tool responses.
 

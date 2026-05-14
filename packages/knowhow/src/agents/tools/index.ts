@@ -20,7 +20,6 @@ export * from "./askHuman";
 export * from "./aiClient";
 export * from "./googleSearch";
 export * from "./stringReplace";
-export * from "./executeScript";
 export * from "./startAgentTask";
 export * from "./ycmd";
 export * from "./mcp";

@@ -6,7 +6,6 @@ import * as ycmd from "./ycmd/definitions";
 import * as language from "./language/definitions";
 import * as mcp from "./mcp/definitions";
 import { googleSearchDefinition } from "./googleSearch";
-import { executeScriptDefinition } from "./executeScript/definition";
 import { startAgentTaskDefinition } from "./startAgentTask";
 
 function getPluginNames(): string {
@@ -666,7 +665,6 @@ export const includedTools = [
       },
     },
   },
-  executeScriptDefinition,
   googleSearchDefinition,
   startAgentTaskDefinition,
   ...ycmd.definitions,
