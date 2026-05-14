@@ -6,8 +6,9 @@ import { wait } from "./utils";
 import { getConfig } from "./config";
 import { KNOWHOW_API_URL } from "./services/KnowhowClient";
 import { ModulesService } from "./services/modules";
-
-const API_URL = KNOWHOW_API_URL;
+import { WorkerPasskeyAuthService } from "./workers/auth/WorkerPasskeyAuth";
+import { WsMiddlewareStack } from "./workers/auth/WsMiddleware";
+import { makeAuthMiddleware } from "./workers/auth/authMiddleware";
 
 /**
  * Extract the tunnel domain and protocol from the API URL.
@@ -113,6 +114,8 @@ export interface TunnelWebSocketOptions {
   onClose?: (code: number, reason: string) => void;
   /** Called on error */
   onError?: (error: Error) => void;
+  /** Optional passkey auth service — if provided, applies WS middleware to gate tunnel traffic */
+  authService?: WorkerPasskeyAuthService | null;
 }
 
 /**
@@ -135,12 +138,24 @@ export function connectTunnelWebSocket(
     onOpen,
     onClose,
     onError,
+    authService,
   } = options;
 
-  const tunnelConnection = new WebSocket(`${API_URL}/ws/tunnel`, { headers });
+  const tunnelConnection = new WebSocket(`${KNOWHOW_API_URL}/ws/tunnel`, { headers });
 
   tunnelConnection.on("open", async () => {
     console.log("Tunnel WebSocket connected");
+
+    // Apply passkey auth middleware FIRST, before tunnel handler registers its
+    // "message" listener. Node.js EventEmitter fires listeners in registration
+    // order, so our middleware runs first. wrapSocket() also redirects future
+    // ws.on("message", ...) calls to an inner emitter, ensuring the tunnel
+    // handler only receives messages that passed the middleware.
+    if (authService) {
+      const stack = new WsMiddlewareStack();
+      stack.use(makeAuthMiddleware(authService));
+      stack.wrapSocket(tunnelConnection);
+    }
 
     const allowedPorts = config.worker?.tunnel?.allowedPorts || [];
 
@@ -187,114 +202,15 @@ export function connectTunnelWebSocket(
 }
 
 /**
- * Run tunnel-only mode: connects to the Knowhow tunnel WebSocket without
- * registering any MCP tools. Useful for users who only want the web tunnel
- * feature to expose local ports to the cloud.
+ * The minimal set of tool names that are always registered when running in
+ * tunnel mode. These are the tools the backend and frontend need to interact
+ * with the tunnel worker (port discovery, passkey auth).
+ *
+ * Additional tools can be added here in the future without changing the CLI.
  */
-export async function tunnel(options?: { share?: boolean; unshare?: boolean }) {
-  const config = await getConfig();
-
-  const isInsideDocker = process.env.KNOWHOW_DOCKER === "true";
-
-  const { tunnelLocalHost, portMapping } = resolveTunnelConfig(config, isInsideDocker);
-
-  const tunnelPorts = config.worker?.tunnel?.allowedPorts || [];
-  if (tunnelPorts.length === 0) {
-    console.warn(
-      "⚠️  No allowedPorts configured. Add worker.tunnel.allowedPorts to knowhow.json"
-    );
-  } else {
-    console.log(`🌐 Tunnel mode for ports: ${tunnelPorts.join(", ")}`);
-  }
-
-  let connected = false;
-  let tunnelHandler: TunnelHandler | null = null;
-  let lastJwt: string | null = null;
-  let unauthorizedJwt: string | null = null;
-
-  async function connectTunnel() {
-    const jwt = await loadJwt();
-    lastJwt = jwt;
-    console.log(`Connecting tunnel to ${API_URL}`);
-
-    const dir = process.cwd();
-    const homedir = os.homedir();
-    const hostname = process.env.WORKER_HOSTNAME || os.hostname();
-    const root =
-      process.env.WORKER_ROOT ||
-      (dir === homedir ? "~" : dir.replace(homedir, "~"));
-
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${jwt}`,
-      "User-Agent": `knowhow-tunnel/1.0.0/${hostname}`,
-      Root: root,
-    };
-
-    if (options?.share) {
-      headers.Shared = "true";
-      console.log("🔓 Tunnel shared with organization");
-    } else if (options?.unshare) {
-      headers.Shared = "false";
-      console.log("🔒 Tunnel is now private (unshared)");
-    } else {
-      console.log("🔒 Tunnel is private (only you can use it)");
-    }
-
-    const { domain: tunnelDomain, useHttps: tunnelUseHttps } =
-      extractTunnelDomain(API_URL);
-
-    const tunnelConnection = connectTunnelWebSocket({
-      tunnelDomain,
-      tunnelUseHttps,
-      tunnelLocalHost,
-      portMapping,
-      config,
-      headers,
-      onOpen: (handler) => {
-        connected = true;
-        tunnelHandler = handler;
-      },
-      onClose: (code, _reason) => {
-        if (code === 1008) {
-          unauthorizedJwt = lastJwt;
-          console.error(
-            "❌ Tunnel received Unauthorized (1008). The JWT may be expired."
-          );
-          console.error(
-            "   Run 'knowhow login' to refresh your token, then restart."
-          );
-          console.error("   Pausing reconnection until JWT changes...");
-        } else {
-          console.log("Tunnel connection will reconnect on next cycle...");
-        }
-        if (tunnelHandler) {
-          tunnelHandler.cleanup();
-          tunnelHandler = null;
-        }
-        connected = false;
-      },
-      onError: (_error) => {
-        connected = false;
-      },
-    });
-
-    return tunnelConnection;
-  }
-
-  while (true) {
-    if (!connected) {
-      if (unauthorizedJwt !== null) {
-        const currentJwt = await loadJwt().catch(() => null);
-        if (currentJwt === unauthorizedJwt) {
-          await wait(5000);
-          continue;
-        }
-        console.log("🔄 JWT has changed, attempting to reconnect tunnel...");
-        unauthorizedJwt = null;
-      }
-      console.log("Attempting to connect tunnel...");
-      await connectTunnel();
-    }
-    await wait(5000);
-  }
-}
+export const TUNNEL_MINIMAL_TOOLS = [
+  "listAllowedPorts",
+  "unlock",
+  "lock",
+  "reloadConfig",
+];

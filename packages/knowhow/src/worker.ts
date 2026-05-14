@@ -99,6 +99,7 @@ export async function worker(options?: {
   noSandbox?: boolean;
   passkey?: boolean;
   passkeyReset?: boolean;
+  allowedTools?: string[];
 }) {
   const config = await getConfig();
 
@@ -218,9 +219,9 @@ export async function worker(options?: {
     console.log(`🖥️  Using host mode (${sandboxSource})`);
   }
 
-  // Use the config we already loaded above
-
-  if (!config.worker || !config.worker.allowedTools) {
+  // If a tool list override was passed (e.g. from tunnel mode), skip the
+  // first-run config write and use it directly.
+  if (!options?.allowedTools && (!config.worker || !config.worker.allowedTools)) {
     console.log(
       "Worker tools configured! Update knowhow.json to adjust which tools are allowed by the worker."
     );
@@ -238,7 +239,8 @@ export async function worker(options?: {
     return;
   }
 
-  let toolsToUse = Tools.getToolsByNames(config.worker.allowedTools);
+  const resolvedToolNames = options?.allowedTools ?? config.worker!.allowedTools;
+  let toolsToUse = Tools.getToolsByNames(resolvedToolNames);
 
   // If passkey auth is enabled, wrap all tool functions to check locked state
   // and register the unlock/lock auth tools
@@ -297,8 +299,12 @@ export async function worker(options?: {
   let lastJwt: string | null = null;
   let unauthorizedJwt: string | null = null;
 
-  // Check if tunnel is enabled
-  const tunnelEnabled = config.worker?.tunnel?.enabled ?? false;
+  // Check if tunnel is enabled.
+  // When allowedTools is passed as an override (e.g. from `knowhow tunnel`),
+  // the tunnel is always forced on — that's the whole point of tunnel mode.
+  const tunnelEnabled = options?.allowedTools
+    ? true
+    : (config.worker?.tunnel?.enabled ?? false);
 
   const { tunnelLocalHost, portMapping } = resolveTunnelConfig(config, isInsideDocker);
 
@@ -430,6 +436,7 @@ export async function worker(options?: {
         portMapping,
         config,
         headers,
+        authService,
         onOpen: (handler) => {
           tunnelHandler = handler;
         },

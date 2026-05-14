@@ -15,7 +15,7 @@ import * as allTools from "./agents/tools";
 import { LazyToolsService, services } from "./services";
 import { login } from "./login";
 import { worker } from "./worker";
-import { tunnel } from "./tunnel";
+import { TUNNEL_MINIMAL_TOOLS } from "./tunnel";
 import { fileSync } from "./fileSync";
 import { KnowhowSimpleClient } from "./services/KnowhowClient";
 import { ModulesService } from "./services/modules";
@@ -568,7 +568,9 @@ async function main() {
   program
     .command("tunnel")
     .description(
-      "Start tunnel-only mode: expose local ports to the cloud without registering any tools"
+      "Start a minimal worker with tunnel enabled: exposes local ports to the cloud. " +
+      "Registers essential tools (unlock, lock, listAllowedPorts) so the backend is aware of the worker and ports. " +
+      "If passkey auth is configured, the tunnel is locked until unlocked via tool call or WebSocket auth protocol."
     )
     .option(
       "--share",
@@ -576,7 +578,12 @@ async function main() {
     )
     .option("--unshare", "Make this tunnel private (only you can use it)")
     .action(async (options) => {
-      await tunnel(options);
+      console.log("🌐 Starting tunnel (minimal worker) mode...");
+      console.log(`   Tools: ${TUNNEL_MINIMAL_TOOLS.join(", ")}`);
+      await worker({
+        ...options,
+        allowedTools: TUNNEL_MINIMAL_TOOLS,
+      });
     });
 
   program
