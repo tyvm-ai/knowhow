@@ -5,20 +5,21 @@ import { services } from "../";
 import * as path from "path";
 
 export class ModulesService {
+  async getDefaultContext() {
+    return { ...services() };
+  }
+
+  async overrideDefaultContext(overrides: Partial<ModuleContext>) {
+    const defaultContext = await this.getDefaultContext();
+    return { ...defaultContext, ...overrides };
+  }
+
   async loadModulesFromConfig(context?: ModuleContext) {
     const config = await getConfig();
 
     // If no context provided, fall back to global singletons
     if (!context) {
-      const { Clients, Plugins, Agents, Tools, Embeddings, MediaProcessor } = services();
-      context = {
-        Agents,
-        Embeddings,
-        Plugins,
-        Clients,
-        Tools,
-        MediaProcessor,
-      };
+      context = { ...(await this.getDefaultContext()) };
     }
 
     // Use the toolsService from context
@@ -43,9 +44,13 @@ export class ModulesService {
         : modulePath;
       const rawModule = require(resolvedPath);
       const importedModule = (rawModule.default || rawModule) as KnowhowModule;
-      console.log(`🔌 Loading module: ${modulePath} (resolved: ${resolvedPath})`);
+      console.log(
+        `🔌 Loading module: ${modulePath} (resolved: ${resolvedPath})`
+      );
       await importedModule.init({ config, cwd: process.cwd(), context });
-      console.log(`✅ Module initialized: ${modulePath} (tools: ${importedModule.tools.length}, agents: ${importedModule.agents.length}, plugins: ${importedModule.plugins.length}, clients: ${importedModule.clients.length})`);
+      console.log(
+        `✅ Module initialized: ${modulePath} (tools: ${importedModule.tools.length}, agents: ${importedModule.agents.length}, plugins: ${importedModule.plugins.length}, clients: ${importedModule.clients.length})`
+      );
 
       for (const agent of importedModule.agents) {
         agentService.registerAgent(agent);
@@ -58,13 +63,12 @@ export class ModulesService {
 
       for (const plugin of importedModule.plugins) {
         const pluginContext = {
-          Agents: agentService,
-          Clients: clients,
-          Tools: toolsService,
-          Plugins: pluginService,
-          ...(context.MediaProcessor ? { MediaProcessor: context.MediaProcessor } : {}),
+          ...context,
         };
-        pluginService.registerPlugin(plugin.name, new plugin.plugin(pluginContext as any));
+        pluginService.registerPlugin(
+          plugin.name,
+          new plugin.plugin(pluginContext as any)
+        );
       }
 
       for (const client of importedModule.clients) {

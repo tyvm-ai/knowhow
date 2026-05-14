@@ -14,7 +14,8 @@ import { includedTools } from "./agents/tools/list";
 import * as allTools from "./agents/tools";
 import { LazyToolsService, services } from "./services";
 import { login } from "./login";
-import { worker, tunnel } from "./worker";
+import { worker } from "./worker";
+import { tunnel } from "./tunnel";
 import { fileSync } from "./fileSync";
 import { KnowhowSimpleClient } from "./services/KnowhowClient";
 import { ModulesService } from "./services/modules";
@@ -44,23 +45,28 @@ import { CliChatService } from "./chat/CliChatService";
 // Without this, a single failing MCP server (e.g. expired Notion token) will
 // crash the entire CLI with an unhandled rejection.
 process.on("unhandledRejection", (reason: unknown) => {
-  const message =
-    reason instanceof Error ? reason.message : String(reason);
+  const message = reason instanceof Error ? reason.message : String(reason);
   // Only warn — don't exit. The MCP connect errors are recoverable;
   // the server will simply be unavailable but others continue working.
-  console.warn(
-    `⚠ Unhandled MCP/async error (non-fatal): ${message}`
-  );
+  console.warn(`⚠ Unhandled MCP/async error (non-fatal): ${message}`);
 });
 
 async function setupServices() {
-  const { Agents, Mcp, Clients, Tools: OldTools } = services();
+  const {
+    Agents,
+    Mcp,
+    Clients,
+    Tools: AllTools,
+    Embeddings,
+    Plugins,
+    MediaProcessor,
+  } = services();
   const Tools = new LazyToolsService(); // eslint-disable-line no-shadow
 
   // Load modules from config first so module-provided tools/agents/plugins are available
   // We need to wireup the LazyTools to be connected to the same singletons that are in services()
   Tools.setContext({
-    ...OldTools.getContext(),
+    ...AllTools.getContext(),
   });
 
   // Build the AgentContext with the fully-populated LazyToolsService so every
@@ -107,16 +113,17 @@ async function setupServices() {
   const modulesService = new ModulesService();
   await modulesService.loadModulesFromConfig({
     Agents,
-    Embeddings: services().Embeddings,
-    Plugins: services().Plugins,
+    Embeddings,
+    Plugins,
     Clients,
+
     // Use LazyToolsService so module-provided tools are visible to agents and scripts
-    Tools: Tools as any,
-    MediaProcessor: services().MediaProcessor,
+    Tools,
+    MediaProcessor,
   });
 
-  // Return both LazyToolsService (for agents) and OldTools (plain ToolsService with all tools for scripts)
-  return { Tools, Clients, PlainTools: OldTools };
+  // Return both LazyToolsService (for agents) and AllTools (plain ToolsService with all tools for scripts)
+  return { Tools, Clients };
 }
 
 // Utility function to read from stdin
@@ -528,14 +535,25 @@ async function main() {
   program
     .command("cloudworker")
     .description("Create or sync a cloud worker with your local knowhow config")
-    .option("--create", "Create a new cloud worker with synced config and files")
-    .option("--push <uid>", "Push/sync local config and files to an existing cloud worker")
-    .option("--pull <id>", "Pull the latest workerConfigJson from a cloud worker and update local config")
+    .option(
+      "--create",
+      "Create a new cloud worker with synced config and files"
+    )
+    .option(
+      "--push <uid>",
+      "Push/sync local config and files to an existing cloud worker"
+    )
+    .option(
+      "--pull <id>",
+      "Pull the latest workerConfigJson from a cloud worker and update local config"
+    )
     .option("--name <name>", "Name for the cloud worker (used with --create)")
     .option("--dry-run", "Print what would be synced without doing it")
     .action(async (options) => {
       try {
-        const { cloudWorker, pullCloudWorkerConfig } = await import("./cloudWorker");
+        const { cloudWorker, pullCloudWorkerConfig } = await import(
+          "./cloudWorker"
+        );
         if (options.pull) {
           await pullCloudWorkerConfig({ id: options.pull });
         } else {
@@ -560,7 +578,6 @@ async function main() {
     .action(async (options) => {
       await tunnel(options);
     });
-
 
   program
     .command("script")
