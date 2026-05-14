@@ -88,11 +88,18 @@ async function main() {
   // Each module's command action is responsible for calling setupServices() as needed.
   try {
     const globalConfig = await getGlobalConfig();
-    if (globalConfig.modules?.length) {
+    const allModulePaths = [
+      ...(globalConfig.modules || []),
+      ...(config.modules || []),
+    ];
+    if (allModulePaths.length) {
       const earlyModulesService = new ModulesService();
-      await earlyModulesService.loadModulesFrom(globalConfig, {
-        Program: program,
-      });
+      await earlyModulesService.loadModulesFrom(
+        { ...config, modules: allModulePaths },
+        {
+          Program: program,
+        }
+      );
     }
   } catch (e) {
     // Non-fatal: if global modules fail to load for CLI registration, continue
