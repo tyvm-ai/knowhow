@@ -265,7 +265,13 @@ export class CliChatService implements ChatService {
     if (this.context.voiceMode) {
       value = await voiceToText();
     } else if (this.context.multilineMode) {
-      value = await editor({ message: prompt });
+      const renderer = this.context.renderer;
+      if (renderer) renderer.pause();
+      try {
+        value = await editor({ message: prompt });
+      } finally {
+        if (renderer) renderer.resume();
+      }
       this.context.multilineMode = false; // Disable after use like original
     } else {
       // Use saved input history for scrollback (InputQueueManager handles reverse access)

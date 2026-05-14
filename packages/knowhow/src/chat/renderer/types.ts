@@ -81,6 +81,17 @@ export interface AgentRenderer {
   getActiveTaskId(): string | undefined;
 
   /**
+   * Pause rendering - buffer any incoming events instead of printing them.
+   * Useful when an interactive UI (e.g. editor for /multi) takes over the terminal.
+   */
+  pause(): void;
+
+  /**
+   * Resume rendering - flush any buffered events and resume normal output.
+   */
+  resume(): void;
+
+  /**
    * Replay the last N render events (used by /logs command).
    * If count is not provided, shows last 10.
    */
