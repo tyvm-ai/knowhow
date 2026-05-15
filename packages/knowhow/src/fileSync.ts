@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 import { KnowhowSimpleClient, KNOWHOW_API_URL } from "./services/KnowhowClient";
 import { loadJwt } from "./login";
 import { getConfig } from "./config";
@@ -13,6 +14,16 @@ export interface FileSyncOptions {
   apiUrl?: string;
   configPath?: string;
   dryRun?: boolean;
+}
+
+/**
+ * Expands a leading ~ to the user's home directory
+ */
+function expandHome(p: string): string {
+  if (p === "~" || p.startsWith("~/") || p.startsWith("~\\")) {
+    return path.join(os.homedir(), p.slice(1));
+  }
+  return p;
 }
 
 /**
@@ -83,7 +94,8 @@ export async function fileSync(options: FileSyncOptions = {}) {
 
   // Process each file mount
   for (const mount of config.files) {
-    const { remotePath, localPath, direction = "download" } = mount;
+    const { remotePath, localPath: rawLocalPath, direction = "download" } = mount;
+    const localPath = expandHome(rawLocalPath);
 
     // Determine actual direction based on flags and config
     let actualDirection = direction;
