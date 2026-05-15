@@ -129,6 +129,10 @@ export function addCloudWorkerCommand(program: Command): void {
     .command("cloudworker")
     .description("Create or sync a cloud worker with your local knowhow config")
     .option(
+      "--init",
+      "Initialize config.files entries based on what exists in .knowhow/ (run once before --push)"
+    )
+    .option(
       "--create",
       "Create a new cloud worker with synced config and files"
     )
@@ -144,9 +148,13 @@ export function addCloudWorkerCommand(program: Command): void {
     .option("--dry-run", "Print what would be synced without doing it")
     .action(async (options) => {
       try {
-        const { cloudWorker, pullCloudWorkerConfig } = await import(
+        const { cloudWorker, pullCloudWorkerConfig, initCloudWorker } = await import(
           "../cloudWorker"
         );
+        if (options.init) {
+          await initCloudWorker({ dryRun: options.dryRun });
+          return;
+        }
         if (options.pull) {
           await pullCloudWorkerConfig({ id: options.pull });
         } else {

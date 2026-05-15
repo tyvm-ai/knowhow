@@ -8,12 +8,31 @@ import { services } from "./services";
 import { S3Service } from "./services/S3";
 import { getHashes, hasFileChangedSinceUpload, saveUploadHash, isLocalFileMatchingRemote, isLocalFileMatchingDownloadHash, saveDownloadHash } from "./hashes";
 
+export const DEFAULT_BATCH_SIZE = 5;
+
 export interface FileSyncOptions {
   upload?: boolean;
   download?: boolean;
   apiUrl?: string;
   configPath?: string;
   dryRun?: boolean;
+}
+
+/**
+ * Run an array of async tasks in batches of `batchSize` at a time.
+ * Returns results in the same order as the input tasks.
+ */
+export async function batchRun<T>(
+  tasks: (() => Promise<T>)[],
+  batchSize: number = DEFAULT_BATCH_SIZE
+): Promise<T[]> {
+  const results: T[] = [];
+  for (let i = 0; i < tasks.length; i += batchSize) {
+    const batch = tasks.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map((t) => t()));
+    results.push(...batchResults);
+  }
+  return results;
 }
 
 /**
@@ -36,7 +55,7 @@ function isDirectoryPath(p: string): boolean {
 /**
  * Recursively list all files in a local directory, returning relative paths
  */
-function listFilesRecursively(dir: string): string[] {
+export function listFilesRecursively(dir: string): string[] {
   const results: string[] = [];
   if (!fs.existsSync(dir)) return results;
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -138,11 +157,10 @@ export async function fileSync(options: FileSyncOptions = {}) {
   }
 }
 
-
 /**
  * Download a file from Knowhow FS to local filesystem
  */
-async function downloadFile(
+export async function downloadFile(
   client: KnowhowSimpleClient,
   s3Service: S3Service,
   remotePath: string,
@@ -198,7 +216,7 @@ async function downloadFile(
 /**
  * Upload a file from local filesystem to Knowhow FS
  */
-async function uploadFile(
+export async function uploadFile(
   client: KnowhowSimpleClient,
   s3Service: S3Service,
   remotePath: string,
@@ -273,26 +291,28 @@ export async function uploadDirectory(
 
   console.log(`   Found ${localFiles.length} local file(s)`);
 
-  let count = 0;
-  for (const relFile of localFiles) {
+  const tasks = localFiles.map((relFile) => async () => {
     const localFilePath = localDir + relFile;
     const remoteFilePath = remoteDir + relFile;
     try {
       await uploadFile(client, s3Service, remoteFilePath, localFilePath, dryRun);
-      count++;
+      return 1;
     } catch (error) {
       console.error(
         `   ❌ Failed to upload ${localFilePath}, skipping: ${error.message}`
       );
+      return 0;
     }
-  }
-  return count;
+  });
+
+  const counts = await batchRun(tasks);
+  return counts.reduce((sum, n) => sum + n, 0);
 }
 
 /**
  * Download all files from a remote directory path to a local directory
  */
-async function downloadDirectory(
+export async function downloadDirectory(
   client: KnowhowSimpleClient,
   s3Service: S3Service,
   remotePath: string,
@@ -325,8 +345,7 @@ async function downloadDirectory(
 
   console.log(`   Found ${matchingFiles.length} remote file(s)`);
 
-  let count = 0;
-  for (const f of matchingFiles) {
+  const tasks = matchingFiles.map((f) => async () => {
     const fullRemotePath = f.folderPath.endsWith("/")
       ? f.folderPath + f.fileName
       : f.folderPath + "/" + f.fileName;
@@ -334,7 +353,9 @@ async function downloadDirectory(
     const relativePath = fullRemotePath.slice(remoteDir.length);
     const localFilePath = localDir + relativePath;
     await downloadFile(client, s3Service, fullRemotePath, localFilePath, dryRun);
-    count++;
-  }
-  return count;
+    return 1;
+  });
+
+  const counts = await batchRun(tasks);
+  return counts.reduce((sum, n) => sum + n, 0);
 }
