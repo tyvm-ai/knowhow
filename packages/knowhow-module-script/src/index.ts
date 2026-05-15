@@ -57,20 +57,11 @@ const scriptModule: KnowhowModule = {
             "@tyvm/knowhow/ts_build/src/services/modules"
           );
 
-          const {
-            Agents,
-            Clients,
-            Tools: AllTools,
-            Embeddings,
-            Plugins,
-            MediaProcessor,
-            Events,
-          } = services();
+          const { Clients, Tools: AllTools, Mcp } = services();
 
           const Tools = new LazyToolsService();
           Tools.setContext({ ...AllTools.getContext() });
 
-          const { Mcp } = services();
           Tools.addContext("Mcp", Mcp);
 
           console.log("🔌 Connecting to MCP...");
@@ -89,15 +80,11 @@ const scriptModule: KnowhowModule = {
 
           // Load modules (tools, plugins, etc.) from config
           const modulesService = new ModulesService();
-          await modulesService.loadModulesFromConfig({
-            Agents,
-            Embeddings,
-            Plugins,
-            Clients,
+          const modulesContext = await modulesService.overrideDefaultContext({
             Tools,
-            Events,
-            MediaProcessor,
+            Clients,
           });
+          await modulesService.loadModulesFromConfig(modulesContext);
 
           // Enable all tools so scripts can access MCP tools
           Tools.enableTools(["*"]);
