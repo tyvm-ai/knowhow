@@ -24,14 +24,22 @@ jest.mock("../../../src/services", () => ({
 }));
 
 import { ModulesService } from "../../../src/services/modules";
-import { ModuleContext, KnowhowModule } from "../../../src/services/modules/types";
+import {
+  ModuleContext,
+  KnowhowModule,
+} from "../../../src/services/modules/types";
 import { getConfig, getGlobalConfig } from "../../../src/config";
 
 const mockGetConfig = getConfig as jest.MockedFunction<typeof getConfig>;
-const mockGetGlobalConfig = getGlobalConfig as jest.MockedFunction<typeof getGlobalConfig>;
+const mockGetGlobalConfig = getGlobalConfig as jest.MockedFunction<
+  typeof getGlobalConfig
+>;
 
 function makeContext(overrides?: Partial<ModuleContext>): ModuleContext {
   return {
+    Events: {
+      log: jest.fn(),
+    } as any,
     Agents: {
       registerAgent: jest.fn(),
     } as any,
@@ -86,7 +94,8 @@ describe("ModulesService.loadModulesFromConfig", () => {
     const context = makeContext();
 
     // Mock require used inside loadModulesFromConfig
-    const requireSpy = jest.spyOn(service as any, "loadModulesFromConfig")
+    const requireSpy = jest
+      .spyOn(service as any, "loadModulesFromConfig")
       .mockImplementation(async (ctx?: ModuleContext) => {
         const resolvedCtx = ctx || context;
         await mockModule.init({ config: {} as Config, cwd: process.cwd() });
@@ -112,26 +121,35 @@ describe("ModulesService.loadModulesFromConfig", () => {
     };
     const mockToolHandler = jest.fn();
     const mockModule = makeModule({
-      tools: [{ name: "myTool", handler: mockToolHandler, definition: mockToolDef }],
+      tools: [
+        { name: "myTool", handler: mockToolHandler, definition: mockToolDef },
+      ],
     });
 
     const service = new ModulesService();
     const context = makeContext();
 
-    const spy = jest.spyOn(service as any, "loadModulesFromConfig")
+    const spy = jest
+      .spyOn(service as any, "loadModulesFromConfig")
       .mockImplementation(async (ctx?: ModuleContext) => {
         const resolvedCtx = ctx || context;
         await mockModule.init({ config: {} as Config, cwd: process.cwd() });
         for (const tool of mockModule.tools) {
           resolvedCtx.Tools.addTool(tool.definition);
-          resolvedCtx.Tools.setFunction(tool.definition.function.name, tool.handler);
+          resolvedCtx.Tools.setFunction(
+            tool.definition.function.name,
+            tool.handler
+          );
         }
       });
 
     await service.loadModulesFromConfig(context);
 
     expect(context.Tools.addTool).toHaveBeenCalledWith(mockToolDef);
-    expect(context.Tools.setFunction).toHaveBeenCalledWith("myTool", mockToolHandler);
+    expect(context.Tools.setFunction).toHaveBeenCalledWith(
+      "myTool",
+      mockToolHandler
+    );
     spy.mockRestore();
   });
 
@@ -146,7 +164,9 @@ describe("ModulesService.loadModulesFromConfig", () => {
       embed: () => Promise.resolve([]),
     };
     // ModulePlugin expects a constructor (class), not an instance
-    const MockPluginClass = jest.fn().mockImplementation(() => mockPluginInstance);
+    const MockPluginClass = jest
+      .fn()
+      .mockImplementation(() => mockPluginInstance);
     const mockModule = makeModule({
       plugins: [{ name: "test-plugin", plugin: MockPluginClass as any }],
     });
@@ -154,7 +174,8 @@ describe("ModulesService.loadModulesFromConfig", () => {
     const service = new ModulesService();
     const context = makeContext();
 
-    const spy = jest.spyOn(service as any, "loadModulesFromConfig")
+    const spy = jest
+      .spyOn(service as any, "loadModulesFromConfig")
       .mockImplementation(async (ctx?: ModuleContext) => {
         const resolvedCtx = ctx || context;
         await mockModule.init({ config: {} as Config, cwd: process.cwd() });
@@ -166,12 +187,17 @@ describe("ModulesService.loadModulesFromConfig", () => {
 
     await service.loadModulesFromConfig(context);
 
-    expect(context.Plugins.registerPlugin).toHaveBeenCalledWith("test-plugin", mockPluginInstance);
+    expect(context.Plugins.registerPlugin).toHaveBeenCalledWith(
+      "test-plugin",
+      mockPluginInstance
+    );
     spy.mockRestore();
   });
 
   it("should load modules from both global and local config paths", async () => {
-    const globalModule = makeModule({ agents: [{ name: "GlobalAgent" } as any] });
+    const globalModule = makeModule({
+      agents: [{ name: "GlobalAgent" } as any],
+    });
     const localModule = makeModule({ agents: [{ name: "LocalAgent" } as any] });
 
     mockGetConfig.mockResolvedValue({
@@ -185,7 +211,8 @@ describe("ModulesService.loadModulesFromConfig", () => {
     const context = makeContext();
 
     const loadedPaths: string[] = [];
-    const spy = jest.spyOn(service as any, "loadModulesFromConfig")
+    const spy = jest
+      .spyOn(service as any, "loadModulesFromConfig")
       .mockImplementation(async (ctx?: ModuleContext) => {
         const resolvedCtx = ctx || context;
         for (const [path, mod] of [

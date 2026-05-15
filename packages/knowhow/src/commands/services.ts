@@ -15,8 +15,12 @@ export async function setupServices() {
     Tools: AllTools,
     Embeddings,
     Plugins,
+    Events,
     MediaProcessor,
   } = services();
+
+
+  // cli uses LazyTools to keep context slim
   const Tools = new LazyToolsService();
 
   Tools.setContext({
@@ -66,6 +70,7 @@ export async function setupServices() {
     Clients,
     Tools,
     MediaProcessor,
+    Events
   });
 
   return { Tools, Clients };

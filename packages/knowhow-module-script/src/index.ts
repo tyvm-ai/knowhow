@@ -64,6 +64,7 @@ const scriptModule: KnowhowModule = {
             Embeddings,
             Plugins,
             MediaProcessor,
+            Events,
           } = services();
 
           const Tools = new LazyToolsService();
@@ -94,6 +95,7 @@ const scriptModule: KnowhowModule = {
             Plugins,
             Clients,
             Tools,
+            Events,
             MediaProcessor,
           });
 

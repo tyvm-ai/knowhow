@@ -1,6 +1,7 @@
 #!/usr/bin/env node --no-node-snapshot
 import { Command } from "commander";
 import { version } from "../package.json";
+import { logger } from "./logger";
 import { migrateConfig } from "./config";
 import { getConfig, getGlobalConfig } from "./config";
 import { getEnabledPlugins } from "./types";
@@ -48,6 +49,19 @@ process.on("unhandledRejection", (reason: unknown) => {
 
 async function main() {
   const program = new Command();
+
+  // Install console overload early so ALL output (including third-party modules)
+  // goes through our logger closure — respects silence() for clean-stdout commands.
+  logger.installConsoleOverload();
+
+  // Silence immediately if this is a clean-stdout command (e.g. git credential helpers).
+  // Module loading happens before parseAsync, so we must silence before that point.
+  const rawArgs = process.argv.slice(2);
+  const SILENT_COMMANDS = ["github-credentials"];
+  if (rawArgs.some((a) => SILENT_COMMANDS.includes(a))) {
+    logger.silence();
+  }
+
   await migrateConfig();
   const config = await getConfig();
   const chatService = new CliChatService(getEnabledPlugins(config.plugins));

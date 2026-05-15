@@ -1,6 +1,8 @@
 import { EventEmitter } from "events";
 import { IAgent } from "../agents/interface";
 
+export type LogLevel = "info" | "warn" | "error";
+
 export type EventHandlerFn = (...args: any[]) => any;
 
 export interface EventHandler {
@@ -31,9 +33,34 @@ type ManagedListenerRecord = {
   blocking: boolean;
 };
 
+/**
+ * Default console handler for plugin:log events.
+ * Active when no renderer has taken over (e.g. worker mode, CLI before chat starts).
+ * Can be suppressed by calling suppressDefaultLogger() when a renderer is active.
+ */
+function defaultConsoleLogHandler(event: {
+  source: string;
+  message: string;
+  level: LogLevel;
+}): void {
+  const prefix = event.source ? `[${event.source}] ` : "";
+  switch (event.level) {
+    case "warn":
+      console.warn(`${prefix}${event.message}`);
+      break;
+    case "error":
+      console.error(`${prefix}${event.message}`);
+      break;
+    default:
+      console.log(`${prefix}${event.message}`);
+  }
+}
+
 export class EventService extends EventEmitter {
   private blockingHandlers: Map<string, EventHandler[]> = new Map();
   private managedListeners: Map<string, ManagedListenerRecord> = new Map();
+  private defaultLoggerActive = true;
+  private boundDefaultLogHandler = defaultConsoleLogHandler;
 
   eventTypes = {
     agentMsg: "agent:msg",
@@ -45,6 +72,35 @@ export class EventService extends EventEmitter {
   constructor() {
     super();
     this.setMaxListeners(100);
+    // Register the default console logger so Events.log() always produces output
+    // even before a renderer is attached (worker mode, module loading, etc.)
+    this.on(this.eventTypes.pluginLog, this.boundDefaultLogHandler);
+  }
+
+  /**
+   * Suppress the default console logger.
+   * Call this when a renderer has taken over and will handle plugin:log events.
+   * This prevents double-printing when both the renderer and the default handler fire.
+   */
+  suppressDefaultLogger(): void {
+    if (this.defaultLoggerActive) {
+      this.removeListener(
+        this.eventTypes.pluginLog,
+        this.boundDefaultLogHandler
+      );
+      this.defaultLoggerActive = false;
+    }
+  }
+
+  /**
+   * Restore the default console logger.
+   * Call this when the renderer is torn down.
+   */
+  restoreDefaultLogger(): void {
+    if (!this.defaultLoggerActive) {
+      this.on(this.eventTypes.pluginLog, this.boundDefaultLogHandler);
+      this.defaultLoggerActive = true;
+    }
   }
 
   /**
@@ -232,7 +288,7 @@ export class EventService extends EventEmitter {
   log(
     source: string,
     message: string,
-    level: "info" | "warn" | "error" = "info"
+    level: LogLevel = "info"
   ): void {
     this.emit(this.eventTypes.pluginLog, {
       source,

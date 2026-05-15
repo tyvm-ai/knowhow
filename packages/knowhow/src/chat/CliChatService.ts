@@ -19,6 +19,7 @@ import editor from "@inquirer/editor";
 import fs from "fs";
 import path from "path";
 import { services } from "../services";
+import { logger } from "../logger";
 
 export class CliChatService implements ChatService {
   private context: ChatContext;
@@ -267,10 +268,12 @@ export class CliChatService implements ChatService {
     } else if (this.context.multilineMode) {
       const renderer = this.context.renderer;
       if (renderer) renderer.pause();
+      logger.silence();
       try {
         value = await editor({ message: prompt });
       } finally {
         if (renderer) renderer.resume();
+        logger.unsilence();
       }
       this.context.multilineMode = false; // Disable after use like original
     } else {

@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { execSync } from "child_process";
 import { version } from "../../package.json";
+import { logger } from "../logger";
 import { generate, embed, upload, download, purge } from "../index";
 import { init } from "../config";
 import { login } from "../login";
@@ -118,6 +119,10 @@ export function addGithubCredentialsCommand(program: Command): void {
       "Repository in owner/repo format (e.g. myorg/myrepo)"
     )
     .action(async (action: string | undefined, options: { repo?: string }) => {
+      // Silence ALL output immediately — git credential helpers must produce
+      // only the protocol=.../host=.../username=.../password=... lines on stdout.
+      logger.silence();
+
       const client = new KnowhowSimpleClient();
 
       let repo = options.repo;

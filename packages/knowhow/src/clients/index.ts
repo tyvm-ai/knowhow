@@ -577,11 +577,12 @@ export class AIClient {
    * @param modelQuery - the model name to search for (can be partial/normalized)
    * @param provider   - optional provider to restrict search to
    */
-  findModelFuzzy(modelQuery: string, provider?: string): { provider: string; model: string } | undefined {
+  findModelFuzzy(
+    modelQuery: string,
+    provider?: string
+  ): { provider: string; model: string } | undefined {
     const queryNorm = AIClient.normalizeModelId(modelQuery);
-    const providers = provider
-      ? [provider]
-      : Object.keys(this.clientModels);
+    const providers = provider ? [provider] : Object.keys(this.clientModels);
 
     for (const p of providers) {
       const models = (this.clientModels[p] as string[]) ?? [];
@@ -835,7 +836,7 @@ export class AIClient {
         const splitModel = m.id.split("/");
 
         if (splitModel.length < 2) {
-          console.error(`Cannot parse model format: ${m.id}`);
+          console.warn(`Cannot parse model format: ${m.id}`);
         }
 
         const provider = splitModel.length > 1 ? splitModel[0] : "";

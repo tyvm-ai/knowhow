@@ -11,6 +11,7 @@ import { AIClient } from "../../clients";
 import { ToolsService } from "../Tools";
 import { MediaProcessorService } from "../MediaProcessorService";
 import { TunnelHandler } from "@tyvm/knowhow-tunnel";
+import { EventService } from "../EventService";
 
 /*
  *
@@ -54,6 +55,7 @@ export interface ModuleContext {
   Plugins: PluginService;
   Clients: AIClient;
   Tools: ToolsService;
+  Events: EventService;
   MediaProcessor?: MediaProcessorService;
   Tunnel?: TunnelHandler;
   Program?: Command;

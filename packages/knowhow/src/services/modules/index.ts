@@ -33,11 +33,17 @@ export class ModulesService {
         : modulePath;
       const rawModule = require(resolvedPath);
       const importedModule = (rawModule.default || rawModule) as KnowhowModule;
-      console.log(
+      context.Events?.log(
+        "ModulesService",
         `🔌 Loading module: ${modulePath} (resolved: ${resolvedPath})`
       );
-      await importedModule.init({ config, cwd: process.cwd(), context: context as ModuleContext });
-      console.log(
+      await importedModule.init({
+        config,
+        cwd: process.cwd(),
+        context: context as ModuleContext,
+      });
+      context.Events?.log(
+        "ModulesService",
         `✅ Module initialized: ${modulePath} (tools: ${importedModule.tools.length}, agents: ${importedModule.agents.length}, plugins: ${importedModule.plugins.length}, clients: ${importedModule.clients.length})`
       );
 
@@ -52,7 +58,10 @@ export class ModulesService {
       if (context.Tools) {
         for (const tool of importedModule.tools) {
           context.Tools.addTool(tool.definition);
-          context.Tools.setFunction(tool.definition.function.name, tool.handler);
+          context.Tools.setFunction(
+            tool.definition.function.name,
+            tool.handler
+          );
         }
       }
 
