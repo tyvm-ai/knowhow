@@ -155,17 +155,14 @@ export const logger = {
     if (consoleOverloadInstalled) return;
     consoleOverloadInstalled = true;
 
-    const route = (level: LogLevel, args: any[]) => {
+    const route = (originalFn: (...args: any[]) => void, args: any[]) => {
       if (silenced) return;
-      const message = args
-        .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
-        .join(" ");
-      emit("", message, level);
+      originalFn(...args);
     };
 
-    console.log = (...args: any[]) => route("info", args);
-    console.info = (...args: any[]) => route("info", args);
-    console.warn = (...args: any[]) => route("warn", args);
+    console.log = (...args: any[]) => route(_originalConsole.log, args);
+    console.info = (...args: any[]) => route(_originalConsole.info, args);
+    console.warn = (...args: any[]) => route(_originalConsole.warn, args);
     // Note: console.error is intentionally NOT overloaded — real errors (stack
     // traces, crash reports) should always be visible. Only suppress via silence().
     // If you want to suppress errors too, call logger.silence() which checks the flag

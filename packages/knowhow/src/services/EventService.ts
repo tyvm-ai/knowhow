@@ -37,6 +37,9 @@ type ManagedListenerRecord = {
  * Default console handler for plugin:log events.
  * Active when no renderer has taken over (e.g. worker mode, CLI before chat starts).
  * Can be suppressed by calling suppressDefaultLogger() when a renderer is active.
+ *
+ * IMPORTANT: Uses process.stdout/stderr directly to avoid infinite recursion
+ * with logger.installConsoleOverload() which overrides console.log/warn.
  */
 function defaultConsoleLogHandler(event: {
   source: string;
@@ -44,15 +47,16 @@ function defaultConsoleLogHandler(event: {
   level: LogLevel;
 }): void {
   const prefix = event.source ? `[${event.source}] ` : "";
+  const line = `${prefix}${event.message}\n`;
   switch (event.level) {
     case "warn":
-      console.warn(`${prefix}${event.message}`);
+      process.stderr.write(line);
       break;
     case "error":
-      console.error(`${prefix}${event.message}`);
+      process.stderr.write(line);
       break;
     default:
-      console.log(`${prefix}${event.message}`);
+      process.stdout.write(line);
   }
 }
 

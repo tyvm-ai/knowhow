@@ -1,7 +1,9 @@
+import * as path from "path";
+
 import { getConfig, getGlobalConfig } from "../../config";
 import { KnowhowModule, ModuleContext } from "./types";
 import { services } from "../";
-import * as path from "path";
+import { toUniqueArray } from "../../utils";
 
 export class ModulesService {
   async getDefaultContext() {
@@ -93,7 +95,7 @@ export class ModulesService {
     ];
 
     return this.loadModulesFrom(
-      { ...config, modules: allModulePaths },
+      { ...config, modules: toUniqueArray(allModulePaths) },
       context
     );
   }
