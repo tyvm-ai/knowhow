@@ -227,7 +227,7 @@ async function uploadFile(
   }
 
   // Get presigned upload URL
-  const presignedUrl = await client.getOrgFilePresignedUploadUrl(remotePath);
+  const presignedUrl = await client.getOrgFilePresignedUploadUrl(remotePath, localPath);
 
   // Upload file using presigned URL
   await s3Service.uploadToPresignedUrl(presignedUrl, localPath);

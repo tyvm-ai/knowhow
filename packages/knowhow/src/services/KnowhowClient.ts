@@ -1,3 +1,4 @@
+import { createHash } from "crypto";
 import http from "../utils/http";
 import fs from "fs";
 import { Message } from "../clients/types";
@@ -663,8 +664,10 @@ export class KnowhowSimpleClient {
   /**
    * Get presigned S3 URL for uploading a file to Knowhow FS.
    * First finds or creates the file by path, then gets its upload URL.
+   * Computes SHA256 hash of the file content and stores it as S3 metadata
+   * so any client can determine if they already have this version without downloading.
    */
-  async getOrgFilePresignedUploadUrl(filePath: string): Promise<string> {
+  async getOrgFilePresignedUploadUrl(filePath: string, localFilePath?: string): Promise<string> {
     await this.checkJwt();
 
     // Find or create the file by path
@@ -675,10 +678,17 @@ export class KnowhowSimpleClient {
     const fileName =
       lastSlash >= 0 ? filePath.substring(lastSlash + 1) : filePath;
 
+    // Compute SHA256 hash if we have the local file path, so S3 stores it as metadata
+    let sha256Hash: string | undefined;
+    if (localFilePath) {
+      const fileContent = fs.readFileSync(localFilePath);
+      sha256Hash = createHash("sha256").update(fileContent).digest("base64");
+    }
+
     // Get upload URL using the file ID
     const response = await http.post<{ uploadUrl: string }>(
       `${this.baseUrl}/api/org-files/upload/${file.id}`,
-      { fileName },
+      { fileName, sha256Hash },
       { headers: this.headers }
     );
     return response.data.uploadUrl;
