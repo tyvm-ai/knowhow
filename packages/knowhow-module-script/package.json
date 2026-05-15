@@ -1,6 +1,6 @@
 {
   "name": "@tyvm/knowhow-module-script",
-  "version": "0.0.2",
+  "version": "0.22.2",
   "description": "Script execution module for @tyvm/knowhow — isolated-vm sandbox",
   "main": "ts_build/index.js",
   "types": "ts_build/index.d.ts",
@@ -27,8 +27,11 @@
   "peerDependencies": {
     "@tyvm/knowhow": "*"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
-    "isolated-vm": "^5.0.4"
+    "isolated-vm": "^6.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.6.3",
