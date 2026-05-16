@@ -6,7 +6,7 @@ import { loadJwt } from "./login";
 import { getConfig } from "./config";
 import { services } from "./services";
 import { S3Service } from "./services/S3";
-import { getHashes, hasFileChangedSinceUpload, saveUploadHash, isLocalFileMatchingRemote, isLocalFileMatchingDownloadHash, saveDownloadHash } from "./hashes";
+import { getHashes, saveHashes, hasFileChangedSinceUpload, saveUploadHash, isLocalFileMatchingRemote, isLocalFileMatchingDownloadHash, saveDownloadHash } from "./hashes";
 
 export const DEFAULT_BATCH_SIZE = 5;
 
@@ -165,7 +165,8 @@ export async function downloadFile(
   s3Service: S3Service,
   remotePath: string,
   localPath: string,
-  dryRun: boolean
+  dryRun: boolean,
+  hashes?: any
 ): Promise<void> {
   console.log(`⬇️  Downloading ${remotePath} → ${localPath}`);
 
@@ -176,8 +177,7 @@ export async function downloadFile(
 
   try {
     // Fast-path: check stored download hash before hitting the API
-    const hashes = await getHashes();
-    if (await isLocalFileMatchingDownloadHash(localPath, hashes)) {
+    if (hashes && await isLocalFileMatchingDownloadHash(localPath, hashes)) {
       console.log(`   ✓ Skipping ${localPath} (matches stored download hash)`);
       return;
     }
@@ -189,7 +189,7 @@ export async function downloadFile(
     if (isLocalFileMatchingRemote(localPath, checksumSHA256)) {
       console.log(`   ✓ Skipping ${localPath} (matches remote checksum)`);
       // Store the hash so future syncs can skip without hitting the API
-      await saveDownloadHash(localPath);
+      await saveDownloadHash(localPath, hashes);
       return;
     }
 
@@ -203,7 +203,7 @@ export async function downloadFile(
     await s3Service.downloadFromPresignedUrl(downloadUrl, localPath);
 
     // Save download hash so we can skip unchanged files next time
-    await saveDownloadHash(localPath);
+    await saveDownloadHash(localPath, hashes);
 
     // Get file size for logging
     const stats = fs.statSync(localPath);
@@ -221,7 +221,8 @@ export async function uploadFile(
   s3Service: S3Service,
   remotePath: string,
   localPath: string,
-  dryRun: boolean
+  dryRun: boolean,
+  hashes?: any
 ): Promise<void> {
   console.log(`⬆️  Uploading ${localPath} → ${remotePath}`);
 
@@ -237,8 +238,7 @@ export async function uploadFile(
   }
 
   // Skip upload if file hasn't changed since last upload
-  const hashes = await getHashes();
-  const changed = await hasFileChangedSinceUpload(localPath, hashes);
+  const changed = hashes ? await hasFileChangedSinceUpload(localPath, hashes) : true;
   if (!changed) {
     console.log(`   ✓ Skipping ${localPath} (unchanged since last upload)`);
     return;
@@ -254,7 +254,7 @@ export async function uploadFile(
   await client.markOrgFileUploadComplete(remotePath);
 
   // Save upload hash so we can skip unchanged files next time
-  await saveUploadHash(localPath);
+  await saveUploadHash(localPath, hashes);
 
   const stats = fs.statSync(localPath);
   console.log(`   ✓ Uploaded ${stats.size} bytes`);
@@ -276,6 +276,8 @@ export async function uploadDirectory(
 
   console.log(`⬆️  Uploading directory ${localDir} → ${remoteDir}`);
 
+  const hashes = await getHashes();
+
   if (!fs.existsSync(localDir)) {
     console.warn(`   ⚠️  Local directory not found: ${localDir}`);
     return 0;
@@ -295,7 +297,7 @@ export async function uploadDirectory(
     const localFilePath = localDir + relFile;
     const remoteFilePath = remoteDir + relFile;
     try {
-      await uploadFile(client, s3Service, remoteFilePath, localFilePath, dryRun);
+      await uploadFile(client, s3Service, remoteFilePath, localFilePath, dryRun, hashes);
       return 1;
     } catch (error) {
       console.error(
@@ -306,6 +308,8 @@ export async function uploadDirectory(
   });
 
   const counts = await batchRun(tasks);
+  await saveHashes(hashes);
+
   return counts.reduce((sum, n) => sum + n, 0);
 }
 
@@ -324,6 +328,8 @@ export async function downloadDirectory(
   const localDir = localPath.endsWith("/") ? localPath : localPath + "/";
 
   console.log(`⬇️  Downloading directory ${remoteDir} → ${localDir}`);
+
+  const hashes = await getHashes();
 
   // List all org files and find those in the remote directory
   const response = await client.listOrgFiles();
@@ -352,10 +358,12 @@ export async function downloadDirectory(
     // Strip the base remote dir prefix to get relative path
     const relativePath = fullRemotePath.slice(remoteDir.length);
     const localFilePath = localDir + relativePath;
-    await downloadFile(client, s3Service, fullRemotePath, localFilePath, dryRun);
+    await downloadFile(client, s3Service, fullRemotePath, localFilePath, dryRun, hashes);
     return 1;
   });
 
   const counts = await batchRun(tasks);
+  await saveHashes(hashes);
+
   return counts.reduce((sum, n) => sum + n, 0);
 }
