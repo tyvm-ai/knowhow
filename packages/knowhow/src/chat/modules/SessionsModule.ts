@@ -362,8 +362,47 @@ export class SessionsModule extends BaseChatModule {
     // Check filesystem agent (may have metadata with threads)
     const fsAgentPath = path.join(".knowhow", "processes", "agents", id);
     if (fs.existsSync(fsAgentPath)) {
+      // Try to load threads from metadata.json and resume
+      const metadataPath = path.join(fsAgentPath, "metadata.json");
+      if (fs.existsSync(metadataPath)) {
+        try {
+          const raw = fs.readFileSync(metadataPath, "utf-8");
+          const metadata = JSON.parse(raw);
+          const threads: any[] = metadata.threads || [];
+          const agentName = metadata.agentName || "Developer";
+
+          // Try to get initialInput from the saved session file (more complete)
+          // since metadata.json doesn't always store it
+          const savedSession = sessionManager.loadSession(id);
+          const initialInput = savedSession?.initialInput || metadata.initialInput || metadata.prompt || "";
+
+          console.log(`\n📋 Found task in filesystem: ${id}`);
+          console.log(`   Agent  : ${agentName}`);
+          console.log(`   Task   : ${initialInput}`);
+          console.log(`   Status : ${metadata.status || "unknown"}`);
+
+          const additionalContext = await this.chatService?.getInput(
+            "Add any additional context for resuming this session (or press Enter to skip): "
+          );
+
+          // Normalize threads: if flat Message[] (old buggy format), wrap in array
+          const normalizedThreads = threads.length > 0 && !Array.isArray(threads[0])
+            ? [threads]
+            : threads;
+
+          await this.agentModule.resumeFromMessages({
+            agentName,
+            taskId: id,
+            threads: normalizedThreads,
+            input: additionalContext?.trim() || initialInput || "",
+          });
+          return;
+        } catch (e: any) {
+          console.error(`⚠️  Failed to load metadata for task ${id}: ${e.message}`);
+        }
+      }
       console.log(
-        `⚠️  Task ${id} exists in the filesystem but has no saved session.\n` +
+        `⚠️  Task ${id} exists in the filesystem but has no saved session or metadata.\n` +
           `   Use /attach ${id} if it is still running.`
       );
       return;

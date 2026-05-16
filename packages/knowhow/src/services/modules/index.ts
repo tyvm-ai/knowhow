@@ -1,4 +1,5 @@
 import * as path from "path";
+import * as os from "os";
 
 import { getConfig, getGlobalConfig } from "../../config";
 import { KnowhowModule, ModuleContext } from "./types";
@@ -26,13 +27,36 @@ export class ModulesService {
 
     const allModulePaths = config.modules;
 
+    // Search paths: .knowhow/node_modules first (where `knowhow modules install`
+    // puts packages), then cwd node_modules, then global node_modules.
+    // This allows modules installed via `knowhow modules install` to be found
+    // even when knowhow itself is installed globally.
+    const cwdPaths = (require as any).resolve
+      ? require.resolve.paths?.("") || []
+      : [];
+    const resolvePaths = [
+      path.join(process.cwd(), ".knowhow", "node_modules"),
+      path.join(os.homedir(), ".knowhow", "node_modules"),
+      path.join(process.cwd(), "node_modules"),
+      ...cwdPaths,
+    ];
+
     for (const modulePath of allModulePaths) {
       // Resolve relative paths relative to process.cwd() so that paths like
       // "../../packages/knowhow-module-load-webpage" in knowhow.json work
       // regardless of where the compiled output lives.
-      const resolvedPath = modulePath.startsWith(".")
-        ? path.resolve(process.cwd(), modulePath)
-        : modulePath;
+      let resolvedPath: string;
+      if (modulePath.startsWith(".")) {
+        resolvedPath = path.resolve(process.cwd(), modulePath);
+      } else {
+        // For npm package names, try resolving from cwd first so locally-installed
+        // modules are found even when knowhow is installed globally.
+        try {
+          resolvedPath = require.resolve(modulePath, { paths: resolvePaths });
+        } catch {
+          resolvedPath = modulePath; // fall back to normal require resolution
+        }
+      }
       const rawModule = require(resolvedPath);
       const importedModule = (rawModule.default || rawModule) as KnowhowModule;
       context.Events?.log(

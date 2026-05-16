@@ -517,7 +517,12 @@ export class AgentModule extends BaseChatModule {
 
       // Restore the full message history from the last thread
       const threads = session.threads || [];
-      const lastThread = threads.length > 0 ? threads[threads.length - 1] : [];
+      // Guard against sessions saved with a flat Message[] instead of Message[][]
+      // (a bug where threadUpdate emitted a single thread instead of all threads)
+      const normalizedThreads: Message[][] = threads.length > 0 && !Array.isArray(threads[0])
+        ? [threads as unknown as Message[]]
+        : threads as Message[][];
+      const lastThread = normalizedThreads.length > 0 ? normalizedThreads[normalizedThreads.length - 1] : [];
       const resumeMessages = [...lastThread];
 
       // Append the resume prompt to the last user message (or add a new one)
@@ -701,7 +706,7 @@ export class AgentModule extends BaseChatModule {
 
       // Set up session update listener
       const threadUpdateHandler = async (threadState: any) => {
-        this.updateSession(taskId, threadState);
+        this.updateSession(taskId, agent.getThreads());
         taskInfo.totalCost = agent.getTotalCostUsd();
       };
       agent.agentEvents.on(agent.eventTypes.threadUpdate, threadUpdateHandler);
