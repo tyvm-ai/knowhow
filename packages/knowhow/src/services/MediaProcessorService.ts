@@ -301,6 +301,7 @@ export class MediaProcessorService {
     return this.clients.createCompletion("openai", {
       model: Models.openai.GPT_54_Nano,
       max_tokens: 2500,
+      timeout: 20000,
       messages: [
         {
           role: "user",
