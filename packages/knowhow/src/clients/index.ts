@@ -33,6 +33,7 @@ import { ContextLimits } from "./contextLimits";
 import { OpenAiTextPricing } from "./pricing/openai";
 import { AnthropicTextPricing } from "./pricing/anthropic";
 import { GeminiPricing } from "./pricing/google";
+import { withRetry } from "./withRetry";
 import {
   XaiTextPricing,
   XaiImagePricing,
@@ -665,7 +666,10 @@ export class AIClient {
         } model registered. Try using ${JSON.stringify(this.listAllModels())}`
       );
     }
-    return client.createChatCompletion({ ...options, model });
+    return withRetry(
+      () => client.createChatCompletion({ ...options, model }),
+      { timeout: options.timeout, maxRetries: options.maxRetries, backoffMs: options.backoffMs }
+    );
   }
 
   async createEmbedding(
@@ -693,7 +697,10 @@ export class AIClient {
         `Provider ${provider} does not support audio transcription.`
       );
     }
-    return client.createAudioTranscription(options);
+    return withRetry(
+      () => client.createAudioTranscription(options),
+      { timeout: options.timeout, maxRetries: options.maxRetries, backoffMs: options.backoffMs }
+    );
   }
 
   async createAudioGeneration(

@@ -59,12 +59,14 @@ export class GenericOpenAiClient implements GenericClient {
     this.apiKey = apiKey;
     this.client = new OpenAI({
       apiKey,
-      timeout: 120_000, // 2 minute timeout per request — prevents indefinite hangs
-      maxRetries: 2,
       ...(config?.openaiBaseUrl && { baseURL: config.openaiBaseUrl }),
     });
   }
 
+  /**
+   * Execute a function with timeout, retries, and exponential backoff.
+   * Retriable errors: 5xx, timeout, ECONNRESET, ETIMEDOUT, rate limits (429).
+   */
   reasoningEffort(
     messages: CompletionOptions["messages"]
   ): "low" | "medium" | "high" {
@@ -157,7 +159,6 @@ export class GenericOpenAiClient implements GenericClient {
         max_completion_tokens: Math.max(options.max_tokens ?? 0, 16_000),
         reasoning_effort: this.resolveReasoningEffort(options),
       }),
-
       ...(options.tools && {
         tools: options.tools,
         tool_choice: "auto",

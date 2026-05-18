@@ -74,6 +74,22 @@ export interface CompletionOptions {
    *   `cache_control.ttl` to 3600 (1 hour) instead of the default 5-minute ephemeral cache.
    */
   long_ttl_cache?: boolean;
+  /**
+   * Request timeout in milliseconds. Overrides any client-level default.
+   * If the request does not complete within this time, it is aborted and retried
+   * according to maxRetries.
+   */
+  timeout?: number;
+  /**
+   * Maximum number of retry attempts for retriable errors (5xx, timeout, ECONNRESET).
+   * Default: 2. Set to 0 to disable retries.
+   */
+  maxRetries?: number;
+  /**
+   * Base backoff delay in milliseconds for exponential retry backoff.
+   * Default: 1000ms. Each retry waits backoffMs * 2^attempt ms.
+   */
+  backoffMs?: number;
 }
 
 /**
@@ -139,6 +155,20 @@ export interface AudioTranscriptionOptions {
   prompt?: string;
   response_format?: "json" | "text" | "srt" | "verbose_json" | "vtt";
   temperature?: number;
+  /**
+   * Request timeout in milliseconds. Overrides any client-level default.
+   */
+  timeout?: number;
+  /**
+   * Maximum number of retry attempts for retriable errors.
+   * Default: 2. Set to 0 to disable retries.
+   */
+  maxRetries?: number;
+  /**
+   * Base backoff delay in milliseconds for exponential retry backoff.
+   * Default: 1000ms.
+   */
+  backoffMs?: number;
   /** Optional file name hint used when constructing multipart form data */
   fileName?: string;
 }
