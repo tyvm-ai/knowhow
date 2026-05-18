@@ -31,14 +31,10 @@ export class ModulesService {
     // puts packages), then cwd node_modules, then global node_modules.
     // This allows modules installed via `knowhow modules install` to be found
     // even when knowhow itself is installed globally.
-    const cwdPaths = (require as any).resolve
-      ? require.resolve.paths?.("") || []
-      : [];
     const resolvePaths = [
       path.join(process.cwd(), ".knowhow", "node_modules"),
       path.join(os.homedir(), ".knowhow", "node_modules"),
       path.join(process.cwd(), "node_modules"),
-      ...cwdPaths,
     ];
 
     for (const modulePath of allModulePaths) {
@@ -57,22 +53,31 @@ export class ModulesService {
           resolvedPath = modulePath; // fall back to normal require resolution
         }
       }
-      const rawModule = require(resolvedPath);
-      const importedModule = (rawModule.default || rawModule) as KnowhowModule;
-      context.Events?.log(
-        "ModulesService",
-        `🔌 Loading module: ${modulePath} (resolved: ${resolvedPath})`
-      );
-      await importedModule.init({
-        config,
-        cwd: process.cwd(),
-        context: context as ModuleContext,
-      });
-      context.Events?.log(
-        "ModulesService",
-        `✅ Module initialized: ${modulePath} (tools: ${importedModule.tools.length}, agents: ${importedModule.agents.length}, plugins: ${importedModule.plugins.length}, clients: ${importedModule.clients.length})`
-      );
 
+      let importedModule: KnowhowModule;
+      try {
+        const rawModule = require(resolvedPath);
+        importedModule = (rawModule.default || rawModule) as KnowhowModule;
+        context.Events?.log(
+          "ModulesService",
+          `🔌 Loading module: ${modulePath} (resolved: ${resolvedPath})`
+        );
+        await importedModule.init({
+          config,
+          cwd: process.cwd(),
+          context: context as ModuleContext,
+        });
+        context.Events?.log(
+          "ModulesService",
+          `✅ Module initialized: ${modulePath} (tools: ${importedModule.tools.length}, agents: ${importedModule.agents.length}, plugins: ${importedModule.plugins.length}, clients: ${importedModule.clients.length})`
+        );
+      } catch (err: any) {
+        process.stderr.write(
+          `\n⚠️  Failed to load module "${modulePath}": ${err.message}\n` +
+          `   Run "knowhow modules setup --global" or "knowhow modules install ${modulePath} --global" to fix this.\n\n`
+        );
+        continue;
+      }
       // Only register tools/agents/plugins/clients if the relevant services
       // are available in context (they may not be during early CLI command registration)
       if (context.Agents) {
