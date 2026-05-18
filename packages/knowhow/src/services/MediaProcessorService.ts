@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { exec } from "child_process";
+import { exec, spawn } from "child_process";
 import { promisify } from "util";
 import { fileExists, readFile, mkdir } from "../utils";
 import { AIClient } from "../clients";
@@ -46,7 +46,8 @@ export class MediaProcessorService {
     filePath: string,
     outputDir: string,
     CHUNK_LENGTH_SECONDS = 30,
-    reuseExistingChunks = true
+    reuseExistingChunks = true,
+    onProgress?: (progressFraction: number) => void
   ): Promise<string[]> {
     const parsed = path.parse(filePath);
     const fileName = parsed.name;
@@ -73,8 +74,70 @@ export class MediaProcessorService {
       }
     }
 
-    const command = `ffmpeg -i "${filePath}" -f segment -segment_time ${CHUNK_LENGTH_SECONDS} -map 0:a:0 -acodec mp3 -vn "${outputDirPath}/chunk%04d.mp3"`;
-    await execAsync(command);
+    // Use faster encoding settings:
+    // - mono audio (-ac 1): halves encoding work, Whisper handles mono fine
+    // - low bitrate (-b:a 32k): sufficient for speech, much faster encode + smaller files
+    // - fast preset not available for mp3 encoder, but limiting bitrate helps
+    // - -threads 0: use all available CPU threads for faster processing
+    // If the input is already an mp3, copy the audio stream to avoid re-encoding
+    const inputExt = path.extname(filePath).toLowerCase().replace('.', '');
+    const isAlreadyMp3 = inputExt === 'mp3';
+    const audioCodecArgs = isAlreadyMp3
+      ? '-acodec copy'
+      : '-acodec libmp3lame -ac 1 -b:a 32k -threads 0';
+
+    // Use -progress pipe:1 to get real-time progress from ffmpeg
+    // We need the total duration first to calculate fraction
+    await new Promise<void>((resolve, reject) => {
+      // Get total duration via ffprobe first
+      let totalDurationSeconds = 0;
+      exec(
+        `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`,
+        (err, stdout) => {
+          if (!err && stdout.trim()) {
+            totalDurationSeconds = parseFloat(stdout.trim()) || 0;
+          }
+
+          // Now run ffmpeg with progress reporting
+          const args = [
+            '-i', filePath,
+            '-f', 'segment',
+            '-segment_time', String(CHUNK_LENGTH_SECONDS),
+            '-map', '0:a:0',
+            ...audioCodecArgs.split(' '),
+            '-vn',
+            ...(onProgress ? ['-progress', 'pipe:1'] : []),
+            `${outputDirPath}/chunk%04d.mp3`,
+          ];
+
+          const proc = spawn('ffmpeg', args);
+
+          let stdoutBuf = '';
+          proc.stdout?.on('data', (data: Buffer) => {
+            stdoutBuf += data.toString();
+            if (onProgress && totalDurationSeconds > 0) {
+              // ffmpeg -progress outputs key=value lines; look for out_time_ms
+              const match = stdoutBuf.match(/out_time_ms=(\d+)/g);
+              if (match) {
+                const last = match[match.length - 1];
+                const ms = parseInt(last.split('=')[1], 10);
+                const fraction = Math.min(ms / 1000 / totalDurationSeconds, 1);
+                onProgress(fraction);
+                // Keep only tail to avoid unbounded buffer growth
+                stdoutBuf = stdoutBuf.slice(-500);
+              }
+            }
+          });
+
+          proc.on('close', (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(`ffmpeg exited with code ${code}`));
+          });
+          proc.on('error', reject);
+        }
+      );
+    });
+
     await fs.promises.writeFile(doneFilePath, "done");
 
     const folderFiles = await fs.promises.readdir(outputDirPath);
@@ -299,7 +362,7 @@ export class MediaProcessorService {
     });
     const image = `data:image/jpeg;base64,${base64}`;
     return this.clients.createCompletion("openai", {
-      model: Models.openai.GPT_54_Nano,
+      model: Models.openai.GPT_4o,
       max_tokens: 2500,
       timeout: 20000,
       messages: [
@@ -317,7 +380,8 @@ export class MediaProcessorService {
   async *streamProcessVideo(
     filePath: string,
     reusePreviousTranscript = true,
-    chunkTime = 30
+    chunkTime = 30,
+    onChunkingProgress?: (fraction: number) => void
   ) {
     const parsed = path.parse(filePath);
     const videoJson = `${parsed.dir}/${parsed.name}/video.json`;
@@ -326,7 +390,8 @@ export class MediaProcessorService {
     const transcriptions = this.streamProcessAudio(
       filePath,
       reusePreviousTranscript,
-      chunkTime
+      chunkTime,
+      onChunkingProgress
     );
 
     console.log("Extracting keyframes...");
@@ -354,7 +419,8 @@ export class MediaProcessorService {
   async *streamProcessAudio(
     filePath: string,
     reusePreviousTranscript = true,
-    chunkTime = 30
+    chunkTime = 30,
+    onChunkingProgress?: (fraction: number) => void
   ): AsyncGenerator<TranscriptChunk> {
     const parsed = path.parse(filePath);
     const outputPath = `${parsed.dir}/${parsed.name}/transcript.json`;
@@ -384,7 +450,8 @@ export class MediaProcessorService {
       filePath,
       parsed.dir,
       chunkTime,
-      reusePreviousTranscript
+      reusePreviousTranscript,
+      onChunkingProgress
     );
 
     for await (const chunk of this.streamTranscription(
