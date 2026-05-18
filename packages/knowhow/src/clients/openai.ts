@@ -59,6 +59,8 @@ export class GenericOpenAiClient implements GenericClient {
     this.apiKey = apiKey;
     this.client = new OpenAI({
       apiKey,
+      timeout: 120_000, // 2 minute timeout per request — prevents indefinite hangs
+      maxRetries: 2,
       ...(config?.openaiBaseUrl && { baseURL: config.openaiBaseUrl }),
     });
   }
