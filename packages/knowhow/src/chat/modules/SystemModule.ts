@@ -45,7 +45,7 @@ export class SystemModule extends BaseChatModule {
     const agent = context?.selectedAgent;
     const Clients = agent.clientService;
     const currentProvider = context?.currentProvider || "openai";
-    const currentModel = context?.currentModel || "gpt-4o";
+    const currentModel = context?.currentModel || "gpt-5.4-nano";
 
     const models = Clients.getRegisteredModels(currentProvider);
     console.log(models);
@@ -86,7 +86,7 @@ export class SystemModule extends BaseChatModule {
     const Clients = agent.clientService;
 
     const currentProvider = context?.currentProvider || "openai";
-    const currentModel = context?.currentModel || "gpt-4o";
+    const currentModel = context?.currentModel || "gpt-5.4-nano";
 
     const providers = Object.keys(Clients.clients);
     console.log(providers);

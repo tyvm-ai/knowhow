@@ -57,7 +57,30 @@ export interface ToolCall {
   };
 }
 
-export interface CompletionOptions {
+export interface RetryOptions {
+  /**
+   * Request timeout in milliseconds per attempt. If the request does not complete
+   * within this time it is aborted and retried according to maxRetries.
+   */
+  timeout?: number;
+  /**
+   * Maximum number of retry attempts for retriable errors (5xx, timeout, ECONNRESET, 429).
+   * Default: 2. Set to 0 to disable retries.
+   */
+  maxRetries?: number;
+  /**
+   * Base backoff delay in milliseconds for exponential retry backoff.
+   * Default: 1000ms. Each retry waits backoffMs * 2^attempt ms.
+   */
+  backoffMs?: number;
+  /**
+   * Optional external AbortSignal. When the signal is aborted the current
+   * attempt is cancelled immediately and no further retries are made.
+   */
+  signal?: AbortSignal;
+}
+
+export interface CompletionOptions extends RetryOptions {
   model: string;
   messages: Message[];
   tools?: Tool[];
@@ -74,22 +97,6 @@ export interface CompletionOptions {
    *   `cache_control.ttl` to 3600 (1 hour) instead of the default 5-minute ephemeral cache.
    */
   long_ttl_cache?: boolean;
-  /**
-   * Request timeout in milliseconds. Overrides any client-level default.
-   * If the request does not complete within this time, it is aborted and retried
-   * according to maxRetries.
-   */
-  timeout?: number;
-  /**
-   * Maximum number of retry attempts for retriable errors (5xx, timeout, ECONNRESET).
-   * Default: 2. Set to 0 to disable retries.
-   */
-  maxRetries?: number;
-  /**
-   * Base backoff delay in milliseconds for exponential retry backoff.
-   * Default: 1000ms. Each retry waits backoffMs * 2^attempt ms.
-   */
-  backoffMs?: number;
 }
 
 /**
@@ -129,7 +136,7 @@ export interface CompletionResponse {
   usd_cost?: number;
 }
 
-export interface EmbeddingOptions {
+export interface EmbeddingOptions extends RetryOptions {
   input: string;
   model?: string;
 }
@@ -148,27 +155,13 @@ export interface EmbeddingResponse {
   usd_cost?: number;
 }
 
-export interface AudioTranscriptionOptions {
+export interface AudioTranscriptionOptions extends RetryOptions {
   file: Blob | File | any; // Support for Node.js ReadStream or web File/Blob
   model?: string;
   language?: string;
   prompt?: string;
   response_format?: "json" | "text" | "srt" | "verbose_json" | "vtt";
   temperature?: number;
-  /**
-   * Request timeout in milliseconds. Overrides any client-level default.
-   */
-  timeout?: number;
-  /**
-   * Maximum number of retry attempts for retriable errors.
-   * Default: 2. Set to 0 to disable retries.
-   */
-  maxRetries?: number;
-  /**
-   * Base backoff delay in milliseconds for exponential retry backoff.
-   * Default: 1000ms.
-   */
-  backoffMs?: number;
   /** Optional file name hint used when constructing multipart form data */
   fileName?: string;
 }
@@ -192,7 +185,7 @@ export interface AudioTranscriptionResponse {
   usd_cost?: number;
 }
 
-export interface AudioGenerationOptions {
+export interface AudioGenerationOptions extends RetryOptions {
   model: string;
   input: string;
   voice: string; // e.g. "alloy", "echo", "fable", "onyx", "nova", "shimmer" for OpenAI; "Kore", "Puck" etc. for Gemini
@@ -206,7 +199,7 @@ export interface AudioGenerationResponse {
   usd_cost?: number;
 }
 
-export interface ImageGenerationOptions {
+export interface ImageGenerationOptions extends RetryOptions {
   model: string;
   prompt: string;
   n?: number;
@@ -227,7 +220,7 @@ export interface ImageGenerationResponse {
   usd_cost?: number;
 }
 
-export interface VideoGenerationOptions {
+export interface VideoGenerationOptions extends RetryOptions {
   model: string;
   prompt: string;
   duration?: number; // seconds

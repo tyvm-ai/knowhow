@@ -4,6 +4,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import { fileExists, readFile, mkdir } from "../utils";
 import { AIClient } from "../clients";
+import { Models } from "../types";
 
 const execPromise = promisify(exec);
 
@@ -36,7 +37,7 @@ export interface KeyframeInfo {
  * audio/video processing steps after downloading with ytdl.
  */
 export class MediaProcessorService {
-  constructor(private clients: any) {}
+  constructor(private clients: AIClient) {}
 
   /**
    * Split an audio/video file into fixed-length mp3 chunks using ffmpeg.
@@ -298,7 +299,7 @@ export class MediaProcessorService {
     });
     const image = `data:image/jpeg;base64,${base64}`;
     return this.clients.createCompletion("openai", {
-      model: "gpt-4o",
+      model: Models.openai.GPT_54_Nano,
       max_tokens: 2500,
       messages: [
         {

@@ -84,8 +84,7 @@ describe("github-credentials command", () => {
 
       // Now any module-load-time console.log/warn should be suppressed
       const consoleSpy = jest.spyOn(process.stdout, "write");
-      console.warn("⚠️  Terminal module: no TunnelHandler in context — terminal addon not registered");
-      console.log("some other module loading noise");
+      console.log("some module loading noise that should be suppressed");
 
       expect(consoleSpy).not.toHaveBeenCalled();
       consoleSpy.mockRestore();

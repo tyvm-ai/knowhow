@@ -74,7 +74,7 @@ const defaultConfig = {
       description:
         "You can define agents in the config. They will have access to all tools.",
       instructions: "Reply to the user saying 'Hello, world!'",
-      model: "gpt-4o-2024-08-06",
+      model: "gpt-5.4-nano",
       provider: "openai",
     },
   ],

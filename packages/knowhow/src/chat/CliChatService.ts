@@ -38,7 +38,7 @@ export class CliChatService implements ChatService {
       searchMode: false,
       voiceMode: false,
       multilineMode: false,
-      currentModel: "gpt-4o",
+      currentModel: "gpt-5.4-nano",
       currentProvider: "openai",
       chatHistory: this.chatHistory,
       plugins,

@@ -376,7 +376,7 @@ export class GenericAnthropicClient implements GenericClient {
           tool_choice: { type: "auto" },
           tools,
         }),
-      });
+      }, { signal: options.signal });
 
       if (!response.content || !response.content.length) {
         console.log("no content in Anthropic response", response);

@@ -156,8 +156,8 @@ export const includedTools = [
           },
           model: {
             type: "string",
-            description: "The model to use (default: 'gpt-4o')",
-            default: "gpt-4o",
+            description: "The model to use (default: 'gpt-5.4-nano')",
+            default: "gpt-5.4-nano",
           },
         },
         required: ["imageUrl", "question"],

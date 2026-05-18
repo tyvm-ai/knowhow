@@ -667,8 +667,8 @@ export class AIClient {
       );
     }
     return withRetry(
-      () => client.createChatCompletion({ ...options, model }),
-      { timeout: options.timeout, maxRetries: options.maxRetries, backoffMs: options.backoffMs }
+      (signal) => client.createChatCompletion({ ...options, model, signal }),
+      options
     );
   }
 
@@ -684,7 +684,10 @@ export class AIClient {
         } model registered. Try using ${JSON.stringify(this.listAllModels())}`
       );
     }
-    return client.createEmbedding({ ...options, model });
+    return withRetry(
+      (signal) => client.createEmbedding({ ...options, model, signal }),
+      options
+    );
   }
 
   async createAudioTranscription(
@@ -698,8 +701,8 @@ export class AIClient {
       );
     }
     return withRetry(
-      () => client.createAudioTranscription(options),
-      { timeout: options.timeout, maxRetries: options.maxRetries, backoffMs: options.backoffMs }
+      (signal) => client.createAudioTranscription({ ...options, signal }),
+      options
     );
   }
 
@@ -718,7 +721,10 @@ export class AIClient {
         `Model ${options.model} not registered for provider ${provider}.`
       );
     }
-    return client.createAudioGeneration({ ...options, model });
+    return withRetry(
+      (signal) => client.createAudioGeneration({ ...options, model, signal }),
+      options
+    );
   }
 
   async createImageGeneration(
@@ -736,7 +742,10 @@ export class AIClient {
         `Model ${options.model} not registered for provider ${provider}.`
       );
     }
-    return client.createImageGeneration({ ...options, model });
+    return withRetry(
+      (signal) => client.createImageGeneration({ ...options, model, signal }),
+      options
+    );
   }
 
   async createVideoGeneration(
@@ -754,7 +763,10 @@ export class AIClient {
         `Model ${options.model} not registered for provider ${provider}.`
       );
     }
-    return client.createVideoGeneration({ ...options, model });
+    return withRetry(
+      (signal) => client.createVideoGeneration({ ...options, model, signal }),
+      options
+    );
   }
 
   async getVideoStatus(

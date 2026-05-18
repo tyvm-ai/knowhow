@@ -9,8 +9,6 @@ const terminalModule: KnowhowModule = {
     if (tunnelHandler) {
       tunnelHandler.use(new TunnelTerminalAddon());
       console.log("✅ Terminal module: TunnelTerminalAddon registered on tunnel handler");
-    } else {
-      console.warn("⚠️  Terminal module: no TunnelHandler in context — terminal addon not registered");
     }
   },
   tools: [],

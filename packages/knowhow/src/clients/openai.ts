@@ -163,7 +163,7 @@ export class GenericOpenAiClient implements GenericClient {
         tools: options.tools,
         tool_choice: "auto",
       }),
-    });
+    }, { signal: options.signal });
 
     const usdCost = this.calculateCost(options.model, response.usage);
 
@@ -456,7 +456,7 @@ export class GenericOpenAiClient implements GenericClient {
       prompt: options.prompt,
       response_format: options.response_format || "verbose_json",
       temperature: options.temperature,
-    });
+    }, { signal: options.signal });
 
     // Calculate cost: $0.006 per minute for Whisper
     const duration = typeof response === "object" && "duration" in response && typeof response.duration === "number"
@@ -492,7 +492,7 @@ export class GenericOpenAiClient implements GenericClient {
       voice: options.voice as any,
       response_format: options.response_format || "mp3",
       speed: options.speed,
-    });
+    }, { signal: options.signal });
 
     const buffer = Buffer.from(await response.arrayBuffer());
 
@@ -521,7 +521,7 @@ export class GenericOpenAiClient implements GenericClient {
       style: options.style,
       response_format: options.response_format,
       user: options.user,
-    });
+    }, { signal: options.signal });
 
     // Cost calculation varies by model and settings
     // DALL-E 3: $0.040-$0.120 per image depending on quality/size
