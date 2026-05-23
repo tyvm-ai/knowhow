@@ -5,6 +5,8 @@ import { AskModule } from "../chat/modules/AskModule";
 import { SearchModule } from "../chat/modules/SearchModule";
 import { SessionsModule } from "../chat/modules/SessionsModule";
 import { SetupModule } from "../chat/modules/SetupModule";
+import { loadRenderer } from "../chat/renderer/loadRenderer";
+import { getConfig } from "../config";
 
 async function readStdin(): Promise<string> {
   return new Promise((resolve) => {
@@ -23,6 +25,24 @@ async function readStdin(): Promise<string> {
 
     process.stdin.on("end", () => resolve(data.trim()));
   });
+}
+
+/**
+ * Set up the renderer on the chat service context.
+ * Priority: CLI --renderer flag > config.chat.renderer > "basic" (ConsoleRenderer)
+ */
+async function setupRenderer(chatService: any, rendererSpecifier: string): Promise<void> {
+  try {
+    const renderer = await loadRenderer(rendererSpecifier);
+    chatService.setContext({ renderer });
+  } catch (err: any) {
+    console.warn(`⚠ Could not load renderer "${rendererSpecifier}": ${err.message}`);
+    console.warn("  Falling back to basic renderer.");
+    try {
+      const fallback = await loadRenderer("basic");
+      chatService.setContext({ renderer: fallback });
+    } catch (_) {}
+  }
 }
 
 export function addAgentCommand(program: Command, getChatService: () => any): void {
@@ -57,11 +77,21 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
       "--resume",
       "Resume a previously started task using the --task-id (local FS or remote)"
     )
+    .option(
+      "--renderer <name>",
+      "Renderer to use: basic, compact, fancy, or a path/package (default: from config or basic)"
+    )
     .action(async (options) => {
       try {
         const { setupServices } = await import("./services");
         await setupServices();
         const chatService = getChatService();
+
+        // Set up renderer: CLI flag > config.chat.renderer > "basic"
+        let config: any = {};
+        try { config = await getConfig(); } catch (_) {}
+        const rendererSpecifier = options.renderer ?? config.chat?.renderer ?? "basic";
+        await setupRenderer(chatService, rendererSpecifier);
         const agentModule = new AgentModule();
 
         if (options.resume) {
