@@ -1,405 +1,369 @@
-# Worker System Guide (Knowhow CLI)
+# Knowhow Worker System Guide
 
-The **Knowhow worker** is how you expose your **local machine** to the Knowhow cloud so **AI agents running on `knowhow.tyvm.ai`** can call your tools and access your workspace.
-
-A worker runs a local **MCP server** and keeps a persistent **WebSocket connection** to the Knowhow cloud. The cloud can then invoke the MCP tools that you explicitly allow.
+The **Knowhow worker** is the bridge between your **local machine** and the **Knowhow cloud** (`knowhow.tyvm.ai`). It runs a **local MCP server** that exposes selected tools (including local filesystem/code tooling) to AI agents running in the cloud.
 
 ---
 
-## 1) What the worker is
+## 1. What the worker is
 
-A **worker** is a process started by `knowhow worker` that:
+When you run `knowhow worker`, Knowhow starts a **local worker process** that:
 
-- Loads the CLI’s tool registry (agent tools + worker tools).
-- Starts a local **MCP server** over WebSockets.
-- Connects to **Knowhow cloud** at `knowhow.tyvm.ai` (via a configured API URL).
-- Advertises only the tools allowed by your `knowhow.json` configuration.
-- Optionally enables:
-  - **Sharing/visibility controls**
-  - **Tunnel-based port forwarding**
-  - **Docker sandbox mode**
-  - **Passkey-based locking/unlocking**
+- Loads your local Knowhow configuration from `./.knowhow/knowhow.json`
+- Creates an **MCP (Model Context Protocol) server** locally
+- Connects back to the Knowhow cloud via **WebSockets**
+- Exposes a curated set of **tools** to the cloud so agents can call them
 
-In `src/worker.ts`, this is implemented by:
+### How the worker connects
+The worker opens a WebSocket to:
 
-- Creating an MCP server: `mcpServer.createServer(...).withTools(toolsToUse)`
-- Connecting to the cloud WebSocket endpoint: `new WebSocket(`${API_URL}/ws/worker`, { headers })`
-- Running the MCP-over-WebSocket transport: `mcpServer.runWsServer(ws)`
+- `https://knowhow.tyvm.ai/ws/worker` (exact base URL comes from `KNOWHOW_API_URL`)
+- Sends an `Authorization: Bearer <JWT>` header and other metadata (like a “Root” header)
 
----
+### Tool exposure model (high-level)
+Tools are gathered from:
+- Built-in agent tools (`./agents/tools/...`)
+- Worker-specific tools (`./workers/tools/...`)
+- MCP tools configured in your Knowhow setup (via configured MCP servers)
 
-## 2) `knowhow worker` — starting a worker
-
-Command:
-
-```bash
-knowhow worker
-```
-
-At runtime, the worker does the following (high level):
-
-1. **Loads config** from `./.knowhow/knowhow.json` (`getConfig()`).
-2. Handles special flags:
-   - `--passkey-reset` clears passkey config and exits.
-   - `--passkey` starts a browser-based registration flow and exits.
-3. Decides whether to run in **Docker sandbox mode**:
-   - If already inside Docker (`process.env.KNOWHOW_DOCKER === "true"`), it disables sandbox to avoid nested Docker.
-   - Otherwise, sandbox selection priority is:
-     1. CLI flag `--sandbox` / `--no-sandbox`
-     2. `config.worker.sandbox`
-     3. default: `false` (host mode)
-4. If in **host mode**:
-   - Registers the MCP tools locally by:
-     - `Tools.defineTools(includedTools, combinedTools)`
-     - `Tools.defineTools(workerTools.definitions, workerTools.tools)`
-     - `await Mcp.addTools(Tools)`
-   - Ensures `worker.allowedTools` exists:
-     - If `config.worker?.allowedTools` is missing, it auto-generates:
-       - `allowedTools: Tools.getToolNames()`
-       - saves it to config
-       - prints a message and **returns early** (so you can edit allowed tools before running again)
-5. If **registration** is enabled (`--register`):
-   - Calls `registerWorkerPath(process.cwd())` and exits.
-6. If **passkey auth** is enabled in config:
-   - Starts in a **locked** state.
-   - Wraps each allowed tool to block calls while locked, returning:
-     - `error: "WORKER_LOCKED"`
-     - a message instructing the caller to use `unlock`.
-   - Registers special auth tools:
-     - `unlock` (two-step flow)
-     - `lock`
-7. Connects to the cloud via WebSockets:
-   - `API_URL/ws/worker` for the MCP tool channel
-   - Optional `API_URL/ws/tunnel` for the tunnel system
-8. Loops forever, pinging every ~5 seconds, and reconnecting on disconnect.
+If passkey auth is enabled (see below), the worker may start **locked** and block all tool usage until unlocked.
 
 ---
 
-## 3) CLI flags
+## 2. `knowhow worker` — starting a worker (what happens on startup)
 
-These flags are defined under the `worker` command in `src/cli.ts`.
+At a high level, startup does the following:
+
+1. **Load config**
+   - Reads `./.knowhow/knowhow.json` via `getConfig()`
+
+2. **Optional security setup / reset**
+   - If you pass `--passkey` or `--passkey-reset`, worker runs those flows and exits (it does not start the worker loop).
+
+3. **Resolve sandbox mode**
+   - If `--sandbox` is set, it runs the worker inside a Docker sandbox container (see section 8).
+   - If running *already inside Docker* (`process.env.KNOWHOW_DOCKER === "true"`), sandbox is forced off to avoid nested containers.
+
+4. **Define tools and MCP transport**
+   - In host mode (not Docker sandbox entrypoint), it:
+     - defines tools (`Tools.defineTools(...)`)
+     - registers them with the MCP system (`await Mcp.addTools(Tools)`)
+     - creates an `McpServerService` and associates a client name: `knowhow-worker`
+
+5. **Passkey auth gating (optional)**
+   - If `config.worker.auth.passkey.publicKey` and `credentialId` exist:
+     - worker starts **locked**
+     - it registers auth tools: `unlock`, `lock`
+     - it wraps each exposed tool to return `WORKER_LOCKED` when locked
+
+6. **Register hot reload tool**
+   - It registers `reloadConfig`, enabling agents/tools to hot-reload MCP/tool configuration without restarting the process.
+
+7. **Tunnel configuration**
+   - It evaluates whether `worker.tunnel.enabled` (or forced tunnel mode) is active (see section 7).
+
+8. **Connect/reconnect loop**
+   - The worker continuously:
+     - loads JWT (`loadJwt()`)
+     - reconnects WebSocket
+     - pings the connection every 5 seconds
+     - pauses reconnection if the JWT is unauthorized (WebSocket close code `1008`)
+
+---
+
+## 3. CLI flags
+
+These flags are handled by the worker command entrypoint (`src/worker.ts`).
 
 ### `--share` / `--unshare` (visibility control)
 
-- `--share` makes the worker accessible to your organization.
-- `--unshare` makes it private to you.
+When connecting to the cloud, the worker sets a shared header:
 
-Implementation detail (`src/worker.ts`): the worker sets a WebSocket header:
+- `--share` → `headers.Shared = "true"`
+- `--unshare` → `headers.Shared = "false"`
 
-- `headers.Shared = "true"` when `--share` is used
-- `headers.Shared = "false"` when `--unshare` is used
-- otherwise: “Worker is private (only you can use it)”
+If neither is passed, the worker logs:
 
-### `--sandbox` / `--no-sandbox` (Docker sandbox mode)
+- “Worker is private (only you can use it)”
 
-- `--sandbox` runs the worker inside Docker for isolation.
-- `--no-sandbox` runs it on the host.
-
-Sandbox selection priority is:
-
-1. CLI flags
-2. `config.worker.sandbox`
-3. default: `false`
-
-Implementation detail:
-- When `shouldUseSandbox` is true, the worker calls `runWorkerInSandbox(...)`.
-- If Docker isn’t available, sandbox mode exits with an error.
-- Sandbox always rebuilds the worker image:
-  - `Docker.buildWorkerImage()`
-
-### `--register` (register worker path)
-
-Registers the current directory as a worker in the local worker registry:
-
-```bash
-knowhow worker --register
-```
-
-Implementation detail: `registerWorkerPath(process.cwd())`.
-
-### `--passkey` / `--passkey-reset` (passkey security setup)
-
-- `--passkey` starts the passkey registration flow (requires you to be logged in).
-- `--passkey-reset` removes passkey requirement from config.
-
-Implementation detail:
-- `--passkey` uses `PasskeySetupService.setup(jwt)`
-- `--passkey-reset` uses `PasskeySetupService.reset()`
-- If you’re not logged in, `--passkey` errors and tells you to run `knowhow login`.
+**What it means:** shared workers may be usable by others in your organization; unshared workers are private.
 
 ---
 
-## 4) `worker.allowedTools` — configuring which tools to expose
+### `--sandbox` / `--no-sandbox` (Docker sandbox mode)
 
-### How the initial list is created (first run)
+- `--sandbox` forces sandbox mode **on**
+- `--no-sandbox` forces sandbox mode **off**
 
-When running in host mode:
+The chosen preference is persisted to config:
 
-- If `config.worker.allowedTools` is **missing**, the worker:
-  - auto-generates it as:
-    - `allowedTools: Tools.getToolNames()`
-  - writes it to `.knowhow/knowhow.json`
-  - prints:
-    > “Worker tools configured! Update knowhow.json to adjust which tools are allowed by the worker.”
-  - then **exits early** (so you can edit the list before actually serving tools)
+```ts
+worker.sandbox = true | false
+```
 
-So the typical workflow is:
+**Default behavior:** if neither is passed, it uses `config.worker?.sandbox ?? false`.
 
-1. Start worker once
-2. Edit `worker.allowedTools`
-3. Start worker again
+> Note: if the process detects it’s already running inside Docker (`KNOWHOW_DOCKER=true`), it forces sandbox mode off to prevent nested containers.
 
-### Tool naming (including MCP tools)
+---
 
-The guide expects the following naming convention for MCP tool exposure:
+### `--register` (register worker path)
 
-- **MCP tools** appear as:
-  - `mcp_0_<server>_<toolname>`
+If you run:
 
-The worker’s tool registry can include both:
-- built-in worker/tools
-- agent tools
-- configured MCP tools (for example browser automation)
+- `knowhow worker --register`
+
+the worker calls `registerWorkerPath(process.cwd())` and exits.
+
+**Purpose:** register the current worker directory path for Knowhow worker discovery/management in the ecosystem.
+
+---
+
+### `--passkey` / `--passkey-reset` (passkey security setup)
+
+- `--passkey-reset`
+  - calls `PasskeySetupService.reset()`
+  - clears passkey data from worker auth config
+  - exits
+
+- `--passkey`
+  - requires you to be logged in (`knowhow login`)
+  - calls `PasskeySetupService.setup(jwt)`
+  - exits
+
+After passkey setup, the worker can start in a **locked** state and require a passkey assertion to unlock tool access.
+
+---
+
+## 4. `worker.allowedTools` — configuring exposed tools
+
+This setting controls **which tools the cloud agent is allowed to call**.
+
+### Initial list generation (first run)
+On first run, if:
+- you did **not** pass `--allowedTools`, and
+- there is no existing `config.worker.allowedTools`,
+
+then the worker auto-generates the initial allowlist:
+
+- `Tools.getToolNames()`
+- saves it into `./.knowhow/knowhow.json` as:
+
+```json
+{
+  "worker": {
+    "allowedTools": [ ... ]
+  }
+}
+```
+
+The worker then returns early with a message instructing you to update the config.
+
+---
+
+### MCP tool naming convention
+MCP tools from configured MCP servers are exposed with names like:
+
+- `mcp_0_<server>_<toolname>`
+
+Example:
+- If your MCP server is named `browser` and it has a tool `navigate`,
+  the exposed tool name may look like:
+  - `mcp_0_browser_navigate`
+
+(Exact numbering/indices depend on how MCP servers are ordered/registered.)
+
+---
 
 ### Example `allowedTools` list
-
-Example (illustrative):
+Here’s a realistic partial example:
 
 ```json
 {
   "worker": {
     "allowedTools": [
-      "readFile",
-      "writeFile",
-      "searchFiles",
-      "exec",
+      "agents_md_search",
+      "exec_run",
+      "file_read",
+      "file_write",
+      "mcp_0_browser_newPage",
       "mcp_0_browser_navigate",
-      "mcp_0_browser_click"
+      "reloadConfig"
     ]
   }
 }
 ```
 
-> Tip: Keep this list tight. Tools are gated by your explicit configuration, and (optionally) by passkey locking.
+> Tip: if you enable passkey auth, the worker also injects auth tools (`unlock`, `lock`) into the allowed tool set at runtime.
 
 ---
 
-## 5) Connecting to the cloud
+## 5. Connecting to the cloud
 
-After you run:
+After `knowhow login`, the worker retrieves a JWT using `loadJwt()` and connects via WebSockets.
 
-```bash
-knowhow login
-```
+### WebSocket handshake
+The worker connects to:
 
-the worker retrieves your JWT token (`loadJwt()`) and connects to Knowhow cloud using WebSockets:
+- `API_URL + "/ws/worker"`
 
-- **MCP/tool channel**:
-  - `ws://${API_URL}/ws/worker` (API URL is derived from `KNOWHOW_API_URL`)
-- Optional **tunnel channel**:
-  - `ws://${API_URL}/ws/tunnel`
+with headers:
 
-Headers sent with the WebSocket connection include:
+- `Authorization: Bearer <JWT>`
+- `User-Agent: knowhow-worker/<version>/<hostname>`
+- `Root: <workspace root path in ~ notation>`
 
-- `Authorization: Bearer <jwt>`
-- `User-Agent: knowhow-worker/1.1.1/<hostname>`
-- `Root: <workspace root path representation>`
-- `Shared: "true"` or `"false"` if share/unshare flags are used
-
-Reconnect behavior:
-- If the worker WebSocket closes, it logs and reconnects.
-- The worker also periodically pings (`await connection.ws.ping()`), and will reconnect if ping fails.
+### Reconnect behavior
+- The worker runs an infinite loop.
+- If the socket closes with code `1008`, it assumes the JWT is expired:
+  - it records the failing JWT in `unauthorizedJwt`
+  - it waits for the JWT to change (by reloading it) before retrying
 
 ---
 
-## 6) Sharing the worker
+## 6. Sharing the worker
 
-- By default (no `--share` / `--unshare`):
-  - the worker is treated as **private**.
-- With `--share`:
-  - the worker advertises `Shared: "true"` and is accessible to others in your organization.
-- With `--unshare`:
-  - the worker advertises `Shared: "false"` (explicitly private).
+Use:
+
+- `knowhow worker --share`  
+  to make the worker accessible to others (organization-level sharing)
+
+- `knowhow worker --unshare`  
+  to force it back to private mode
+
+This affects the `Shared` header sent during WebSocket connection.
 
 ---
 
-## 7) Tunnel system (`worker.tunnel`)
+## 7. Tunnel system (`worker.tunnel`)
 
-The worker can also forward inbound requests to **your local ports** through the Knowhow cloud using a tunnel.
+The tunnel system provides **port forwarding** so cloud agents can reach services on your local machine through controlled port access.
 
-### Enable it
-
-In `knowhow.json`:
-
-```json
-{
-  "worker": {
-    "tunnel": {
-      "enabled": true
-    }
-  }
-}
-```
-
-### `allowedPorts`
-
-When tunnel is enabled, you must configure which ports the tunnel will be allowed to forward:
+### Enable tunnel
+In config:
 
 ```json
 {
   "worker": {
     "tunnel": {
       "enabled": true,
-      "allowedPorts": [3000, 5432]
+      "allowedPorts": [3000, 5173]
     }
   }
 }
 ```
 
-If tunnel is enabled but `allowedPorts` is empty, the worker warns:
+### `enabled: true`
+When enabled, the worker also opens a **separate tunnel WebSocket** (in addition to the worker WebSocket).
 
-> “Tunnel enabled but no allowedPorts configured. Add tunnel.allowedPorts to knowhow.json”
+### `allowedPorts`
+- The worker warns if tunnel is enabled but `allowedPorts` is empty.
+- Allowed ports are enforced by the tunnel layer (so you don’t accidentally expose all local ports).
 
-### Other tunnel config (from code)
+### Tunnel mode forcing
+If you use a tunnel-related workflow (e.g. the CLI passes `allowedTools` as an override from tunnel mode), tunnel is **forced on**:
 
-The worker also reads (optional) tunnel settings:
-
-- `worker.tunnel.localHost`
-  - If not set:
-    - inside Docker: uses `host.docker.internal`
-    - otherwise: uses `127.0.0.1`
-- `worker.tunnel.portMapping`
-  - Logged as “Container port → Host port”
-- `worker.tunnel.maxConcurrentStreams` (default 50)
-- `worker.tunnel.enableUrlRewriting` (default enabled)
-- `worker.tunnel.enableUrlRewriting !== false` enables URL rewriting
-- Tunnel URL rewriting is based on either a `secret` or `workerId` in tunnel metadata
+```ts
+const tunnelEnabled = options?.allowedTools ? true : config.worker?.tunnel?.enabled ?? false;
+```
 
 ---
 
-## 8) Docker sandbox mode
+## 8. Docker sandbox mode (security hardening)
 
-Sandbox mode runs the worker in Docker for isolation.
+Docker sandbox mode runs the worker inside Docker to isolate filesystem/process access.
 
-### Enable it
+### Enable sandbox via config or flags
+- Config:
+  - `worker.sandbox: true`
+- Flag:
+  - `knowhow worker --sandbox`
 
-Either:
+### How it runs
+When sandbox is enabled, the worker:
 
-```bash
-knowhow worker --sandbox
-```
+1. checks Docker availability
+2. builds a worker image using:
+   - `.knowhow/Dockerfile.worker`
+3. runs a Docker container with:
+   - `workspaceDir: process.cwd()`
+   - JWT + API URL + config passed into the container
+   - share/unshare flags passed through
 
-or in config:
+### `worker.volumes` / `worker.envFile`
+Your configuration can define how the container mounts and environment variables are provided.
 
-```json
-{
-  "worker": {
-    "sandbox": true
-  }
-}
-```
+> The exact structure for `worker.volumes` and `worker.envFile` is handled by Docker helper services in the repo (not shown in the excerpt), but the worker code passes `config` into the Docker runner, so those settings live under `worker.*`.
 
-### Configuration: `worker.volumes`
-
-When sandboxing, you typically need to mount your workspace and any other resources into the container.
-
-This guide documents the expected config keys passed into the Docker runner:
-
+**Example (template):**
 ```json
 {
   "worker": {
     "sandbox": true,
     "volumes": [
-      { "host": ".", "container": "/workspace" }
-    ]
+      { "source": "./", "target": "/workspace" }
+    ],
+    "envFile": ".env"
   }
 }
 ```
-
-> The worker code passes the entire `config` into `Docker.runWorkerContainer(...)`, so `worker.volumes` is expected to be consumed by the Docker layer.
-
-### Configuration: `worker.envFile`
-
-Similarly, you can pass environment variables into the sandboxed container using a file path:
-
-```json
-{
-  "worker": {
-    "sandbox": true,
-    "envFile": ".knowhow/worker.env"
-  }
-}
-```
-
-> As above, the worker passes `config` through to the Docker runner.
-
-### Notes specific to nested containers
-
-If you run the worker inside an environment where:
-
-- `KNOWHOW_DOCKER=true`
-
-then the worker automatically disables sandbox mode (prevents “nested Docker”).
 
 ---
 
-## 9) Passkey security
+## 9. Passkey security
 
-Passkey auth protects your worker by requiring a **hardware passkey** to unlock tool access.
+Passkey auth protects the worker so only the owner can unlock tool access.
 
 ### Setup and reset
+- Setup:
+  - `knowhow worker --passkey`
+- Reset:
+  - `knowhow worker --passkey-reset`
 
-- Register/enable passkey auth:
-
-```bash
-knowhow worker --passkey
-```
-
-- Remove passkey requirement:
-
-```bash
-knowhow worker --passkey-reset
-```
-
-### What happens at startup
-
-If config contains passkey credentials:
+### How passkeys block unauthorized access
+If passkey config exists in:
 
 - `config.worker.auth.passkey.publicKey`
 - `config.worker.auth.passkey.credentialId`
 
-then the worker:
+then on startup the worker:
 
-- enables passkey auth
-- starts **locked**
-- wraps each configured allowed tool so that when locked it returns:
+1. creates a `WorkerPasskeyAuthService`
+2. starts **locked**
+3. wraps every configured tool such that:
+   - if locked, tool calls return:
 
-```json
-{
-  "error": "WORKER_LOCKED",
-  "message": "Worker is locked. Call the `unlock` tool with your passkey assertion to unlock it first."
-}
-```
+     - `error: "WORKER_LOCKED"`
+     - message instructing to call unlock first
 
-### How unlocking works (tools)
+4. registers auth tools:
+   - `unlock` and `lock`
 
-When passkey auth is enabled, the worker registers these tools:
+### Unlock flow (tool behavior)
+The worker’s `unlock` tool is a two-step flow:
 
-- `getChallenge` (returns a challenge string)
-- `unlock` (two-step tool)
-  - **Call without assertion fields** → returns a challenge
-  - **Call with assertion fields** → verifies assertion and unlocks
-- `lock` (re-locks the worker)
+1. Call `unlock()` **with no parameters**  
+   → it returns a `challenge` (and `credentialId`), and you must sign it using WebAuthn in the browser.
 
-**Important behavior:** the wrapper gating applies to your *configured allowed tools*, while the auth tools (`unlock`, `lock`, and the unlock flow challenge) are added so callers can regain access.
+2. Call `unlock({ signature, credentialId, authenticatorData, clientDataJSON, challenge })`  
+   → it verifies the assertion and unlocks the session.
+
+There is also a standalone `getChallenge` tool in the codebase (`makeGetChallengeTool`), which is typically used by clients/UI flows, but the worker startup injects `unlock` and `lock` explicitly.
+
+### Session duration
+Passkey gating uses:
+
+- `config.worker.auth.sessionDurationHours` (defaulted in code to 3 hours if not specified)
 
 ---
 
-## 10) Worker in production (systemd / background)
+## 10. Worker in production (systemd / background)
 
-The worker runs an infinite loop that reconnects automatically, so it’s well-suited for a supervisor.
+For production-like usage you should:
+- start `knowhow worker` at boot
+- ensure it runs in the correct working directory (the repo/workspace containing `./.knowhow/knowhow.json`)
+- consider enabling sandbox + tunnel only when required
 
-### systemd example
+### Example: systemd service
 
 Create `/etc/systemd/system/knowhow-worker.service`:
 
@@ -411,14 +375,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/path/to/your/worker-directory
-ExecStart=/usr/local/bin/knowhow worker --register --share --sandbox
+WorkingDirectory=/path/to/your/project
+ExecStart=/usr/bin/knowhow worker --no-sandbox
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
 
-# Optional: load environment variables
-# EnvironmentFile=/path/to/your/envfile
+# Optional: pass share mode
+# ExecStart=/usr/bin/knowhow worker --share --no-sandbox
 
 [Install]
 WantedBy=multi-user.target
@@ -432,95 +396,124 @@ sudo systemctl enable --now knowhow-worker
 sudo journalctl -u knowhow-worker -f
 ```
 
-### Background process example
+### Example: keep logs and use sandbox
 
-```bash
-nohup knowhow worker --share > /var/log/knowhow-worker.log 2>&1 &
+```ini
+ExecStart=/usr/bin/knowhow worker --sandbox
 ```
 
 ---
 
-## Example `knowhow.json` worker configuration
+# Example worker configuration (`knowhow.json`)
 
-Place this in `./.knowhow/knowhow.json` (the worker edits/reads it).
+A complete example showing the major worker settings:
 
 ```json
 {
   "worker": {
+    "sandbox": true,
     "allowedTools": [
-      "exec",
-      "readFile",
-      "writeFile",
+      "agents_md_search",
+      "exec_run",
+      "file_read",
+      "file_write",
+      "mcp_0_browser_newPage",
       "mcp_0_browser_navigate",
-      "mcp_0_browser_click"
+      "reloadConfig"
     ],
-    "sandbox": false,
+    "workerId": "",
     "tunnel": {
       "enabled": true,
-      "allowedPorts": [3000, 5432]
+      "allowedPorts": [3000, 5173]
     },
     "auth": {
+      "sessionDurationHours": 3,
       "passkey": {
-        "publicKey": "-----BEGIN PUBLIC KEY-----...",
-        "credentialId": "base64url-credential-id"
-      },
-      "sessionDurationHours": 3
-    },
-    "volumes": [],
-    "envFile": ".knowhow/worker.env"
+        "publicKey": "BASE64URL_PUBLIC_KEY",
+        "credentialId": "BASE64URL_CREDENTIAL_ID"
+      }
+    }
   }
 }
 ```
 
 ---
 
-## Example workflows
+# Example workflows
 
-### Workflow A: Configure allowed tools (safe first run)
-
-1. Run once to auto-generate `worker.allowedTools`:
+## Workflow A: First-time setup (generate allowed tools)
+1. `knowhow login`
+2. Run:
    ```bash
    knowhow worker
    ```
-2. Edit `.knowhow/knowhow.json` and narrow `worker.allowedTools`.
-3. Run again:
-   ```bash
-   knowhow worker --share
-   ```
-
-### Workflow B: Expose a local web app through the tunnel
-
-1. Enable tunnel and allow the port:
-   ```json
-   {
-     "worker": {
-       "tunnel": { "enabled": true, "allowedPorts": [3000] }
-     }
-   }
-   ```
-2. Start the worker:
-   ```bash
-   knowhow worker --share
-   ```
-3. Your cloud agent can then reach forwarded services via tunnel-generated subdomains (URL rewriting enabled by default).
-
-### Workflow C: Secure the worker with passkey locking
-
-1. Log in:
-   ```bash
-   knowhow login
-   ```
-2. Register the passkey:
-   ```bash
-   knowhow worker --passkey
-   ```
-3. Edit `worker.allowedTools` to include only what you want agents to do.
-4. Start the worker normally (it starts locked):
+3. On first run, the worker prints a message and auto-writes:
+   - `worker.allowedTools = Tools.getToolNames()`
+4. Edit `./.knowhow/knowhow.json` to narrow the allowlist.
+5. Run again:
    ```bash
    knowhow worker
    ```
-5. The agent must call `unlock` using the challenge + WebAuthn assertion to use the other tools.
 
 ---
 
-If you want, paste your current `./.knowhow/knowhow.json` worker block and I can suggest a minimal `allowedTools` list and a safe tunnel configuration for your use case.
+## Workflow B: Share worker with organization
+```bash
+knowhow worker --share
+```
+
+This sets the `Shared` header to `true` during WebSocket connection.
+
+---
+
+## Workflow C: Enable tunnel for local web apps
+1. Add to config:
+   ```json
+   {
+     "worker": {
+       "tunnel": {
+         "enabled": true,
+         "allowedPorts": [3000, 8080]
+       }
+     }
+   }
+   ```
+2. Restart the worker.
+3. Agents can then reach forwarded ports through the tunnel mechanism.
+
+---
+
+## Workflow D: Lock down worker with a passkey
+1. Ensure logged in:
+   ```bash
+   knowhow login
+   ```
+2. Setup passkey:
+   ```bash
+   knowhow worker --passkey
+   ```
+3. Start worker normally:
+   ```bash
+   knowhow worker
+   ```
+
+Agents/tools will be blocked until they perform the `unlock` passkey flow.
+
+To remove it:
+```bash
+knowhow worker --passkey-reset
+```
+
+---
+
+## Workflow E: Production deployment (systemd)
+Use the systemd unit example above, then enable and watch logs:
+
+```bash
+sudo systemctl enable --now knowhow-worker
+sudo journalctl -u knowhow-worker -f
+```
+
+---
+
+If you share your current `./.knowhow/knowhow.json` (redact secrets), I can help you produce a safe `worker.allowedTools` allowlist and an example tunnel + sandbox setup tailored to your MCP servers.

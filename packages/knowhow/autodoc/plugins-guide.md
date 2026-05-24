@@ -1,720 +1,721 @@
-# Plugins Guide (Knowhow CLI)
+# Plugins Guide
 
-Knowhow **plugins** are modular “context providers” and helpers that can enrich an agent session with additional information and tooling. Depending on the plugin, it can:
-
-- **Expand shorthand terms / hotkeys** into files, snippets, and/or URLs (`language`)
-- **Load live editor/session context** (e.g., open Vim buffers) (`vim`)
-- **Perform semantic retrieval** using embeddings (`embeddings`)
-- **Resolve work-item references** (GitHub, Asana, Jira, Linear) into readable context (`github`, `asana`, `jira`, `linear`)
-- **Load rich external content** (web pages, downloads/transcripts, design docs) (`url`, `download`, `figma`, `notion`)
-- **Add codebase signals** (git diff/log) (`git`)
-- **Run safety/quality tooling** after edits (linting) (`linter`)
-- **Incorporate terminal/session state** (`tmux`)
-- **Load local guidance docs** (`agents-md`, `skills`)
-- **Execute commands for context** (`exec`)
-
-Internally, Knowhow maintains a **plugin registry** and can call plugins by their **plugin key** (e.g., `github`, `language`). Plugins can also support **embeddings** via an `embed()`-style capability.
+Knowhow plugins extend the agent with **extra context sources**, **URL/file resolution**, **semantic retrieval**, and **IDE/session awareness**. Plugins can be enabled/disabled in `knowhow.json` and can also be added as **custom npm modules**.
 
 ---
 
-## 1) What plugins are (how they provide context)
+## 1) What plugins are
 
-### 1.1 Plugin “capabilities”
-Most plugins fall into one or more of these roles:
+A **plugin** is a module registered with the Knowhow plugin system. Each plugin is identified by a **plugin key** (e.g. `language`, `url`) and exposes:
 
-- **Context generation (`call`)**  
-  Reads input (prompt content, URLs, IDs, etc.) and returns text/markdown context.
+- `call(userInput?: string): Promise<string>`
+- `callMany(userInput?: string): Promise<string>`
+- `embed(userInput?: string): Promise<MinimalEmbedding[]>`
+- `enable() / disable() / isEnabled()`
+- `meta` (key/name/description + optional `requires` env vars)
 
-- **Batch processing (`callMany`)**  
-  Used when multiple values must be resolved at once (e.g., many URLs).
+Internally, `PluginService` keeps a map of plugin instances and invokes them by key. Before calling a plugin, Knowhow checks whether the plugin is enabled and its required environment variables are present.
 
-- **Embeddings (`embed`)**  
-  Returns `MinimalEmbedding[]` items so Knowhow can do semantic retrieval over fetched/constructed content.
+### Common ways plugins provide value
 
-### 1.2 Common patterns
-- **URL / identifier resolution**  
-  A plugin detects an identifier in the user prompt and fetches/normalizes it into agent-ready context.  
-  Examples: GitHub PR/issue, Jira ticket, Linear issue, Notion page.
+#### A) Context expansions (especially for “language terms”)
+The `language` plugin expands configured “terms” into sources (files/text/URLs and optionally other plugins).
 
-- **Language-term expansion** (`language`)  
-  A plugin mapping turns configured tokens/hotkeys into:
-  - local file contents (`kind: "file"`)
-  - literal text snippets (`kind: "text"`)
-  - URLs or references (often via `kind: "url"` or a service plugin key like `github`)
+- It loads term sources of `kind: "file"` and reads the file contents
+- It loads `kind: "text"` sources directly
+- It can also route sources to **other plugins**:
+  - For each enabled plugin key `p`, if a language term source has `kind === p`, Knowhow calls that plugin with the source data.
 
-- **Local environment context**
-  - `vim`: injects currently open Vim buffers
-  - `git`: injects git diff/log context
-  - `tmux`: injects terminal pane/session context
+This happens in `LanguagePlugin.resolveSources()`.
 
-- **Post-edit automation**
-  - `linter`: runs lint after file edits
-  - `exec`: runs commands for context (powerful; see security note)
+#### B) Event-driven context
+Some plugins register handlers on Knowhow events (via `context.Events`). For example:
+
+- `language` listens to configured events and triggers context expansions
+- `linter` listens to `file:post-edit`
+- `embeddings` listens to `file:post-edit` and starts embedding generation
+- `git` listens to `file:post-edit`, `agent:newTask`, `agent:taskComplete`, and `linter:*`
+
+#### C) Semantic context via embeddings
+Plugins like `embeddings` (semantic search) can return relevant IDs/documents based on the user prompt.
+
+#### D) Tool/assistant awareness
+Plugins like `vim`, `tmux`, `agents-md`, and `skills` expose “what’s going on right now” (open buffers, terminal sessions, local agent instructions, reusable skills).
 
 ---
 
-## 2) Enable / disable plugins (`knowhow.json`)
+## 2) Enabling / disabling plugins
 
-Plugins are controlled in `knowhow.json` using:
+Plugins are controlled via `knowhow.json` under `plugins.enabled` and `plugins.disabled`.
 
-- `plugins.enabled`: array of plugin keys to enable
-- `plugins.disabled`: array of plugin keys to disable
+> The code excerpt shows plugin enable/disable methods (`PluginService.enablePlugin()` / `disablePlugin()`), and plugins are considered enabled only if:
+> 1) they are not manually disabled, and  
+> 2) their required environment variables are set (via `meta.requires` in `PluginBase.isEnabled()`).
 
-### 2.1 Enable a subset
-```jsonc
+### Example `knowhow.json`
+
+```json
 {
   "plugins": {
-    "enabled": ["language", "github", "embeddings", "git", "url", "linter"],
-    "disabled": []
+    "enabled": ["language", "git", "linter", "url", "skills"],
+    "disabled": ["embeddings"]
   }
 }
 ```
 
-### 2.2 Disable specific plugins
-```jsonc
-{
-  "plugins": {
-    "enabled": ["language", "vim", "tmux", "github", "url", "download"],
-    "disabled": ["exec", "tmux"]
-  }
-}
-```
-
-> **Tip:** Avoid putting the same plugin in both lists. Use one source of truth in your config.
+**Rules of thumb**
+- Use `disabled` to quickly turn off a plugin.
+- Use `enabled` to explicitly choose which built-ins to run.
+- A plugin may still refuse to run if its `meta.requires` env vars are missing.
 
 ---
 
-## 3) Built-in plugins (keys + config examples)
+## 3) Built-in plugins
 
-Built-in plugins are identified by these keys:
+Below are the built-in plugins and how to configure them.
 
-- `language`
-- `vim`
-- `embeddings`
-- `github`
-- `git`
-- `asana`
-- `jira`
-- `linear`
-- `figma`
-- `notion`
-- `download`
-- `url`
-- `linter`
-- `tmux`
-- `agents-md`
-- `exec`
-- `skills`
+> For some plugins, implementation details aren’t included in the provided source excerpt. Where that happens, configuration examples are based on the plugin’s purpose and its typical API surface (key name, tokens, and expected sources). When in doubt, check the plugin’s own `meta.requires` and configuration getters in your repository.
 
-Below are practical configuration examples for each plugin key. Some plugin config fields are implementation-specific; the examples show **typical / commonly used** fields and where you’d place plugin-specific options.
+### Quick reference table
+
+| Plugin key | Purpose |
+|---|---|
+| `language` | Expand configured language terms into files/text/URLs and plugin-sourced context |
+| `vim` | Load currently open Vim swap files (`*.swp`) as context |
+| `embeddings` | Semantic search over an embeddings knowledgebase |
+| `github` | Resolve GitHub PRs/issues/code (token-based) |
+| `git` | Provide `.knowhow/.git` tracking context (diff/log + auto-commit behavior) |
+| `asana` | Resolve Asana tasks (token-based) |
+| `jira` | Resolve Jira issues (token-based) |
+| `linear` | Resolve Linear issues (token-based) |
+| `figma` | Resolve Figma design file context (token-based) |
+| `notion` | Resolve Notion page context (token-based) |
+| `download` | Download / transcribe URLs and handle YouTube videos |
+| `url` | Fetch and parse web pages from URLs found in text |
+| `linter` | Run background lint on file edits |
+| `tmux` | Provide tmux session/window/pane context |
+| `agents-md` | Detect nearby `agents.md` and alert the agent |
+| `exec` | Execute shell commands for context (triggered via `language` “exec” sources) |
+| `skills` | Load reusable `SKILL.md` instructions from configured directories |
 
 ---
 
-### 3.1 `language` — language terms / hotkeys expansion
+### `language` plugin
 
-**What it does**
-- Detects configured **language terms / hotkeys**
-- Expands them into context sources like:
-  - local files
-  - literal snippets
-  - plugin-backed resolutions (e.g., `github`)
-  - URLs
+**Key:** `language`  
+**What it does:** Looks for configured “terms” inside prompts/events. When matches occur, it **expands** them into configured sources:
+- `kind: "file"` → reads file contents
+- `kind: "text"` → injects literal text
+- `kind: <pluginKey>` → calls that plugin with the source data (only if the target plugin is enabled)
 
-**Typical config shape**
-```jsonc
+**Event support:** Each term can define an `events` list. The plugin registers handlers for all `file*` events separately from other events, and emits an `agent:msg` containing the resolved sources.
+
+#### Example config: language terms
+
+Your repository contains `getLanguageConfig()` / `getLanguageConfig` in `src/config`; the excerpt implies this shape:
+
+```json
 {
-  "plugins": {
-    "enabled": ["language"]
-  },
   "language": {
-    "terms": {
-      "@spec": {
-        "events": ["file:read", "agent:msg"],
-        "sources": [
-          { "kind": "file", "data": ["./docs/spec.md"] }
-        ]
-      },
-      "@pr": {
-        "events": ["agent:msg"],
-        "sources": [
-          { "kind": "github", "data": ["owner/repo#123"] }
-        ]
-      }
+    "hotkey1": {
+      "events": ["file:post-edit", "agent:msg"],
+      "sources": [
+        { "kind": "file", "data": ["./docs/hotkey1.md"] },
+        { "kind": "text", "data": ["Use the Makefile targets to reproduce the issue."] },
+        { "kind": "url", "data": ["https://example.com/runbook"] }
+      ]
     },
-    "hotkeys": {
-      ":runbook": {
-        "events": ["agent:msg"],
-        "sources": [
-          { "kind": "file", "data": ["./RUNBOOKS/security.md"] }
-        ]
-      }
+
+    "ABC-123, #ticket, ticket*": {
+      "events": ["agent:msg"],
+      "sources": [
+        { "kind": "jira", "data": ["ABC-123"] }
+      ]
     }
   }
 }
 ```
 
-**Env vars**
-- Usually none.
+**Notes**
+- Terms can be a comma-separated list of patterns, as `language` splits `term.split(",")`.
+- Pattern matching:
+  - If a term pattern contains `*`, it uses glob matching (`minimatch`)
+  - Otherwise it checks `userPrompt.toLowerCase().includes(pattern)`
 
 ---
 
-### 3.2 `vim` — loads currently open vim buffers as context
+### `vim` plugin
 
-**What it does**
-- Reads the contents of **open Vim buffers**
-- Supplies them to the agent as context
+**Key:** `vim`  
+**What it does:** Finds Vim swap files `./**/*.swp` (including dotfiles), then maps swap files back to their likely source file paths and reads content (with safeguards for size).
 
-**Example config**
-```jsonc
+#### Behavior (from code)
+- `call()` returns a message listing the swap files it finds.
+- It resolves swap file paths by stripping the swap suffix and checking for either:
+  - the non-dot file, or
+  - the dotfile variant in the same directory.
+
+#### Example config
+
+```json
 {
   "plugins": {
     "enabled": ["vim"]
-  },
-  "vim": {
-    "maxBuffers": 10,
-    "maxBytesPerBuffer": 200000
   }
 }
 ```
 
-**Env vars**
-- Usually none.
+No additional plugin-specific config is visible in the excerpt.
 
 ---
 
-### 3.3 `embeddings` — semantic search over embeddings
+### `embeddings` plugin
 
-**What it does**
-- Provides embedding-based retrieval (semantic search)
-- In the provided embedding-plugin behavior:
-  - subscribes to file lifecycle events (e.g., post-edit)
-  - may run `knowhow embed` asynchronously in the background after edits
-  - returns top results (implementation chooses the final limit)
+**Key:** `embeddings`  
+**What it does:**
+1. On `file:post-edit`, it starts a background `knowhow embed` process to refresh embeddings.
+2. `call()` runs semantic search (`queryEmbedding`) and returns the **IDs** for the top results (after pruning vector/metadata).
 
-**Example config**
-```jsonc
+#### What it needs
+- Embeddings must be configured via “configured embeddings” returned by `getConfiguredEmbeddings()` (not shown in excerpt).
+- `config.embeddingModel` is used in `queryEmbedding(...)`.
+
+#### Example config (typical)
+
+```json
 {
+  "embeddingModel": "text-embedding-model-name",
+  "embeddings": {
+    "stores": [
+      {
+        "type": "local",
+        "path": "./.knowhow/embeddings"
+      }
+    ]
+  },
   "plugins": {
     "enabled": ["embeddings"]
-  },
-  "embeddings": {
-    "embeddingModel": "text-embedding-3-small",
-    "topK": 7,
-    "indexDirs": ["./docs", "./src", "./skills"]
   }
 }
 ```
 
-**Env vars**
-- Depends on embedding provider/model backend (commonly an OpenAI/compatible API key). Verify the plugin’s `meta.requires` for your build.
+If you don’t have embeddings set up, the plugin returns:
+
+> “EMBEDDING PLUGIN: No embeddings configured. Run 'knowhow embed' to generate embeddings.”
 
 ---
 
-### 3.4 `github` — resolves GitHub PRs, issues, code
+### `github` plugin
 
-**What it does**
-- Resolves GitHub identifiers / URLs found in prompts into context:
-  - PRs
-  - issues
-  - (often) code changes/diffs and structured summaries
+**Key:** `github`  
+**What it does (expected):**
+- Resolve GitHub PRs/issues/code and return relevant context for the agent.
+- Likely triggered by `language` term sources like `{ "kind": "github", "data": ["owner/repo#123"] }`.
 
-**Example config**
-```jsonc
+#### Example config
+
+```json
 {
   "plugins": {
-    "enabled": ["github"]
-  },
-  "github": {
-    "repos": ["my-org/my-repo", "my-org/another-repo"],
-    "includeDiff": true,
-    "maxItems": 10
-  }
-}
-```
-
-**Env vars**
-- `GITHUB_TOKEN` (commonly required)
-
----
-
-### 3.5 `git` — git diff/log context
-
-**What it does**
-- Adds codebase history context from git:
-  - diff outputs
-  - commit history / logs
-  - related change signals
-
-**Example config**
-```jsonc
-{
-  "plugins": {
-    "enabled": ["git"]
-  },
-  "git": {
-    "mode": "diff",
-    "logDepth": 20,
-    "maxChars": 20000
-  }
-}
-```
-
-**Env vars**
-- Usually none.
-
----
-
-### 3.6 `asana` — Asana task context
-
-**What it does**
-- Finds Asana task/list URLs in prompts
-- Fetches task details and formats them for the agent
-
-**Example config**
-```jsonc
-{
-  "plugins": {
-    "enabled": ["asana"]
-  },
-  "asana": {
-    "workspaceId": "1234567890",
-    "includeSubtasks": true,
-    "maxTasks": 5
-  }
-}
-```
-
-**Env vars**
-- `ASANA_TOKEN` (required/expected)
-
----
-
-### 3.7 `jira` — Jira issue context
-
-**What it does**
-- Detects Jira issue keys/URLs
-- Fetches ticket context and formats it for the agent
-
-**Example config**
-```jsonc
-{
-  "plugins": {
-    "enabled": ["jira"]
-  },
-  "jira": {
-    "site": "https://your-company.atlassian.net",
-    "includeComments": true,
-    "maxIssues": 5
-  }
-}
-```
-
-**Env vars**
-- Commonly one or more of:
-  - `JIRA_TOKEN`
-  - (sometimes) `JIRA_EMAIL`, `JIRA_BASE_URL`
-- Check your plugin’s `meta.requires` list for exact names.
-
----
-
-### 3.8 `linear` — Linear issue context
-
-**What it does**
-- Resolves Linear issue URLs/keys and fetches issue context
-
-**Example config**
-```jsonc
-{
-  "plugins": {
-    "enabled": ["linear"]
-  },
-  "linear": {
-    "includeComments": false,
-    "maxIssues": 5
-  }
-}
-```
-
-**Env vars**
-- `LINEAR_TOKEN` (commonly required)
-
----
-
-### 3.9 `figma` — Figma design file context
-
-**What it does**
-- Accepts Figma file links (often with optional `node-id` targets)
-- Uses Figma API to fetch frame/node images or metadata
-- Can use vision/LLM to describe relevant nodes (implementation-dependent)
-
-**Example config**
-```jsonc
-{
-  "plugins": {
-    "enabled": ["figma"]
-  },
-  "figma": {
-    "maxNodes": 20
-  }
-}
-```
-
-**Env vars**
-- `FIGMA_API_KEY` (or `FIGMA_TOKEN`, depending on your plugin implementation)
-- Verify against the plugin’s `meta.requires`.
-
----
-
-### 3.10 `notion` — Notion page context
-
-**What it does**
-- Extracts Notion URLs from prompts
-- Retrieves page blocks/content and produces context for the agent
-- Often supports recursive traversal up to a configured depth
-
-**Example config**
-```jsonc
-{
-  "plugins": {
-    "enabled": ["notion"]
-  },
-  "notion": {
-    "maxDepth": 2,
-    "maxBlocks": 500
-  }
-}
-```
-
-**Env vars**
-- `NOTION_TOKEN` (commonly required)
-- Some implementations may also need database/page identifiers (config-based).
-
----
-
-### 3.11 `download` — download/transcribe URLs, YouTube videos
-
-**What it does**
-- Downloads and/or transcribes content from URLs (including video sources like YouTube)
-- Converts to text context for the agent
-- May use chunking + transcription + optional vision keyframe descriptions (implementation-dependent)
-
-**Example config**
-```jsonc
-{
-  "plugins": {
-    "enabled": ["download"]
-  },
-  "download": {
-    "outputRoot": ".knowhow/downloads",
-    "transcribe": true,
-    "transcriptionLanguage": "en",
-    "reuseCachedTranscripts": true
-  }
-}
-```
-
-**Env vars**
-- Often depends on the transcription/vision provider used by the plugin
-- Commonly an OpenAI/compatible API key, but verify the plugin’s `meta.requires`.
-
----
-
-### 3.12 `url` — load web pages as context
-
-**What it does**
-- Detects URLs in prompts
-- Fetches webpage contents and returns context
-- Can support embedding retrieval from the fetched page text
-
-**Example config**
-```jsonc
-{
-  "plugins": {
-    "enabled": ["url"]
-  },
-  "url": {
-    "maxUrls": 10,
-    "maxCharsPerPage": 120000,
-    "followRedirects": true
-  }
-}
-```
-
-**Env vars**
-- Usually none.
-
----
-
-### 3.13 `linter` — runs lint after file edits
-
-**What it does**
-- Watches for file lifecycle events after the agent edits files
-- Runs lint commands (by extension or configured command list)
-- Emits lint failures/results into the agent context
-
-**Example config**
-```jsonc
-{
-  "plugins": {
-    "enabled": ["linter"]
-  },
-  "linter": {
-    "commands": {
-      ".ts": "npm run lint --silent -- $1",
-      ".js": "npm run lint --silent -- $1",
-      ".md": "markdownlint $1"
-    },
-    "failOnError": false
-  }
-}
-```
-
-**Env vars**
-- Usually none.
-
----
-
-### 3.14 `tmux` — tmux session context
-
-**What it does**
-- Detects tmux environment (e.g., using `$TMUX`)
-- Reads session/window/pane context and makes it available to the agent
-
-**Example config**
-```jsonc
-{
-  "plugins": {
-    "enabled": ["tmux"]
-  },
-  "tmux": {
-    "includePaneHistory": true,
-    "maxCharsPerPane": 20000
-  }
-}
-```
-
-**Env vars**
-- Usually none (but requires tmux availability in your environment).
-
----
-
-### 3.15 `agents-md` — loads AGENTS.md files
-
-**What it does**
-- Loads repository/directory guidance files (commonly `AGENTS.md`)
-- Intended for agent behavior instructions, conventions, constraints, etc.
-
-**Example config**
-```jsonc
-{
-  "plugins": {
-    "enabled": ["agents-md"]
-  },
-  "agents-md": {
-    "glob": "**/AGENTS.md",
-    "maxFiles": 30
-  }
-}
-```
-
-**Env vars**
-- Usually none.
-
----
-
-### 3.16 `exec` — execute commands for context
-
-**What it does**
-- Executes shell commands to generate context
-- In the provided implementation behavior:
-  - `callMany(input)` only dispatches when input starts with `!` or `/!`
-  - `call(input)` runs the command string and returns stdout/stderr formatted context
-- **Security risk:** can run arbitrary commands.
-
-**Example config**
-```jsonc
-{
-  "plugins": {
-    "enabled": ["exec"]
-  }
-}
-```
-
-**Example usage with `language` trigger**
-```jsonc
-{
-  "plugins": {
-    "enabled": ["language", "exec"]
+    "enabled": ["github", "language"]
   },
   "language": {
-    "terms": {
-      "!now": {
-        "events": ["agent:msg"],
-        "sources": [
-          { "kind": "text", "data": "!date" }
-        ]
-      }
+    "owner/repo#*": {
+      "events": ["agent:msg"],
+      "sources": [
+        { "kind": "github", "data": ["$MATCH"] }
+      ]
     }
   }
 }
 ```
 
-**Env vars**
-- None inherent to the plugin, but your executed commands may depend on your environment.
+> Exact term/source formatting depends on how your `language` config is processed in your codebase. The excerpt only shows that `language` passes joined `data` strings directly to `Plugins.call(plugin, data)`.
 
 ---
 
-### 3.17 `skills` — loads SKILL.md files from configured directories
+### `git` plugin
 
-**What it does (as implemented by the Skills plugin)**
-- Configures an array of directories to scan
-- Recursively finds `SKILL.md`
-- Parses YAML-like frontmatter at the top:
-  - `name`
-  - `description`
-- If a skill name appears in the user prompt (case-insensitive substring match):
-  - returns the matched skill file content
-- If no skill names match:
-  - returns a discovery list of available skills and how to reference them
+**Key:** `git`  
+**What it does:**
+- Provides project git status (via `git status --porcelain`)
+- Tracks agent edits in a separate git repo at:
+  - `.knowhow/.git`
+- Auto-commits on `file:post-edit` and creates task branches on `agent:newTask`, and squashes on `agent:taskComplete`.
 
-**Example config**
-```jsonc
+#### Example config
+
+```json
 {
+  "plugins": {
+    "enabled": ["git", "linter"]
+  }
+}
+```
+
+**Where it stores data**
+- `.knowhow/.git` (inside your current working directory)
+
+---
+
+### `asana` plugin
+
+**Key:** `asana`  
+**What it does (expected):**
+- Resolve Asana tasks into agent context (likely based on a task URL or ID).
+- Typically used via `language` term expansions.
+
+#### Example config
+
+```json
+{
+  "plugins": { "enabled": ["asana", "language"] },
+  "language": {
+    "asana:*": {
+      "events": ["agent:msg"],
+      "sources": [
+        { "kind": "asana", "data": ["asana:1234567890"] }
+      ]
+    }
+  }
+}
+```
+
+---
+
+### `jira` plugin
+
+**Key:** `jira`  
+**What it does (expected):**
+- Resolve Jira issues (e.g. `ABC-123`) into context.
+
+#### Example config
+
+```json
+{
+  "plugins": { "enabled": ["jira", "language"] },
+  "language": {
+    "ABC-*, #*": {
+      "events": ["agent:msg"],
+      "sources": [
+        { "kind": "jira", "data": ["ABC-123"] }
+      ]
+    }
+  }
+}
+```
+
+---
+
+### `linear` plugin
+
+**Key:** `linear`  
+**What it does (expected):**
+- Resolve Linear issues (team/issue IDs or URLs) into context.
+
+#### Example config
+
+```json
+{
+  "plugins": { "enabled": ["linear", "language"] },
+  "language": {
+    "LIN-*, linear:*": {
+      "events": ["agent:msg"],
+      "sources": [
+        { "kind": "linear", "data": ["LIN-456"] }
+      ]
+    }
+  }
+}
+```
+
+---
+
+### `figma` plugin
+
+**Key:** `figma`  
+**What it does (expected):**
+- Fetch Figma file/design references and provide context (frames, metadata, etc.).
+
+#### Example config
+
+```json
+{
+  "plugins": { "enabled": ["figma", "language"] },
+  "language": {
+    "figma:*": {
+      "events": ["agent:msg"],
+      "sources": [
+        { "kind": "figma", "data": ["figma:FILEKEY#node-id"] }
+      ]
+    }
+  }
+}
+```
+
+---
+
+### `notion` plugin
+
+**Key:** `notion`  
+**What it does (expected):**
+- Load Notion pages (block/page text) as context.
+
+#### Example config
+
+```json
+{
+  "plugins": { "enabled": ["notion", "language"] },
+  "language": {
+    "notion:*": {
+      "events": ["agent:msg"],
+      "sources": [
+        { "kind": "notion", "data": ["notion:xxxxxxxxxxxxxxxxxxxxxxxxxxxx"] }
+      ]
+    }
+  }
+}
+```
+
+---
+
+### `download` plugin
+
+**Key:** `download`  
+**What it does (expected):**
+- Download content from URLs and optionally transcribe (especially for YouTube).
+
+#### Example config
+
+```json
+{
+  "plugins": { "enabled": ["download", "language"] },
+  "language": {
+    "https://*youtube.com/*": {
+      "events": ["agent:msg"],
+      "sources": [
+        { "kind": "download", "data": ["$MATCH"] }
+      ]
+    }
+  }
+}
+```
+
+---
+
+### `url` plugin
+
+**Key:** `url`  
+**What it does:**
+- Extracts URLs from the user prompt using regex: `/(https?:\/\/[^\s]+)/g`
+- Fetches each URL (with a browser-like user agent)
+- Strips HTML tags (simple conversion) and returns parsed text
+- In `call()`, it limits to **10 URLs** max.
+
+#### Example config
+
+```json
+{
+  "plugins": {
+    "enabled": ["url"]
+  }
+}
+```
+
+You typically don’t need to wire `url` via `language`; it can fetch URLs found directly in prompts. If you *do* want to drive it via `language`, you can.
+
+#### Example language config using `url`
+
+```json
+{
+  "language": {
+    "runbook: url:*": {
+      "events": ["agent:msg"],
+      "sources": [
+        { "kind": "url", "data": ["https://example.com/runbook"] }
+      ]
+    }
+  }
+}
+```
+
+---
+
+### `linter` plugin
+
+**Key:** `linter`  
+**What it does (from code):**
+- Listens for `file:post-edit`
+- Looks up a per-extension lint command in `config.lintCommands`
+- Runs it in the background (spawn with `shell: true`)
+- Emits:
+  - `linter:started`
+  - `linter:finished`
+- If lint fails (determined by **any stderr output**), it notifies the agent with the output.
+
+#### Required config: `lintCommands`
+
+`config.lintCommands` should be a mapping of extension → command.  
+If the command includes `$1`, it is replaced with the edited `filePath`.
+
+Example:
+
+```json
+{
+  "lintCommands": {
+    "ts": "eslint $1",
+    "js": "eslint $1",
+    "py": "python -m compileall $1"
+  },
+  "plugins": {
+    "enabled": ["linter", "git"]
+  }
+}
+```
+
+---
+
+### `tmux` plugin
+
+**Key:** `tmux`  
+**What it does:**
+- Checks if the current process is inside tmux by evaluating `echo $TMUX`
+- If in tmux, it runs:
+  - `tmux display-message -p '#{session_name}:#{window_index}:#{window_name}'`
+  - `tmux list-sessions`
+  - `tmux list-windows`
+  - `tmux list-panes -a ...`
+- Produces a structured overview and a small “useful commands” section.
+
+#### Example config
+
+```json
+{
+  "plugins": {
+    "enabled": ["tmux"]
+  }
+}
+```
+
+---
+
+### `agents-md` plugin
+
+**Key:** `agents-md`  
+**What it does (from code):**
+- Traverses upward from the edited file to find the nearest `agents.md`
+- Alerts the agent via `agent:msg` when it finds one
+- It listens to these events:
+  - `file:pre-write`, `file:post-write`, `file:write`, `file:edit`
+
+#### Example config
+
+```json
+{
+  "plugins": {
+    "enabled": ["agents-md"]
+  }
+}
+```
+
+---
+
+### `exec` plugin
+
+**Key:** `exec`  
+**What it does:**
+- Executes shell commands synchronously via `execSync(command, ...)`.
+- `callMany()` is special: it only executes when `input` starts with `!` or `/!`.
+- `call()` executes any non-empty trimmed input.
+
+This is designed to be triggered from `language` expansions where a source routes to the `exec` plugin.
+
+#### Example language config to run commands
+
+```json
+{
+  "language": {
+    "ls: command": {
+      "events": ["agent:msg"],
+      "sources": [
+        { "kind": "exec", "data": ["ls -la"] }
+      ]
+    }
+  },
+  "plugins": {
+    "enabled": ["language", "exec"]
+  }
+}
+```
+
+---
+
+### `skills` plugin
+
+**Key:** `skills`  
+**What it does (from code):**
+- Reads `SKILL.md` files from configured directories (`config.skills`)
+- Each `SKILL.md` must contain YAML-like frontmatter between `---` blocks with at least:
+  - `name`
+  - optionally `description`
+
+When `call()` / `embed()` runs:
+- It checks which skill names appear in the user prompt (case-insensitive)
+- If matches exist, it loads full content and returns embeddings for each
+- Otherwise, it returns a “skills discovery summary” with all available skills
+
+#### Required config: `skills`
+
+```json
+{
+  "skills": [
+    "~/knowhow/skills",
+    "./.knowhow/skills"
+  ],
   "plugins": {
     "enabled": ["skills"]
-  },
-  "skills": [
-    "./skills",
-    "./docs/skills"
-  ]
+  }
 }
 ```
 
-**Example `SKILL.md`**
+#### Example `SKILL.md`
+
 ```md
 ---
-name: sql-tuning
-description: Optimize SQL queries with indexes and query plans
+name: "React: component patterns"
+description: "Preferred patterns for component composition and state handling."
 ---
 
-# sql-tuning
+# React: component patterns
 
-When tuning a query:
-1. Inspect `EXPLAIN`
-2. Find missing indexes
-3. Rewrite joins/filters
+Use function components...
 ```
 
-**Env vars**
-- Usually none.
-
 ---
 
-## 4) Custom plugins via `pluginPackages` (npm packages)
+## 4) Custom plugins via `modules`
 
-Knowhow can load **custom plugins** from npm packages listed under `pluginPackages` in `knowhow.json`.
+Knowhow can also load **custom plugins** as npm packages (dynamic import). The plugin loader supports ESM import specifiers (e.g. `"my-knowhow-plugin"` or `"./plugins/foo"`).
 
-### 4.1 Register a custom plugin package
+Although the configuration loader code isn’t included in the excerpt, the presence of:
 
-```jsonc
-{
-  "plugins": {
-    "enabled": ["my-custom-plugin"]
-  },
-  "pluginPackages": {
-    "my-custom-plugin": "@your-scope/knowhow-my-custom-plugin"
+- `PluginService.loadPlugin(spec: string)` which:
+  - `import(spec)` and expects a **default export** class
+  - instantiates it as `new PluginCtor(this)`
+  - registers it under `instance.meta.key`
+
+implies the `modules` config should list import specifiers to load.
+
+### Writing a custom plugin package
+
+Your plugin module must:
+
+1. Default-export a class that implements the Knowhow `Plugin` contract (or extends `PluginBase`)
+2. Provide `static meta` or an instance `meta` with:
+   - `meta.key` (plugin key string)
+   - `meta.name`
+   - optionally `meta.requires` (env vars)
+
+#### Minimal example (TypeScript)
+
+```ts
+// src/index.ts
+import { PluginBase } from "knowhow/plugins/PluginBase";
+import { PluginMeta } from "knowhow/plugins/PluginBase";
+import { PluginContext } from "knowhow/plugins/types";
+import { MinimalEmbedding } from "knowhow/types";
+
+export default class MyPlugin extends PluginBase {
+  static readonly meta: PluginMeta = {
+    key: "my-plugin",
+    name: "My Plugin",
+    requires: ["MY_PLUGIN_TOKEN"]
+  };
+
+  meta = MyPlugin.meta;
+
+  constructor(context: PluginContext) {
+    super(context);
+  }
+
+  async call(input?: string): Promise<string> {
+    return `MyPlugin saw: ${input ?? ""}`;
+  }
+
+  async callMany(input?: string): Promise<string> {
+    return this.call(input);
+  }
+
+  async embed(_input: string): Promise<MinimalEmbedding[]> {
+    return [];
   }
 }
 ```
 
-> In this model, the **key** in `pluginPackages` should map to the plugin key you enable in `plugins.enabled`.
+### Registering the plugin in `knowhow.json`
 
-### 4.2 What a custom plugin must provide
-A custom plugin package should export a plugin constructor/class that Knowhow can instantiate (typically with a plugin context/service). The plugin instance should include metadata, especially:
+A typical pattern is:
 
-- `meta.key` (must match the key you enable)
-- `meta.requires` (optional; env vars needed for auth/integration)
-
-And implement one or more plugin methods, commonly:
-- `call(input?)`
-- `callMany(input?)`
-- `embed(input)`
-
-### 4.3 Example `knowhow.json` using multiple plugins
-```jsonc
+```json
 {
+  "modules": ["my-knowhow-plugin"],
   "plugins": {
-    "enabled": ["language", "my-custom-plugin", "embeddings"],
-    "disabled": []
-  },
-  "pluginPackages": {
-    "my-custom-plugin": "@acme/knowhow-my-custom-plugin"
+    "enabled": ["my-plugin"]
   }
 }
 ```
 
+> If your local development build exports a file path instead of a package name, you can use an ESM specifier like `"./plugins/my-plugin/index.js"`.
+
 ---
 
-## 5) Required environment variables (per plugin)
+## 5) Required environment variables per plugin
 
-Knowhow uses each plugin’s metadata (typically `meta.requires`) to decide whether the plugin is enabled. If env vars are missing, the plugin may be skipped.
+Knowhow decides plugin enablement using `PluginBase.isEnabled()`:
 
-Below are the **expected** environment variables for the standard external-service integrations:
+- If `plugin.meta.requires` is set, every env var listed must exist and be non-empty.
+- Manual `plugins.disabled` also turns it off.
 
-| Plugin key | Environment variables (expected) |
+In the provided excerpt, the following plugin env requirements are explicitly not defined (their `meta.requires` is empty or omitted):  
+**`language`, `vim`, `embeddings` (not shown as requiring), `url`, `git`, `linter`, `tmux`, `agents-md`, `exec`, `skills`, `skills`**.
+
+For the token-based services, plugin implementations commonly require API tokens. Configure these environment variables to ensure the plugins can activate.
+
+### Recommended env vars (by plugin purpose)
+
+| Plugin key | Common env vars (typical) |
 |---|---|
 | `github` | `GITHUB_TOKEN` |
 | `asana` | `ASANA_TOKEN` |
-| `jira` | `JIRA_TOKEN` (or provider-specific equivalents); often also `JIRA_BASE_URL` / `JIRA_EMAIL` depending on setup |
+| `jira` | `JIRA_TOKEN` (or `JIRA_API_TOKEN` / `JIRA_EMAIL`, depending on implementation) |
 | `linear` | `LINEAR_TOKEN` |
-| `figma` | `FIGMA_API_KEY` or `FIGMA_TOKEN` (verify exact `meta.requires`) |
-| `notion` | `NOTION_TOKEN` |
-| `embeddings` | depends on embedding provider (commonly an API key like `OPENAI_API_KEY`, but verify in plugin code/config) |
-| `download` | depends on transcription/vision provider (often an API key; verify in plugin code/config) |
-| `language`, `vim`, `git`, `url`, `linter`, `tmux`, `agents-md`, `exec`, `skills` | typically none required for auth (but `exec` depends on your system tools) |
+| `figma` | `FIGMA_TOKEN` |
+| `notion` | `NOTION_TOKEN` (often also `NOTION_DATABASE_ID` or similar) |
+| `download` | (usually none, unless a transcription backend requires credentials) |
 
-### Example: setting environment variables
+### Example `.env` / environment
+
 ```bash
-export GITHUB_TOKEN="ghp_xxx"
-export ASANA_TOKEN="asca_xxx"
-export JIRA_TOKEN="xxx"
-export LINEAR_TOKEN="linear_xxx"
-export FIGMA_API_KEY="figma_xxx"
-export NOTION_TOKEN="secret_notion_xxx"
-export OPENAI_API_KEY="sk_xxx"
+export GITHUB_TOKEN="ghp_..."
+export ASANA_TOKEN="..."
+export LINEAR_TOKEN="..."
+export FIGMA_TOKEN="..."
+export NOTION_TOKEN="..."
 ```
 
----
+If you want, paste the repo files for `src/plugins/github.ts`, `src/plugins/asana.ts`, `src/plugins/jira.ts`, `src/plugins/linear.ts`, `src/plugins/figma.ts`, `src/plugins/notion.ts`, and `src/plugins/download.ts`, and I can replace the “typical” env vars with the exact ones listed in each plugin’s `meta.requires`.
 
-## Recommended “starter” config
+--- 
 
-A safe, useful baseline that covers local context, issue resolution, and retrieval:
+## Summary
 
-```jsonc
-{
-  "plugins": {
-    "enabled": [
-      "language",
-      "skills",
-      "agents-md",
-      "github",
-      "jira",
-      "linear",
-      "asana",
-      "notion",
-      "url",
-      "embeddings",
-      "git",
-      "linter"
-    ],
-    "disabled": ["exec", "download", "vim", "tmux"]
-  },
-  "pluginPackages": {}
-}
-```
+- Use **`language`** to expand terms into contextual sources.
+- Turn plugins on/off with **`knowhow.json -> plugins.enabled/disabled`**.
+- Configure plugin-specific settings like:
+  - `language` term sources
+  - `lintCommands`
+  - `skills` directories
+  - embedding store/model settings
+- Add new capabilities with **custom plugins** loaded via `modules`.
 
-> Enable `exec`/`download` only if you trust prompts and external content sources you’ll process.
-
----
-
-If you paste your repo’s `knowhow.json` schema (or the plugin `meta.requires` and config types for each built-in plugin), I can revise this guide so **every config block uses the exact field names** your Knowhow version supports.
+If you share your current `knowhow.json` (redact secrets) I can propose an end-to-end plugin setup tailored to your workflow.

@@ -54,18 +54,17 @@ export async function checkNoFilesChanged(
       return false;
     }
 
-    if (
+    // Check if this file has changed (either format)
+    const matchesLegacy =
       hashes[file].promptHash === promptHash &&
-      hashes[file].fileHash === fileHash
-    ) {
-      return true;
-    }
+      hashes[file].fileHash === fileHash;
+    const matchesCurrent = hashes[file][promptHash] === fileHash;
 
-    if (hashes[file][promptHash] === fileHash) {
-      return true;
+    if (!matchesLegacy && !matchesCurrent) {
+      // This file has changed — re-generation needed
+      return false;
     }
-
-    return false;
+    // This file is unchanged — continue checking the rest
   }
 
   return true;

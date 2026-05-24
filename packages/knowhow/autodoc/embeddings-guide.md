@@ -1,138 +1,140 @@
 # Embeddings Guide (Knowhow CLI)
 
-Embeddings are the backbone of Knowhow’s semantic search. Instead of searching for exact words, Knowhow converts *text chunks* into **vectors** (arrays of numbers) that represent meaning. Later, when you ask a question, Knowhow embeds the question and finds the most similar vectors across your docs/code/other sources.
+Embeddings are the backbone of Knowhow’s semantic search. Instead of matching exact keywords, Knowhow turns **text chunks** into **vectors** (arrays of numbers) and later searches by **meaning** using vector similarity.
 
-This guide explains how to generate, configure, store, and use embeddings in Knowhow.
+This guide explains how to generate, configure, store, and use embeddings with the Knowhow CLI.
 
 ---
 
 ## 1) What embeddings are
 
-An **embedding** is a numeric vector representing a piece of text.
+**Embeddings** are **vector representations** of text.
 
-When Knowhow runs embedding generation:
+In Knowhow:
 
-- It **chunks** your content into pieces (default ~2000 characters per chunk).
-- For each chunk, it may optionally **summarize/transform** the text with a prompt.
-- It then calls the configured embedding model to create a vector.
-- It saves an entry shaped like:
+- Your inputs are converted into text (for files: `convertToText(filePath)`).
+- The text is split into **chunks** (optional `chunkSize`).
+- Each chunk is embedded by an embedding model, producing a `vector: number[]`.
+- The result is stored in a local JSON file with entries shaped like:
 
 ```json
 {
-  "id": "chunk-id",
-  "text": "chunk content (possibly summarized)",
+  "id": "some-chunk-id",
+  "text": "chunk content (or summarized content)",
   "vector": [0.0123, -0.0045, ...],
   "metadata": {
-    "...": "source-specific metadata"
+    "filepath": "...",
+    "date": "2026-05-23T..."
   }
 }
 ```
 
-### Chunk IDs (how Knowhow identifies chunks)
-- If `chunkSize` is set, Knowhow typically uses:
-  - `id-index` (e.g. `path/to/file.ts-3`)
-- If `chunkSize` is not set, it may keep the original `id`.
+### Chunk IDs and pruning behavior
 
-Knowhow also prunes old chunk embeddings that no longer match the current input (to keep embeddings in sync).
+Knowhow assigns chunk IDs like:
+
+- If `chunkSize` is set: `chunkId = "${id}-${chunkIndex}"`
+- If the chunk ID already ends with a numeric suffix, it won’t be re-suffixed.
+
+It also **prunes old chunks**: any existing chunk under the same base `id` that is not part of the newly generated chunk set is removed from the embeddings JSON.
 
 ---
 
-## 2) `knowhow embed` (generate embeddings)
+## 2) `knowhow embed` — generate embeddings
 
-Run the embedding generation step:
+The CLI’s embedding generation is driven by your `embedSources` configuration.
+
+`knowhow embed`:
+
+1. Loads `.knowhow/knowhow.json`
+2. Reads `config.embeddingModel` (fallback: OpenAI Ada v2)
+3. For each entry in `config.embedSources`, runs embedding generation and writes the result to `embedSources[].output`
+
+### Example config (local embeddings for docs + code)
+
+```jsonc
+{
+  "embeddingModel": "openai.EmbeddingAda2",
+  "embedSources": [
+    {
+      "input": ".knowhow/docs/**/*.mdx",
+      "output": ".knowhow/embeddings/docs.json",
+      "prompt": "BasicEmbeddingExplainer",
+      "chunkSize": 2000
+    },
+    {
+      "input": "src/**/*.ts",
+      "output": ".knowhow/embeddings/code.json",
+      "chunkSize": 2000
+    }
+  ]
+}
+```
+
+Then run:
 
 ```bash
 knowhow embed
 ```
 
-Knowhow will:
-
-1. Load `.knowhow/knowhow.json`
-2. For each entry in `embedSources`, embed content into the configured `.json` output file(s)
-3. Save updated embeddings locally under paths like:
-   - `.knowhow/embeddings/docs.json`
-   - `.knowhow/embeddings/code.json`
-
-> In code, the embedding step iterates `config.embedSources` and calls `embedSource(...)` for each configured source.
-
 ---
 
-## 3) `embedSources` config (what to embed)
+## 3) `embedSources` config
 
-In `.knowhow/knowhow.json`, embeddings are configured under:
+Each `embedSources[]` entry controls **what** to embed, **how** to chunk/transform, and **where** to store the resulting embedding JSON.
 
-```json
+### Supported fields (from code)
+
+| Field | Type | What it does |
+|---|---:|---|
+| `input` | string | Glob pattern (or special kind input) describing what to embed |
+| `output` | string | Path to the `.json` embeddings file |
+| `chunkSize` | number | Split text into chunks of this many characters (template default is commonly `2000`) |
+| `minLength` | number | Skip chunks shorter than this many characters |
+| `prompt` | string | Optional prompt name/string used to *summarize/transform* each chunk before embedding |
+| `kind` | string | Embedding strategy kind (default: `"file"`). Can also be a plugin kind like `asana`, `github`, `url`, etc. |
+
+### Scenario: embed file globs (`kind` defaults to `"file"`)
+
+```jsonc
 {
-  "embedSources": [ ... ]
+  "embedSources": [
+    {
+      "input": "docs/**/*.md",
+      "output": ".knowhow/embeddings/docs.json",
+      "chunkSize": 2000,
+      "minLength": 50
+    }
+  ]
 }
 ```
 
-Each entry supports these fields (from the config types and embedding logic):
+### Scenario: embed text files by using `kind: "text"`
 
-### `input` (required)
-**Glob pattern** or a direct input string (depending on `kind`).
+If `kind` is `"text"`, Knowhow treats the source input as raw text and embeds it as a single item (no file globbing).
 
-- If `kind` is `"file"` (default), Knowhow globs the filesystem:
-  - `input: ".knowhow/docs/**/*.mdx"`
-- For non-`file` kinds, Knowhow may treat `input` as a single input value.
-
-### `output` (required)
-Path where the generated embeddings JSON file is saved.
-
-Example:
-- `.knowhow/embeddings/docs.json`
-
-Knowhow writes the file as a JSON array:
-- Sorted by `id`
-- Each element includes `id`, `text`, `vector`, `metadata`
-
-### `chunkSize` (optional)
-How many **characters per chunk**.
-
-- Default in the template config is `2000`
-- If provided, chunk IDs include `-index`
-
-### `minLength` (optional)
-Skip chunks shorter than this number of characters.
-
-Implementation detail:
-```ts
-const tooShort = minLength && textOfChunk.length < minLength;
-```
-
-### `prompt` (optional)
-If set, Knowhow transforms each chunk *before* embedding by summarizing it with a prompt.
-
-- The prompt is loaded via `summarizeTexts([textOfChunk], prompt)`
-- Metadata stores extra text when a prompt is used:
-  - `metadata.text` is set to the original chunking output (see code path)
-
-This is especially useful to:
-- compress long chunks
-- standardize content for better retrieval
-- emphasize relevant information
-
-### `kind` (optional)
-Controls how the input is interpreted.
-
-- If omitted: defaults to `"file"`
-- Supported patterns:
-  - `"file"`: embed content from files on disk (converted to text)
-  - `"text"`: embed a provided text string
-  - Other kinds: typically handled by embeddings plugins (see “Special input kinds” below)
-
----
-
-### `embedSources` example: embed docs (MDX) with chunking + prompt
-
-```json
+```jsonc
 {
-  "embeddingModel": "text-embedding-ada-002",
   "embedSources": [
     {
-      "kind": "file",
-      "input": ".knowhow/docs/**/*.mdx",
-      "output": ".knowhow/embeddings/docs.json",
+      "kind": "text",
+      "input": "This is the content I want embedded",
+      "output": ".knowhow/embeddings/notes.json"
+    }
+  ]
+}
+```
+
+### Scenario: transform before embedding with `prompt`
+
+When `prompt` is provided, Knowhow calls a summarization step before generating vectors.
+
+```jsonc
+{
+  "embedSources": [
+    {
+      "input": "src/**/*.ts",
+      "output": ".knowhow/embeddings/code.json",
       "prompt": "BasicEmbeddingExplainer",
       "chunkSize": 2000
     }
@@ -140,194 +142,100 @@ Controls how the input is interpreted.
 }
 ```
 
----
+> Tip: The prompt is loaded via `loadPrompt(promptName)` which supports either a prompt name (from `.knowhow/prompts/*.mdx`) or a direct prompt string.
 
-### `embedSources` example: embed TypeScript source files
+### Scenario: skip very small chunks with `minLength`
 
-```json
+```jsonc
 {
   "embedSources": [
     {
-      "kind": "file",
-      "input": "src/**/*.ts",
-      "output": ".knowhow/embeddings/code.json",
+      "input": "docs/**/*.md",
+      "output": ".knowhow/embeddings/docs.json",
       "chunkSize": 2000,
-      "minLength": 200
+      "minLength": 120
     }
   ]
 }
 ```
-
----
-
-### `embedSources` example: embed a literal text string
-
-```json
-{
-  "embedSources": [
-    {
-      "kind": "text",
-      "input": "This is a short paragraph I want searchable.",
-      "output": ".knowhow/embeddings/notes.json",
-      "chunkSize": 0,
-      "minLength": 1
-    }
-  ]
-}
-```
-
-> With `kind: "text"`, Knowhow treats `input` as the content to embed (it hashes it to generate an ID).
 
 ---
 
 ## 4) Embedding models (`embeddingModel`)
 
-Knowhow uses `embeddingModel` from config to request vectors from the embedding provider.
+Your embedding model is configured via:
 
-Default (from the template config):
-- `text-embedding-ada-002`
-
-Supported models in the codebase:
-
-### OpenAI embedding models
-- `text-embedding-ada-002` (`EmbeddingAda2`)
-- `text-embedding-3-small` (`EmbeddingSmall3`)
-- `text-embedding-3-large` (`EmbeddingLarge3`)
-
-### Google embedding models
-- `gemini-embedding-exp` (`Gemini_Embedding`)
-- `gemini-embedding-001` (`Gemini_Embedding_001`)
-
-Example config:
-
-```json
+```jsonc
 {
-  "embeddingModel": "text-embedding-3-small",
-  "embedSources": [
-    {
-      "input": "docs/**/*.md",
-      "output": ".knowhow/embeddings/docs.json",
-      "chunkSize": 2000
-    }
-  ]
+  "embeddingModel": "openai.EmbeddingAda2"
 }
 ```
 
----
+Knowhow passes `embeddingModel` directly to the embedding provider client when creating embeddings.
 
-## 5) Remote storage options (upload/download embeddings)
+### Supported models
 
-Knowhow can store the generated embeddings JSON remotely using `remote` and `remoteType` in each `embedSources` entry.
+The code exports embedding model sets under:
 
-### A) Upload to S3: `remoteType: "s3"`
-**Config**
-- `remote`: S3 bucket name
-- `output`: local path to the `.json` embeddings file to upload
+- `EmbeddingModels.openai.*`
+- `EmbeddingModels.google.*`
 
-Upload behavior (from `knowhow upload`):
-- uploads `source.output` to `${bucket}/${embeddingName}.json` (where `embeddingName` is derived from the local filename)
+So supported values are those available in `EmbeddingModels.openai` and `EmbeddingModels.google` in your installed Knowhow version.
 
-Example:
-
-```json
-{
-  "embedSources": [
-    {
-      "input": ".knowhow/docs/**/*.mdx",
-      "output": ".knowhow/embeddings/docs.json",
-      "remoteType": "s3",
-      "remote": "my-knowhow-embeddings",
-      "chunkSize": 2000
-    }
-  ]
-}
-```
-
-Download behavior (from `knowhow download`):
-- downloads `${name}.json` from the bucket into `source.output`
+> If you also use remote uploads to Knowhow Cloud, be aware that **vectors generated with different models are not comparable**. Knowhow warns on upload when local `embeddingModel` differs from the backend’s stored model.
 
 ---
 
-### B) Upload via GitHub (git LFS): `remoteType: "github"`
-The downloader supports `remoteType: "github"` (implemented in `knowhow download`).
+## 5) Remote storage options
 
-From `knowhow download`:
-- downloads `".knowhow/embeddings/<fileName>.json"` from a configured GitHub remote into `destinationPath`
+Embeddings can be uploaded to remote storage using `knowhow upload`.
 
-Example:
+Your `embedSources[]` entry must specify:
 
-```json
+- `remote`: destination identifier (varies by remote type)
+- `remoteType`: which backend to use
+- optionally `remoteId` (required for `remoteType: "knowhow"`)
+
+### A) Upload to S3 (`remoteType: "s3"`)
+
+```jsonc
 {
   "embedSources": [
     {
       "input": "src/**/*.ts",
       "output": ".knowhow/embeddings/code.json",
+      "chunkSize": 2000,
+
+      "remoteType": "s3",
+      "remote": "my-embeddings-bucket"
+    }
+  ]
+}
+```
+
+Run:
+
+```bash
+knowhow embed
+knowhow upload
+```
+
+How it maps:
+- Local `output` JSON is uploaded as something like:  
+  `bucketName/embeddingName.json`
+
+### B) Upload to GitHub via git LFS (`remoteType: "github"`)
+
+```jsonc
+{
+  "embedSources": [
+    {
+      "input": ".knowhow/docs/**/*.mdx",
+      "output": ".knowhow/embeddings/docs.json",
+      "chunkSize": 2000,
+
       "remoteType": "github",
-      "remote": "github-owner/github-repo"
-    }
-  ]
-}
-```
-
-> Note: in the provided `knowhow upload` implementation, S3 and Knowhow-cloud uploads are explicit; GitHub/LFS upload behavior may be handled by other integrations in your setup.
-
----
-
-### C) Upload to Knowhow Cloud KB: `remoteType: "knowhow"`
-This is the integration path for storing embeddings into Knowhow’s hosted knowledge base.
-
-From `knowhow upload`:
-- requires `remoteId`
-- uses a presigned upload URL
-- then syncs embedding metadata back to the backend DB
-
-Example:
-
-```json
-{
-  "embedSources": [
-    {
-      "input": ".knowhow/docs/**/*.mdx",
-      "output": ".knowhow/embeddings/docs.json",
-      "remoteType": "knowhow",
-      "remoteId": "kb_1234567890abcdef"
-    }
-  ]
-}
-```
-
----
-
-## 6) `knowhow upload` (upload embeddings to remote)
-
-Command:
-
-```bash
-knowhow upload
-```
-
-For each `embedSources` entry:
-
-- if `remoteType` is missing → it skips that source
-- if `remoteType === "s3"` → uploads via S3Service
-- if `remoteType === "knowhow"` → uploads via Knowhow presigned URLs and syncs metadata
-
-Example: upload both docs and code embeddings
-
-```json
-{
-  "embedSources": [
-    {
-      "input": ".knowhow/docs/**/*.mdx",
-      "output": ".knowhow/embeddings/docs.json",
-      "remoteType": "s3",
-      "remote": "my-knowhow-embeddings"
-    },
-    {
-      "input": "src/**/*.ts",
-      "output": ".knowhow/embeddings/code.json",
-      "remoteType": "knowhow",
-      "remoteId": "kb_1234567890abcdef"
+      "remote": "org-or-user/repo-name"
     }
   ]
 }
@@ -336,35 +244,25 @@ Example: upload both docs and code embeddings
 Run:
 
 ```bash
+knowhow embed
 knowhow upload
 ```
 
----
+> The exact LFS paths/commit behavior is implemented by the Embeddings service resolver for `github`.
 
-## 7) `knowhow download` (download embeddings from remote)
+### C) Upload to Knowhow Cloud KB (`remoteType: "knowhow"`)
 
-Command:
-
-```bash
-knowhow download
-```
-
-It will read each configured `embedSources[].remoteType` and download the corresponding embeddings JSON into `embedSources[].output`.
-
-Supported remote types in the provided code:
-- `s3`
-- `github`
-- `knowhow` (requires `remoteId`)
-
-Example:
-
-```json
+```jsonc
 {
   "embedSources": [
     {
+      "input": ".knowhow/docs/**/*.mdx",
       "output": ".knowhow/embeddings/docs.json",
-      "remoteType": "s3",
-      "remote": "my-knowhow-embeddings"
+      "chunkSize": 2000,
+
+      "remoteType": "knowhow",
+      "remote": "unused-or-label",
+      "remoteId": "KB_ID_FROM_KNOWHOW_DASHBOARD"
     }
   ]
 }
@@ -373,110 +271,123 @@ Example:
 Run:
 
 ```bash
-knowhow download
+knowhow embed
+knowhow upload
 ```
 
 ---
 
-## 8) Uploading to knowhow.tyvm.ai (Cloud KB)
+## 6) `knowhow upload` — upload embeddings to remote
 
-To upload embeddings to the Knowhow cloud knowledge base:
+`knowhow upload` iterates `config.embedSources` and uploads the JSON file at each `source.output`.
 
-### Step 1: Get a KB ID
-You need the `KB ID` (stored as `remoteId`) from **knowhow.tyvm.ai**.
+### Behavior by remote type
 
-### Step 2: Configure your local `embedSources`
-Set:
+- If `remoteType` is known (resolver exists) and `remoteType !== "knowhow"`: uploads using the embeddings resolver.
+- If `remoteType === "knowhow"`:
+  1. Requires `remoteId`
+  2. Fetches (and warns about) model mismatches
+  3. Requests a **presigned upload URL**
+  4. Uploads the local embedding file via S3 under the hood
+  5. Syncs metadata back to the KB (glob, chunk size, etc.)
 
-- `remoteType: "knowhow"`
-- `remoteId: "<your KB ID>"`
+---
 
-Example:
+## 7) `knowhow download` — download embeddings from remote
 
-```json
+`knowhow download` downloads each embeddings file defined in `embedSources` where `remoteType` is set.
+
+### Example: S3 download
+
+```bash
+knowhow download
+```
+
+Where it goes:
+- For non-knowhow resolvers: it uses the embeddings resolver’s download logic.
+- For `remoteType: "knowhow"`: it requests a presigned download URL from the Knowhow API, then saves to your configured `source.output`.
+
+---
+
+## 8) Uploading to knowhow.tyvm.ai (Knowhow Cloud KB)
+
+### Step 1: Get your KB ID
+
+From the Knowhow web app / dashboard, locate the KB (knowledge base) you want embeddings uploaded into and copy its **KB ID**.
+
+### Step 2: Configure your `embedSources` entry
+
+```jsonc
 {
   "embedSources": [
     {
       "input": ".knowhow/docs/**/*.mdx",
       "output": ".knowhow/embeddings/docs.json",
+      "chunkSize": 2000,
+
       "remoteType": "knowhow",
-      "remoteId": "kb_1234567890abcdef",
-      "chunkSize": 2000
+      "remoteId": "your-kb-id"
     }
   ]
 }
 ```
 
 ### Step 3: Generate + upload
-1) Generate embeddings:
 
 ```bash
 knowhow embed
-```
-
-2) Upload them:
-
-```bash
 knowhow upload
 ```
 
-Knowhow Cloud upload also syncs metadata back (glob, output path, chunk size, remoteType).
+Knowhow Cloud upload flow:
+- uses the KB ID (`remoteId`) to request a presigned upload URL
+- uploads your embeddings JSON
+- syncs embed configuration metadata back to the backend
 
 ---
 
 ## 9) Using embeddings in chat
 
-Knowhow’s chat tooling includes an **embeddings plugin** (enabled by default in the template config). The plugin:
+When the **embeddings plugin** is enabled (it is included in the default plugin list), Knowhow can:
 
-- embeds the user query
-- computes similarity between the query vector and stored embedding vectors
-- automatically selects the most relevant chunks
-- injects them into the model context as supporting material
+1. Embed the user query using your configured embedding model
+2. Compare the query vector against stored vectors using cosine similarity
+3. Retrieve the most relevant chunks
+4. Inject relevant context into the agent/chat prompt automatically
 
-So, once your embeddings are generated and (optionally) uploaded/downloaded, you typically don’t manually reference the embedding files—**semantic retrieval happens automatically** by the chat/embeddings integration.
+In other words, chat becomes semantic:
+- “Where is the auth code?” matches the meaning even if your code uses different keywords.
+
+> The similarity computation is done by `cosineSimilarity(embedding.vector, queryVector)` and results are sorted descending.
 
 ---
 
-## 10) Special input kinds (YouTube, Asana, web pages, etc.)
+## 10) Special input kinds (plugins)
 
-`embedSources[].kind` can be more than `"file"`/`"text"`. The embedding pipeline checks:
+In embedding generation, Knowhow checks:
 
-- if `Plugins.isPlugin(kind)` is true → it delegates embedding to that plugin:
-  ```ts
-  return Plugins.embed(kind, input);
-  ```
+- If `Plugins.isPlugin(kind)` → it delegates to `Plugins.embed(kind, input)`
+- Otherwise it falls back to built-in kinds (`file`, `text`)
 
-Your default config template enables many plugins (including `asana`, `github`, `download`, `url`, etc.), which commonly correspond to special `kind` values.
+That means “special input kinds” work as long as the corresponding plugin is installed/enabled.
 
-### Pattern for plugin-based kinds
-Use:
+Examples include (as referenced by your default enabled plugin list / mentions):
+- `asana`
+- `github`
+- `download`
+- `url`
+- `jira`
+- `linear`
+- etc.
 
-- `kind`: plugin name
-- `input`: plugin-specific selector or identifier
-- `output`: local embeddings JSON file
-- optional: `prompt`, `chunkSize`, `minLength`
+### A) Embed a URL/web page (`kind: "url"`)
 
-#### Example: embed Asana tasks (plugin-based kind)
-```json
-{
-  "embedSources": [
-    {
-      "kind": "asana",
-      "input": "workspace-or-project-id-or-filter",
-      "output": ".knowhow/embeddings/asana.json",
-      "chunkSize": 2000
-    }
-  ]
-}
-```
-
-#### Example: embed web pages (URL plugin)
-```json
+```jsonc
 {
   "embedSources": [
     {
       "kind": "url",
-      "input": "https://example.com/docs/index.html",
+      "input": "https://example.com/docs",
       "output": ".knowhow/embeddings/web.json",
       "chunkSize": 2000
     }
@@ -484,28 +395,29 @@ Use:
 }
 ```
 
-#### Example: embed YouTube videos
-```json
+### B) Embed Asana tasks (`kind: "asana"`)
+
+```jsonc
 {
   "embedSources": [
     {
-      "kind": "youtube",
-      "input": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-      "output": ".knowhow/embeddings/youtube.json",
-      "chunkSize": 2000,
-      "prompt": "BasicEmbeddingExplainer"
+      "kind": "asana",
+      "input": "project:MY_PROJECT_ID or task:123456",
+      "output": ".knowhow/embeddings/asana.json",
+      "chunkSize": 2000
     }
   ]
 }
 ```
 
-#### Example: embed GitHub content (plugin-based kind)
-```json
+### C) Embed GitHub content (`kind: "github"`)
+
+```jsonc
 {
   "embedSources": [
     {
       "kind": "github",
-      "input": "owner/repo",
+      "input": "org/repo",
       "output": ".knowhow/embeddings/github.json",
       "chunkSize": 2000
     }
@@ -513,54 +425,43 @@ Use:
 }
 ```
 
-> If a `kind` doesn’t correspond to an enabled embedding plugin, Knowhow may not know how to fetch/convert that input. Ensure the plugin is installed/enabled in your Knowhow setup.
+### D) Embed YouTube videos (plugin kind)
 
----
+If you have a YouTube embedding plugin installed, you can use it similarly:
 
-## Practical recipes
-
-### 1) Embed docs + upload to S3
-```json
+```jsonc
 {
-  "embeddingModel": "text-embedding-3-small",
   "embedSources": [
     {
-      "input": ".knowhow/docs/**/*.mdx",
-      "output": ".knowhow/embeddings/docs.json",
-      "prompt": "BasicEmbeddingExplainer",
-      "chunkSize": 2000,
-      "remoteType": "s3",
-      "remote": "my-knowhow-embeddings"
+      "kind": "youtube",
+      "input": "https://www.youtube.com/watch?v=VIDEO_ID",
+      "output": ".knowhow/embeddings/youtube.json",
+      "chunkSize": 2000
     }
   ]
 }
 ```
 
-```bash
-knowhow embed
-knowhow upload
-```
-
-### 2) Embed code + upload to Knowhow cloud KB
-```json
-{
-  "embedSources": [
-    {
-      "input": "src/**/*.ts",
-      "output": ".knowhow/embeddings/code.json",
-      "chunkSize": 2000,
-      "remoteType": "knowhow",
-      "remoteId": "kb_1234567890abcdef"
-    }
-  ]
-}
-```
-
-```bash
-knowhow embed
-knowhow upload
-```
+> The exact `input` format is plugin-specific—use the plugin’s documentation/examples for how it expects URLs, IDs, or project selectors.
 
 ---
 
-If you share your current `.knowhow/knowhow.json`, I can tailor an embeddings configuration (chunking, prompts, and remote storage) to your exact project structure and retrieval goals.
+# Recommended workflow
+
+1. **Configure** `embedSources` locally
+2. Run:  
+   ```bash
+   knowhow embed
+   ```
+3. If desired, store remotely:
+   ```bash
+   knowhow upload
+   ```
+4. For other environments/machines:
+   ```bash
+   knowhow download
+   ```
+
+---
+
+If you paste your current `.knowhow/knowhow.json` (especially `embedSources`), I can suggest an optimal setup (chunk sizing, minLength, prompt strategy, and the best remoteType for your workflow).
