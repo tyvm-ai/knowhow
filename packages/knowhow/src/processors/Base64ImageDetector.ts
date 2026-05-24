@@ -17,6 +17,15 @@ interface TextContent {
   text: string;
 }
 
+/**
+ * Regex that matches common image file paths (absolute, relative, or just filenames)
+ * ending in a known image extension.
+ */
+const IMAGE_PATH_REGEX =
+  /(?:^|[\s"'(,\[{])([^\s"'(,\[{]*?\.(?:png|jpe?g|gif|webp|bmp|svg))(?=$|[\s"'),\]}])/gi;
+
+const IMAGE_EXTENSIONS = ["png", "jpeg", "jpg", "gif", "webp", "bmp", "svg"];
+
 export class Base64ImageProcessor {
   private imageDetail: "auto" | "low" | "high" = "auto";
   private supportedFormats = ["png", "jpeg", "jpg", "gif", "webp"];
@@ -118,6 +127,61 @@ export class Base64ImageProcessor {
     }
   }
 
+  /**
+   * Finds all image file paths mentioned in a text string.
+   * Returns deduplicated list of paths like "/tmp/screenshot.png" or "screenshot.jpg".
+   */
+  private findImageFilePaths(text: string): string[] {
+    const found: string[] = [];
+    const seen = new Set<string>();
+    IMAGE_PATH_REGEX.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = IMAGE_PATH_REGEX.exec(text)) !== null) {
+      const filePath = match[1];
+      if (filePath && !seen.has(filePath)) {
+        seen.add(filePath);
+        found.push(filePath);
+      }
+    }
+    return found;
+  }
+
+  /**
+   * Appends a hint to a text string if image file paths are detected.
+   * The hint tells the model it can use loadImageAsBase64 to view the image.
+   */
+  private addImagePathHint(text: string): string {
+    const paths = this.findImageFilePaths(text);
+    if (paths.length === 0) return text;
+
+    const hints = paths.map(
+      (p) =>
+        `loadImageAsBase64("${p}") to view the image at ${p}`
+    );
+
+    const hintBlock =
+      paths.length === 1
+        ? `\n\n[TIP: An image file path was detected: ${paths[0]}. Use the \`loadImageAsBase64\` tool with this path to load and view the image: ${hints[0]}]`
+        : `\n\n[TIP: Image file paths were detected. Use the \`loadImageAsBase64\` tool to load and view them:\n${hints.map((h) => `  - ${h}`).join("\n")}]`;
+
+    return text + hintBlock;
+  }
+
+  /**
+   * Applies image path hints to a message's text content items.
+   */
+  private applyImagePathHintsToMessage(message: Message): void {
+    if (typeof message.content === "string") {
+      message.content = this.addImagePathHint(message.content);
+    } else if (Array.isArray(message.content)) {
+      for (const item of message.content) {
+        if (item && (item as TextContent).type === "text" && typeof (item as TextContent).text === "string") {
+          (item as TextContent).text = this.addImagePathHint((item as TextContent).text);
+        }
+      }
+    }
+  }
+
   private processToolCallArguments(message: Message): void {
     if (message.tool_calls) {
       for (const toolCall of message.tool_calls) {
@@ -209,6 +273,15 @@ export class Base64ImageProcessor {
         // and converted to proper image content before the agent sees them
         if (message.role === "tool") {
           this.processToolMessageContent(message);
+          // After processing tool content (which may not convert to image if it's plain text
+          // describing a screenshot path), add hints for any image file paths found in the text.
+          this.applyImagePathHintsToMessage(message);
+        }
+
+        // Also apply hints to assistant messages — e.g. when an assistant message
+        // contains the result of a screenshot tool that returned a file path.
+        if (message.role === "assistant") {
+          this.applyImagePathHintsToMessage(message);
         }
 
         // Process tool calls in any message

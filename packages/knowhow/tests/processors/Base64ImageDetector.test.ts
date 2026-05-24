@@ -594,3 +594,163 @@ describe("Base64ImageDetector", () => {
     });
   });
 });
+
+describe("Base64ImageDetector - image path hint detection", () => {
+  let detector: Base64ImageProcessor;
+  let processor: ReturnType<Base64ImageProcessor["createProcessor"]>;
+
+  beforeEach(() => {
+    detector = new Base64ImageProcessor();
+    processor = detector.createProcessor();
+  });
+
+  /**
+   * Simulates the actual output from the Playwright MCP browser_take_screenshot tool.
+   * When an agent calls browser_take_screenshot, the tool message content looks like:
+   *
+   *   ### Result
+   *   - [Screenshot of viewport](./hackernews-screenshot.png)
+   *   ### Ran Playwright code
+   *   ...
+   *
+   * The Base64ImageDetector should detect the .png path in this text and add a hint
+   * telling the model it can call loadImageAsBase64 to actually view the image.
+   */
+  describe("browser screenshot tool response", () => {
+    it("should detect image path from a browser screenshot tool message and add hint", () => {
+      // This is the exact format returned by the browser MCP take_screenshot tool
+      const screenshotToolResponse =
+        "### Result\n- [Screenshot of viewport](./hackernews-screenshot.png)\n### Ran Playwright code\n```js\nawait page.screenshot({ path: './hackernews-screenshot.png', scale: 'css', type: 'png' });\n```";
+
+      const originalMessages: Message[] = [];
+      const modifiedMessages: Message[] = [
+        {
+          role: "tool",
+          content: screenshotToolResponse,
+          tool_call_id: "call_abc123",
+        },
+      ];
+
+      processor(originalMessages, modifiedMessages);
+
+      const content = modifiedMessages[0].content as string;
+      expect(typeof content).toBe("string");
+      // Should still contain the original text
+      expect(content).toContain("Screenshot of viewport");
+      expect(content).toContain("./hackernews-screenshot.png");
+      // Should contain the hint
+      expect(content).toContain("[TIP:");
+      expect(content).toContain("loadImageAsBase64");
+      expect(content).toContain("./hackernews-screenshot.png");
+    });
+
+    it("should include the exact file path in the hint", () => {
+      const screenshotPath = "./hackernews-screenshot.png";
+      const toolResponse = `### Result\n- [Screenshot of viewport](${screenshotPath})\n`;
+
+      const originalMessages: Message[] = [];
+      const modifiedMessages: Message[] = [
+        {
+          role: "tool",
+          content: toolResponse,
+          tool_call_id: "call_xyz789",
+        },
+      ];
+
+      processor(originalMessages, modifiedMessages);
+
+      const content = modifiedMessages[0].content as string;
+      // The hint should reference the exact path
+      expect(content).toContain(`loadImageAsBase64("${screenshotPath}")`);
+    });
+
+    it("should not add hint when message contains no image paths", () => {
+      const toolResponse = "The page has been loaded successfully.";
+
+      const originalMessages: Message[] = [];
+      const modifiedMessages: Message[] = [
+        {
+          role: "tool",
+          content: toolResponse,
+          tool_call_id: "call_noimages",
+        },
+      ];
+
+      processor(originalMessages, modifiedMessages);
+
+      const content = modifiedMessages[0].content as string;
+      expect(content).toBe(toolResponse);
+      expect(content).not.toContain("[TIP:");
+    });
+
+    it("should detect absolute paths like /tmp/page-123.png", () => {
+      const toolResponse =
+        "Screenshot saved to /tmp/page-2026-01-01T12-00-00.png for review.";
+
+      const originalMessages: Message[] = [];
+      const modifiedMessages: Message[] = [
+        {
+          role: "tool",
+          content: toolResponse,
+          tool_call_id: "call_abs",
+        },
+      ];
+
+      processor(originalMessages, modifiedMessages);
+
+      const content = modifiedMessages[0].content as string;
+      expect(content).toContain("[TIP:");
+      expect(content).toContain("loadImageAsBase64");
+      expect(content).toContain("/tmp/page-2026-01-01T12-00-00.png");
+    });
+
+    it("should detect multiple image paths and hint about all of them", () => {
+      const toolResponse =
+        "Before: ./before.png\nAfter: ./after.jpg\nDiff: ./diff.png";
+
+      const originalMessages: Message[] = [];
+      const modifiedMessages: Message[] = [
+        {
+          role: "tool",
+          content: toolResponse,
+          tool_call_id: "call_multi",
+        },
+      ];
+
+      processor(originalMessages, modifiedMessages);
+
+      const content = modifiedMessages[0].content as string;
+      expect(content).toContain("[TIP:");
+      expect(content).toContain("./before.png");
+      expect(content).toContain("./after.jpg");
+      expect(content).toContain("./diff.png");
+    });
+
+    it("should not add hint to messages that are actual base64 image data (already converted)", () => {
+      const validPngBase64 =
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+
+      const originalMessages: Message[] = [];
+      const modifiedMessages: Message[] = [
+        {
+          role: "tool",
+          content: validPngBase64,
+          tool_call_id: "call_base64",
+        },
+      ];
+
+      processor(originalMessages, modifiedMessages);
+
+      // Should be converted to image array, not get a text hint
+      const content = modifiedMessages[0].content;
+      if (Array.isArray(content)) {
+        // Good - was converted to image content, no hint needed
+        expect(content[0]).toHaveProperty("type", "image_url");
+      } else {
+        // If kept as string, the hint should NOT be about a file path
+        // because base64 data URLs don't contain file paths
+        expect(content as string).not.toMatch(/loadImageAsBase64\("data:/);
+      }
+    });
+  });
+});
