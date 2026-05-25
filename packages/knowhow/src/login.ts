@@ -74,9 +74,10 @@ export async function login(jwtFlag?: boolean): Promise<void> {
     await updateConfig(config);
   } catch (error) {
     if (http.isHttpError(error) && error.response) {
-      const errData = await error.response.json().catch(() => ({ message: "Unknown error" }));
+      // error.body is the parsed JSON response body (set by http.ts when response is not ok)
+      const errData = error.body ?? { message: "Unknown error" };
       throw new Error(
-        `Error: ${error.status} - ${errData.message || "Unknown error"}`
+        `Error: ${error.status} - ${errData?.message || "Unknown error"}`
       );
     }
     console.log(

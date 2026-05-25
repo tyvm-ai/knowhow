@@ -528,7 +528,20 @@ export class McpService {
         // skip adding tools for unconnected clients
         continue;
       }
-      const clientTools = await client.listTools();
+
+      let clientTools: Awaited<ReturnType<typeof client.listTools>>;
+      try {
+        clientTools = await client.listTools();
+      } catch (error) {
+        // The MCP server connected at the transport level but the underlying
+        // server returned an error (e.g. -32603 "Not connected" from the proxy).
+        // Mark it as disconnected and skip — don't crash the worker.
+        console.warn(
+          `⚠ MCP server '${config.name}' failed to list tools (marking as disconnected): ${error instanceof Error ? error.message : error}`
+        );
+        this.connected[i] = false;
+        continue;
+      }
 
       for (const tool of clientTools.tools) {
         const transformed = this.toOpenAiTool(i, tool as any as McpTool);

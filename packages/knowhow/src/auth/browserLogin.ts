@@ -245,7 +245,6 @@ export class BrowserLoginService {
         if (isCancelled) return;
       }
 
-      console.log(`[device-confirm] poll attempt ${attempt}/${maxAttempts}...`);
       try {
         const response = await http.get(`${this.baseUrl}/api/users/me`, {
           headers: { Authorization: `Bearer ${jwt}` },
@@ -256,31 +255,31 @@ export class BrowserLoginService {
           // Device confirmed — session is now ACTIVE
           spinner.stop();
           process.removeListener("SIGINT", cancelHandler);
-          console.log("[device-confirm] ✅ Got 200 — session is ACTIVE");
           console.log("✅ Device confirmed! You are now logged in.");
           return;
         }
-        console.log(`[device-confirm] Got status ${response.status} — unexpected, continuing`);
       } catch (error) {
         if (http.isHttpError(error)) {
           if (error.status === 403) {
             // Still pending — keep waiting
-            console.log("[device-confirm] Got 403 — still PENDING_DEVICE_CONFIRMATION, waiting...");
             continue;
           }
           if (error.status === 401) {
-            // Token was revoked or expired
-            spinner.stop();
-            process.removeListener("SIGINT", cancelHandler);
-            console.log("[device-confirm] Got 401 — session revoked or expired");
-            throw new BrowserLoginError(
-              "Token expired or revoked during device confirmation. Please run 'knowhow login' again.",
-              "TOKEN_EXPIRED"
-            );
+            // 401 can mean:
+            // - Session not found yet (timing issue, check-device may not have run)
+            // - Session is PENDING_DEVICE_CONFIRMATION (some backend versions return 401)
+            // - Token was actually revoked/expired
+            // Keep polling for the first ~5 attempts before giving up, to handle timing issues.
+            if (attempt >= 10) {
+              spinner.stop();
+              process.removeListener("SIGINT", cancelHandler);
+              throw new BrowserLoginError(
+                "Token expired or revoked during device confirmation. Please run 'knowhow login' again.",
+                "TOKEN_EXPIRED"
+              );
+            }
+            continue;
           }
-          console.log(`[device-confirm] Got HTTP ${(error as any).status} — ${(error as Error).message}, continuing`);
-        } else {
-          console.log(`[device-confirm] Network error — ${(error as Error).message}, continuing`);
         }
       }
     }

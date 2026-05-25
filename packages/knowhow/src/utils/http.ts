@@ -13,7 +13,8 @@ export class HttpError extends Error {
   constructor(
     public status: number,
     public response: Response,
-    message: string
+    message: string,
+    public body?: any,
   ) {
     super(message);
     this.name = "HttpError";
@@ -102,7 +103,13 @@ async function request<T = any>(
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new HttpError(response.status, response, `HTTP ${response.status}: ${text}`);
+    let parsedBody: any;
+    try {
+      parsedBody = JSON.parse(text);
+    } catch {
+      parsedBody = { message: text };
+    }
+    throw new HttpError(response.status, response, `HTTP ${response.status}: ${text}`, parsedBody);
   }
 
   const data = await parseBody<T>(response, responseType);
