@@ -3,6 +3,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import * as os from "os";
 import * as fs from "fs";
+import * as path from "path";
 import { KNOWHOW_API_URL } from "../services/KnowhowClient";
 import { Spinner } from "./spinner";
 import { BrowserLoginError } from "./errors";
@@ -21,6 +22,8 @@ interface SessionStatusResponse {
 
 interface RetrieveTokenResponse {
   jwt: string;
+  requiresDeviceConfirmation?: boolean;
+  jwtSessionId?: string;
 }
 
 export class BrowserLoginService {
@@ -102,9 +105,32 @@ export class BrowserLoginService {
               `${this.baseUrl}/api/cli-login/session/${sessionData.sessionId}/token`
             );
 
-            const jwt = tokenResponse.data.jwt;
-            await this.storeJwt(jwt);
+            const tokenData = tokenResponse.data as RetrieveTokenResponse;
             spinner.stop();
+
+            if (tokenData.requiresDeviceConfirmation) {
+              // Token was issued but the device needs confirmation via email code.
+              // Store it now so it's ready once confirmed.
+              if (tokenData.jwt) {
+                await this.storeJwt(tokenData.jwt);
+              }
+              console.log("\n⚠️  New device detected — device confirmation required!");
+              console.log("─────────────────────────────────────────────────────");
+              console.log("A confirmation code has been sent to your email.");
+              console.log("You must confirm this device in your browser to complete login.");
+              console.log("\nPlease check the browser window you just used to approve the CLI session.");
+              console.log("Enter the email code there to confirm this device.");
+              console.log("\nAlternatively, visit your settings page:");
+              console.log(`  ${process.env.KNOWHOW_FRONTEND_URL || "https://knowhow.tyvm.ai"}/settings?tab=security`);
+              console.log("─────────────────────────────────────────────────────\n");
+
+              // Wait for the user to confirm the device — poll /api/users/me until
+              // the session becomes ACTIVE (device confirmed) or we time out.
+              await this.waitForDeviceConfirmation(tokenData.jwt);
+              return;
+            }
+
+            await this.storeJwt(tokenData.jwt);
             return;
           } else if (status.status.toLowerCase() === "denied") {
             throw new BrowserLoginError(
@@ -146,7 +172,8 @@ export class BrowserLoginService {
     try {
       const response = await http.post<CreateSessionResponse>(
         `${this.baseUrl}/api/cli-login/session`,
-        {}
+        {},
+        { headers: { "User-Agent": getCliUserAgent() } }
       );
       return response.data;
     } catch (error) {
@@ -189,6 +216,84 @@ export class BrowserLoginService {
   }
 
   /**
+   * Poll /api/users/me with the pending JWT until the device confirmation is
+   * completed (session becomes ACTIVE) or we time out (~10 minutes).
+   * Shows a spinner so the user knows the CLI is still waiting.
+   */
+  private async waitForDeviceConfirmation(jwt: string): Promise<void> {
+    const spinner = new Spinner();
+    spinner.start("Waiting for device confirmation");
+
+    let isCancelled = false;
+    const cancelHandler = () => {
+      isCancelled = true;
+      spinner.stop();
+      console.log("\n\nCancelled. Your token is stored — once you confirm the device, re-run your command.");
+      process.exit(0);
+    };
+    process.once("SIGINT", cancelHandler);
+
+    const maxAttempts = 120; // 10 minutes at 5-second intervals
+    let attempt = 0;
+
+    while (attempt < maxAttempts) {
+      attempt++;
+
+      // Sleep in small increments so SIGINT can be checked more responsively
+      for (let i = 0; i < 10; i++) {
+        await this.sleep(500);
+        if (isCancelled) return;
+      }
+
+      console.log(`[device-confirm] poll attempt ${attempt}/${maxAttempts}...`);
+      try {
+        const response = await http.get(`${this.baseUrl}/api/users/me`, {
+          headers: { Authorization: `Bearer ${jwt}` },
+          timeout: 10000,
+        });
+
+        if (response.status === 200) {
+          // Device confirmed — session is now ACTIVE
+          spinner.stop();
+          process.removeListener("SIGINT", cancelHandler);
+          console.log("[device-confirm] ✅ Got 200 — session is ACTIVE");
+          console.log("✅ Device confirmed! You are now logged in.");
+          return;
+        }
+        console.log(`[device-confirm] Got status ${response.status} — unexpected, continuing`);
+      } catch (error) {
+        if (http.isHttpError(error)) {
+          if (error.status === 403) {
+            // Still pending — keep waiting
+            console.log("[device-confirm] Got 403 — still PENDING_DEVICE_CONFIRMATION, waiting...");
+            continue;
+          }
+          if (error.status === 401) {
+            // Token was revoked or expired
+            spinner.stop();
+            process.removeListener("SIGINT", cancelHandler);
+            console.log("[device-confirm] Got 401 — session revoked or expired");
+            throw new BrowserLoginError(
+              "Token expired or revoked during device confirmation. Please run 'knowhow login' again.",
+              "TOKEN_EXPIRED"
+            );
+          }
+          console.log(`[device-confirm] Got HTTP ${(error as any).status} — ${(error as Error).message}, continuing`);
+        } else {
+          console.log(`[device-confirm] Network error — ${(error as Error).message}, continuing`);
+        }
+      }
+    }
+
+    spinner.stop();
+    process.removeListener("SIGINT", cancelHandler);
+    console.log("\n⏰ Timed out waiting for device confirmation.");
+    console.log("Your token is stored — once you confirm the device at:");
+    console.log(`  ${process.env.KNOWHOW_FRONTEND_URL || "https://knowhow.tyvm.ai"}/settings?tab=security`);
+    console.log("you can re-run your command and it will work.\n");
+  }
+
+  /**
    * Set up signal handlers for graceful shutdown
    */
   private setupSignalHandlers(): void {
@@ -199,6 +304,28 @@ export class BrowserLoginService {
 
     process.on("SIGTERM", gracefulShutdown);
   }
+}
+
+/**
+ * Build a descriptive User-Agent string for CLI sessions so they show up
+ * with meaningful device info in the sessions UI (e.g. "Knowhow CLI on macOS").
+ */
+export function getCliUserAgent(): string {
+  let cliVersion = "unknown";
+  try {
+    // __dirname is ts_build/src/auth/ at runtime, so go up 3 levels to package root
+    const pkgPath = path.resolve(__dirname, "../../../package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+    cliVersion = pkg.version ?? "unknown";
+  } catch {
+    // ignore — version is cosmetic
+  }
+  const platform = os.platform();
+  const osName =
+    platform === "darwin" ? "macOS" :
+    platform === "win32" ? "Windows" :
+    platform === "linux" ? "Linux" : platform;
+  return `Knowhow CLI/${cliVersion} (${osName})`;
 }
 
 /**
