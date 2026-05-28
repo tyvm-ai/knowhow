@@ -425,7 +425,7 @@ export class GenericXAIClient implements GenericClient {
     options: VideoStatusOptions
   ): Promise<VideoStatusResponse> {
     const statusResponse = await fetch(
-      `https://api.x.ai/v1/videos/generations/${options.jobId}`,
+      `https://api.x.ai/v1/videos/${options.jobId}`,
       {
         method: "GET",
         headers: {
@@ -445,24 +445,29 @@ export class GenericXAIClient implements GenericClient {
 
     // Map XAI status to standard status
     let mappedStatus: "queued" | "in_progress" | "completed" | "failed" | "expired";
-    switch (statusData.status) {
-      case "pending":
-        mappedStatus = "queued";
-        break;
-      case "processing":
-        mappedStatus = "in_progress";
-        break;
-      case "succeeded":
-        mappedStatus = "completed";
-        break;
-      case "failed":
-        mappedStatus = "failed";
-        break;
-      case "expired":
-        mappedStatus = "expired";
-        break;
-      default:
-        mappedStatus = "queued";
+    // XAI returns video.url directly when complete (no status:"succeeded")
+    if (statusData.video?.url) {
+      mappedStatus = "completed";
+    } else {
+      switch (statusData.status) {
+        case "pending":
+          mappedStatus = "queued";
+          break;
+        case "processing":
+          mappedStatus = "in_progress";
+          break;
+        case "succeeded":
+          mappedStatus = "completed";
+          break;
+        case "failed":
+          mappedStatus = "failed";
+          break;
+        case "expired":
+          mappedStatus = "expired";
+          break;
+        default:
+          mappedStatus = "queued";
+      }
     }
 
     const response: VideoStatusResponse = {
@@ -491,7 +496,7 @@ export class GenericXAIClient implements GenericClient {
     let url = options.uri;
     if (!url) {
       const statusResponse = await fetch(
-        `https://api.x.ai/v1/videos/generations/${options.fileId}`,
+        `https://api.x.ai/v1/videos/${options.fileId}`,
         { headers: { Authorization: `Bearer ${this.apiKey}` } }
       );
       if (!statusResponse.ok) {

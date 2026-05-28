@@ -199,42 +199,42 @@ describe("XAI (Grok) Modalities", () => {
         return;
       }
 
-      const apiKey = process.env.XAI_API_KEY!;
       const prompt =
         "A cyberpunk cityscape at night with flying cars and neon lights, " +
         "cinematic camera slowly panning upward to reveal the skyline";
 
-      // Helper: poll a known request ID until done, then save results
-      async function pollAndSave(requestId: string) {
+      // Helper: poll a known job ID via client until done, then save results
+      async function pollAndSave(jobId: string) {
         const maxPollingTime = 20 * 60 * 1000; // 20 minutes
         const pollingInterval = 5000; // 5 seconds
         const startTime = Date.now();
 
-        console.log(`⏳ Polling request ID: ${requestId}`);
+        console.log(`⏳ Polling job ID: ${jobId}`);
 
         while (Date.now() - startTime < maxPollingTime) {
           await new Promise((resolve) => setTimeout(resolve, pollingInterval));
 
-          const pollResponse = await fetch(
-            `https://api.x.ai/v1/videos/${requestId}`,
-            { headers: { Authorization: `Bearer ${apiKey}` } }
+          const status = await client.getVideoStatus("xai", { jobId });
+          console.log(
+            `   Status: ${status.status}, has data: ${!!status.data?.length}`
           );
 
-          if (!pollResponse.ok) {
-            const errorText = await pollResponse.text();
-            throw new Error(`XAI video polling failed: ${pollResponse.status} ${errorText}`);
+          if (status.status === "failed") {
+            throw new Error(
+              `XAI video generation failed: ${status.error || "unknown error"}`
+            );
           }
 
-          const pollData = await pollResponse.json();
-          console.log(`   Status: ${pollData.status || "unknown"}, has video: ${!!pollData.video}`);
+          if (status.status === "expired") {
+            throw new Error("XAI video generation request expired");
+          }
 
-          // XAI returns video data directly (no status:"done") when complete
-          if (pollData.video?.url) {
-            const videoUrl = pollData.video.url;
+          if (status.status === "completed" && status.data?.[0]?.url) {
+            const videoUrl = status.data[0].url;
             const outputContent = [
               `Generated at: ${new Date().toISOString()}`,
               `Prompt: ${prompt}`,
-              `Request ID: ${requestId}`,
+              `Job ID: ${jobId}`,
               `Video URL: ${videoUrl}`,
             ].join("\n");
             fs.writeFileSync(outputPath, outputContent);
@@ -243,61 +243,48 @@ describe("XAI (Grok) Modalities", () => {
 
             // Clean up job ID file
             if (fs.existsSync(jobIdPath)) fs.unlinkSync(jobIdPath);
-            return pollData;
-          } else if (pollData.status === "expired") {
-            throw new Error("XAI video generation request expired");
-          } else if (pollData.status === "failed") {
-            throw new Error(`XAI video generation failed: ${JSON.stringify(pollData)}`);
+            return;
           }
-          // pending – keep polling
+          // queued / in_progress – keep polling
         }
 
-        throw new Error("XAI video generation timed out after 20 minutes of polling");
+        throw new Error(
+          "XAI video generation timed out after 20 minutes of polling"
+        );
       }
 
-      // If we already have a request ID from a previous (timed-out) run, resume
+      // If we already have a job ID from a previous (timed-out) run, resume
       if (fs.existsSync(jobIdPath)) {
-        const requestId = fs.readFileSync(jobIdPath, "utf8").trim();
-        console.log(`🔄 Resuming poll for existing request ID: ${requestId}`);
-        await pollAndSave(requestId);
+        const jobId = fs.readFileSync(jobIdPath, "utf8").trim();
+        console.log(`🔄 Resuming poll for existing job ID: ${jobId}`);
+        await pollAndSave(jobId);
         expect(fs.existsSync(outputPath)).toBe(true);
         return;
       }
 
-      // Otherwise start a new job
+      // Otherwise start a new job via the client
       console.log("⏳ Submitting XAI video generation job...");
 
-      const startResponse = await fetch("https://api.x.ai/v1/videos/generations", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: "grok-imagine-video",
-          prompt,
-          duration: 5,
-          aspect_ratio: "16:9",
-        }),
+      const response = await client.createVideoGeneration("xai", {
+        model: "grok-imagine-video",
+        prompt,
+        duration: 5,
+        aspect_ratio: "16:9",
       });
 
-      if (!startResponse.ok) {
-        const errorText = await startResponse.text();
-        throw new Error(`XAI video generation start failed: ${startResponse.status} ${errorText}`);
+      const jobId = response.jobId;
+      if (!jobId) {
+        throw new Error(
+          `No jobId returned from video generation: ${JSON.stringify(response)}`
+        );
       }
 
-      const startData = await startResponse.json();
-      const requestId = startData.request_id;
+      // Persist the job ID so subsequent runs can resume if this run times out
+      fs.writeFileSync(jobIdPath, jobId);
+      console.log(`📝 Job ID saved to: ${jobIdPath} (ID: ${jobId})`);
+      console.log(`   Estimated cost: $${response.usd_cost?.toFixed(6)}`);
 
-      if (!requestId) {
-        throw new Error(`No request_id in response: ${JSON.stringify(startData)}`);
-      }
-
-      // Persist the request ID so subsequent runs can resume if this run times out
-      fs.writeFileSync(jobIdPath, requestId);
-      console.log(`📝 Request ID saved to: ${jobIdPath} (ID: ${requestId})`);
-
-      await pollAndSave(requestId);
+      await pollAndSave(jobId);
 
       expect(fs.existsSync(outputPath)).toBe(true);
     },
