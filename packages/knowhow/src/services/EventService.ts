@@ -1,5 +1,6 @@
 import { EventEmitter } from "events";
 import { IAgent } from "../agents/interface";
+import { logger } from "../logger";
 
 export type LogLevel = "info" | "warn" | "error";
 
@@ -36,9 +37,9 @@ type ManagedListenerRecord = {
 /**
  * Default console handler for plugin:log events.
  * Active when no renderer has taken over (e.g. worker mode, CLI before chat starts).
- * Can be suppressed by calling suppressDefaultLogger() when a renderer is active.
+ * Respects logger.silence() — if the logger is silenced, this handler is a no-op.
  *
- * IMPORTANT: Uses process.stdout/stderr directly to avoid infinite recursion
+ * Uses process.stdout/stderr directly to avoid infinite recursion
  * with logger.installConsoleOverload() which overrides console.log/warn.
  */
 function defaultConsoleLogHandler(event: {
@@ -46,6 +47,7 @@ function defaultConsoleLogHandler(event: {
   message: string;
   level: LogLevel;
 }): void {
+  if (logger.isSilenced()) return;
   const prefix = event.source ? `[${event.source}] ` : "";
   const line = `${prefix}${event.message}\n`;
   switch (event.level) {
@@ -63,8 +65,6 @@ function defaultConsoleLogHandler(event: {
 export class EventService extends EventEmitter {
   private blockingHandlers: Map<string, EventHandler[]> = new Map();
   private managedListeners: Map<string, ManagedListenerRecord> = new Map();
-  private defaultLoggerActive = true;
-  private boundDefaultLogHandler = defaultConsoleLogHandler;
 
   eventTypes = {
     agentMsg: "agent:msg",
@@ -76,35 +76,7 @@ export class EventService extends EventEmitter {
   constructor() {
     super();
     this.setMaxListeners(100);
-    // Register the default console logger so Events.log() always produces output
-    // even before a renderer is attached (worker mode, module loading, etc.)
-    this.on(this.eventTypes.pluginLog, this.boundDefaultLogHandler);
-  }
-
-  /**
-   * Suppress the default console logger.
-   * Call this when a renderer has taken over and will handle plugin:log events.
-   * This prevents double-printing when both the renderer and the default handler fire.
-   */
-  suppressDefaultLogger(): void {
-    if (this.defaultLoggerActive) {
-      this.removeListener(
-        this.eventTypes.pluginLog,
-        this.boundDefaultLogHandler
-      );
-      this.defaultLoggerActive = false;
-    }
-  }
-
-  /**
-   * Restore the default console logger.
-   * Call this when the renderer is torn down.
-   */
-  restoreDefaultLogger(): void {
-    if (!this.defaultLoggerActive) {
-      this.on(this.eventTypes.pluginLog, this.boundDefaultLogHandler);
-      this.defaultLoggerActive = true;
-    }
+    this.on(this.eventTypes.pluginLog, defaultConsoleLogHandler);
   }
 
   /**

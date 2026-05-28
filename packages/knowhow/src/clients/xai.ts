@@ -425,7 +425,7 @@ export class GenericXAIClient implements GenericClient {
     options: VideoStatusOptions
   ): Promise<VideoStatusResponse> {
     const statusResponse = await fetch(
-      `https://api.x.ai/v1/videos/${options.jobId}`,
+      `https://api.x.ai/v1/videos/generations/${options.jobId}`,
       {
         method: "GET",
         headers: {
@@ -485,8 +485,25 @@ export class GenericXAIClient implements GenericClient {
   async downloadVideo(
     options: FileDownloadOptions
   ): Promise<FileDownloadResponse> {
-    // XAI returns a URL for the video, not raw bytes from their API
-    const url = options.uri || options.fileId;
+    // XAI returns a presigned URL from the status endpoint, not raw bytes.
+    // options.fileId is the request_id (jobId) — we need to fetch the status
+    // to get the actual video URL, then download from there.
+    let url = options.uri;
+    if (!url) {
+      const statusResponse = await fetch(
+        `https://api.x.ai/v1/videos/generations/${options.fileId}`,
+        { headers: { Authorization: `Bearer ${this.apiKey}` } }
+      );
+      if (!statusResponse.ok) {
+        const errorText = await statusResponse.text();
+        throw new Error(`XAI video status fetch failed: ${statusResponse.status} ${errorText}`);
+      }
+      const statusData = await statusResponse.json();
+      url = statusData.video?.url;
+      if (!url) {
+        throw new Error(`XAI video not ready yet or no URL available (status: ${statusData.status})`);
+      }
+    }
 
     const response = await fetch(url);
     if (!response.ok) {

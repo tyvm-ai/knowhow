@@ -98,7 +98,7 @@ describe("XAI (Grok) Modalities", () => {
     const dataUrl = `data:image/png;base64,${base64Image}`;
 
     const response = await client.createCompletion("xai", {
-      model: Models.xai.Grok2Vision1212,
+      model: Models.xai.Grok_4_20_NonReasoning,
       messages: [
         {
           role: "user",
