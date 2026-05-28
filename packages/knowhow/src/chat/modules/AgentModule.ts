@@ -756,10 +756,12 @@ export class AgentModule extends BaseChatModule {
         ),
       ];
 
+      const customVariables = new CustomVariables(agent.tools);
+
       agent.messageProcessor.setProcessors("pre_call", [
         new Base64ImageProcessor(agent.tools).createProcessor(),
         ...caching,
-        new CustomVariables(agent.tools).createProcessor(),
+        customVariables.createProcessor(),
       ]);
 
       agent.messageProcessor.setProcessors("post_call", [
@@ -770,6 +772,7 @@ export class AgentModule extends BaseChatModule {
       agent.messageProcessor.setProcessors("post_tools", [
         new Base64ImageProcessor(agent.tools).createProcessor(),
         ...caching,
+        customVariables.createRepetitionHintProcessor(),
       ]);
 
       // Set up event listeners

@@ -80,7 +80,7 @@ export class TunnelTerminalAddon implements TunnelAddon {
       name: "xterm-256color",
       cols,
       rows,
-      cwd: process.env.HOME || process.cwd(),
+      cwd: process.cwd(),
       env: {
         ...process.env,
         ...env,

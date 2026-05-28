@@ -2,6 +2,7 @@ import { Message } from "../clients/types";
 import { MessageProcessorFunction } from "../services/MessageProcessor";
 import { ToolsService } from "../services";
 import { Tool } from "../clients";
+import { ToolCall } from "../clients/types";
 
 interface VariableStorage {
   [name: string]: any;
@@ -234,6 +235,180 @@ export class CustomVariables {
 
         // Apply variable substitution
         modifiedMessages[i] = this.processMessage(message);
+      }
+    };
+  }
+
+  /**
+   * Extracts all string values from a JSON-parsed object (recursively)
+   */
+  private extractStringValues(obj: any, results: string[] = []): string[] {
+    if (typeof obj === "string") {
+      results.push(obj);
+    } else if (Array.isArray(obj)) {
+      for (const item of obj) {
+        this.extractStringValues(item, results);
+      }
+    } else if (obj && typeof obj === "object") {
+      for (const val of Object.values(obj)) {
+        this.extractStringValues(val, results);
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Collects all large string values from tool calls, keyed by tool name.
+   * Returns an array of {value, toolName} pairs.
+   */
+  private collectToolCallStrings(
+    messages: Message[],
+    minLength: number
+  ): Array<{ value: string; toolName: string }> {
+    const collected: Array<{ value: string; toolName: string }> = [];
+    for (const message of messages) {
+      if (!message.tool_calls) continue;
+      for (const toolCall of message.tool_calls) {
+        const strings = this.getToolCallStrings(toolCall);
+        for (const str of strings) {
+          if (str.length >= minLength) {
+            collected.push({ value: str, toolName: toolCall.function.name });
+          }
+        }
+      }
+    }
+    return collected;
+  }
+
+  /**
+   * Finds the longest common substring between two strings that is >= minLength.
+   * Returns the substring or null if none found.
+   */
+  private longestCommonSubstring(a: string, b: string, minLength: number): string | null {
+    let best = "";
+    for (let i = 0; i < a.length - minLength + 1; i++) {
+      for (let j = a.length; j > i + minLength - 1; j--) {
+        const sub = a.slice(i, j);
+        if (sub.length <= best.length) break; // already found longer
+        if (b.includes(sub)) {
+          best = sub;
+          break;
+        }
+      }
+    }
+    return best.length >= minLength ? best : null;
+  }
+
+  /**
+   * Extracts all string values from a tool call's arguments
+   */
+  private getToolCallStrings(toolCall: ToolCall): string[] {
+    try {
+      const parsed = JSON.parse(toolCall.function.arguments);
+      return this.extractStringValues(parsed);
+    } catch {
+      // If not JSON, treat the whole arguments string as a single value
+      return [toolCall.function.arguments];
+    }
+  }
+
+  /**
+   * Creates a processor that scans messages for repeated large string values
+   * in tool call arguments, and appends a hint suggesting variable storage.
+   *
+   * This helps the LLM discover that it can avoid re-outputting long strings
+   * (e.g. JWTs, file contents) by storing them once with setVariable or
+   * storeToolCallToVariable and then referencing them via {{varName}}.
+   */
+  createRepetitionHintProcessor(options: {
+    minLength?: number;       // Minimum string length to consider (default: 50)
+    minRepetitions?: number;  // Minimum occurrences to trigger hint (default: 2)
+    minSubstringLength?: number; // Minimum repeated substring length (default: 50)
+    recentMessagesWindow?: number; // Only scan the last N messages (default: 10)
+  } = {}): MessageProcessorFunction {
+    const minLength = options.minLength ?? 50;
+    const minRepetitions = options.minRepetitions ?? 2;
+    const minSubstringLength = options.minSubstringLength ?? 50;
+    const recentMessagesWindow = options.recentMessagesWindow ?? 10;
+
+    return async (originalMessages: Message[], modifiedMessages: Message[]) => {
+      // Count occurrences of each string value across all tool call arguments
+      const stringCounts = new Map<string, { count: number; toolNames: Set<string> }>();
+
+      // Only scan the most recent N messages to keep cost bounded
+      const recentMessages = modifiedMessages.slice(-recentMessagesWindow);
+
+      // Step 1: exact full-string matches
+      const toolStrings = this.collectToolCallStrings(recentMessages, minLength);
+
+      for (const { value, toolName } of toolStrings) {
+        const existing = stringCounts.get(value);
+        if (existing) {
+          existing.count++;
+          existing.toolNames.add(toolName);
+        } else {
+          stringCounts.set(value, { count: 1, toolNames: new Set([toolName]) });
+        }
+      }
+
+      // Step 2: detect repeated substrings across different full strings
+      // e.g. the same JWT embedded in many different commands
+      const substringCounts = new Map<string, { count: number; toolNames: Set<string> }>();
+
+      for (let i = 0; i < toolStrings.length; i++) {
+        for (let j = i + 1; j < toolStrings.length; j++) {
+          const a = toolStrings[i];
+          const b = toolStrings[j];
+          // Skip if the full strings are identical (already counted above)
+          if (a.value === b.value) continue;
+
+          const common = this.longestCommonSubstring(a.value, b.value, minSubstringLength);
+          if (common) {
+            const existing = substringCounts.get(common);
+            if (existing) {
+              existing.count++;
+              existing.toolNames.add(a.toolName);
+              existing.toolNames.add(b.toolName);
+            } else {
+              substringCounts.set(common, {
+                count: 1,
+                toolNames: new Set([a.toolName, b.toolName]),
+              });
+            }
+          }
+        }
+      }
+
+      // Merge substring counts: count = number of unique pairs, so count+1 = occurrences
+      for (const [sub, info] of substringCounts.entries()) {
+        if (info.count + 1 >= minRepetitions) {
+          const existing = stringCounts.get(sub);
+          if (!existing) {
+            stringCounts.set(sub, { count: info.count + 1, toolNames: info.toolNames });
+          }
+        }
+      }
+
+      // Find entries that exceed the repetition threshold
+      const repeatedTools: string[] = [];
+      for (const [str, info] of stringCounts.entries()) {
+        if (info.count >= minRepetitions) {
+          for (const toolName of info.toolNames) {
+            if (!repeatedTools.includes(toolName)) {
+              repeatedTools.push(toolName);
+            }
+          }
+        }
+      }
+
+      if (repeatedTools.length > 0) {
+        modifiedMessages.push({
+          role: "user",
+          content:
+            `⚠️ Tool inputs have large repetitions detected in: ${repeatedTools.join(", ")}. ` +
+            `Consider storing repeated values with \`setVariable\` or \`storeToolCallToVariable\`, ` +
+            `then reference them via {{variableName}} in future tool calls to avoid re-outputting large strings.`,
+        });
       }
     };
   }

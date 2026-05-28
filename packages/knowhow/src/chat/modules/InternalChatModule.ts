@@ -12,8 +12,10 @@ import { ShellCommandModule } from "./ShellCommandModule";
 import { RendererModule } from "./RendererModule";
 import { SessionsModule } from "./SessionsModule";
 import { RemoteSyncModule } from "./RemoteSyncModule";
+import { ClipboardImageModule } from "./ClipboardImageModule";
 
 export class InternalChatModule implements ChatModule {
+  private clipboardImageModule = new ClipboardImageModule();
   private chatService?: CliChatService;
   name = "internal";
   description = "Internal chat module aggregating all functionality";
@@ -57,6 +59,7 @@ export class InternalChatModule implements ChatModule {
     await this.customCommandsModule.initialize(chatService);
     await this.remoteSyncModule.initialize(chatService);
     await this.shellCommandModule.initialize(chatService);
+    await this.clipboardImageModule.initialize(chatService);
     
     // Register our own commands (exit and multi) - not duplicated by BaseChatModule
     chatService.registerCommand({

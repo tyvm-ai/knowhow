@@ -216,12 +216,20 @@ export class CliChatService implements ChatService {
       } else {
         // Input starts with "/" but no matching command found - warn the user
         const availableCommands = this.getCommandsForActiveModes();
-        console.log(
-          `Unknown command "/${commandName}". Available commands: ${availableCommands
-            .map((cmd) => `/${cmd.name}`)
-            .join(", ")}`
-        );
-        return true;
+        // If the input looks like a filepath (contains path separators or file extensions),
+        // don't treat it as a failed command - let it fall through to modules
+        const looksLikeFilepath =
+          commandName.includes("/") ||
+          commandName.includes(".") ||
+          commandName.includes("\\");
+        if (!looksLikeFilepath) {
+          console.log(
+            `Unknown command "/${commandName}". Available commands: ${availableCommands
+              .map((cmd) => `/${cmd.name}`)
+              .join(", ")}`
+          );
+          return true;
+        }
       }
     }
 
