@@ -9,6 +9,8 @@ import { completions, ModelCatalogEntry, ModelPricing } from "./types";
 
 export const AnthropicModels = {
   // Active models
+  Opus4_8:   "claude-opus-4-8",
+  Opus4_8Fast: "claude-opus-4-8-fast",
   Opus4_7:   "claude-opus-4-7",
   Opus4_6:   "claude-opus-4-6",
   Opus4_6Fast: "claude-opus-4-6-fast",
@@ -36,6 +38,7 @@ export const AnthropicModels = {
 // ─── Active (non-deprecated) text models ──────────────────────────────────────
 
 export const AnthropicTextModels: string[] = [
+  AnthropicModels.Opus4_8,
   AnthropicModels.Opus4_7,
   AnthropicModels.Opus4_6,
   AnthropicModels.Sonnet4_6,
@@ -47,6 +50,7 @@ export const AnthropicTextModels: string[] = [
 
 // Models in our catalog but not yet publicly available
 export const AnthropicLimitedAvailabilityModels: string[] = [
+  AnthropicModels.Opus4_8Fast, // fast mode pricing
   AnthropicModels.Opus4_6Fast, // 404 – not publicly available yet
 ];
 
@@ -74,6 +78,8 @@ const AnthropicAllModels: string[] = [
 // ─── Pricing (USD per 1M tokens) ──────────────────────────────────────────────
 
 export const AnthropicTextPricing: Record<string, ModelPricing> = {
+  [AnthropicModels.Opus4_8]:   { input: 5.0,  cache_write: 6.25,   cache_hit: 0.5,  output: 25.0 },
+  [AnthropicModels.Opus4_8Fast]: { input: 10.0, cache_write: 12.5,  cache_hit: 1.0,  output: 50.0, limitedAvailability: true },
   [AnthropicModels.Opus4_7]:   { input: 5.0,  cache_write: 6.25,   cache_hit: 0.5,  output: 25.0 },
   [AnthropicModels.Opus4_6]:   { input: 5.0,  cache_write: 6.25,   cache_hit: 0.5,  output: 25.0 },
   [AnthropicModels.Opus4_6Fast]: { input: 30.0, cache_write: 37.5, cache_hit: 3.0,  output: 150.0, limitedAvailability: true },
