@@ -114,7 +114,7 @@ export class LazyToolsService extends ToolsService {
     const filterByPatterns = (names: string[]) =>
       patterns && patterns.length > 0
         ? names.filter((name) =>
-            patterns.some((pattern) => minimatch(name, pattern))
+            patterns.some((pattern) => minimatch(name, pattern, { nocase: true }))
           )
         : names;
 
@@ -160,7 +160,7 @@ export class LazyToolsService extends ToolsService {
 
       // Check if disabled by any pattern
       const isDisabled = this.disabledPatterns.some((pattern) =>
-        minimatch(name, pattern)
+        minimatch(name, pattern, { nocase: true })
       );
 
       if (isDisabled) {
@@ -170,7 +170,7 @@ export class LazyToolsService extends ToolsService {
       // Check if enabled by any pattern (requires explicit enabling)
       const isEnabled =
         this.enabledPatterns.length > 0 &&
-        this.enabledPatterns.some((pattern) => minimatch(name, pattern));
+        this.enabledPatterns.some((pattern) => minimatch(name, pattern, { nocase: true }));
 
       if (isEnabled) {
         enabledTools.push(tool);

@@ -1,7 +1,7 @@
 #!/usr/bin/env ts-node
 /**
  * Test script: runs the repetition hint processor logic against a real agent metadata file
- * and prints whether the hint would fire and why/why not.
+ * and prints whether the hint would fire and why/why not, with token savings estimates.
  *
  * Usage:
  *   npx ts-node scripts/test-repetition-hint.ts [path-to-metadata.json]
@@ -76,7 +76,7 @@ function longestCommonSubstring(a: string, b: string, minLength: number): string
   for (let i = 0; i < a.length - minLength + 1; i++) {
     for (let j = a.length; j > i + minLength - 1; j--) {
       const sub = a.slice(i, j);
-      if (sub.length <= best.length) break; // already found longer, skip shorter
+      if (sub.length <= best.length) break;
       if (b.includes(sub)) {
         best = sub;
         break;
@@ -86,12 +86,18 @@ function longestCommonSubstring(a: string, b: string, minLength: number): string
   return best.length >= minLength ? best : null;
 }
 
+interface ProcessorResult {
+  wouldHint: boolean;
+  repeatedTools: string[];
+  details: Map<string, { count: number; tools: Set<string> }>;
+}
+
 function runProcessor(
   messages: Message[],
   minLength = 50,
   minRepetitions = 2,
   minSubstringLength = 50
-): { wouldHint: boolean; repeatedTools: string[]; details: Map<string, { count: number; tools: Set<string> }> } {
+): ProcessorResult {
   const stringCounts = new Map<string, { count: number; tools: Set<string> }>();
   const toolStrings = collectToolCallStrings(messages, minLength);
 
@@ -107,13 +113,12 @@ function runProcessor(
   }
 
   // Step 2: repeated substrings across different full strings
-  // e.g. the same JWT embedded in many different commands
   const substringCounts = new Map<string, { count: number; tools: Set<string> }>();
   for (let i = 0; i < toolStrings.length; i++) {
     for (let j = i + 1; j < toolStrings.length; j++) {
       const a = toolStrings[i];
       const b = toolStrings[j];
-      if (a.value === b.value) continue; // already handled by exact match
+      if (a.value === b.value) continue;
       const common = longestCommonSubstring(a.value, b.value, minSubstringLength);
       if (common) {
         const existing = substringCounts.get(common);
@@ -128,7 +133,7 @@ function runProcessor(
     }
   }
 
-  // Merge substring counts: count = number of unique pairs, count+1 = number of occurrences
+  // Merge substring counts
   for (const [sub, info] of substringCounts.entries()) {
     if (info.count + 1 >= minRepetitions && !stringCounts.has(sub)) {
       stringCounts.set(sub, { count: info.count + 1, tools: info.tools });
@@ -148,6 +153,26 @@ function runProcessor(
   return { wouldHint: repeatedTools.length > 0, repeatedTools, details: stringCounts };
 }
 
+/**
+ * Estimate tokens saved by using variables for repeated strings.
+ * Savings = (repetitions - 1) * str.length chars / 4 chars-per-token
+ * Minus the cost of the reminder message itself (estimated tokens in hint message).
+ */
+function estimateNetTokenSavings(
+  details: Map<string, { count: number; tools: Set<string> }>,
+  hintMessageTokens: number
+): { gross: number; net: number } {
+  let totalCharsSaved = 0;
+  for (const [str, info] of details.entries()) {
+    if (info.count >= 2) {
+      totalCharsSaved += (info.count - 1) * str.length;
+    }
+  }
+  const gross = Math.round(totalCharsSaved / 4);
+  const net = gross - hintMessageTokens;
+  return { gross, net };
+}
+
 // ---- Main ----
 
 const raw = fs.readFileSync(metadataPath, "utf-8");
@@ -157,6 +182,13 @@ const threads: Message[][] = metadata.threads || [];
 console.log(`\n=== Repetition Hint Processor Test ===`);
 console.log(`File: ${metadataPath}`);
 console.log(`Threads: ${threads.length}`);
+
+// Approximate tokens in the hint message itself (the reminder we send to the agent)
+// ~100 tokens for the base message + ~30 per example
+const HINT_BASE_TOKENS = 100;
+const HINT_TOKENS_PER_EXAMPLE = 30;
+const MAX_EXAMPLES = 3;
+const HINT_MESSAGE_TOKENS = HINT_BASE_TOKENS + MAX_EXAMPLES * HINT_TOKENS_PER_EXAMPLE;
 
 for (let ti = 0; ti < threads.length; ti++) {
   const thread = threads[ti];
@@ -177,19 +209,55 @@ for (let ti = 0; ti < threads.length; ti++) {
   const newResult = runProcessor(thread, 50, 2, 50);
   if (newResult.wouldHint) {
     console.log(`✅ Would hint! Repeated tools: ${newResult.repeatedTools.join(", ")}`);
-    // Show top repeated substrings
+
+    const { gross, net } = estimateNetTokenSavings(newResult.details, HINT_MESSAGE_TOKENS);
+    console.log(`\n  💰 Token savings estimate:`);
+    console.log(`     Gross savings (repeated chars ÷ 4)  : ~${gross} tokens`);
+    console.log(`     Cost of reminder message            : ~${HINT_MESSAGE_TOKENS} tokens`);
+    console.log(`     Net savings                         : ~${net} tokens`);
+
+    // Sort by impact (count * length) descending
     const repeated = Array.from(newResult.details.entries())
       .filter(([, info]) => info.count >= 2)
-      .sort((a, b) => b[1].count - a[1].count)
+      .sort((a, b) => (b[1].count * b[0].length) - (a[1].count * a[0].length))
       .slice(0, 5);
-    console.log(`\n  Top repeated values (count, tools, preview):`);
-    for (const [str, info] of repeated) {
-      console.log(`    count=${info.count}, tools=${[...info.tools].join(",")}`);
-      console.log(`    value=${JSON.stringify(str.slice(0, 120))}`);
-    }
+
+    console.log(`\n  Top repeated values to store as variables (sorted by token impact):`);
+    repeated.forEach(([str, info], i) => {
+      const charsSaved = (info.count - 1) * str.length;
+      const toksSaved = Math.round(charsSaved / 4);
+      const preview = str.trim().slice(0, 80).replace(/\s+/g, " ");
+      const ellipsis = str.length > 80 ? "…" : "";
+      console.log(`\n  [var${i + 1}]`);
+      console.log(`    count    : ${info.count}x`);
+      console.log(`    tools    : ${[...info.tools].join(", ")}`);
+      console.log(`    ~savings : ${toksSaved} tokens (${charsSaved} chars)`);
+      console.log(`    value    : "${preview}${ellipsis}"`);
+      if (str.length > 80) {
+        console.log(`    (full len: ${str.length} chars)`);
+      }
+    });
+
+    // Show what the actual hint message would look like
+    const examples = repeated.slice(0, MAX_EXAMPLES).map(([str, info], i) => {
+      const preview = str.trim().slice(0, 80).replace(/\s+/g, " ");
+      const ellipsis = str.length > 80 ? "…" : "";
+      const toksSaved = Math.round(((info.count - 1) * str.length) / 4);
+      return `  • \`var${i + 1}\` (used ${info.count}x in ${[...info.tools].join(", ")}, ~${toksSaved} tokens saveable): "${preview}${ellipsis}"`;
+    });
+    console.log(`\n  Example hint message that would be shown to the agent:`);
+    console.log(`  ---`);
+    console.log(
+      `  ⚠️ Tool inputs have large repetitions detected in: ${newResult.repeatedTools.join(", ")} ` +
+      `(~${gross} output tokens could be saved, ~${net} net after this reminder).\n` +
+      `  Consider storing repeated values with \`setVariable\` or \`storeToolCallToVariable\`,\n` +
+      `  then reference them via {{variableName}} in future tool calls.\n` +
+      `  Top repeated values to consider storing as variables:\n` +
+      examples.join("\n")
+    );
+    console.log(`  ---`);
   } else {
     console.log(`❌ Would NOT hint.`);
-    // Show top large strings for diagnosis
     const toolStrings = collectToolCallStrings(thread, 50);
     console.log(`\n  Total large strings in tool calls: ${toolStrings.length}`);
     const top = toolStrings.slice(0, 3);

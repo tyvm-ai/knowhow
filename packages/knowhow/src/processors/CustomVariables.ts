@@ -325,13 +325,30 @@ export class CustomVariables {
     minRepetitions?: number;  // Minimum occurrences to trigger hint (default: 2)
     minSubstringLength?: number; // Minimum repeated substring length (default: 50)
     recentMessagesWindow?: number; // Only scan the last N messages (default: 10)
+    throttleMessages?: number; // Only emit hint once per N new messages (default: 5)
+    maxExamples?: number;     // Max number of example variables to show (default: 3)
+    hintMessageTokens?: number; // Estimated tokens in the hint message itself for net savings calc (default: 190)
   } = {}): MessageProcessorFunction {
     const minLength = options.minLength ?? 50;
     const minRepetitions = options.minRepetitions ?? 2;
     const minSubstringLength = options.minSubstringLength ?? 50;
     const recentMessagesWindow = options.recentMessagesWindow ?? 10;
+    const throttleMessages = options.throttleMessages ?? 5;
+    const maxExamples = options.maxExamples ?? 3;
+
+    // ~100 base + 30 per example = ~190 tokens for the hint message itself
+    const hintMessageTokens = options.hintMessageTokens ?? (100 + maxExamples * 30);
+
+    // Throttle state: track message count at last hint emission
+    let lastHintAtMessageCount = -Infinity;
 
     return async (originalMessages: Message[], modifiedMessages: Message[]) => {
+      // Throttle: only emit hint if enough new messages have been added since last hint
+      const currentMessageCount = modifiedMessages.length;
+      if (currentMessageCount - lastHintAtMessageCount < throttleMessages) {
+        return;
+      }
+
       // Count occurrences of each string value across all tool call arguments
       const stringCounts = new Map<string, { count: number; toolNames: Set<string> }>();
 
@@ -391,8 +408,11 @@ export class CustomVariables {
 
       // Find entries that exceed the repetition threshold
       const repeatedTools: string[] = [];
+      const repeatedEntries: Array<{ str: string; count: number; toolNames: Set<string> }> = [];
+
       for (const [str, info] of stringCounts.entries()) {
         if (info.count >= minRepetitions) {
+          repeatedEntries.push({ str, count: info.count, toolNames: info.toolNames });
           for (const toolName of info.toolNames) {
             if (!repeatedTools.includes(toolName)) {
               repeatedTools.push(toolName);
@@ -402,12 +422,41 @@ export class CustomVariables {
       }
 
       if (repeatedTools.length > 0) {
+        lastHintAtMessageCount = currentMessageCount;
+
+        // Sort by (count * str.length) desc to surface highest-savings items first
+        repeatedEntries.sort((a, b) => b.count * b.str.length - a.count * a.str.length);
+
+        // Estimate token savings: chars_saved ÷ 4 (rough tokens-per-char estimate)
+        // Savings = (repetitions - 1) * str.length chars saved by using a short variable ref
+        let totalCharsSaved = 0;
+        for (const { str, count } of repeatedEntries) {
+          totalCharsSaved += (count - 1) * str.length;
+        }
+        const grossTokensSaved = Math.round(totalCharsSaved / 4);
+        const netTokensSaved = grossTokensSaved - hintMessageTokens;
+
+        // Build example variable suggestions
+        const examples = repeatedEntries.slice(0, maxExamples).map(({ str, count, toolNames }, i) => {
+          const preview = str.trim().slice(0, 80).replace(/\s+/g, " ");
+          const ellipsis = str.length > 80 ? "…" : "";
+          const varName = `var${i + 1}`;
+          const charsSaved = (count - 1) * str.length;
+          const tokensSaved = Math.round(charsSaved / 4);
+          return (
+            `  • \`${varName}\` (used ${count}x in ${[...toolNames].join(", ")}, ~${tokensSaved} tokens saveable): "${preview}${ellipsis}"`
+          );
+        });
+
         modifiedMessages.push({
           role: "user",
           content:
-            `⚠️ Tool inputs have large repetitions detected in: ${repeatedTools.join(", ")}. ` +
+            `⚠️ Tool inputs have large repetitions detected in: ${repeatedTools.join(", ")} ` +
+            `(~${grossTokensSaved} tokens saveable, ~${netTokensSaved} net after this reminder). ` +
             `Consider storing repeated values with \`setVariable\` or \`storeToolCallToVariable\`, ` +
-            `then reference them via {{variableName}} in future tool calls to avoid re-outputting large strings.`,
+            `then reference them via {{variableName}} in future tool calls.\n` +
+            `Top repeated values to consider storing as variables:\n` +
+            examples.join("\n"),
         });
       }
     };

@@ -250,6 +250,11 @@ const CONTEXT_LINES = 3; // Standard number of context lines
 function fixSingleHunk(hunk: Hunk, originalContent: string): Hunk | null {
   const originalLines = splitByNewLines(originalContent);
 
+  // Special case: pure creation hunk on empty file (@@ -0,0 +1,N @@)
+  if (originalContent === "" && hunk.originalStartLine === 0 && hunk.originalLineCount === 0) {
+    return hunk; // Already valid, pass through as-is
+  }
+
   const deletionLinesContent = hunk.subtractions.map((l) => l.slice(1));
   const additionLinesContent = hunk.additions.map((l) => l.slice(1));
 
@@ -266,6 +271,16 @@ function fixSingleHunk(hunk: Hunk, originalContent: string): Hunk | null {
       console.log(
         `Anchor found via deletion sequence at line ${actualOriginalStartLine}`
       );
+    }
+
+    // 1b. If full sequence not found (non-contiguous deletions), anchor on first deletion alone
+    if (actualOriginalStartLine === -1) {
+      const firstDeletionLines = findAllLineNumbers(originalContent, deletionLinesContent[0]);
+      const closest = findClosestNumber(firstDeletionLines, hunk.originalStartLine);
+      if (closest !== undefined) {
+        actualOriginalStartLine = closest;
+        console.log(`Anchor found via first deletion line at line ${actualOriginalStartLine}`);
+      }
     }
   }
 
@@ -351,30 +366,228 @@ function fixSingleHunk(hunk: Hunk, originalContent: string): Hunk | null {
   // Ensure start line is at least 1
   actualOriginalStartLine = Math.max(1, actualOriginalStartLine);
 
-  // 4. Reconstruct the hunk with correct context
-  const contextBeforeStartLine = Math.max(
-    0,
-    actualOriginalStartLine - CONTEXT_LINES - 1
-  ); // 0-based index
-  const contextBeforeEndLine = Math.max(0, actualOriginalStartLine - 1); // 0-based index
-  const contextBefore = originalLines
-    .slice(contextBeforeStartLine, contextBeforeEndLine)
-    .map((l) => ` ${l}`);
+  // 4a. Detect interleaved hunks (context lines between change blocks)
+  // If so, preserve original body order, just filter ghost context lines and fix header
+  let hasInterleavedChanges = false;
+  let seenChange = false;
+  let seenContextAfterChange = false;
+  for (const line of hunk.lines) {
+    if (line.startsWith("+") || line.startsWith("-")) {
+      if (seenContextAfterChange) { hasInterleavedChanges = true; break; }
+      seenChange = true;
+    } else if (line.startsWith(" ") && seenChange) {
+      seenContextAfterChange = true;
+    }
+  }
+  // Check if there are more changes after a context block
+  if (seenContextAfterChange) {
+    for (const line of hunk.lines.slice(hunk.lines.findIndex((l, i) => {
+      let sc = false;
+      for (let j = 0; j <= i; j++) {
+        if (hunk.lines[j].startsWith("+") || hunk.lines[j].startsWith("-")) sc = true;
+        if (sc && hunk.lines[j].startsWith(" ") && j === i) return true;
+      }
+      return false;
+    }))) {
+      if (line.startsWith("+") || line.startsWith("-")) { hasInterleavedChanges = true; break; }
+    }
+  }
 
-  // End line of original content affected by deletions (1-based)
-  const originalContentEndLine =
-    actualOriginalStartLine + deletionLinesContent.length;
-  const contextAfterStartLine = originalContentEndLine - 1; // 0-based index
-  const contextAfterEndLine = Math.min(
-    originalLines.length,
-    contextAfterStartLine + CONTEXT_LINES
-  ); // 0-based index
-  const contextAfter = originalLines
-    .slice(contextAfterStartLine, contextAfterEndLine)
-    .map((l) => ` ${l}`);
+  if (hasInterleavedChanges) {
+    // Group hunk lines into change-blocks separated by context
+    // Each block: { deletions, additions }
+    type ChangeBlock = { deletions: string[]; additions: string[]; };
+    const blocks: ChangeBlock[] = [];
+    let curBlock: ChangeBlock = { deletions: [], additions: [] };
+    let inBlock = false;
+    for (const line of hunk.lines) {
+      if (line.startsWith("-")) { curBlock.deletions.push(line.slice(1)); inBlock = true; }
+      else if (line.startsWith("+")) { curBlock.additions.push(line.slice(1)); inBlock = true; }
+      else if (inBlock) {
+        blocks.push(curBlock);
+        curBlock = { deletions: [], additions: [] };
+        inBlock = false;
+      }
+    }
+    if (inBlock || curBlock.deletions.length > 0 || curBlock.additions.length > 0) blocks.push(curBlock);
+
+    // For each block, try to apply as line-level or substring replacement
+    let resultLines = [...originalLines];
+    let lineOffset = 0;
+    let anyApplied = false;
+    for (const block of blocks) {
+      if (block.deletions.length === 0) continue;
+      // Try exact line match first
+      const seqIdx = findSequenceIndex(resultLines, block.deletions);
+      if (seqIdx !== -1) {
+        resultLines = [
+          ...resultLines.slice(0, seqIdx),
+          ...block.additions,
+          ...resultLines.slice(seqIdx + block.deletions.length),
+        ];
+        lineOffset += block.additions.length - block.deletions.length;
+        anyApplied = true;
+        continue;
+      }
+      // Try substring replacement: find a line containing all deletion content
+      const delContent = block.deletions.join(" ").trim();
+      const addContent = block.additions.join(" ").trim();
+      const matchIdx = resultLines.findIndex((l) => l.includes(delContent.split(" ")[0]) && block.deletions.every((d) => l.includes(d.trim())));
+      if (matchIdx !== -1) {
+        let newLine = resultLines[matchIdx];
+        for (let i = 0; i < block.deletions.length; i++) {
+          newLine = newLine.replace(block.deletions[i].trim(), block.additions[i]?.trim() ?? "");
+        }
+        resultLines = [...resultLines.slice(0, matchIdx), newLine, ...resultLines.slice(matchIdx + 1)];
+        anyApplied = true;
+      }
+    }
+
+    if (anyApplied) {
+      // Build a replacement patch from original -> result
+      const origStr = originalLines.join("\n");
+      const newStr = resultLines.join("\n");
+      // Find first differing line
+      let firstDiff = 0;
+      while (firstDiff < originalLines.length && firstDiff < resultLines.length && originalLines[firstDiff] === resultLines[firstDiff]) firstDiff++;
+      let lastDiffOrig = originalLines.length - 1;
+      let lastDiffNew = resultLines.length - 1;
+      while (lastDiffOrig > firstDiff && lastDiffNew > firstDiff && originalLines[lastDiffOrig] === resultLines[lastDiffNew]) { lastDiffOrig--; lastDiffNew--; }
+      const ctxStart = Math.max(0, firstDiff - 1);
+      const ctxEndOrig = Math.min(originalLines.length - 1, lastDiffOrig + 1);
+      const ctxEndNew = Math.min(resultLines.length - 1, lastDiffNew + 1);
+      const patchLines: string[] = [];
+      for (let i = ctxStart; i <= ctxEndOrig; i++) {
+        if (i >= firstDiff && i <= lastDiffOrig) patchLines.push(`-${originalLines[i]}`);
+        else patchLines.push(` ${originalLines[i]}`);
+      }
+      // Insert additions at right position
+      const finalLines: string[] = [];
+      for (let i = ctxStart; i <= ctxEndOrig; i++) {
+        if (i >= firstDiff && i <= lastDiffOrig) { finalLines.push(`-${originalLines[i]}`); }
+        else finalLines.push(` ${originalLines[i]}`);
+      }
+      // Add additions after last deletion
+      for (let i = firstDiff; i <= lastDiffNew; i++) {
+        if (i >= firstDiff && i <= lastDiffNew && (i > lastDiffOrig || originalLines[i] !== resultLines[i])) {
+          if (!finalLines.some((l) => l === `+${resultLines[i]}`)) finalLines.push(`+${resultLines[i]}`);
+        }
+      }
+      const origCount2 = finalLines.filter((l) => !l.startsWith("+")).length;
+      const newCount2 = finalLines.filter((l) => !l.startsWith("-")).length;
+      const newHeader2 = `@@ -${ctxStart + 1},${origCount2} +${ctxStart + 1},${newCount2} @@`;
+      return {
+        header: newHeader2,
+        originalStartLine: ctxStart + 1,
+        originalLineCount: origCount2,
+        newStartLine: ctxStart + 1,
+        newLineCount: newCount2,
+        lines: finalLines,
+        additions: finalLines.filter((l) => l.startsWith("+")),
+        subtractions: finalLines.filter((l) => l.startsWith("-")),
+        contextLines: finalLines.filter((l) => l.startsWith(" ")),
+      };
+    }
+
+    // Fallback: filter valid lines and return
+    const validLines = hunk.lines.filter((l) => {
+      if (l.startsWith("+") || l.startsWith("-")) return true;
+      if (!l.startsWith(" ") && l.trim() !== "") return false;
+      const content = l.startsWith(" ") ? l.slice(1) : l;
+      if (content.trim() === "") return originalLines.includes(content);
+      return originalLines.some((fl) => fl.trim() === content.trim());
+    }).map((l) => (!l.startsWith("+") && !l.startsWith("-") && !l.startsWith(" ")) ? ` ${l}` : l);
+    const origCount = validLines.filter((l) => !l.startsWith("+")).length;
+    const newCount = validLines.filter((l) => !l.startsWith("-")).length;
+    const newHeader = `@@ -${actualOriginalStartLine},${origCount} +${actualOriginalStartLine},${newCount} @@`;
+    return {
+      header: newHeader,
+      originalStartLine: actualOriginalStartLine,
+      originalLineCount: origCount,
+      newStartLine: actualOriginalStartLine,
+      newLineCount: newCount,
+      lines: validLines,
+      additions: hunk.additions,
+      subtractions: hunk.subtractions,
+      contextLines: validLines.filter((l) => !l.startsWith("+") && !l.startsWith("-")),
+    };
+  }
+
+  // Pure insertion: output minimal -N,0 format required by unified diff spec
+  if (deletionLinesContent.length === 0 && additionLinesContent.length > 0) {
+    const pureHeader = `@@ -${actualOriginalStartLine},0 +${actualOriginalStartLine},${hunk.additions.length} @@`;
+    return {
+      header: pureHeader,
+      originalStartLine: actualOriginalStartLine,
+      originalLineCount: 0,
+      newStartLine: actualOriginalStartLine,
+      newLineCount: hunk.additions.length,
+      lines: hunk.additions,
+      additions: hunk.additions,
+      subtractions: [],
+      contextLines: [],
+    };
+  }
+
+  // 4. Extract context lines from the original hunk body
+  const hunkContextBefore: string[] = [];
+  const hunkContextAfter: string[] = [];
+  let pastChanges = false;
+  for (const line of hunk.lines) {
+    if (line.startsWith("+") || line.startsWith("-")) {
+      pastChanges = true;
+    } else if (line.startsWith(" ")) {
+      if (!pastChanges) hunkContextBefore.push(line);
+      else hunkContextAfter.push(line);
+    }
+  }
+
+  // Validate context lines against the file (reject ghost lines not present in file)
+  // Replace context lines with the actual line from the file to fix indentation divergence
+  const validContextBefore = hunkContextBefore
+    .map((l) => {
+      const match = originalLines.find((fl) => fl.trim() === l.slice(1).trim() && l.slice(1).trim() !== "");
+      return match !== undefined ? ` ${match}` : null;
+    })
+    .filter((l): l is string => l !== null);
+  const validContextAfter = hunkContextAfter
+    .map((l) => {
+      const match = originalLines.find((fl) => fl.trim() === l.slice(1).trim() && l.slice(1).trim() !== "");
+      return match !== undefined ? ` ${match}` : null;
+    })
+    .filter((l): l is string => l !== null);
+
+  // Supplement: add 1 extra line before the valid context for better anchoring
+  const supplementBeforeIdx = actualOriginalStartLine - 1 - validContextBefore.length - 1; // 0-based
+  const supplementBefore: string[] =
+    supplementBeforeIdx >= 0
+      ? [` ${originalLines[supplementBeforeIdx]}`]
+      : [];
+
+  const contextBefore = [...supplementBefore, ...validContextBefore];
+
+  // For context after: use valid context from hunk; if none, take 1 line from file
+  const originalContentEndLine = actualOriginalStartLine + deletionLinesContent.length;
+  let contextAfter: string[];
+  if (deletionLinesContent.length === 0) {
+    // Pure insertion: always take the line at the insertion point from file (don't trust hunk context position)
+    const afterIdx = actualOriginalStartLine - 1; // 0-based index of line at insertion point
+    contextAfter = afterIdx < originalLines.length ? [` ${originalLines[afterIdx]}`] : [];
+  } else {
+    contextAfter = validContextAfter;
+    if (contextAfter.length === 0) {
+      const afterIdx = originalContentEndLine - 1; // 0-based index after deletions
+      if (afterIdx < originalLines.length) {
+        contextAfter = [` ${originalLines[afterIdx]}`];
+      }
+    }
+  }
+
+  // For pure-insertion hunks (no deletions), don't supplement before - keep only hunk context
+  const finalContextBefore = deletionLinesContent.length === 0 ? validContextBefore : contextBefore;
 
   const newHunkLines = [
-    ...contextBefore,
+    ...finalContextBefore,
     ...hunk.subtractions, // Use the original subtraction lines from the input hunk
     ...hunk.additions, // Use the original addition lines from the input hunk
     ...contextAfter,
@@ -382,11 +595,11 @@ function fixSingleHunk(hunk: Hunk, originalContent: string): Hunk | null {
 
   // 5. Recalculate the header
   const newOriginalStart =
-    contextBefore.length > 0
-      ? actualOriginalStartLine - contextBefore.length
+    finalContextBefore.length > 0
+      ? actualOriginalStartLine - finalContextBefore.length
       : actualOriginalStartLine;
   const newOriginalCount =
-    contextBefore.length + hunk.subtractions.length + contextAfter.length;
+    finalContextBefore.length + hunk.subtractions.length + contextAfter.length;
 
   // The new start line depends on how many lines were added/removed *before* this hunk.
   // For an isolated hunk fix, we often just base it on the original start.
@@ -394,7 +607,7 @@ function fixSingleHunk(hunk: Hunk, originalContent: string): Hunk | null {
   // Let's keep it simple and relative to the original start for now.
   const newNewStart = newOriginalStart; // Simplification: Assume start line number matches original unless offset by prior hunks (which we don't know here)
   const newNewCount =
-    contextBefore.length + hunk.additions.length + contextAfter.length;
+    finalContextBefore.length + hunk.additions.length + contextAfter.length;
 
   // Handle edge case where count is 0 (e.g., adding to an empty file) - header format needs >= 1
   const finalOriginalStart = Math.max(1, newOriginalStart);
@@ -421,7 +634,7 @@ function fixSingleHunk(hunk: Hunk, originalContent: string): Hunk | null {
     lines: newHunkLines,
     additions: hunk.additions, // Keep original intended changes
     subtractions: hunk.subtractions, // Keep original intended changes
-    contextLines: [...contextBefore, ...contextAfter], // Store the newly generated context
+    contextLines: [...finalContextBefore, ...contextAfter], // Store the newly generated context
   };
 
   // 6. Filter out empty hunks
