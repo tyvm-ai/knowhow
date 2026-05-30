@@ -436,6 +436,11 @@ export class CustomVariables {
         const grossTokensSaved = Math.round(totalCharsSaved / 4);
         const netTokensSaved = grossTokensSaved - hintMessageTokens;
 
+        // Skip the hint if the net savings are negative — the reminder costs more than it saves
+        if (netTokensSaved <= 0) {
+          return;
+        }
+
         // Build example variable suggestions
         const examples = repeatedEntries.slice(0, maxExamples).map(({ str, count, toolNames }, i) => {
           const preview = str.trim().slice(0, 80).replace(/\s+/g, " ");
