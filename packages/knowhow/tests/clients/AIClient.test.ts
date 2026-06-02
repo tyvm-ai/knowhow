@@ -1,4 +1,9 @@
 import { AIClient } from "../../src/clients";
+
+// Prevent real HTTP calls during provider initialisation — resolveClient
+// returns null so all DEFAULT_PROVIDERS are skipped by registerModelProviders.
+jest.spyOn(AIClient.prototype as any, "resolveClient").mockReturnValue(null);
+
 import {
   GenericClient,
   CompletionOptions,

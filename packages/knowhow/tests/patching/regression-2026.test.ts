@@ -280,4 +280,282 @@ describe("Patch Engine - Edge Case Regression Suite", () => {
       expect(finalApplication).toContain("const c = 4;");
     });
   });
+
+  // --- Test Case 14: Insertion-Before-Anchor Reordering (real session bug) ---
+  // Reproduces a bug observed while editing SnapshotManager.ts: adding new lines
+  // ABOVE an existing `return snapshot;` (using that return as trailing context)
+  // anchored on the PRECEDING context line and inserted the new lines AFTER the
+  // return instead of before it. The added log line became unreachable dead code
+  // and, in a follow-up edit, the `return` was dropped entirely — a silent
+  // control-flow / correctness change. Hunk: insert N lines before a kept line.
+  describe("Error Type 14: Insertion-Before-Anchor Reordering", () => {
+    it("should insert new lines BEFORE the trailing-context line, not after it", () => {
+      const originalFileContent = `    if (rootfsStillExists) {
+        return snapshot;
+      }
+      this.logger.info("missing");
+`;
+      // Add a comment + log + KEEP the existing `return snapshot;` as trailing context.
+      const insertBeforeReturnPatch = `@@ -1,3 +1,6 @@
+       if (rootfsStillExists) {
++        // reusing local overlay
++        this.logger.info("reusing");
+         return snapshot;
+       }
+`;
+
+      const fixedPatchOutput = fixPatch(
+        originalFileContent,
+        insertBeforeReturnPatch
+      );
+      const finalApplication = applyPatch(
+        originalFileContent,
+        fixedPatchOutput
+      );
+
+      expect(finalApplication).not.toBe(false);
+      const out = finalApplication as string;
+      // The kept `return snapshot;` must still be present exactly once.
+      expect(out).toContain("return snapshot;");
+      // The new log must appear BEFORE the return (otherwise it is unreachable).
+      const idxLog = out.indexOf('this.logger.info("reusing")');
+      const idxReturn = out.indexOf("return snapshot;");
+      expect(idxLog).toBeGreaterThanOrEqual(0);
+      expect(idxReturn).toBeGreaterThanOrEqual(0);
+      expect(idxLog).toBeLessThan(idxReturn);
+    });
+  });
+
+  // --- Test Case 15: Append-After-Function Scope Bleed (real session bug) ---
+  // Reproduces a bug observed while editing test-cross-machine-restore.ts: appending
+  // a brand-new top-level function right after an existing function's closing brace
+  // (using the function body + closing `}` as leading context) caused the new
+  // function to be injected INSIDE the existing function's body, between its
+  // signature and its `return`, corrupting both functions. The anchor latched onto
+  // the wrong `}` (a shared/duplicate brace earlier in the file).
+  describe("Error Type 15: Append-After-Function Scope Bleed", () => {
+    it("should append a new function AFTER the anchor function's closing brace, leaving it intact", () => {
+      const originalFileContent = `function getArg(flag) {
+  return idx;
+}
+function hasFlag(flag) {
+  return args.includes(flag);
+}
+const x = 1;
+`;
+      // Anchor on hasFlag's full body + closing brace, then append a new function.
+      const appendFunctionPatch = `@@ -4,3 +4,8 @@
+ function hasFlag(flag) {
+   return args.includes(flag);
+ }
++
++function helper(lines) {
++  return lines.some((l) => true);
++}
+`;
+
+      const fixedPatchOutput = fixPatch(
+        originalFileContent,
+        appendFunctionPatch
+      );
+      const finalApplication = applyPatch(
+        originalFileContent,
+        fixedPatchOutput
+      );
+
+      expect(finalApplication).not.toBe(false);
+      const out = finalApplication as string;
+      // The new function must exist.
+      expect(out).toContain("function helper(lines)");
+      // CRITICAL: hasFlag must remain a contiguous, intact function — the new
+      // function must NOT be injected between its signature and its return.
+      expect(out).toMatch(
+        /function hasFlag\(flag\) \{\s*\n\s*return args\.includes\(flag\);\s*\n\}/
+      );
+      // helper must come AFTER hasFlag, not before / inside it.
+      const idxHasFlag = out.indexOf("function hasFlag");
+      const idxHelper = out.indexOf("function helper");
+      expect(idxHelper).toBeGreaterThan(idxHasFlag);
+    });
+  });
+
+  // --- Test Case 16: Block-Replace-And-Append (try-block placement + new methods) ---
+  // Reproduces a bug where a patch that:
+  //   (a) removes a large inline body from inside a try{} block and replaces it with
+  //       a single call, AND
+  //   (b) appends brand-new methods after the method's closing brace
+  // was auto-corrected incorrectly:
+  //   - The replacement call landed inside the `catch (error) {` block instead of
+  //     inside the `try {` block where the removed code lived.
+  //   - The appended new methods were silently dropped entirely.
+  describe("Error Type 16: Block-Replace-And-Append (try-block placement + append)", () => {
+    it("should place the replacement call inside the try block (before catch) and preserve appended new methods", () => {
+      // Source mirrors the original onSessionStop method before refactoring.
+      const originalFileContent = [
+        "  /**",
+        "   * Finalize billing when a session stops",
+        "   */",
+        "  async onSessionStop(sessionKey: string): Promise<void> {",
+        "    try {",
+        "      const event = await prisma.cloudBillingEvent.findUnique({",
+        "        where: { sessionKey },",
+        "      });",
+        "",
+        "      if (!event) {",
+        "        this.logger.warn(",
+        "          `[CloudBilling] No billing event found for session: ${sessionKey}`",
+        "        );",
+        "        return;",
+        "      }",
+        "",
+        "      if (event.status !== \"running\") {",
+        "        this.logger.info(",
+        "          `[CloudBilling] Session ${sessionKey} already billed (status: ${event.status})`",
+        "        );",
+        "        return;",
+        "      }",
+        "",
+        "      const stoppedAt = new Date();",
+        "      const uptimeMs = stoppedAt.getTime() - event.startedAt.getTime();",
+        "      const uptimeMinutes = uptimeMs / 1000 / 60;",
+        "      const ratePerMinute = parseSandboxSpecRate(event.serverSpec) ?? RATE;",
+        "      const costUsd = uptimeMinutes * ratePerMinute;",
+        "",
+        "      await prisma.cloudBillingEvent.update({",
+        "        where: { sessionKey },",
+        "        data: {",
+        "          stoppedAt,",
+        "          uptimeMinutes,",
+        "          costUsd,",
+        "          status: \"billed\",",
+        "          billedAt: new Date(),",
+        "        },",
+        "      });",
+        "",
+        "      const result = await this.usageService.deductCredits(",
+        "        event.orgId,",
+        "        costUsd,",
+        "        \"cloud\",",
+        "        undefined,",
+        "        event.orgUserId ?? undefined",
+        "      );",
+        "",
+        "      await this.usageService.recordUsage(",
+        "        event.orgId,",
+        "        \"cloud\",",
+        "        event.serverSpec,",
+        "        costUsd,",
+        "        event.orgUserId ?? undefined,",
+        "        \"cloud\",",
+        "        result.fundedFrom",
+        "      );",
+        "",
+        "      this.logger.info(",
+        "        `[CloudBilling] Session ${sessionKey} billed`",
+        "      );",
+        "    } catch (error) {",
+        "      this.logger.error(",
+        "        `[CloudBilling] Failed to bill session ${sessionKey}:`,",
+        "        error",
+        "      );",
+        "    }",
+        "  }",
+      ].join("\n");
+
+      // Patch: remove the inline finalize body, replace with single call,
+      // AND append two new methods after the closing brace.
+      const refactorPatch = [
+        "@@ -19,43 +19,7 @@",
+        "",
+        "      if (event.status !== \"running\") {",
+        "        this.logger.info(",
+        "          `[CloudBilling] Session ${sessionKey} already billed (status: ${event.status})`",
+        "        );",
+        "        return;",
+        "      }",
+        "",
+        "-      const stoppedAt = new Date();",
+        "-      const uptimeMs = stoppedAt.getTime() - event.startedAt.getTime();",
+        "-      const uptimeMinutes = uptimeMs / 1000 / 60;",
+        "-      const ratePerMinute = parseSandboxSpecRate(event.serverSpec) ?? RATE;",
+        "-      const costUsd = uptimeMinutes * ratePerMinute;",
+        "-",
+        "-      await prisma.cloudBillingEvent.update({",
+        "-        where: { sessionKey },",
+        "-        data: {",
+        "-          stoppedAt,",
+        "-          uptimeMinutes,",
+        "-          costUsd,",
+        "-          status: \"billed\",",
+        "-          billedAt: new Date(),",
+        "-        },",
+        "-      });",
+        "-",
+        "-      const result = await this.usageService.deductCredits(",
+        "-        event.orgId,",
+        "-        costUsd,",
+        "-        \"cloud\",",
+        "-        undefined,",
+        "-        event.orgUserId ?? undefined",
+        "-      );",
+        "-",
+        "-      await this.usageService.recordUsage(",
+        "-        event.orgId,",
+        "-        \"cloud\",",
+        "-        event.serverSpec,",
+        "-        costUsd,",
+        "-        event.orgUserId ?? undefined,",
+        "-        \"cloud\",",
+        "-        result.fundedFrom",
+        "-      );",
+        "-",
+        "-      this.logger.info(",
+        "-        `[CloudBilling] Session ${sessionKey} billed`",
+        "-      );",
+        "+      await this._finalizeEvent(event);",
+        "     } catch (error) {",
+        "       this.logger.error(",
+        "         `[CloudBilling] Failed to bill session ${sessionKey}:`,",
+        "@@ -62,3 +26,19 @@",
+        "     }",
+        "   }",
+        "+",
+        "+  async onSessionStopByResource(",
+        "+    resourceType: string,",
+        "+    resourceId: string",
+        "+  ): Promise<void> {",
+        "+    try {",
+        "+      this.logger.info(`[CloudBilling] stop by resource ${resourceType}/${resourceId}`);",
+        "+    } catch (error) {",
+        "+      this.logger.error(`[CloudBilling] Failed:`, error);",
+        "+    }",
+        "+  }",
+        "+",
+        "+  private async _finalizeEvent(event: { id: string; sessionKey: string; status: string; startedAt: Date; serverSpec: string; orgId: string; orgUserId: string | null; }): Promise<void> {",
+        "+    this.logger.info(`[CloudBilling] finalizing ${event.sessionKey}`);",
+        "+  }",
+      ].join("\n");
+
+      const fixedPatchOutput = fixPatch(originalFileContent, refactorPatch);
+      const finalApplication = applyPatch(originalFileContent, fixedPatchOutput);
+
+      expect(finalApplication).not.toBe(false);
+      const out = finalApplication as string;
+
+      // (1) The replacement call must appear BEFORE the catch block (inside the try block).
+      const idxFinalizeCall = out.indexOf("await this._finalizeEvent(event);");
+      const idxCatch = out.indexOf("} catch (error) {");
+      expect(idxFinalizeCall).toBeGreaterThanOrEqual(0);
+      expect(idxCatch).toBeGreaterThanOrEqual(0);
+      expect(idxFinalizeCall).toBeLessThan(idxCatch);
+
+      // (2) The catch block should only contain the logger.error, NOT _finalizeEvent.
+      const catchBlock = out.slice(idxCatch);
+      expect(catchBlock).not.toContain("await this._finalizeEvent(event);");
+
+      // (3) The appended new methods must be present in the output.
+      expect(out).toContain("async onSessionStopByResource(");
+      expect(out).toContain("private async _finalizeEvent(");
+    });
+  });
 });

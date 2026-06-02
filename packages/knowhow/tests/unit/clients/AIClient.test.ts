@@ -9,6 +9,7 @@
  */
 
 // Prevent real _initDefaultProviders from firing (it reads env vars / files)
+// resolveClient returning null causes all DEFAULT_PROVIDERS to be skipped,
 jest.mock("../../../src/config", () => ({
   getConfig: jest.fn().mockResolvedValue({ modules: [] }),
   getGlobalConfig: jest.fn().mockResolvedValue({ modules: [] }),
@@ -20,6 +21,13 @@ jest.mock("../../../src/services/KnowhowClient", () => ({
 }));
 
 import { AIClient } from "../../../src/clients/index";
+
+// Mock resolveClient AFTER import so the prototype exists.
+// Returning null causes registerModelProviders to skip all DEFAULT_PROVIDERS,
+// preventing any real HTTP calls to provider model endpoints.
+beforeAll(() => {
+  jest.spyOn(AIClient.prototype as any, "resolveClient").mockReturnValue(null);
+});
 import type { GenericClient } from "../../../src/clients/types";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

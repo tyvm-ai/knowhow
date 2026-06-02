@@ -294,16 +294,34 @@ function fixSingleHunk(hunk: Hunk, originalContent: string): Hunk | null {
     deletionLinesContent.length === 0 &&
     additionLinesContent.length > 0
   ) {
-    // Find the context line just before the first addition in the *original* patch hunk
-    let precedingContextLine = "";
+    // Collect the FULL leading context block (all context lines that appear before the
+    // first addition) so we can anchor on the whole sequence. This is far more reliable
+    // than a single preceding line when that line (e.g. a closing `}`) is ambiguous and
+    // appears multiple times in the file.
+    const leadingContextBlock: string[] = [];
     for (const line of hunk.lines) {
       if (line.startsWith("+")) break; // Stop when we hit the first addition
       if (line.startsWith(" ")) {
-        precedingContextLine = line.slice(1); // Keep track of the last context line seen
+        leadingContextBlock.push(line.slice(1));
       }
     }
 
-    if (precedingContextLine) {
+    // 3a. Try to anchor on the full leading context sequence first (unambiguous).
+    if (leadingContextBlock.length > 1) {
+      const seqIdx = findSequenceIndex(originalLines, leadingContextBlock);
+      if (seqIdx !== -1) {
+        // Additions go AFTER the full leading context block.
+        actualOriginalStartLine = seqIdx + leadingContextBlock.length + 1;
+        console.log(
+          `Anchor found via leading context sequence (${leadingContextBlock.length} lines), targeting line ${actualOriginalStartLine}`
+        );
+      }
+    }
+
+    // 3b. Fall back to the single preceding context line (closest to the header hint).
+    if (actualOriginalStartLine === -1 && leadingContextBlock.length > 0) {
+      const precedingContextLine =
+        leadingContextBlock[leadingContextBlock.length - 1];
       const potentialLines = findAllLineNumbers(
         originalContent,
         precedingContextLine
@@ -513,19 +531,56 @@ function fixSingleHunk(hunk: Hunk, originalContent: string): Hunk | null {
     };
   }
 
-  // Pure insertion: output minimal -N,0 format required by unified diff spec
+  // Pure insertion: wrap the additions in real surrounding context from the file so the
+  // insertion position is unambiguous. A context-less `@@ -N,0 +N,M @@` hunk is applied
+  // inconsistently by the diff library (it can land the additions AFTER the anchor line
+  // instead of BEFORE it), which corrupts scopes (e.g. injecting a new function inside an
+  // existing function body). `actualOriginalStartLine` is the 1-based line that the new
+  // lines should be inserted *before*.
   if (deletionLinesContent.length === 0 && additionLinesContent.length > 0) {
-    const pureHeader = `@@ -${actualOriginalStartLine},0 +${actualOriginalStartLine},${hunk.additions.length} @@`;
+    // Insertion index (0-based) within originalLines where additions are placed.
+    const insertIdx = actualOriginalStartLine - 1;
+
+    // Take up to CONTEXT_LINES real lines before and after the insertion point.
+    const beforeStart = Math.max(0, insertIdx - CONTEXT_LINES);
+    const contextBeforeLines: string[] = [];
+    for (let i = beforeStart; i < insertIdx && i < originalLines.length; i++) {
+      contextBeforeLines.push(` ${originalLines[i]}`);
+    }
+
+    const contextAfterLines: string[] = [];
+    for (
+      let i = insertIdx;
+      i < insertIdx + CONTEXT_LINES && i < originalLines.length;
+      i++
+    ) {
+      contextAfterLines.push(` ${originalLines[i]}`);
+    }
+
+    const pureLines = [
+      ...contextBeforeLines,
+      ...hunk.additions,
+      ...contextAfterLines,
+    ];
+
+    const pureOrigStart = insertIdx - contextBeforeLines.length + 1; // 1-based
+    const pureOrigCount = contextBeforeLines.length + contextAfterLines.length;
+    const pureNewCount =
+      contextBeforeLines.length +
+      hunk.additions.length +
+      contextAfterLines.length;
+
+    const pureHeader = `@@ -${pureOrigStart},${pureOrigCount} +${pureOrigStart},${pureNewCount} @@`;
     return {
       header: pureHeader,
-      originalStartLine: actualOriginalStartLine,
-      originalLineCount: 0,
-      newStartLine: actualOriginalStartLine,
-      newLineCount: hunk.additions.length,
-      lines: hunk.additions,
+      originalStartLine: pureOrigStart,
+      originalLineCount: pureOrigCount,
+      newStartLine: pureOrigStart,
+      newLineCount: pureNewCount,
+      lines: pureLines,
       additions: hunk.additions,
       subtractions: [],
-      contextLines: [],
+      contextLines: [...contextBeforeLines, ...contextAfterLines],
     };
   }
 
@@ -557,14 +612,27 @@ function fixSingleHunk(hunk: Hunk, originalContent: string): Hunk | null {
     })
     .filter((l): l is string => l !== null);
 
-  // Supplement: add 1 extra line before the valid context for better anchoring
-  const supplementBeforeIdx = actualOriginalStartLine - 1 - validContextBefore.length - 1; // 0-based
-  const supplementBefore: string[] =
-    supplementBeforeIdx >= 0
-      ? [` ${originalLines[supplementBeforeIdx]}`]
-      : [];
-
-  const contextBefore = [...supplementBefore, ...validContextBefore];
+  // For deletion-anchored hunks, derive the leading context directly from the file just
+  // above the deletion start. This is far more reliable than mapping the hunk's context
+  // lines via `.find()` (which returns the FIRST match and mis-aligns when lines like a
+  // blank or a closing `}` repeat earlier in the file, producing duplicated context).
+  const fileContextBefore: string[] = [];
+  if (deletionLinesContent.length > 0) {
+    // Match the amount of leading context the original hunk carried (plus one extra
+    // anchor line, as the legacy implementation did), capped at CONTEXT_LINES. This keeps
+    // the header line counts stable while still deriving the *content* from the correct
+    // file position (avoiding the `.find()` duplication bug).
+    const desiredBeforeCount = Math.min(
+      CONTEXT_LINES,
+      validContextBefore.length + 1
+    );
+    const ctxStartIdx = Math.max(0, actualOriginalStartLine - 1 - desiredBeforeCount); // 0-based
+    for (let i = ctxStartIdx; i < actualOriginalStartLine - 1; i++) {
+      fileContextBefore.push(` ${originalLines[i]}`);
+    }
+  }
+  const contextBefore =
+    deletionLinesContent.length > 0 ? fileContextBefore : validContextBefore;
 
   // For context after: use valid context from hunk; if none, take 1 line from file
   const originalContentEndLine = actualOriginalStartLine + deletionLinesContent.length;
@@ -574,12 +642,22 @@ function fixSingleHunk(hunk: Hunk, originalContent: string): Hunk | null {
     const afterIdx = actualOriginalStartLine - 1; // 0-based index of line at insertion point
     contextAfter = afterIdx < originalLines.length ? [` ${originalLines[afterIdx]}`] : [];
   } else {
-    contextAfter = validContextAfter;
-    if (contextAfter.length === 0) {
-      const afterIdx = originalContentEndLine - 1; // 0-based index after deletions
-      if (afterIdx < originalLines.length) {
-        contextAfter = [` ${originalLines[afterIdx]}`];
-      }
+    // Derive trailing context directly from the file just below the deleted block, for the
+    // same reliability reasons as the leading context above. Match the amount of trailing
+    // context the original hunk carried (at least one line), capped at CONTEXT_LINES, so the
+    // header line counts stay stable.
+    contextAfter = [];
+    const desiredAfterCount = Math.max(
+      1,
+      Math.min(CONTEXT_LINES, validContextAfter.length)
+    );
+    const afterStartIdx = originalContentEndLine - 1; // 0-based index after deletions
+    for (
+      let i = afterStartIdx;
+      i < afterStartIdx + desiredAfterCount && i < originalLines.length;
+      i++
+    ) {
+      contextAfter.push(` ${originalLines[i]}`);
     }
   }
 
@@ -777,8 +855,57 @@ export async function patchFile(
 
     let updatedContent = applyPatch(originalContent, patch);
     let appliedPatch = patch; // Keep track of which patch succeeded
+    const patchHunks = parseHunks(patch);
+    const patchHasAdditions = patchHunks.some((h) => h.additions.length > 0);
+    const patchHasDeletions = patchHunks.some((h) => h.subtractions.length > 0);
 
-    // If the patch doesn't apply, try to fix it
+    /**
+     * Build a human-readable summary of what changed between two content strings.
+     */
+    function buildChangeSummary(original: string, updated: string): string {
+      const origLines = original === "" ? [] : original.split("\n");
+      const updLines = updated === "" ? [] : updated.split("\n");
+      const netChange = updLines.length - origLines.length;
+
+      // Find lines unique to each side (approximate diff)
+      const origSet = new Set(origLines);
+      const updSet = new Set(updLines);
+      const addedLines = updLines.filter((l) => !origSet.has(l));
+      const removedLines = origLines.filter((l) => !updSet.has(l));
+
+      const linesAdded = netChange > 0 ? netChange : addedLines.length;
+      const linesRemoved = netChange < 0 ? -netChange : removedLines.length;
+
+      const parts: string[] = [];
+      parts.push(`+${linesAdded} lines, -${linesRemoved} lines (net: ${netChange > 0 ? "+" : ""}${netChange})`);
+
+      // Preview: show first 3 added lines
+      const previewAdded = addedLines.slice(0, 3);
+      if (previewAdded.length > 0) {
+        parts.push("Preview of additions:\n" + previewAdded.map((l) => `  + ${l.trim().slice(0, 100)}`).join("\n"));
+      }
+      const previewRemoved = removedLines.slice(0, 3);
+      if (previewRemoved.length > 0) {
+        parts.push("Preview of removals:\n" + previewRemoved.map((l) => `  - ${l.trim().slice(0, 100)}`).join("\n"));
+      }
+      return parts.join("\n");
+    }
+
+    // Detect silent no-op: patch "succeeded" but content unchanged despite having additions/deletions
+    let wasNoOp = false;
+    if (
+      updatedContent !== false &&
+      updatedContent === originalContent &&
+      (patchHasAdditions || patchHasDeletions)
+    ) {
+      console.warn(
+        "Patch applied but resulted in NO CHANGES despite having additions/deletions. Treating as failure and attempting fix..."
+      );
+      wasNoOp = true;
+      updatedContent = false; // Force fix path
+    }
+
+    // If the patch doesn't apply (or was a silent no-op), try to fix it
     if (updatedContent === false) {
       // diff library often returns false on failure
       console.warn("Initial patch apply failed. Attempting to fix patch...");
@@ -812,7 +939,16 @@ export async function patchFile(
         );
         // It might be valid that the patch had no real changes, but applyPatch failed anyway?
         // Let's return an error indicating failure.
-        return `Patch failed to apply and could not be fixed or resulted in no changes. Make sure you are making small patches`;
+        const hunkSummary = patchHunks.map((h, i) =>
+          `  Hunk ${i + 1}: ${h.header} — ${h.additions.length} additions, ${h.subtractions.length} deletions`
+        ).join("\n");
+        return [
+          `❌ Patch failed: could not apply or fix the patch (${patchHunks.length} hunk(s) attempted, 0 applied).`,
+          wasNoOp ? `⚠️  Note: The patch initially appeared to succeed but produced NO CHANGES (silent no-op). This often means context lines matched a different location than intended.` : null,
+          `File: ${filePath} (${originalContent.split("\n").length} lines)`,
+          `Hunks attempted:\n${hunkSummary}`,
+          `Tip: Break your patch into smaller hunks. Ensure context lines exactly match the file. Use readFile to verify the current content before patching.`,
+        ].filter(Boolean).join("\n");
       }
 
       updatedContent = applyPatch(originalContent, fixedPatch);
@@ -837,13 +973,22 @@ export async function patchFile(
           "Fixed patch also failed to apply."
         );
         // Try to provide more specific feedback from applyPatch if possible (library might not offer it)
-        return "Patch failed to apply even after attempting to fix it. Make sure you are making small patches.";
+        return [
+          `❌ Patch failed: could not apply even after auto-correction (${patchHunks.length} hunk(s) attempted, 0 applied).`,
+          wasNoOp ? `⚠️  Note: The patch initially appeared to succeed but produced NO CHANGES (silent no-op). Context lines may have matched the wrong location.` : null,
+          `File: ${filePath} (${originalContent.split("\n").length} lines)`,
+          `The auto-fix attempted to re-anchor your hunks to the file content but the resulting patch still failed.`,
+          `Tip: Use readFile to get the current exact content, then rewrite your patch with precise context lines matching the file. Make smaller, more targeted hunks.`,
+        ].filter(Boolean).join("\n");
       } else {
         console.log("Successfully applied the *fixed* patch.");
+        appliedPatch = fixedPatch;
       }
     } else {
       console.log("Successfully applied the original patch.");
     }
+
+    const wasFixed = appliedPatch !== patch;
 
     const eventResults: any[] = [];
     // Emit pre-edit blocking event
@@ -885,9 +1030,27 @@ export async function patchFile(
       }
     }
 
-    return `Patch applied successfully.${
-      filePath ? ` Use readFile on ${filePath} to verify changes.` : ""
-    }${eventResultsText}`.trim();
+    // Build rich summary of what actually changed
+    const changeSummary = buildChangeSummary(originalContent, updatedContent as string);
+    const appliedHunks = parseHunks(appliedPatch);
+    const totalHunks = patchHunks.length;
+    const appliedHunkCount = appliedHunks.length;
+    const patchStatus = wasFixed
+      ? `⚠️  Original patch required auto-correction before applying.`
+      : `✅ Original patch applied cleanly.`;
+    const hunkStatus = appliedHunkCount < totalHunks
+      ? `⚠️  Only ${appliedHunkCount}/${totalHunks} hunks were applied.`
+      : `${appliedHunkCount}/${totalHunks} hunks applied.`;
+
+    const summaryLines = [
+      `Patch applied to ${filePath}.`,
+      patchStatus,
+      hunkStatus,
+      changeSummary,
+    ];
+    if (eventResultsText) summaryLines.push(eventResultsText);
+
+    return summaryLines.join("\n");
   } catch (e: any) {
     console.error(`Error in patchFile function for ${filePath}:`, e);
     // Save error only if it's not a controlled failure path that already saved
