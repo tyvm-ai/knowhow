@@ -13,6 +13,8 @@ export interface SyncedAgentWatcher {
   stopWatching(): void;
   /** The task ID being watched */
   taskId: string;
+  /** Interrupt the agent's current tool call or AI completion */
+  interrupt(message?: string): Promise<void>;
   /** The agent name being watched */
   agentName: string;
   /** Send a message to the remote agent */
@@ -55,6 +57,7 @@ export interface AttachableAgent {
   pause(): void | Promise<void>;
   unpause(): void | Promise<void>;
   kill(): void | Promise<void>;
+  interrupt(message?: string): void | Promise<void>;
   addPendingUserMessage(message: Message): void;
 }
 
@@ -95,6 +98,11 @@ export class WatcherBackedAgent implements AttachableAgent {
     await this.watcher.kill();
     // Signal the chat loop to exit
     this.agentEvents.emit(this.eventTypes.done, "Agent killed");
+  }
+
+  async interrupt(message?: string): Promise<void> {
+    await this.watcher.interrupt(message);
+    console.log("🫵 Interrupt sent to remote agent.");
   }
 
   addPendingUserMessage(message: Message): void {

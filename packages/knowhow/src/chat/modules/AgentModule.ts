@@ -123,6 +123,18 @@ export class AgentModule extends BaseChatModule {
         },
       },
       {
+        name: "poke",
+        description: "Interrupt the agent's current tool call or AI completion, so it can continue with the next step",
+        modes: ["agent:attached"],
+        handler: async (args: string[]): Promise<void> => {
+          if (this.attachedAgent) {
+            const message = args.length > 0 ? args.join(" ") : undefined;
+            this.attachedAgent.interrupt(message);
+            console.log("Agent interrupted — it will continue with the next step.");
+          }
+        },
+      },
+      {
         name: "detach",
         description: "Detach from the currently attached agent",
         modes: ["agent:attached"],

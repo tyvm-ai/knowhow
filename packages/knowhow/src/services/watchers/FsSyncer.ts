@@ -143,6 +143,12 @@ export class FsSyncedAgentWatcher implements SyncedAgentWatcher {
     console.log(`🛑 Killed remote agent: ${this.taskId}`);
   }
 
+  async interrupt(message?: string): Promise<void> {
+    const inputPath = path.join(this.taskPath, "input.txt");
+    await fsPromises.writeFile(inputPath, `/poke ${message || ""}`.trim(), "utf8");
+    console.log(`🫵 Interrupt written to input for agent: ${this.taskId}`);
+  }
+
   private async readMetadata(): Promise<any> {
     try {
       const metaPath = path.join(this.taskPath, "metadata.json");

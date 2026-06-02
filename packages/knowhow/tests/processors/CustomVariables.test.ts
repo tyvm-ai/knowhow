@@ -826,7 +826,7 @@ describe("CustomVariables", () => {
         },
       ];
 
-      const processor = customVariables.createRepetitionHintProcessor({ minLength: 50, minRepetitions: 2 });
+      const processor = customVariables.createRepetitionHintProcessor({ minLength: 50, minRepetitions: 2, hintMessageTokens: 0 });
       const modified = JSON.parse(JSON.stringify(messages));
       await processor(messages, modified);
 
@@ -901,7 +901,7 @@ describe("CustomVariables", () => {
           tool_calls: [{ id: "c3", type: "function", function: { name: "toolZ", arguments: JSON.stringify({ auth: longString }) } }],
         },
       ];
-      const processor = customVariables.createRepetitionHintProcessor({ minLength: 50, minRepetitions: 2 });
+      const processor = customVariables.createRepetitionHintProcessor({ minLength: 50, minRepetitions: 2, hintMessageTokens: 0 });
       const modified = JSON.parse(JSON.stringify(messages));
       await processor(messages, modified);
       const hint = modified[modified.length - 1];
@@ -911,7 +911,7 @@ describe("CustomVariables", () => {
     });
 
     it("should use default options when none provided", async () => {
-      const longString = "a".repeat(60); // > 50 default minLength
+      const longString = "a".repeat(800); // long enough to produce net positive token savings with default hintMessageTokens
       const messages: Message[] = [
         {
           role: "assistant",
@@ -955,7 +955,7 @@ describe("CustomVariables", () => {
         },
       ];
 
-      const processor = customVariables.createRepetitionHintProcessor({ minLength: 50, minRepetitions: 2, minSubstringLength: 50 });
+      const processor = customVariables.createRepetitionHintProcessor({ minLength: 50, minRepetitions: 2, minSubstringLength: 50, hintMessageTokens: 0 });
       const modified = JSON.parse(JSON.stringify(messages));
       await processor(messages, modified);
 

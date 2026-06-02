@@ -10,6 +10,7 @@ import { ModulesService } from "./services/modules";
 
 // Command registrars
 import { addModulesCommand } from "./commands/modules";
+import { addMcpCommands } from "./commands/mcp";
 import {
   addWorkerCommand,
   addWorkersCommand,
@@ -96,6 +97,7 @@ async function main() {
   addCloudWorkerCommand(program);
   addGithubCredentialsCommand(program);
   addModulesCommand(program);
+  addMcpCommands(program);
 
   // Load global modules early (before parse) so they can register CLI subcommands.
   // We pass only the Program in context — no services are spun up at this stage.

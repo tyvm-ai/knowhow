@@ -112,6 +112,7 @@ export type McpConfig = {
   params?: Partial<{ socket: WebSocket }>;
   authorization_token?: string;
   authorization_token_file?: string;
+  authorization_scheme?: "bearer" | "basic";
 };
 
 export type ModelProvider = {

@@ -283,19 +283,57 @@ export class CustomVariables {
   /**
    * Finds the longest common substring between two strings that is >= minLength.
    * Returns the substring or null if none found.
+   *
+   * PERF NOTE: This is O(n*m) in the worst case on the sampled chunks.
+   * For large strings, we sample multiple fixed-size chunks (first quarter,
+   * second quarter, third quarter, last quarter) so we catch patterns that
+   * appear anywhere in the string — not just the prefix — while keeping cost bounded.
    */
-  private longestCommonSubstring(a: string, b: string, minLength: number): string | null {
+  private longestCommonSubstring(
+    a: string,
+    b: string,
+    minLength: number
+  ): string | null {
+    // Fast path: exact full match
+    if (a === b) return a.length >= minLength ? a : null;
+
+    // For large strings, sample fixed-size chunks from multiple positions
+    // so we catch repeated patterns anywhere in the string without O(n*m) blowup.
+    // Chunk size: 200 chars each → at most 200*200=40k iterations per chunk pair.
+    const CHUNK_SIZE = 200;
+
+    const getChunks = (s: string): string[] => {
+      if (s.length <= CHUNK_SIZE) return [s];
+      const q = Math.floor(s.length / 4);
+      return [
+        s.slice(0, CHUNK_SIZE),                          // first quarter
+        s.slice(q - CHUNK_SIZE / 2, q + CHUNK_SIZE / 2), // around 1/4 mark
+        s.slice(2 * q - CHUNK_SIZE / 2, 2 * q + CHUNK_SIZE / 2), // around midpoint
+        s.slice(3 * q - CHUNK_SIZE / 2, 3 * q + CHUNK_SIZE / 2), // around 3/4 mark
+        s.slice(-CHUNK_SIZE),                            // last quarter
+      ];
+    };
+
+    const chunksA = getChunks(a);
+    const chunksB = getChunks(b);
+
+    // Run LCS on each chunk pair, return the best match found
     let best = "";
-    for (let i = 0; i < a.length - minLength + 1; i++) {
-      for (let j = a.length; j > i + minLength - 1; j--) {
-        const sub = a.slice(i, j);
-        if (sub.length <= best.length) break; // already found longer
-        if (b.includes(sub)) {
-          best = sub;
-          break;
+    for (const chunkA of chunksA) {
+      for (const chunkB of chunksB) {
+        for (let i = 0; i < chunkA.length - minLength + 1; i++) {
+          for (let j = chunkA.length; j > i + minLength - 1; j--) {
+            const sub = chunkA.slice(i, j);
+            if (sub.length <= best.length) break; // already found longer
+            if (chunkB.includes(sub)) {
+              best = sub;
+              break;
+            }
+          }
         }
       }
     }
+
     return best.length >= minLength ? best : null;
   }
 

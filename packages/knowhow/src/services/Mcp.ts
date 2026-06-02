@@ -81,12 +81,14 @@ export class McpService {
           mcp.authorization_token = token.trim();
         }
 
+        const scheme = mcp.authorization_scheme === "basic" ? "Basic" : "Bearer";
+
         return new StreamableHTTPClientTransport(new URL(mcp.url), {
           requestInit: {
             headers: {
               "User-Agent": knowhowMcpClient.name,
               ...(mcp.authorization_token && {
-                Authorization: `Bearer ${mcp.authorization_token}`,
+                Authorization: `${scheme} ${mcp.authorization_token}`,
               }),
             },
           },

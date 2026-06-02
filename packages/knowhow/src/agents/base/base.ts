@@ -68,6 +68,9 @@ export abstract class BaseAgent implements IAgent {
   protected compressThreshold = 30000;
   protected compressMinMessages = 30;
 
+  // Interrupt support: resolves the currently awaited tool call or completion
+  private _interruptResolve: ((value: any) => void) | null = null;
+
   protected threads = [] as Message[][];
 
   // Message from users
@@ -479,9 +482,18 @@ export abstract class BaseAgent implements IAgent {
   async processToolMessages(toolCall: ToolCall) {
     this.agentEvents.emit(this.eventTypes.toolCall, { toolCall });
 
-    const { functionResp, toolMessages } = await this.tools.callTool(
-      toolCall,
-      this.getEnabledToolNames()
+    const interruptMsg = `User interrupted this tool call (${toolCall.function?.name})`;
+    const interruptResult: Awaited<ReturnType<typeof this.tools.callTool>> = {
+      functionResp: interruptMsg,
+      toolCallId: toolCall.id,
+      functionName: toolCall.function?.name,
+      functionArgs: {},
+      toolMessages: [{ role: "tool", tool_call_id: toolCall.id, name: toolCall.function?.name, content: interruptMsg }],
+    };
+
+    const { functionResp, toolMessages } = await this.makeInterruptible(
+      this.tools.callTool(toolCall, this.getEnabledToolNames()),
+      interruptResult
     );
 
     this.agentEvents.emit(this.eventTypes.toolUsed, {
@@ -647,6 +659,48 @@ export abstract class BaseAgent implements IAgent {
     } as Message);
   }
 
+  /**
+   * Wrap a promise so it can be interrupted via interrupt().
+   * If interrupt() is called while waiting, the promise resolves with the
+   * interrupt message instead of waiting for the original operation to complete.
+   */
+  protected makeInterruptible<T>(
+    promise: Promise<T>,
+    interruptValue: T
+  ): Promise<T> {
+    return new Promise<T>((resolve) => {
+      this._interruptResolve = (value: any) => {
+        this._interruptResolve = null;
+        resolve(value);
+      };
+      promise.then((result) => {
+        if (this._interruptResolve) {
+          this._interruptResolve = null;
+          resolve(result);
+        }
+      }).catch((err) => {
+        if (this._interruptResolve) {
+          this._interruptResolve = null;
+          resolve(interruptValue);
+        }
+      });
+    });
+  }
+
+  /**
+   * Interrupt the currently awaited tool call or AI completion.
+   * The waiting promise will resolve immediately with an interrupt message,
+   * allowing the agent to continue its loop with the interruption as context.
+   */
+  interrupt(message = "User interrupted this action you were waiting on") {
+    this.log(`Interrupting current operation: ${message}`);
+    if (this._interruptResolve) {
+      this._interruptResolve(message);
+    } else {
+      this.log("No active interruptible operation to interrupt", "warn");
+    }
+  }
+
   async call(
     userInput: string | MessageContent[],
     _messages?: Message[],
@@ -717,13 +771,22 @@ export abstract class BaseAgent implements IAgent {
         "pre_call"
       );
 
-      const response = await this.getClient().createChatCompletion({
+      const interruptResponse: CompletionResponse = {
+        choices: [{ message: { role: "assistant", content: "User interrupted this AI completion. Please continue." } }],
         model,
-        messages,
-        tools: this.getEnabledTools(),
-        tool_choice: "auto",
-        long_ttl_cache: this.runTime() > 300_000,
-      });
+        usage: undefined,
+        usd_cost: 0,
+      };
+      const response = await this.makeInterruptible(
+        this.getClient().createChatCompletion({
+          model,
+          messages,
+          tools: this.getEnabledTools(),
+          tool_choice: "auto",
+          long_ttl_cache: this.runTime() > 300_000,
+        }),
+        interruptResponse
+      );
 
       // If the agent was paused while the completion was in-flight, wait here
       // before processing tool calls. This allows the user to send messages

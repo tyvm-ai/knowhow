@@ -150,4 +150,9 @@ export class WebSyncedAgentWatcher implements SyncedAgentWatcher {
     await this.client.killAgent(this.taskId);
     console.log(`🛑 Killed remote web agent: ${this.taskId}`);
   }
+
+  async interrupt(message?: string): Promise<void> {
+    await this.client.sendMessageToAgent(this.taskId, `/poke ${message || ""}`.trim());
+    console.log(`🫵 Interrupt sent to remote web agent: ${this.taskId}`);
+  }
 }
