@@ -329,12 +329,22 @@ export class GenericAnthropicClient implements GenericClient {
             },
           } as Anthropic.ContentBlockParam;
         } else {
+          // Data URL or raw base64. Anthropic's base64 source expects the
+          // media_type separately and the data WITHOUT the
+          // "data:<mime>;base64," prefix. Parse it out here.
+          const dataUrlMatch = e.image_url.url.match(
+            /^data:([^;]+);base64,(.*)$/s
+          );
+          const mediaType = dataUrlMatch ? dataUrlMatch[1] : "image/jpeg";
+          const data = dataUrlMatch
+            ? dataUrlMatch[2]
+            : e.image_url.url.replace(/^data:[^,]*,/, "");
           return {
             type: "image",
             source: {
               type: "base64" as const,
-              media_type: "image/jpeg",
-              data: e.image_url.url,
+              media_type: mediaType,
+              data,
             },
           } as Anthropic.ContentBlockParam;
         }

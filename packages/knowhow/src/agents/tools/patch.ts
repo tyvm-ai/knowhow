@@ -109,6 +109,31 @@ function findSequenceIndex(haystack: string[], needle: string[]): number {
   return -1;
 } // --- Hunk Parsing and Formatting (Keep as is) ---
 
+/**
+ * Like findSequenceIndex but compares lines by trimmed content, so it tolerates
+ * leading/trailing whitespace drift between a hand-written patch and the file.
+ * Returns the 0-based start index in haystack, or -1.
+ */
+function findSequenceIndexTrimmed(
+  haystack: string[],
+  needle: string[]
+): number {
+  if (!needle || needle.length === 0) return -1;
+  if (!haystack || needle.length > haystack.length) return -1;
+  const needleTrim = needle.map((l) => l.trim());
+  for (let start = 0; start <= haystack.length - needle.length; start++) {
+    let matches = true;
+    for (let i = 0; i < needle.length; i++) {
+      if (haystack[start + i].trim() !== needleTrim[i]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return start;
+  }
+  return -1;
+}
+
 export interface Hunk {
   header: string;
   originalStartLine: number; // Parsed from -s,l
@@ -412,6 +437,104 @@ function fixSingleHunk(hunk: Hunk, originalContent: string): Hunk | null {
   }
 
   if (hasInterleavedChanges) {
+    // Preferred strategy: in-order reconstruction.
+    //
+    // The block-grouping fallback below is lossy — it skips addition-only
+    // blocks (dropping inserted lines) and re-orders additions relative to
+    // surrounding context, which corrupts nested scopes (e.g. moving a
+    // replaced object property outside of its `{ ... }`). Before falling back
+    // to it, try to anchor the hunk's "original side" (context + deletions, in
+    // order) as a contiguous region of the file and rebuild that region by
+    // walking the hunk body in order. This preserves the exact author intent.
+    {
+      // The sequence of lines the hunk expects to exist in the original file,
+      // in order (context lines and deletions; additions are new).
+      const originalSideLines: string[] = [];
+      for (const line of hunk.lines) {
+        if (line.startsWith("+")) continue;
+        originalSideLines.push(line.startsWith(" ") || line.startsWith("-") ? line.slice(1) : line);
+      }
+      // Drop trailing blank context lines that patches sometimes include after
+      // the last real line — they aren't part of the file region and break the
+      // contiguous anchor match.
+      while (
+        originalSideLines.length > 0 &&
+        originalSideLines[originalSideLines.length - 1].trim() === ""
+      ) {
+        originalSideLines.pop();
+      }
+
+      if (originalSideLines.length > 0) {
+        // Prefer an exact anchor; fall back to a whitespace-tolerant match so
+        // hand-written patches with slightly off indentation still apply.
+        let anchorIdx = findSequenceIndex(originalLines, originalSideLines);
+        let usedTrimmed = false;
+        if (anchorIdx === -1) {
+          anchorIdx = findSequenceIndexTrimmed(originalLines, originalSideLines);
+          usedTrimmed = anchorIdx !== -1;
+        }
+        if (anchorIdx !== -1) {
+          // The file's actual lines for this region (authoritative indentation).
+          const fileRegion = originalLines.slice(
+            anchorIdx,
+            anchorIdx + originalSideLines.length
+          );
+          // Compute indentation correction: difference between the file's first
+          // context line indentation and the patch's first original-side line.
+          const fileIndent = (fileRegion[0].match(/^\s*/) || [""])[0];
+          const patchIndent = (originalSideLines[0].match(/^\s*/) || [""])[0];
+          const indentDelta =
+            usedTrimmed && fileIndent.length >= patchIndent.length
+              ? fileIndent.slice(patchIndent.length)
+              : "";
+          // Rebuild the anchored region by replaying the hunk body in order.
+          // For context lines we use the file's authoritative version; for
+          // additions we re-indent by the computed delta.
+          const rebuilt: string[] = [];
+          let origCursor = 0; // index into fileRegion for context/deletion lines
+          for (const line of hunk.lines) {
+            if (line.startsWith("+")) {
+              rebuilt.push(indentDelta + line.slice(1));
+            } else if (line.startsWith("-")) {
+              origCursor++; // consume a file line, drop it
+            } else {
+              // context line. If it is a trailing line beyond the anchored
+              // region (e.g. a formatting-artifact blank line), ignore it.
+              if (origCursor >= fileRegion.length) continue;
+              // Otherwise keep the file's authoritative version.
+              rebuilt.push(fileRegion[origCursor]);
+              origCursor++;
+            }
+          }
+
+          // Emit a pure replacement hunk: delete the file's authoritative
+          // region and insert the rebuilt content. The deletion content is an
+          // exact, contiguous slice of the file, so the diff library anchors it
+          // unambiguously without needing surrounding context lines.
+          const newBody: string[] = [
+            ...fileRegion.map((l) => `-${l}`),
+            ...rebuilt.map((l) => `+${l}`),
+          ];
+
+          const origCountR = fileRegion.length;
+          const newCountR = rebuilt.length;
+          const headerR = `@@ -${anchorIdx + 1},${origCountR} +${anchorIdx + 1},${newCountR} @@`;
+
+          return {
+            header: headerR,
+            originalStartLine: anchorIdx + 1,
+            originalLineCount: origCountR,
+            newStartLine: anchorIdx + 1,
+            newLineCount: newCountR,
+            lines: newBody,
+            additions: newBody.filter((l) => l.startsWith("+")),
+            subtractions: newBody.filter((l) => l.startsWith("-")),
+            contextLines: newBody.filter((l) => l.startsWith(" ")),
+          };
+        }
+      }
+    }
+
     // Group hunk lines into change-blocks separated by context
     // Each block: { deletions, additions }
     type ChangeBlock = { deletions: string[]; additions: string[]; };

@@ -8,8 +8,15 @@ export class ResearcherAgent extends BaseAgent {
 
   constructor(context: AgentContext) {
     super(context);
-    this.setModel(Models.google.Gemini_3_Flash_Preview);
-    this.setProvider("google");
+    // Prefer Gemini for research, but fall back to other registered providers
+    // so the agent still runs when GEMINI_API_KEY is not configured. Without
+    // fallbacks, an unregistered "google" provider causes the health-check loop
+    // to immediately throw "We have exhausted all model preferences."
+    this.setModelPreferences([
+      { model: Models.google.Gemini_3_Flash_Preview, provider: "google" },
+      { model: Models.anthropic.Sonnet4_6, provider: "anthropic" },
+      { model: Models.openai.GPT_53_Codex, provider: "openai" },
+    ]);
     this.disableTool("patchFile");
     this.disableTool("writeFile");
     this.disableTool("writeChunk");

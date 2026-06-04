@@ -105,7 +105,9 @@ describe("TokenCompressor", () => {
     });
 
     it("should create chain of NEXT_CHUNK_KEY references", () => {
-      const content = "a".repeat(20000);
+      // Large enough to require multiple full-size chunks even after the
+      // minimum-chunk-size merge (characterLimit is 16000, minChunk is 8000).
+      const content = "a".repeat(40000);
       tokenCompressor.compressStringInChunks(content);
 
       const keys = tokenCompressor.getStorageKeys();
@@ -114,6 +116,22 @@ describe("TokenCompressor", () => {
       // Check that chunks are linked
       const firstChunk = tokenCompressor.retrieveString(keys[0]);
       expect(firstChunk).toContain("NEXT_CHUNK_KEY");
+    });
+
+    it("should merge a small leftover chunk so no tiny chunks are emitted", () => {
+      // characterLimit is 16000; a 20000-char input would naively split into a
+      // 16000-char chunk and a tiny 4000-char leading chunk. The leftover is
+      // below the minimum chunk size, so it should be merged into a single chunk.
+      const content = "a".repeat(20000);
+      tokenCompressor.compressStringInChunks(content);
+
+      const keys = tokenCompressor.getStorageKeys();
+      expect(keys.length).toBe(1);
+
+      const onlyChunk = tokenCompressor.retrieveString(keys[0]);
+      expect(onlyChunk).not.toContain("NEXT_CHUNK_KEY");
+      // The full content should be retrievable from the single chunk.
+      expect(tokenCompressor.retrieveFullString(keys[0])).toBe(content);
     });
   });
 
@@ -315,6 +333,46 @@ describe("TokenCompressor", () => {
 
       expect(result).toContain("Error: No data found for key");
       expect(result).toContain("Available keys:");
+    });
+
+    it("should auto-stitch a multi-chunk chain into the full content", () => {
+      // Force a multi-chunk compression then expand the first key.
+      const content = "a".repeat(40000);
+      const placeholder = tokenCompressor.compressStringInChunks(content);
+      const firstKey = placeholder.match(/Key:\s*(\S+)/)[1];
+
+      const toolsServiceCalls = mockToolsService.addFunctions.mock.calls;
+      const functions = toolsServiceCalls[0][0];
+      const result = functions.expandTokens(firstKey);
+
+      // Full content is returned in one call with no chunk-linking markers.
+      expect(result).toBe(content);
+      expect(result).not.toContain("NEXT_CHUNK_KEY");
+    });
+
+    it("should support a ranged read with real line numbers", () => {
+      const key = "ranged_key";
+      const value = ["line one", "line two", "line three", "line four"].join(
+        "\n"
+      );
+      tokenCompressor.storeString(key, value);
+
+      const toolsServiceCalls = mockToolsService.addFunctions.mock.calls;
+      const functions = toolsServiceCalls[0][0];
+      const result = functions.expandTokens(key, 2, 3);
+
+      expect(result).toBe("2: line two\n3: line three");
+    });
+
+    it("should error on an invalid line range", () => {
+      const key = "bad_range_key";
+      tokenCompressor.storeString(key, "a\nb\nc");
+
+      const toolsServiceCalls = mockToolsService.addFunctions.mock.calls;
+      const functions = toolsServiceCalls[0][0];
+      const result = functions.expandTokens(key, 5, 2);
+
+      expect(result).toContain("Error: Invalid line range");
     });
   });
 

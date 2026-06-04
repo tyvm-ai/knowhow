@@ -174,7 +174,7 @@ export const includedTools = [
     function: {
       name: "readFile",
       description:
-        "Read the contents of a file and return them as an array of blocks",
+        "Read the contents of a file as plain text. Optionally pass fromLine/toLine (1-based, inclusive) to read just a range of lines; ranged reads are prefixed with real source line numbers.",
       parameters: {
         type: "object",
         positional: true,
@@ -183,12 +183,23 @@ export const includedTools = [
             type: "string",
             description: "The path to the file to be read",
           },
+          fromLine: {
+            type: "number",
+            description:
+              "Optional 1-based start line (inclusive). When provided, only lines from this point are returned, prefixed with real source line numbers.",
+          },
+          toLine: {
+            type: "number",
+            description:
+              "Optional 1-based end line (inclusive). Defaults to the end of the file when omitted.",
+          },
         },
         required: ["filePath"],
       },
       returns: {
         type: "string",
-        description: "The file contents in diff format",
+        description:
+          "The file contents as plain text. When a line range is requested, each line is prefixed with its real source line number.",
       },
     },
   },
