@@ -1,0 +1,24 @@
+{
+  "name": "@tyvm/knowhow-module-pdf",
+  "version": "0.0.1",
+  "description": "PDF converter module for @tyvm/knowhow — registers a pdf->text converter via pdf-parse",
+  "main": "ts_build/index.js",
+  "types": "ts_build/index.d.ts",
+  "scripts": {
+    "compile": "tsc",
+    "build": "npm run compile",
+    "prepublishOnly": "npm run compile"
+  },
+  "peerDependencies": {
+    "@tyvm/knowhow": "*"
+  },
+  "dependencies": {
+    "pdf-parse": "^1.1.1",
+    "pdf-to-img": "^4.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.6.3",
+    "@types/pdf-parse": "^1.1.4",
+    "typescript": "^5.0.0"
+  }
+}

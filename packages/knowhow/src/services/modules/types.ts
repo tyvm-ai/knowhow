@@ -12,6 +12,7 @@ import { ToolsService } from "../Tools";
 import { MediaProcessorService } from "../MediaProcessorService";
 import { TunnelHandler } from "@tyvm/knowhow-tunnel";
 import { EventService } from "../EventService";
+import { ConversionService } from "../conversion/ConversionService";
 
 /*
  *
@@ -57,6 +58,7 @@ export interface ModuleContext {
   Tools: ToolsService;
   Events: EventService;
   MediaProcessor?: MediaProcessorService;
+  Conversion?: ConversionService;
   Tunnel?: TunnelHandler;
   Program?: Command;
 }

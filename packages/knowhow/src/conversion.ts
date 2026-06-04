@@ -1,16 +1,17 @@
-import pdf from "pdf-parse";
-import * as fs from "fs";
 import * as path from "path";
 import { readFile, fileExists } from "./utils";
 
 /**
- * Get the MediaProcessorService from services() lazily.
- * We import lazily to avoid circular dependency issues.
+ * Get services lazily to avoid circular dependency issues.
  */
-function getMediaProcessor() {
+function getServices() {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const { services } = require("./services") as typeof import("./services");
-  return services().MediaProcessor;
+  return services();
+}
+
+function getMediaProcessor() {
+  return getServices().MediaProcessor;
 }
 
 export async function processAudio(
@@ -38,15 +39,10 @@ export async function convertAudioToText(
   filePath: string,
   reusePreviousTranscript = true,
   chunkTime = 30
-) {
-  const audios = await processAudio(
-    filePath,
-    reusePreviousTranscript,
-    chunkTime
-  );
+): Promise<string> {
+  const audios = await processAudio(filePath, reusePreviousTranscript, chunkTime);
 
   let fullString = "";
-
   for (let i = 0; i < audios.length; i++) {
     const audio = audios[i];
     fullString += `[${i * chunkTime}:${(i + 1) * chunkTime}s] ${audio}`;
@@ -59,57 +55,15 @@ export async function processVideo(
   filePath: string,
   reusePreviousTranscript = true,
   chunkTime = 30
-) {
-  const parsed = path.parse(filePath);
-  const outputPath = `${parsed.dir}/${parsed.name}/video.json`;
-
+): Promise<string[]> {
   console.log("Processing audio...");
-  const transcriptions = await processAudio(
-    filePath,
-    reusePreviousTranscript,
-    chunkTime
-  );
-
-  // Return the transcriptions as text — keyframe extraction requires the
-  // @tyvm/knowhow-module-video-downloader module
+  const transcriptions = await processAudio(filePath, reusePreviousTranscript, chunkTime);
   return transcriptions;
 }
 
-async function convertVideoToText(
-  filePath: string,
-  reusePreviousTranscript = true,
-  chunkTime = 30
-): Promise<string> {
-  const transcriptions = await processVideo(filePath, reusePreviousTranscript, chunkTime);
-  if (Array.isArray(transcriptions)) {
-    return transcriptions.join("\n");
-  }
-  return String(transcriptions);
-}
-
-async function convertPdfToText(filePath: string) {
-  const existingPdfBytes = fs.readFileSync(filePath);
-  const data = await pdf(existingPdfBytes);
-  return data.text;
-}
-
+/**
+ * Thin compat shim — delegates to ConversionService.
+ */
 export async function convertToText(filePath: string): Promise<string> {
-  const extension = filePath.split(".").pop();
-
-  switch (extension) {
-    case "mp4":
-    case "webm":
-    case "mov":
-    case "mpeg":
-      return convertVideoToText(filePath);
-    case "mp3":
-    case "mpga":
-    case "m4a":
-    case "wav":
-      return convertAudioToText(filePath);
-    case "pdf":
-      return convertPdfToText(filePath);
-    default:
-      return ((await readFile(filePath, "utf8")) as string) || "";
-  }
+  return getServices().Conversion.convertToText(filePath);
 }
