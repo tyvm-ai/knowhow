@@ -54,6 +54,9 @@ export * as ai from "./ai";
 // Export module system types for external modules
 export * from "./services/modules/types";
 export { ModulesService } from "./services/modules";
+// Export conversion types for external modules (e.g. knowhow-module-pdf)
+export * from "./services/conversion/types";
+export { ConversionService } from "./services/conversion/ConversionService";
 // Export plugin types for external plugins
 export { PluginBase } from "./plugins/PluginBase";
 export { PluginMeta, Plugin, PluginContext } from "./plugins/types";

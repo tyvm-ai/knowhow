@@ -42,6 +42,13 @@ export interface Converter {
   inputExts?: string[];           // e.g. ["pdf"]
   inputModality?: Modality;       // OR an input modality (e.g. "image")
   outputType: Modality;
+  /**
+   * If true, the ConversionService will cache the result of this converter to
+   * disk so repeated calls with the same input are fast. Defaults to false —
+   * caching is opt-in. Only enable for expensive converters (e.g. pdf->image,
+   * image->text via LLM) where re-running would be slow or costly.
+   */
+  cache?: boolean;
   convert: (input: ConvertInput, ctx: ConverterContext) => Promise<ConvertResult>;
 }
 
@@ -61,4 +68,12 @@ export interface ConvertOptions {
    * e.g. { "image-to-text": { model: "gpt-4o" }, "pdf-to-img": { scale: 2 } }
    */
   converterOptions?: Record<string, Record<string, any>>;
+  /**
+   * Explicit intermediate modalities to route through before reaching the
+   * final targetType.  e.g. ["image"] means the chain must go through "image"
+   * first.  When provided, the ConversionService will stitch BFS sub-paths
+   * between each waypoint rather than picking the overall shortest path.
+   * CLI: --to image,text  → via=["image"], target="text"
+   */
+  via?: Modality[];
 }

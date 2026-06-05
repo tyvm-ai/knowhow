@@ -36,6 +36,7 @@ import {
   addChatCommand,
   addGithubCredentialsCommand,
 } from "./commands/misc";
+import { addConvertCommand } from "./commands/convert";
 
 // Handle unhandled promise rejections gracefully — particularly from MCP SDK
 // which fires errors via event emitters that can bypass Promise.allSettled.
@@ -98,6 +99,7 @@ async function main() {
   addGithubCredentialsCommand(program);
   addModulesCommand(program);
   addMcpCommands(program);
+  addConvertCommand(program);
 
   // Load global modules early (before parse) so they can register CLI subcommands.
   // We pass only the Program in context — no services are spun up at this stage.

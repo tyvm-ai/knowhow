@@ -1,6 +1,8 @@
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 import * as crypto from "crypto";
+import { execSync } from "child_process";
 import { AIClient } from "../../clients";
 import { MediaProcessorService } from "../MediaProcessorService";
 import {
@@ -56,6 +58,31 @@ function cacheKey(
   return crypto.createHash("md5").update(parts).digest("hex");
 }
 
+/**
+ * Poll a video generation job until it is completed or failed.
+ * Returns the final VideoStatusResponse.
+ */
+async function pollVideoJob(
+  clients: AIClient,
+  provider: string,
+  jobId: string,
+  intervalMs = 5000,
+  maxWaitMs = 300_000
+): Promise<{ data?: { url?: string; b64_json?: string; fileUri?: string }[]; error?: string }> {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    const status = await clients.getVideoStatus(provider, { jobId });
+    if (status.status === "completed") {
+      return { data: status.data };
+    }
+    if (status.status === "failed" || status.status === "expired") {
+      throw new Error(`Video generation job ${jobId} ${status.status}: ${status.error ?? ""}`);
+    }
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(`Video generation job ${jobId} timed out after ${maxWaitMs / 1000}s`);
+}
+
 export class ConversionService {
   private converters: Converter[] = [];
   private clients: AIClient;
@@ -81,9 +108,11 @@ export class ConversionService {
   private initDefaults(): void {
     const self = this;
 
-    // audio -> text via whisper
+    // ── audio → text via Whisper ────────────────────────────────────────────
+    // options: { model?, provider? }
     this.register({
       name: "whisper",
+      cache: true,
       inputModality: "audio",
       outputType: "text",
       async convert(input, _ctx): Promise<ConvertResult> {
@@ -93,19 +122,36 @@ export class ConversionService {
       },
     });
 
-    // video -> text via ffmpeg+whisper
+    // ── video → text via ffmpeg + Whisper ───────────────────────────────────
+    // options: { model? }
+    // CLI: --start-time / --end-time trims the video before transcription
     this.register({
       name: "ffmpeg-whisper",
+      cache: true,
       inputModality: "video",
       outputType: "text",
       async convert(input, _ctx): Promise<ConvertResult> {
-        const chunks = await self.mediaProcessor.processAudio(input.filePath);
+        // If startTime/endTime provided, trim with ffmpeg first
+        let filePath = input.filePath;
+        if (input.startTime !== undefined || input.endTime !== undefined) {
+          const tmpDir = path.join(os.tmpdir(), "knowhow-convert");
+          fs.mkdirSync(tmpDir, { recursive: true });
+          const trimmed = path.join(tmpDir, `trim_${path.basename(filePath)}`);
+          const ssArg = input.startTime !== undefined ? `-ss ${input.startTime}` : "";
+          const toArg = input.endTime !== undefined ? `-to ${input.endTime}` : "";
+          execSync(
+            `ffmpeg -y ${ssArg} -i "${filePath}" ${toArg} -c copy "${trimmed}"`,
+            { stdio: "pipe" }
+          );
+          filePath = trimmed;
+        }
+        const chunks = await self.mediaProcessor.processAudio(filePath);
         const text = chunks.join("\n");
         return { outputType: "text", text };
       },
     });
 
-    // default text passthrough: read utf8 for unknown exts
+    // ── text passthrough (known extensions) ────────────────────────────────
     this.register({
       name: "text-passthrough",
       inputExts: ["txt", "md", "json", "yaml", "yml", "csv", "xml", "html", "htm", "js", "ts", "py", "rb", "sh", "text"],
@@ -116,7 +162,7 @@ export class ConversionService {
       },
     });
 
-    // fallback text passthrough for any other extension not matched by a specific converter
+    // ── text passthrough fallback ───────────────────────────────────────────
     this.register({
       name: "text-passthrough-fallback",
       inputModality: "text",
@@ -127,12 +173,11 @@ export class ConversionService {
       },
     });
 
-    // image -> text via a vision model. This unlocks pdf -> text for scanned
-    // PDFs when a module registers a pdf -> image converter (e.g. the pdf
-    // module's pdf-to-img converter): the BFS graph composes pdf -> image -> text.
-    // Per-converter options (ctx.options): { model?, prompt?, provider? }
+    // ── image → text via vision LLM ────────────────────────────────────────
+    // options: { model?, prompt?, provider? }
     this.register({
       name: "image-to-text",
+      cache: true,
       inputExts: ["png", "jpg", "jpeg", "gif", "webp", "bmp"],
       inputModality: "image",
       outputType: "text",
@@ -143,8 +188,6 @@ export class ConversionService {
           (ctx.options?.prompt as string) ||
           "Extract and transcribe all text from this image. If it is a document or scan, return the full text content verbatim. If there is no text, describe the image in detail.";
 
-        // input.filePath may be a single image, or the previous step may have
-        // produced multiple image files (e.g. one per pdf page).
         const images: string[] =
           (input as any).files && Array.isArray((input as any).files)
             ? (input as any).files
@@ -153,10 +196,8 @@ export class ConversionService {
         const parts: string[] = [];
         let totalCost = 0;
         for (const imgPath of images) {
-          const ext = path
-            .extname(imgPath)
-            .replace(/^\./, "")
-            .toLowerCase() || "png";
+          const ext =
+            path.extname(imgPath).replace(/^\./, "").toLowerCase() || "png";
           const base64 = fs.readFileSync(imgPath, { encoding: "base64" });
           const dataUrl = `data:image/${ext};base64,${base64}`;
           const resp = await self.clients.createCompletion(provider, {
@@ -183,34 +224,256 @@ export class ConversionService {
         };
       },
     });
+
+    // ── text → audio via TTS ────────────────────────────────────────────────
+    // options: { model?, voice?, provider?, format? }
+    // Reads the text file, calls TTS, writes mp3 to cache dir, returns files[].
+    this.register({
+      name: "text-to-audio",
+      inputModality: "text",
+      outputType: "audio",
+      async convert(input, ctx): Promise<ConvertResult> {
+        const provider = (ctx.options?.provider as string) || "openai";
+        const model = (ctx.options?.model as string) || "tts-1";
+        const voice = (ctx.options?.voice as string) || "alloy";
+        const format = (ctx.options?.format as "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm") || "mp3";
+
+        const text = fs.readFileSync(input.filePath, "utf8");
+
+        const resp = await self.clients.createAudioGeneration(provider, {
+          model,
+          input: text,
+          voice,
+          response_format: format,
+        });
+
+        fs.mkdirSync(ctx.cacheDir, { recursive: true });
+        const outFile = path.join(
+          ctx.cacheDir,
+          `${path.basename(input.filePath, path.extname(input.filePath))}.${format}`
+        );
+        fs.writeFileSync(outFile, resp.audio);
+
+        return {
+          outputType: "audio",
+          files: [outFile],
+          usd_cost: resp.usd_cost,
+        };
+      },
+    });
+
+    // ── text → image via image generation ──────────────────────────────────
+    // options: { model?, provider?, size?, quality?, style?, n? }
+    // Reads the text file as the prompt, generates image(s), writes to cache dir.
+    this.register({
+      name: "text-to-image",
+      inputModality: "text",
+      outputType: "image",
+      async convert(input, ctx): Promise<ConvertResult> {
+        const provider = (ctx.options?.provider as string) || "openai";
+        const model = (ctx.options?.model as string) || "dall-e-3";
+        const size = (ctx.options?.size as any) || "1024x1024";
+        const quality = (ctx.options?.quality as any) || "standard";
+        const style = (ctx.options?.style as any) || "vivid";
+        const n = (ctx.options?.n as number) || 1;
+
+        const prompt = fs.readFileSync(input.filePath, "utf8").trim();
+
+        const resp = await self.clients.createImageGeneration(provider, {
+          model,
+          prompt,
+          size,
+          quality,
+          style,
+          n,
+          response_format: "b64_json",
+        });
+
+        fs.mkdirSync(ctx.cacheDir, { recursive: true });
+        const files: string[] = [];
+        let totalCost = resp.usd_cost ?? 0;
+
+        for (let i = 0; i < resp.data.length; i++) {
+          const item = resp.data[i];
+          const outFile = path.join(
+            ctx.cacheDir,
+            `${path.basename(input.filePath, path.extname(input.filePath))}_${i}.png`
+          );
+          if (item.b64_json) {
+            fs.writeFileSync(outFile, Buffer.from(item.b64_json, "base64"));
+          } else if (item.url) {
+            // download from URL
+            const https = require("https");
+            const http = require("http");
+            const protocol = item.url.startsWith("https") ? https : http;
+            await new Promise<void>((resolve, reject) => {
+              const file = fs.createWriteStream(outFile);
+              protocol.get(item.url, (res: any) => {
+                res.pipe(file);
+                file.on("finish", () => { file.close(); resolve(); });
+              }).on("error", reject);
+            });
+          }
+          files.push(outFile);
+        }
+
+        return { outputType: "image", files, usd_cost: totalCost };
+      },
+    });
+
+    // ── text → video via video generation ──────────────────────────────────
+    // options: { model?, provider?, duration?, resolution?, aspect_ratio? }
+    // Reads the text file as the prompt, submits job, polls, downloads.
+    this.register({
+      name: "text-to-video",
+      inputModality: "text",
+      outputType: "video",
+      async convert(input, ctx): Promise<ConvertResult> {
+        const provider = (ctx.options?.provider as string) || "google";
+        const model = (ctx.options?.model as string) || "veo-2.0-generate-001";
+        const duration = (ctx.options?.duration as number) || undefined;
+        const resolution = (ctx.options?.resolution as string) || undefined;
+        const aspect_ratio = (ctx.options?.aspect_ratio as string) || "16:9";
+
+        const prompt = fs.readFileSync(input.filePath, "utf8").trim();
+
+        const genResp = await self.clients.createVideoGeneration(provider, {
+          model,
+          prompt,
+          duration,
+          resolution,
+          aspect_ratio,
+        });
+
+        fs.mkdirSync(ctx.cacheDir, { recursive: true });
+        let totalCost = genResp.usd_cost ?? 0;
+
+        // If provider returned a jobId, poll until done
+        const files: string[] = [];
+        if (genResp.jobId) {
+          const result = await pollVideoJob(self.clients, provider, genResp.jobId);
+          for (let i = 0; i < (result.data ?? []).length; i++) {
+            const item = result.data![i];
+            const outFile = path.join(ctx.cacheDir, `output_${i}.mp4`);
+            if (item.b64_json) {
+              fs.writeFileSync(outFile, Buffer.from(item.b64_json, "base64"));
+              files.push(outFile);
+            } else if (item.fileUri || item.url) {
+              const uri = item.fileUri || item.url!;
+              const dlResp = await self.clients.downloadVideo(provider, { fileId: uri, uri });
+              fs.writeFileSync(outFile, dlResp.data);
+              files.push(outFile);
+            }
+          }
+        } else {
+          // Synchronous providers return data directly
+          for (let i = 0; i < genResp.data.length; i++) {
+            const item = genResp.data[i];
+            const outFile = path.join(ctx.cacheDir, `output_${i}.mp4`);
+            if (item.b64_json) {
+              fs.writeFileSync(outFile, Buffer.from(item.b64_json, "base64"));
+              files.push(outFile);
+            } else if (item.url) {
+              const dlResp = await self.clients.downloadVideo(provider, { fileId: item.url, uri: item.url });
+              fs.writeFileSync(outFile, dlResp.data);
+              files.push(outFile);
+            }
+          }
+        }
+
+        return { outputType: "video", files, usd_cost: totalCost };
+      },
+    });
+
+    // ── image → video via image-to-video generation ─────────────────────────
+    // options: { model?, provider?, prompt?, duration?, aspect_ratio? }
+    // Takes an image file, submits image-to-video job, polls, downloads.
+    this.register({
+      name: "image-to-video",
+      inputExts: ["png", "jpg", "jpeg", "webp"],
+      inputModality: "image",
+      outputType: "video",
+      async convert(input, ctx): Promise<ConvertResult> {
+        const provider = (ctx.options?.provider as string) || "xai";
+        const model = (ctx.options?.model as string) || "grok-2-image";
+        const prompt = (ctx.options?.prompt as string) || "Animate this image naturally.";
+        const duration = (ctx.options?.duration as number) || undefined;
+        const aspect_ratio = (ctx.options?.aspect_ratio as string) || undefined;
+
+        // Read image as base64 data URL for providers that accept image_url
+        const ext =
+          path.extname(input.filePath).replace(/^\./, "").toLowerCase() || "png";
+        const base64 = fs.readFileSync(input.filePath, { encoding: "base64" });
+        const imageDataUrl = `data:image/${ext};base64,${base64}`;
+
+        const genResp = await self.clients.createVideoGeneration(provider, {
+          model,
+          prompt,
+          duration,
+          aspect_ratio,
+          image_url: imageDataUrl,
+        });
+
+        fs.mkdirSync(ctx.cacheDir, { recursive: true });
+        let totalCost = genResp.usd_cost ?? 0;
+
+        const files: string[] = [];
+        if (genResp.jobId) {
+          const result = await pollVideoJob(self.clients, provider, genResp.jobId);
+          for (let i = 0; i < (result.data ?? []).length; i++) {
+            const item = result.data![i];
+            const outFile = path.join(ctx.cacheDir, `output_${i}.mp4`);
+            if (item.b64_json) {
+              fs.writeFileSync(outFile, Buffer.from(item.b64_json, "base64"));
+              files.push(outFile);
+            } else if (item.fileUri || item.url) {
+              const uri = item.fileUri || item.url!;
+              const dlResp = await self.clients.downloadVideo(provider, { fileId: uri, uri });
+              fs.writeFileSync(outFile, dlResp.data);
+              files.push(outFile);
+            }
+          }
+        } else {
+          for (let i = 0; i < genResp.data.length; i++) {
+            const item = genResp.data[i];
+            const outFile = path.join(ctx.cacheDir, `output_${i}.mp4`);
+            if (item.b64_json) {
+              fs.writeFileSync(outFile, Buffer.from(item.b64_json, "base64"));
+              files.push(outFile);
+            } else if (item.url) {
+              const dlResp = await self.clients.downloadVideo(provider, { fileId: item.url, uri: item.url });
+              fs.writeFileSync(outFile, dlResp.data);
+              files.push(outFile);
+            }
+          }
+        }
+
+        return { outputType: "video", files, usd_cost: totalCost };
+      },
+    });
   }
+
 
   /**
    * BFS from inputNode -> targetType over the registered converter graph.
-   * Nodes are modalities + concrete file extensions.
-   * Returns a path of converters to chain, or null if unreachable.
+   * Returns an array of converter chains (paths), or null if unreachable.
    */
   private findPath(
     inputNode: string,
-    targetType: Modality
+    targetType: Modality,
+    preferredFirst: string[] = []
   ): Converter[][] | null {
-    // each element in `converters` maps from a node to an output modality
-    // We do BFS collecting ALL paths (for fallback) — for simplicity we return
-    // the first (shortest) path.
     type State = { node: string; path: Converter[] };
     const queue: State[] = [{ node: inputNode, path: [] }];
     const visited = new Set<string>();
     visited.add(inputNode);
 
-    // If the inputNode is not a known modality and not matched by any converter's
-    // inputExts, treat it as an opaque text file (the old default: branch).
     const knownModalities: Modality[] = ["text", "html", "image", "audio", "video"];
     const isKnownModality = knownModalities.includes(inputNode as Modality);
     const hasDirectMatch = this.converters.some(
       (c) => c.inputExts?.includes(inputNode) || c.inputModality === inputNode
     );
     if (!isKnownModality && !hasDirectMatch && inputNode !== "text") {
-      // Re-start BFS from "text" modality as fallback
       queue.push({ node: "text", path: [] });
       visited.add("text");
     }
@@ -218,7 +481,6 @@ export class ConversionService {
     while (queue.length > 0) {
       const { node, path } = queue.shift()!;
 
-      // Find converters that accept the current node
       const candidates = this.converters.filter((c) => {
         if (c.inputExts && c.inputExts.includes(node)) return true;
         if (c.inputModality && c.inputModality === node) return true;
@@ -228,7 +490,7 @@ export class ConversionService {
       for (const converter of candidates) {
         const newPath = [...path, converter];
         if (converter.outputType === targetType) {
-          return [newPath]; // found a path
+          return [newPath];
         }
         if (!visited.has(converter.outputType)) {
           visited.add(converter.outputType);
@@ -238,6 +500,56 @@ export class ConversionService {
     }
 
     return null;
+  }
+
+  /**
+   * Find the best conversion path, respecting preferredConverters.
+   */
+  private findBestPath(
+    inputNode: string,
+    targetType: Modality,
+    preferredConverters: string[]
+  ): Converter[] | null {
+    if (preferredConverters.length > 0) {
+      for (const prefName of preferredConverters) {
+        const prefConverter = this.converters.find((c) => c.name === prefName);
+        if (!prefConverter) continue;
+        const inputMatch =
+          (prefConverter.inputExts && prefConverter.inputExts.includes(inputNode)) ||
+          (prefConverter.inputModality && prefConverter.inputModality === inputNode);
+        if (!inputMatch) continue;
+        if (prefConverter.outputType === targetType) {
+          return [prefConverter];
+        }
+        const rest = this.findPath(prefConverter.outputType, targetType);
+        if (rest) {
+          return [prefConverter, ...rest[0]];
+        }
+      }
+    }
+    const paths = this.findPath(inputNode, targetType);
+    return paths ? paths[0] : null;
+  }
+
+  /**
+   * Build a converter chain that passes through explicit intermediate modalities
+   * (waypoints) before reaching the final target.
+   */
+  private findPathVia(
+    inputNode: string,
+    via: Modality[],
+    targetType: Modality
+  ): Converter[] | null {
+    const waypoints = [...via, targetType];
+    let current = inputNode;
+    const fullChain: Converter[] = [];
+    for (const waypoint of waypoints) {
+      const segment = this.findPath(current, waypoint);
+      if (!segment || segment.length === 0) return null;
+      fullChain.push(...segment[0]);
+      current = waypoint;
+    }
+    return fullChain;
   }
 
   /**
@@ -251,18 +563,10 @@ export class ConversionService {
     const ext = path.extname(filePath).replace(/^\./, "").toLowerCase();
     const inputNode = ext || "text";
 
-    const pathsFound = this.findPath(inputNode, targetType);
-    if (!pathsFound || pathsFound.length === 0) {
-      throw new Error(
-        `No conversion path found from "${inputNode}" to "${targetType}"`
-      );
-    }
-
-    const converterPath = pathsFound[0];
-
     const {
       force = false,
       preferredConverters = [],
+      via,
       isGoodEnough,
       startPage,
       endPage,
@@ -274,15 +578,24 @@ export class ConversionService {
       converterOptions = {},
     } = options;
 
+    const converterPath =
+      via && via.length > 0
+        ? this.findPathVia(inputNode, via, targetType)
+        : this.findBestPath(inputNode, targetType, preferredConverters);
+
+    if (!converterPath) {
+      throw new Error(
+        `No conversion path found from "${inputNode}" to "${targetType}"`
+      );
+    }
+
     const checkGoodEnough = isGoodEnough
       ? (result: ConvertResult) => isGoodEnough({ filePath, result })
       : (result: ConvertResult) => defaultIsGoodEnough(filePath, result);
 
-    // Build cacheDir under the file's directory
     const parsed = path.parse(filePath);
     const baseDir = path.join(parsed.dir, parsed.name);
 
-    // Execute each step in the converter chain
     let currentFilePath = filePath;
     let currentExt = inputNode;
     let currentFiles: string[] | undefined = undefined;
@@ -313,15 +626,13 @@ export class ConversionService {
       const cacheFile = path.join(cacheDir, `${key}.${stepConverter.outputType}.json`);
       const doneFile = cacheFile + ".done";
 
-      // Check cache
-      if (!force && fs.existsSync(doneFile)) {
+      if (stepConverter.cache && !force && fs.existsSync(doneFile)) {
         try {
           const cached = JSON.parse(
             fs.readFileSync(cacheFile, "utf8")
           ) as ConvertResult;
           lastResult = cached;
           if (stepIdx < converterPath.length - 1) {
-            // intermediate step; continue
             currentFilePath = cached.files?.[0] ?? currentFilePath;
             currentFiles = cached.files ?? currentFiles;
             currentExt = stepConverter.outputType;
@@ -332,9 +643,6 @@ export class ConversionService {
         }
       }
 
-      // Order converters that match this step by preferred names first
-      // (for this step there's only one converter in the chain path, but
-      // we support trying alternatives at the same step)
       const stepAlternatives = this.buildAlternatives(
         currentExt,
         stepConverter.outputType,
@@ -351,7 +659,7 @@ export class ConversionService {
           };
           const result = await alt.convert(stepInput, ctx);
           if (!checkGoodEnough(result)) {
-            continue; // fall through to next alternative
+            continue;
           }
           stepResult = result;
           break;
@@ -366,13 +674,14 @@ export class ConversionService {
         );
       }
 
-      // Write cache
-      try {
-        fs.mkdirSync(cacheDir, { recursive: true });
-        fs.writeFileSync(cacheFile, JSON.stringify(stepResult));
-        fs.writeFileSync(doneFile, "1");
-      } catch {
-        // cache write failures are non-fatal
+      if (stepConverter.cache) {
+        try {
+          fs.mkdirSync(cacheDir, { recursive: true });
+          fs.writeFileSync(cacheFile, JSON.stringify(stepResult));
+          fs.writeFileSync(doneFile, "1");
+        } catch {
+          // cache write failures are non-fatal
+        }
       }
 
       lastResult = stepResult;
@@ -387,7 +696,6 @@ export class ConversionService {
       throw new Error("Conversion produced no result");
     }
 
-    // Apply startLine/endLine slicing for text outputs
     if (
       (lastResult.outputType === "text" || lastResult.outputType === "html") &&
       lastResult.text &&
@@ -445,7 +753,6 @@ export class ConversionService {
       }
     }
 
-    // Sort preferred by order of preferredNames array
     preferred.sort(
       (a, b) =>
         preferredNames.indexOf(a.name) - preferredNames.indexOf(b.name)

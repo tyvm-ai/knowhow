@@ -64,8 +64,12 @@ const pdfConverter: Converter = {
  * extractable text layer can still be read (pdf -> image -> text).
  */
 async function pdfToImage(input: ConvertInput, ctx: ConverterContext): Promise<ConvertResult> {
-  // pdf-to-img is ESM-only; load it dynamically so CJS consumers work too.
-  const { pdf } = (await import("pdf-to-img")) as {
+  // pdf-to-img is ESM-only; we must use a real dynamic import() that TypeScript
+  // won't downcompile to require(). Using Function constructor prevents tsc from
+  // transforming this into a synchronous require() call under module: "commonjs".
+  // eslint-disable-next-line @typescript-eslint/no-implied-eval
+  const dynamicImport = new Function("specifier", "return import(specifier)");
+  const { pdf } = (await dynamicImport("pdf-to-img")) as {
     pdf: (src: string, opts?: { scale?: number }) => Promise<AsyncIterable<Buffer> & { length: number }>;
   };
 
