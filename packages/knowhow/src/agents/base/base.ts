@@ -668,11 +668,15 @@ export abstract class BaseAgent implements IAgent {
     promise: Promise<T>,
     interruptValue: T
   ): Promise<T> {
-    return new Promise<T>((resolve) => {
+    return new Promise<T>((resolve, reject) => {
+      let interrupted = false;
+
       this._interruptResolve = (value: any) => {
+        interrupted = true;
         this._interruptResolve = null;
         resolve(value);
       };
+
       promise.then((result) => {
         if (this._interruptResolve) {
           this._interruptResolve = null;
@@ -681,7 +685,13 @@ export abstract class BaseAgent implements IAgent {
       }).catch((err) => {
         if (this._interruptResolve) {
           this._interruptResolve = null;
+        }
+        // Only swallow the error if interrupt() was explicitly called.
+        // Otherwise re-throw so callers see the real error.
+        if (interrupted) {
           resolve(interruptValue);
+        } else {
+          reject(err);
         }
       });
     });

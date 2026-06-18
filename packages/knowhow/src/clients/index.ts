@@ -397,9 +397,10 @@ export class AIClient {
     const hasModel = this.providerHasModel(provider, model);
 
     if (!hasModel) {
-      throw new Error(
-        `Model ${model} not registered for provider ${provider}.`
-      );
+      // Model not in local registry — pass it through anyway so the provider
+      // API can accept or reject it directly (e.g. newly-released models that
+      // haven't been fetched into our local model list yet).
+      console.warn(`⚠️  Model '${model}' not in local registry for provider '${provider}', attempting anyway.`);
     }
 
     return { client: this.clients[provider], provider, model };
@@ -609,6 +610,11 @@ export class AIClient {
       return { provider, model };
     }
 
+    // If an explicit provider was given, don't fall through to fuzzy cross-provider
+    // search — that would silently pick a completely different provider (e.g. nvidia
+    // instead of fireworks). Just pass through and let the API accept/reject the model.
+    const hasExplicitProvider = !!provider;
+
     if (model?.includes("/")) {
       const split = model.split("/");
 
@@ -620,16 +626,21 @@ export class AIClient {
         return { provider: inferredProvider, model: inferredModel };
       }
 
-      // Starts with match
-      const foundBySplit = this.findModel(inferredModel);
-      if (foundBySplit) {
-        return foundBySplit;
+      // Starts with match — only if no explicit provider was given
+      if (!hasExplicitProvider) {
+        const foundBySplit = this.findModel(inferredModel);
+        if (foundBySplit) {
+          return foundBySplit;
+        }
       }
     }
 
-    const foundByModel = this.findModel(model);
-    if (foundByModel) {
-      return foundByModel;
+    // Fuzzy cross-provider search — only if no explicit provider was given
+    if (!hasExplicitProvider) {
+      const foundByModel = this.findModel(model);
+      if (foundByModel) {
+        return foundByModel;
+      }
     }
 
     const allModels = this.listAllModels();
