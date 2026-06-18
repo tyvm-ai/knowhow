@@ -220,21 +220,26 @@ export class CustomVariables {
 
   /**
    * Creates a message processor function that substitutes variables in messages
+   *
+   * CACHING NOTE: To preserve Anthropic prefix-cache stability, we only apply
+   * variable substitution to the *last* (most-recently-added) message in the
+   * modifiedMessages array.  Historical messages have already been processed on
+   * prior turns; mutating them would change their content mid-conversation and
+   * instantly bust the entire downstream cache window.
    */
   createProcessor(
     filterFn?: (msg: Message) => boolean
   ): MessageProcessorFunction {
     return async (originalMessages: Message[], modifiedMessages: Message[]) => {
-      // Process messages in place - substitute variables before tool calls are executed
-      for (let i = 0; i < modifiedMessages.length; i++) {
-        const message = modifiedMessages[i];
+      // Only process the last message (the newly added one).
+      // Processing historical messages would mutate already-committed content
+      // and destroy Anthropic's prefix-cache match from that point onwards.
+      const lastIndex = modifiedMessages.length - 1;
+      if (lastIndex < 0) return;
 
-        if (filterFn && !filterFn(message)) {
-          continue;
-        }
-
-        // Apply variable substitution
-        modifiedMessages[i] = this.processMessage(message);
+      const message = modifiedMessages[lastIndex];
+      if (!filterFn || filterFn(message)) {
+        modifiedMessages[lastIndex] = this.processMessage(message);
       }
     };
   }
@@ -357,6 +362,13 @@ export class CustomVariables {
    * This helps the LLM discover that it can avoid re-outputting long strings
    * (e.g. JWTs, file contents) by storing them once with setVariable or
    * storeToolCallToVariable and then referencing them via {{varName}}.
+   *
+   * CACHING NOTE: To protect Anthropic prefix-cache stability this processor
+   * keeps at most ONE hint message in the array.  Before injecting a new hint
+   * it removes the previous one (identified by a stable sentinel prefix) so
+   * the total message count — and therefore every cache breakpoint — stays
+   * constant.  The hint content is also kept deterministic (no per-call
+   * volatile numbers) so that re-injecting the same hint is a cache no-op.
    */
   createRepetitionHintProcessor(options: {
     minLength?: number;       // Minimum string length to consider (default: 50)
@@ -377,11 +389,26 @@ export class CustomVariables {
     // ~100 base + 30 per example = ~190 tokens for the hint message itself
     const hintMessageTokens = options.hintMessageTokens ?? (100 + maxExamples * 30);
 
-    // Throttle state: track message count at last hint emission
+    // Stable sentinel that uniquely identifies hint messages injected by this processor.
+    // Must be a fixed string so the cache sees identical bytes on re-injection.
+    const HINT_SENTINEL = "⚠️ [knowhow:repetition-hint]";
+
+    // Throttle state: track the index of the message that was current when we
+    // last evaluated (ignoring the hint message itself in the count).
     let lastHintAtMessageCount = -Infinity;
 
     return async (originalMessages: Message[], modifiedMessages: Message[]) => {
-      // Throttle: only emit hint if enough new messages have been added since last hint
+      // Remove any previously injected hint so we never accumulate duplicates
+      // and so the message array length stays predictable for cache breakpoints.
+      const existingHintIndex = modifiedMessages.findIndex(
+        (m) => typeof m.content === "string" && m.content.startsWith(HINT_SENTINEL)
+      );
+      if (existingHintIndex !== -1) {
+        modifiedMessages.splice(existingHintIndex, 1);
+      }
+
+      // Throttle: only re-evaluate if enough *real* messages have arrived since last hint.
+      // We exclude the hint message itself from the count (already removed above).
       const currentMessageCount = modifiedMessages.length;
       if (currentMessageCount - lastHintAtMessageCount < throttleMessages) {
         return;
@@ -480,22 +507,20 @@ export class CustomVariables {
         }
 
         // Build example variable suggestions
-        const examples = repeatedEntries.slice(0, maxExamples).map(({ str, count, toolNames }, i) => {
+        // Use stable previews (fixed 80-char slices) to keep hint content
+        // deterministic across calls — volatile token counts are omitted so
+        // re-injecting the same hint does not bust the Anthropic prefix cache.
+        const examples = repeatedEntries.slice(0, maxExamples).map(({ str, toolNames }, i) => {
           const preview = str.trim().slice(0, 80).replace(/\s+/g, " ");
           const ellipsis = str.length > 80 ? "…" : "";
           const varName = `var${i + 1}`;
-          const charsSaved = (count - 1) * str.length;
-          const tokensSaved = Math.round(charsSaved / 4);
-          return (
-            `  • \`${varName}\` (used ${count}x in ${[...toolNames].join(", ")}, ~${tokensSaved} tokens saveable): "${preview}${ellipsis}"`
-          );
+          return `  • \`${varName}\` (in ${[...toolNames].join(", ")}): "${preview}${ellipsis}"`;
         });
 
         modifiedMessages.push({
           role: "user",
           content:
-            `⚠️ Tool inputs have large repetitions detected in: ${repeatedTools.join(", ")} ` +
-            `(~${grossTokensSaved} tokens saveable, ~${netTokensSaved} net after this reminder). ` +
+            `${HINT_SENTINEL} Tool inputs have large repetitions detected in: ${repeatedTools.join(", ")}. ` +
             `Consider storing repeated values with \`setVariable\` or \`storeToolCallToVariable\`, ` +
             `then reference them via {{variableName}} in future tool calls.\n` +
             `Top repeated values to consider storing as variables:\n` +
