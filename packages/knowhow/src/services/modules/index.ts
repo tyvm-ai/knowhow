@@ -27,10 +27,11 @@ export class ModulesService {
 
     const allModulePaths = config.modules;
 
-    // Search paths: .knowhow/node_modules first (where `knowhow modules install`
-    // puts packages), then cwd node_modules, then global node_modules.
-    // This allows modules installed via `knowhow modules install` to be found
-    // even when knowhow itself is installed globally.
+    // Search paths: local .knowhow/node_modules first (where `knowhow modules install`
+    // puts packages for this project), then global ~/.knowhow/node_modules, and finally
+    // cwd/node_modules as a last resort. Putting cwd/node_modules last avoids accidentally
+    // picking up workspace-symlinked dev versions of modules (e.g. when running knowhow
+    // from within the knowhow monorepo itself) instead of the properly-installed version.
     const resolvePaths = [
       path.join(process.cwd(), ".knowhow", "node_modules"),
       path.join(os.homedir(), ".knowhow", "node_modules"),

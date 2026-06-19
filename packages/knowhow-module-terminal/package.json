@@ -1,10 +1,11 @@
 {
   "name": "@tyvm/knowhow-module-terminal",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Terminal addon module for @tyvm/knowhow — portless PTY over the tunnel WebSocket",
   "main": "ts_build/index.js",
   "types": "ts_build/index.d.ts",
   "scripts": {
+    "postinstall": "node -e \"const{spawnSync}=require('child_process');const os=require('os');const path=require('path');const dirs=['node_modules/node-pty/prebuilds',path.join(os.homedir(),'.knowhow/node_modules/node-pty/prebuilds')];for(const d of dirs){spawnSync('find',[d,'-name','spawn-helper','-exec','chmod','+x','{}',';'],{stdio:'ignore'});}\" 2>/dev/null || true",
     "build": "npm run compile",
     "compile": "npm run clean && tsc",
     "clean": "rm -rf ts_build",
@@ -29,7 +30,7 @@
   },
   "dependencies": {
     "@tyvm/knowhow-tunnel": "*",
-    "node-pty": "^1.0.0"
+    "node-pty": "^1.1.0"
   },
   "devDependencies": {
     "@types/node": "^20.19.39",
