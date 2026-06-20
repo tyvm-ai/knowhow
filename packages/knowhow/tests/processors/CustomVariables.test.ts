@@ -644,13 +644,19 @@ describe("CustomVariables", () => {
       ];
 
       const processor = customVariables.createProcessor();
-      const modifiedMessages = [...toolCallMessages];
-      await processor(toolCallMessages, modifiedMessages);
 
-      // Both tool calls should have the full JWT
+      // Simulate two agent turns: each turn calls processor with growing message array
+      // Turn 1: only message[0] is present
+      const modifiedMessages: Message[] = [{ ...toolCallMessages[0] }];
+      await processor(toolCallMessages.slice(0, 1), modifiedMessages);
+
+      // Turn 2: message[1] is added as the new latest message
+      modifiedMessages.push({ ...toolCallMessages[1] });
+      await processor(toolCallMessages.slice(0, 2), modifiedMessages);
+
+      // Both tool calls should have the full JWT after their respective turns
       const args1 = JSON.parse(modifiedMessages[0].tool_calls![0].function.arguments);
       const args2 = JSON.parse(modifiedMessages[1].tool_calls![0].function.arguments);
-
       expect(args1.command).toContain(LONG_JWT);
       expect(args2.command).toContain(LONG_JWT);
 
@@ -796,10 +802,14 @@ describe("CustomVariables", () => {
         },
       ];
 
-      const modifiedMessages = [...curlMessages];
-      await processor(curlMessages, modifiedMessages);
+      // Simulate two agent turns: each turn calls processor with growing message array
+      const modifiedMessages: Message[] = [{ ...curlMessages[0] }];
+      await processor(curlMessages.slice(0, 1), modifiedMessages);
 
-      // Both calls get the real JWT injected
+      modifiedMessages.push({ ...curlMessages[1] });
+      await processor(curlMessages.slice(0, 2), modifiedMessages);
+
+      // Both calls get the real JWT injected after their respective turns
       const args1 = JSON.parse(modifiedMessages[0].tool_calls![0].function.arguments);
       const args2 = JSON.parse(modifiedMessages[1].tool_calls![0].function.arguments);
       expect(args1.command).toContain(fakeSecret);

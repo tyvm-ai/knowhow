@@ -116,9 +116,11 @@ describe("AIClient", () => {
       aiClient.registerClient("fake", fakeClient);
       aiClient.registerModels("fake", ["fake-model-1"]);
 
-      expect(() => {
-        aiClient.getClient("fake", "non-existent-model");
-      }).toThrow("Model non-existent-model not registered for provider fake.");
+      // getClient now warns instead of throws for unregistered models,
+      // so the API itself can accept/reject the model (e.g. newly-released models)
+      const result = aiClient.getClient("fake", "non-existent-model");
+      expect(result.provider).toBe("fake");
+      expect(result.model).toBe("non-existent-model");
     });
   });
   describe("detectProviderModel", () => {

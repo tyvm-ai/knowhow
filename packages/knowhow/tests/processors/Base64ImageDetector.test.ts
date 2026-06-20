@@ -753,4 +753,139 @@ describe("Base64ImageDetector - image path hint detection", () => {
       }
     });
   });
+
+  describe("Cache-busting prevention", () => {
+    /**
+     * These tests verify that the image-path hint processor does NOT cause
+     * cache-busting on Anthropic's prefix cache. The processor must be
+     * idempotent: calling it N times on the same message array must produce
+     * byte-identical content for all prior messages.
+     */
+
+    it("DEMONSTRATES BUG (pre-fix): hint accumulates on repeated processor calls", () => {
+      // This test documents the original cache-busting behaviour.
+      // After the fix it should pass (hint appears exactly once regardless of
+      // how many times the processor is called).
+      const processor = new Base64ImageProcessor();
+      const processorFn = processor.createProcessor();
+
+      const toolMessage: Message = {
+        role: "tool",
+        content: "Screenshot saved to ./fandango-search.png",
+        tool_call_id: "call_screenshot",
+      };
+
+      const originalMessages: Message[] = [];
+      const modifiedMessages: Message[] = [toolMessage];
+
+      // Call the processor 3 times, simulating 3 agent loop turns where the
+      // same historical message is present in modifiedMessages.
+      processorFn(originalMessages, modifiedMessages);
+      processorFn(originalMessages, modifiedMessages);
+      processorFn(originalMessages, modifiedMessages);
+
+      const content = modifiedMessages[0].content as string;
+      const occurrences = (content.match(/\[TIP:/g) || []).length;
+
+      // After the fix the hint must appear exactly once (not 3 times).
+      expect(occurrences).toBe(1);
+    });
+
+    it("hint appears exactly once on the last message even after multiple processor calls", () => {
+      const processor = new Base64ImageProcessor();
+      const processorFn = processor.createProcessor();
+
+      const toolMessage: Message = {
+        role: "tool",
+        content: "Screenshot saved to ./screenshot.png",
+        tool_call_id: "call_1",
+      };
+
+      const originalMessages: Message[] = [];
+      const modifiedMessages: Message[] = [toolMessage];
+
+      // Simulate the processor running 5 times (5 agent turns)
+      for (let i = 0; i < 5; i++) {
+        processorFn(originalMessages, modifiedMessages);
+      }
+
+      const content = modifiedMessages[0].content as string;
+      const tipCount = (content.match(/\[TIP:/g) || []).length;
+      expect(tipCount).toBe(1);
+      expect(content).toContain("loadImageAsBase64");
+    });
+
+    it("historical messages are NOT modified when a new message is added", () => {
+      const processor = new Base64ImageProcessor();
+      const processorFn = processor.createProcessor();
+
+      // Turn 1: tool message with image path
+      const toolMsg: Message = {
+        role: "tool",
+        content: "Saved to ./turn1.png",
+        tool_call_id: "call_t1",
+      };
+      const modifiedMessages: Message[] = [toolMsg];
+      processorFn([], modifiedMessages);
+
+      const contentAfterTurn1 = modifiedMessages[0].content as string;
+      expect(contentAfterTurn1).toContain("[TIP:");
+
+      // Turn 2: a new user message is appended — the OLD tool message must
+      // remain byte-identical so Anthropic's prefix cache is preserved.
+      const userMsg: Message = {
+        role: "user",
+        content: "Okay I see it, now do something else.",
+      };
+      modifiedMessages.push(userMsg);
+      processorFn([], modifiedMessages);
+
+      // The historical tool message must be unchanged
+      expect(modifiedMessages[0].content).toBe(contentAfterTurn1);
+    });
+
+    it("no processor causes hint duplication across two successive calls", () => {
+      // General regression: verify the processor is fully idempotent for tool,
+      // assistant, and user messages that contain image paths.
+      const processor = new Base64ImageProcessor();
+      const processorFn = processor.createProcessor();
+
+      const messages: Message[] = [
+        {
+          role: "tool",
+          content: "See ./result.png for details",
+          tool_call_id: "c1",
+        },
+      ];
+
+      processorFn([], messages);
+      const snapshotAfterFirst = messages[0].content;
+
+      processorFn([], messages);
+      const snapshotAfterSecond = messages[0].content;
+
+      // Content must be byte-identical between calls (cache-safe)
+      expect(snapshotAfterSecond).toBe(snapshotAfterFirst);
+    });
+
+    it("hint is not added to messages that already have the hint (idempotent string)", () => {
+      const processor = new Base64ImageProcessor();
+      const processorFn = processor.createProcessor();
+
+      const messages: Message[] = [
+        {
+          role: "tool",
+          content:
+            "Screenshot at ./page.png\n\n[TIP: An image file path was detected: ./page.png. Use the `loadImageAsBase64` tool with this path to load and view the image: loadImageAsBase64(\"./page.png\") to view the image at ./page.png]",
+          tool_call_id: "c2",
+        },
+      ];
+
+      processorFn([], messages);
+
+      const content = messages[0].content as string;
+      const tipCount = (content.match(/\[TIP:/g) || []).length;
+      expect(tipCount).toBe(1);
+    });
+  });
 });
