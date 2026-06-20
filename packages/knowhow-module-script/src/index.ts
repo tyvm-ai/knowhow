@@ -62,6 +62,16 @@ const scriptModule: KnowhowModule = {
           const Tools = new LazyToolsService();
           Tools.setContext({ ...AllTools.getContext() });
 
+          // Register all agent tools (including MCP management tools like
+          // listAvailableMcpServers, connectMcpServer, disconnectMcpServer)
+          const { includedTools } = await import(
+            "@tyvm/knowhow/ts_build/src/agents/tools/list"
+          );
+          const allTools = await import(
+            "@tyvm/knowhow/ts_build/src/agents/tools"
+          );
+          Tools.defineTools(includedTools, allTools);
+
           Tools.addContext("Mcp", Mcp);
 
           console.log("🔌 Connecting to MCP...");
