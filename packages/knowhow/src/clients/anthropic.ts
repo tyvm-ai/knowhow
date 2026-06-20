@@ -450,6 +450,13 @@ export class GenericAnthropicClient implements GenericClient {
     return AnthropicTextPricing;
   }
 
+  getPricing(model?: string): import("./pricing/types").ModelPricing | Record<string, import("./pricing/types").ModelPricing> | undefined {
+    if (model !== undefined) {
+      return AnthropicTextPricing[model as keyof typeof AnthropicTextPricing] as import("./pricing/types").ModelPricing | undefined;
+    }
+    return AnthropicTextPricing as unknown as Record<string, import("./pricing/types").ModelPricing>;
+  }
+
   calculateCost(model: string, usage: Usage): number | undefined {
     const rawP = this.pricesPerMillion()[model];
     // Fall back to pricing file for unknown/newer models

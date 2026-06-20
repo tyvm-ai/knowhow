@@ -1,6 +1,7 @@
 import {
   CompletionOptions,
   CompletionResponse,
+  StreamChunk,
   EmbeddingOptions,
   EmbeddingResponse,
   GenericClient,
@@ -34,6 +35,7 @@ import { OpenAiTextPricing } from "./pricing/openai";
 import { AnthropicTextPricing } from "./pricing/anthropic";
 import { GeminiPricing } from "./pricing/google";
 import { withRetry } from "./withRetry";
+import { FireworksTextPricing } from "./pricing/fireworks";
 import {
   XaiTextPricing,
   XaiImagePricing,
@@ -683,6 +685,31 @@ export class AIClient {
     );
   }
 
+  async *createCompletionStream(
+    provider: string,
+    options: CompletionOptions
+  ): AsyncGenerator<StreamChunk> {
+    const { client, model } = this.getClient(provider, options.model);
+    if (!model || !client) {
+      throw new Error(
+        `provider: ${provider} does not have ${
+          options.model
+        } model registered. Try using ${JSON.stringify(this.listAllModels())}`
+      );
+    }
+    if (client.createChatCompletionStream) {
+      yield* client.createChatCompletionStream({ ...options, model });
+    } else {
+      // Fallback: non-streaming clients — call normal completion and yield as single chunk
+      const result = await withRetry(
+        (signal) => client.createChatCompletion({ ...options, model, signal }),
+        options
+      );
+      yield { delta: result.choices[0]?.message?.content ?? "", done: false };
+      yield { done: true, usage: result.usage, usd_cost: result.usd_cost };
+    }
+  }
+
   async createEmbedding(
     provider: string,
     options: EmbeddingOptions
@@ -832,12 +859,24 @@ export class AIClient {
     return this.clientModels;
   }
 
-  listAllModelsWithProvider() {
-    return Object.entries(this.listAllModels())
-      .map(([provider, models]) =>
-        models.map((m) => ({ id: `${provider}/${m}` }))
-      )
-      .flat();
+  /**
+   * Filters a provider→models map to only include models that have known pricing.
+   * For HttpClient-based providers with getPricing(), only priced models are kept.
+   * For other providers (no getPricing()), all models pass through unchanged.
+   */
+  private _filterByPricing(models: Record<string, string[]>): Record<string, string[]> {
+    const result: Record<string, string[]> = {};
+    for (const [provider, ids] of Object.entries(models)) {
+      const client = this.clients[provider];
+      if (client?.getPricing) {
+        const pricingMap = client.getPricing() as Record<string, ModelPricing>;
+        const priced = ids.filter((id) => !!pricingMap[id]);
+        if (priced.length > 0) result[provider] = priced;
+      } else {
+        result[provider] = ids;
+      }
+    }
+    return result;
   }
 
   /*
@@ -890,11 +929,8 @@ export class AIClient {
     return providerModels;
   }
 
-  listAllEmbeddingModels() {
-    return this.embeddingModels;
-  }
-
-  listAllCompletionModels() {
+  listAllCompletionModels(options?: { pricing?: boolean }) {
+    if (options?.pricing) return this._filterByPricing(this.completionModels);
     return this.completionModels;
   }
 
@@ -902,16 +938,31 @@ export class AIClient {
     return Object.keys(this.clientModels);
   }
 
-  listAllImageModels() {
+  listAllEmbeddingModels(options?: { pricing?: boolean }) {
+    if (options?.pricing) return this._filterByPricing(this.embeddingModels);
+    return this.embeddingModels;
+  }
+
+  listAllImageModels(options?: { pricing?: boolean }) {
+    if (options?.pricing) return this._filterByPricing(this.imageModels);
     return this.imageModels;
   }
 
-  listAllAudioModels() {
+  listAllAudioModels(options?: { pricing?: boolean }) {
+    if (options?.pricing) return this._filterByPricing(this.audioModels);
     return this.audioModels;
   }
 
-  listAllVideoModels() {
+  listAllVideoModels(options?: { pricing?: boolean }) {
+    if (options?.pricing) return this._filterByPricing(this.videoModels);
     return this.videoModels;
+  }
+
+  listAllModelsWithProvider(options?: { pricing?: boolean }) {
+    const models = options?.pricing ? this._filterByPricing(this.clientModels) : this.clientModels;
+    return Object.entries(models)
+      .map(([provider, ids]) => ids.map((m) => ({ id: `${provider}/${m}` })))
+      .flat();
   }
 
   /**
@@ -969,6 +1020,7 @@ export class AIClient {
       ...AnthropicTextPricing,
       ...GeminiPricing,
       ...XaiTextPricing,
+      ...FireworksTextPricing,
     };
     const allImagePricing: Record<string, ModelPricing> = {
       ...XaiImagePricing,

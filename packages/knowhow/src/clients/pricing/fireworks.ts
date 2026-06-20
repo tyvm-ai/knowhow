@@ -21,6 +21,7 @@ export const FireworksTextPricing: Record<string, { input: number; output: numbe
   "accounts/fireworks/models/qwen3-8b": { input: 0.20, cache_hit: 0.10, output: 0.20 },
 
   // Z.ai
+  "accounts/fireworks/models/glm-5p2": { input: 1.40, cache_hit: 0.26, output: 4.40 },
   "accounts/fireworks/models/glm-5-2": { input: 1.40, cache_hit: 0.26, output: 4.40 },
   "accounts/fireworks/models/glm-5-1": { input: 1.40, cache_hit: 0.26, output: 4.40 },
   "accounts/fireworks/models/glm-5": { input: 1.00, cache_hit: 0.20, output: 3.20 },

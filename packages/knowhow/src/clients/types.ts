@@ -136,6 +136,16 @@ export interface CompletionResponse {
   usd_cost?: number;
 }
 
+/** A single chunk yielded by a streaming completion. */
+export interface StreamChunk {
+  /** Incremental text token(s). Only present on intermediate chunks. */
+  delta?: string;
+  /** True on the final chunk (no delta, but usage/cost available). */
+  done: boolean;
+  usage?: TokenUsage;
+  usd_cost?: number;
+}
+
 export interface EmbeddingOptions extends RetryOptions {
   input: string;
   model?: string;
@@ -305,6 +315,8 @@ export interface FileDownloadResponse {
 export interface GenericClient {
   setKey(key: string): void;
   createChatCompletion(options: CompletionOptions): Promise<CompletionResponse>;
+  /** Optional streaming variant — yields incremental tokens then a final done chunk. */
+  createChatCompletionStream?(options: CompletionOptions): AsyncGenerator<StreamChunk>;
   createEmbedding(options: EmbeddingOptions): Promise<EmbeddingResponse>;
   createAudioTranscription?(
     options: AudioTranscriptionOptions
@@ -343,4 +355,10 @@ export interface GenericClient {
   getContextLimit?(
     model: string
   ): { contextLimit: number; threshold: number } | undefined;
+  /**
+   * Returns the pricing entry for a specific model, or the entire pricing map if no model is given.
+   * Returns undefined for a specific model if no pricing is known.
+   * Only implemented by HttpClient-based providers that have been given a pricing map via setPrices().
+   */
+  getPricing?(model?: string): import("./pricing/types").ModelPricing | Record<string, import("./pricing/types").ModelPricing> | undefined;
 }

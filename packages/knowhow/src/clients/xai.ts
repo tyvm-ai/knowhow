@@ -258,6 +258,13 @@ export class GenericXAIClient implements GenericClient {
     return XaiTextPricing;
   }
 
+  getPricing(model?: string): import("./pricing/types").ModelPricing | Record<string, import("./pricing/types").ModelPricing> | undefined {
+    if (model !== undefined) {
+      return XaiTextPricing[model as keyof typeof XaiTextPricing] as import("./pricing/types").ModelPricing | undefined;
+    }
+    return XaiTextPricing as unknown as Record<string, import("./pricing/types").ModelPricing>;
+  }
+
   calculateCost(
     model: string,
     usage: OpenAI.ChatCompletion["usage"]

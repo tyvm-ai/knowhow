@@ -555,6 +555,13 @@ export class GenericGeminiClient implements GenericClient {
     return GeminiTextPricing;
   }
 
+  getPricing(model?: string): import("./pricing/types").ModelPricing | Record<string, import("./pricing/types").ModelPricing> | undefined {
+    if (model !== undefined) {
+      return GeminiTextPricing[model as keyof typeof GeminiTextPricing] as import("./pricing/types").ModelPricing | undefined;
+    }
+    return GeminiTextPricing as unknown as Record<string, import("./pricing/types").ModelPricing>;
+  }
+
   calculateCost(model: string, usage: UsageMetadata): number | undefined {
     const pricing = this.pricesPerMillion()[model];
     if (!pricing || !usage) {
