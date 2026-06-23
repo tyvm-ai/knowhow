@@ -1,5 +1,6 @@
 import * as path from "path";
 import * as os from "os";
+import * as Module from "module";
 
 import { getConfig, getGlobalConfig } from "../../config";
 import { KnowhowModule, ModuleContext } from "./types";
@@ -23,6 +24,16 @@ export class ModulesService {
     // If no context provided, fall back to global singletons
     if (!context) {
       context = { ...(await this.getDefaultContext()) };
+    }
+
+    // Prepend the global knowhow install's own node_modules to Node's global module
+    // search paths so that locally-installed modules (loaded from .knowhow/node_modules)
+    // that depend on @tyvm/knowhow resolve to the current global version rather than
+    // a stale bundled copy.
+    const globalKnowhowNodeModules = path.join(__dirname, "../../../../node_modules");
+    const globalPaths = (Module as any).globalPaths as string[];
+    if (globalPaths && !globalPaths.includes(globalKnowhowNodeModules)) {
+      globalPaths.unshift(globalKnowhowNodeModules);
     }
 
     const allModulePaths = config.modules;
