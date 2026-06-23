@@ -363,19 +363,28 @@ export class ScriptExecutor {
   private injectReturnForLastExpression(script: string): string {
     const lines = script.split("\n");
 
+    // Track whether we're inside a string literal by counting unescaped quotes
+    // Simple heuristic: if the script's last top-level statement ends with });
+    // or }); patterns, it's a call expression — don't inject return anywhere.
+    // Walk backwards only through "real" top-level lines.
     for (let i = lines.length - 1; i >= 0; i--) {
       const trimmed = lines[i].trim();
       if (
         !trimmed ||
         trimmed.startsWith("//") ||
         trimmed.startsWith("*") ||
-        trimmed.startsWith("/*")
+        trimmed.startsWith("/*") ||
+        // Inside a multiline string argument — lines that don't look like JS
+        // (no semicolons, no JS keywords, not a closing bracket line)
+        // but DO contain characters typical of string content mid-injection.
+        // Safest: skip any line that contains a quote char mid-content.
+        (trimmed.includes('"') && !trimmed.startsWith('"') && !trimmed.endsWith('";') && !trimmed.endsWith('",'))
       ) {
         continue;
       }
 
       const statementKeywords =
-        /^(function\s|class\s|const\s|let\s|var\s|if\s*[(]|for\s*[(]|while\s*[(]|do\s*[{]|switch\s*[(]|try\s*[{]|return\s|throw\s|break;|continue;|import\s|export\s|[{])/;
+        /^(function\s|class\s|const\s|let\s|var\s|if\s*[(]|for\s*[(]|while\s*[(]|do\s*[{]|switch\s*[(]|try\s*[{]|return\s|throw\s|break;|continue;|import\s|export\s|[{]|})/;
       if (statementKeywords.test(trimmed)) {
         break;
       }
