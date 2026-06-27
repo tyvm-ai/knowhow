@@ -3,8 +3,15 @@ import {
   parseHunks,
   hunksToPatch,
   Hunk,
+  patchFile,
 } from "../../src/agents/tools/patch";
 import { applyPatch } from "diff";
+import * as fs from "fs";
+
+const mockToolService = {
+  getContext: () => ({ Events: null }),
+};
+const boundPatch = (patchFile as any).bind(mockToolService);
 
 describe("Patch Engine - Edge Case Regression Suite", () => {
   // --- Test Case 1: Context Block Desynchronization (Ghost Line Bug) ---
@@ -557,5 +564,189 @@ const x = 1;
       expect(out).toContain("async onSessionStopByResource(");
       expect(out).toContain("private async _finalizeEvent(");
     });
+  });
+});
+
+/**
+ * Regression for the "wrong location" patch mangling bug observed while patching
+ * `packages/backend/src/services/SandboxHostManager.ts`.
+ *
+ * WHAT HAPPENED:
+ * A patch targeting `provisionHost()` (line ~563) aimed to replace:
+ *   `const host = await this.createHost({ ..., notes: 'auto-provisioned' })`
+ * with a direct `prisma.sandboxHost.create({ ..., status: 'provisioning' })` call.
+ *
+ * The patch had these context lines in its hunk:
+ *   `    // Register in the DB as stopped (it will self-register as online once booted)`
+ *   `    const host = await this.createHost({`
+ *
+ * The file also contained `markHostOffline()` (line ~173) which had a similar
+ * `prisma.sandboxHost.update({ data: { status: 'stopped', baseUrl: null, ... } })` block,
+ * and `createHost()` (line ~330) with `status: 'stopped'` inside its create call.
+ *
+ * The patch engine anchored on the FIRST occurrence of matching context, which was
+ * inside `markHostOffline`. The hunk was then applied there, merging `createHost`
+ * call arguments INTO `markHostOffline`'s update body — producing a file where
+ * `markHostOffline` contained `instanceId`, `instanceType`, `notes`, etc., and
+ * `provisionHost` was left with the old code. The output was syntactically broken.
+ *
+ * CORRECT BEHAVIOR:
+ * The patch must be applied only at the location matching the full context
+ * (including the unique comment line), NOT at the first partial match.
+ * Earlier methods must remain completely unchanged.
+ */
+describe("patchFile wrong-location regression — ambiguous status lines across methods", () => {
+  const testFile = "/tmp/patch-wrong-location-sandbox-host.ts";
+
+  // Mirrors the relevant structure of SandboxHostManager.ts
+  const original = `  /**
+   * Mark host as offline — called on shutdown.
+   */
+  async markHostOffline(instanceId: string): Promise<void> {
+    const host = await prisma.sandboxHost.findUnique({ where: { instanceId } });
+    if (!host) return;
+
+    await prisma.sandboxHost.update({
+      where: { id: host.id },
+      data: {
+        status: 'stopped',
+        baseUrl: null,
+        stoppedAt: new Date(),
+      },
+    });
+
+    this.logger.info(\`Host \${host.id} marked offline\`);
+  }
+
+  /**
+   * Create a new sandbox host record (for provisioning).
+   */
+  async createHost(data: {
+    instanceId: string;
+    instanceType?: string;
+    notes?: string;
+  }): Promise<SandboxHost> {
+    return prisma.sandboxHost.create({
+      data: {
+        instanceId: data.instanceId,
+        instanceType: data.instanceType ?? 'unknown',
+        notes: data.notes ?? null,
+        status: 'stopped',
+      },
+    });
+  }
+
+  /**
+   * Provision a brand-new EC2 instance and register it in the DB.
+   */
+  async provisionHost(instanceType?: string): Promise<SandboxHost> {
+    const instanceId = 'i-0abc123';
+    const resolvedInstanceType = instanceType ?? 'c8i.xlarge';
+
+    // Register in the DB as stopped (it will self-register as online once booted)
+    const host = await this.createHost({
+      instanceId,
+      instanceType: resolvedInstanceType,
+      region: 'us-east-1',
+      maxVms: 14,
+      notes: 'auto-provisioned',
+    });
+
+    return host;
+  }
+`;
+
+  beforeEach(() => {
+    fs.writeFileSync(testFile, original);
+  });
+
+  it("should replace createHost call in provisionHost only, leaving markHostOffline and createHost intact", async () => {
+    // This patch reproduces the EXACT real-world mangle from commit 5d572789a.
+    //
+    // The patchFile tool received a patch with a correct small hunk but the auto-correction
+    // anchored the hunk at line 177 (inside markHostOffline's `data: {` block) instead of
+    // line ~46 (inside provisionHost). The result was the removal lines:
+    //   `    const host = await this.createHost({`
+    //   `      instanceId,`  etc.
+    // got INSERTED into the middle of markHostOffline's prisma update data block, producing:
+    //   data: {
+    //     const host = await this.createHost({   ← INJECTED WRONG LOCATION
+    //       status: 'provisioning',
+    //   ...
+    // and then 390 lines got deleted because the hunk size was wrong.
+    //
+    // The patch the tool generated had @@ -177,390 +177,10 @@ as its header after auto-correction,
+    // anchoring on `      data: {` inside markHostOffline instead of the comment context
+    // `    // Register in the DB as stopped` which is unique to provisionHost.
+    //
+    // CORRECT behavior: the patch engine must use the unique comment context line to anchor
+    // the hunk in provisionHost, not the first occurrence of similar lines.
+    const patch = `@@ -999,11 +999,13 @@
+     // Register in the DB as stopped (it will self-register as online once booted)
+-    const host = await this.createHost({
+-      instanceId,
+-      instanceType: resolvedInstanceType,
+-      region: 'us-east-1',
+-      maxVms: 14,
+-      notes: 'auto-provisioned',
+-    });
++    // Register as 'provisioning' — distinct from 'stopped' (intentionally shut down).
++    const host = await prisma.sandboxHost.create({
++      data: {
++        instanceId,
++        instanceType: resolvedInstanceType,
++        status: 'provisioning',
++        notes: 'auto-provisioned',
++      },
++    });
+ 
+     return host;
+   }
+`;
+
+    const result = await boundPatch(testFile, patch);
+    console.log("WRONG-LOCATION REGRESSION RESULT:\n", result);
+    expect(result).not.toContain("❌ Patch failed");
+
+    const updated = fs.readFileSync(testFile, "utf8");
+    console.log("UPDATED FILE:\n", updated);
+
+    // 1. 'provisioning' must appear in the output (the patch was applied)
+    expect(updated).toContain("status: 'provisioning'");
+
+    // 2. CRITICAL: markHostOffline must still contain status: 'stopped', baseUrl: null,
+    //    and stoppedAt — these would be wiped out if the patch was applied to the wrong location
+    const markOfflineIdx = updated.indexOf("markHostOffline");
+    expect(markOfflineIdx).toBeGreaterThan(-1);
+
+    const baseUrlIdx = updated.indexOf("baseUrl: null");
+    expect(baseUrlIdx).toBeGreaterThan(-1);
+    // baseUrl: null must be inside markHostOffline (after it in the file)
+    expect(baseUrlIdx).toBeGreaterThan(markOfflineIdx);
+
+    const stoppedAtIdx = updated.indexOf("stoppedAt: new Date()");
+    expect(stoppedAtIdx).toBeGreaterThan(-1);
+    expect(stoppedAtIdx).toBeGreaterThan(markOfflineIdx);
+
+    expect(updated).toContain("marked offline");
+
+    // 3. 'provisioning' must appear AFTER markHostOffline and createHost (i.e. inside provisionHost)
+    const createHostMethodIdx = updated.indexOf("async createHost(");
+    const provisionHostIdx = updated.indexOf("async provisionHost(");
+    const provisioningIdx = updated.indexOf("status: 'provisioning'");
+
+    expect(createHostMethodIdx).toBeGreaterThan(-1);
+    expect(provisionHostIdx).toBeGreaterThan(-1);
+    expect(provisioningIdx).toBeGreaterThan(provisionHostIdx);
+
+    // 4. The comment explaining 'provisioning' must be present (was in the patch additions)
+    expect(updated).toContain("distinct from 'stopped'");
+
+    // 5. createHost method must still have its original status: 'stopped' body
+    const createHostBodyStart = updated.indexOf("async createHost(");
+    const createHostBodyEnd = updated.indexOf("async provisionHost(");
+    const createHostBody = updated.slice(createHostBodyStart, createHostBodyEnd);
+    expect(createHostBody).toContain("status: 'stopped'");
+    expect(createHostBody).toContain("data.instanceType ?? 'unknown'");
   });
 });

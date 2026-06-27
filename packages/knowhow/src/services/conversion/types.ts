@@ -41,6 +41,14 @@ export interface Converter {
   name: string;                   // unique
   inputExts?: string[];           // e.g. ["pdf"]
   inputModality?: Modality;       // OR an input modality (e.g. "image")
+  /**
+   * If true, this converter is used as a last-resort fallback for any input
+   * type that has no other converter registered. Catch-all converters are
+   * appended after all specific matches in buildAlternatives, and are also
+   * added as BFS nodes so they can be discovered even for unknown extensions.
+   * Use sparingly — only for truly generic converters like text-passthrough.
+   */
+  catchAll?: boolean;
   outputType: Modality;
   /**
    * If true, the ConversionService will cache the result of this converter to

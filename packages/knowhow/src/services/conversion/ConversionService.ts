@@ -151,21 +151,10 @@ export class ConversionService {
       },
     });
 
-    // ── text passthrough (known extensions) ────────────────────────────────
-    this.register({
-      name: "text-passthrough",
-      inputExts: ["txt", "md", "json", "yaml", "yml", "csv", "xml", "html", "htm", "js", "ts", "py", "rb", "sh", "text"],
-      outputType: "text",
-      async convert(input, _ctx): Promise<ConvertResult> {
-        const text = fs.readFileSync(input.filePath, "utf8");
-        return { outputType: "text", text };
-      },
-    });
-
-    // ── text passthrough fallback ───────────────────────────────────────────
+    // ── text passthrough (catch-all: any file is assumed to be readable as text) ─
     this.register({
       name: "text-passthrough-fallback",
-      inputModality: "text",
+      catchAll: true,
       outputType: "text",
       async convert(input, _ctx): Promise<ConvertResult> {
         const text = fs.readFileSync(input.filePath, "utf8");
@@ -467,16 +456,7 @@ export class ConversionService {
     const queue: State[] = [{ node: inputNode, path: [] }];
     const visited = new Set<string>();
     visited.add(inputNode);
-
-    const knownModalities: Modality[] = ["text", "html", "image", "audio", "video"];
-    const isKnownModality = knownModalities.includes(inputNode as Modality);
-    const hasDirectMatch = this.converters.some(
-      (c) => c.inputExts?.includes(inputNode) || c.inputModality === inputNode
-    );
-    if (!isKnownModality && !hasDirectMatch && inputNode !== "text") {
-      queue.push({ node: "text", path: [] });
-      visited.add("text");
-    }
+    let catchAllPath: Converter[] | null = null;
 
     while (queue.length > 0) {
       const { node, path } = queue.shift()!;
@@ -484,13 +464,21 @@ export class ConversionService {
       const candidates = this.converters.filter((c) => {
         if (c.inputExts && c.inputExts.includes(node)) return true;
         if (c.inputModality && c.inputModality === node) return true;
+        // catch-all converters match any node (only at the start node, not intermediate)
+        if (c.catchAll && node === inputNode) return true;
         return false;
       });
 
       for (const converter of candidates) {
         const newPath = [...path, converter];
         if (converter.outputType === targetType) {
-          return [newPath];
+          if (converter.catchAll) {
+            // Defer catch-all paths — only use if no specific path is found
+            if (!catchAllPath) catchAllPath = newPath;
+          } else {
+            return [newPath];
+          }
+          continue;
         }
         if (!visited.has(converter.outputType)) {
           visited.add(converter.outputType);
@@ -499,7 +487,8 @@ export class ConversionService {
       }
     }
 
-    return null;
+    // Fall back to catch-all path if no specific path was found
+    return catchAllPath ? [catchAllPath] : null;
   }
 
   /**
@@ -742,10 +731,15 @@ export class ConversionService {
       return inputMatch && c.outputType === outputType;
     });
 
+    // Append catch-all converters as last-resort fallbacks (only if output type matches)
+    const catchAlls = this.converters.filter(
+      (c) => c.catchAll && c.outputType === outputType && !matching.includes(c)
+    );
+
     const preferred: Converter[] = [];
     const rest: Converter[] = [];
 
-    for (const c of matching) {
+    for (const c of [...matching, ...catchAlls]) {
       if (preferredNames.includes(c.name)) {
         preferred.push(c);
       } else {
