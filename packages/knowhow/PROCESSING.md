@@ -117,6 +117,27 @@ Video files are processed by:
 3. Analyzing visual content of each keyframe
 4. Combining transcript and visual analysis with timestamps
 
+### Keyframe Extraction Interval
+
+The `interval` parameter controls how often (in seconds) a frame is sampled from the video during keyframe extraction. It is accepted by both `streamKeyFrameExtraction()` and `extractKeyframes()` with a default of **10 seconds**.
+
+| Value | Effect |
+|-------|--------|
+| `5`   | Sample a frame every 5 seconds — more frames, finer detail |
+| `10`  | Default — one frame every 10 seconds, balanced coverage |
+| `30`  | One frame every 30 seconds — fewer frames, lower cost |
+
+**Example usage (programmatic):**
+```typescript
+// Extract a keyframe every 5 seconds
+await mediaProcessorService.extractKeyframes(filePath, outputPath, true, 5);
+
+// Stream keyframes every 30 seconds
+for await (const frame of mediaProcessorService.streamKeyFrameExtraction(filePath, videoJsonPath, true, 30)) {
+  console.log(frame);
+}
+```
+
 The actual output format from `convertVideoToText()` includes:
 ```
 Chunk: (1/10):

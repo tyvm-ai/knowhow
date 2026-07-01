@@ -208,6 +208,12 @@ export class MediaProcessorService {
 
   /**
    * Extract keyframes from a video file using ffmpeg, then describe each with vision AI.
+   *
+   * @param filePath - Path to the input video file.
+   * @param videoJsonPath - Path where the resulting keyframe JSON data will be saved/cached.
+   * @param reusePreviousKeyframes - Whether to reuse previously extracted keyframes (default: true).
+   * @param interval - How often (in seconds) to sample a frame from the video (default: 10).
+   *                   Lower values produce more frames; higher values produce fewer.
    */
   public async *streamKeyFrameExtraction(
     filePath: string,
@@ -270,6 +276,16 @@ export class MediaProcessorService {
       JSON.stringify(allKeyframes, null, 2)
     );
   }
+
+  /**
+   * Extract keyframes from a video file and return them as an array.
+   *
+   * @param filePath - Path to the input video file.
+   * @param outputPath - Path where the resulting keyframe JSON data will be saved/cached.
+   * @param reusePreviousKeyframes - Whether to reuse previously extracted keyframes (default: true).
+   * @param interval - How often (in seconds) to sample a frame from the video (default: 10).
+   *                   Lower values produce more frames; higher values produce fewer.
+   */
 
   public async extractKeyframes(
     filePath: string,
