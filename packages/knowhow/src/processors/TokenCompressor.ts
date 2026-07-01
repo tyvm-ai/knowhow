@@ -260,14 +260,60 @@ export class TokenCompressor implements JsonCompressorStorage {
     }
   }
 
+  /**
+   * Tool names whose responses should never be compressed.
+   * These are compression/retrieval tools themselves - compressing their output
+   * would prevent the agent from seeing the uncompressed data it just retrieved.
+   */
+  static readonly COMPRESSION_TOOL_NAMES: ReadonlySet<string> = new Set([
+    "expandTokens",
+    "grepToolResponse",
+    "jqToolResponse",
+    "tailToolResponse",
+    "listStoredToolResponses",
+  ]);
+
   createProcessor(
     filterFn?: (msg: Message) => boolean
   ): MessageProcessorFunction {
     return async (originalMessages: Message[], modifiedMessages: Message[]) => {
-      for (const message of modifiedMessages) {
+      // Find the index of the last assistant message so we only compress
+      // the most recent batch of tool responses (after the last agent output).
+      // This prevents re-compressing already-cached historical messages.
+      let lastAssistantIndex = -1;
+      for (let i = modifiedMessages.length - 1; i >= 0; i--) {
+        if (modifiedMessages[i].role === "assistant") {
+          lastAssistantIndex = i;
+          break;
+        }
+      }
+
+      for (let i = 0; i < modifiedMessages.length; i++) {
+        const message = modifiedMessages[i];
+
         if (filterFn && !filterFn(message)) {
           continue;
         }
+
+        // Only compress tool messages that are part of the last batch
+        // (i.e., they appear after the last assistant message).
+        // Messages before the last assistant message are historical and must
+        // not be modified to preserve prompt caching.
+        if (message.role === "tool" && i <= lastAssistantIndex) {
+          continue;
+        }
+
+        // Skip responses from compression-related tools — the agent called
+        // these specifically to see uncompressed data, so we must not
+        // re-compress their output.
+        if (
+          message.role === "tool" &&
+          message.name &&
+          TokenCompressor.COMPRESSION_TOOL_NAMES.has(message.name)
+        ) {
+          continue;
+        }
+
         await this.compressMessage(message);
       }
     };
