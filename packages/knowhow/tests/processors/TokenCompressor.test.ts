@@ -224,6 +224,72 @@ describe("TokenCompressor", () => {
       expect(messages[0].content).toContain("[COMPRESSED_STRING");
       expect(messages[1].content).not.toContain("[COMPRESSED_STRING");
     });
+
+    it("should skip compression for responses from compression-related tools", async () => {
+      const processor = tokenCompressor.createProcessor();
+      const largeContent = "x".repeat(20000);
+      const messages: Message[] = [
+        { role: "assistant", content: "calling tools", tool_calls: [] },
+        { role: "tool", name: "expandTokens", content: largeContent, tool_call_id: "call_1" } as any,
+        { role: "tool", name: "grepToolResponse", content: largeContent, tool_call_id: "call_2" } as any,
+        { role: "tool", name: "jqToolResponse", content: largeContent, tool_call_id: "call_3" } as any,
+        { role: "tool", name: "tailToolResponse", content: largeContent, tool_call_id: "call_4" } as any,
+        { role: "tool", name: "listStoredToolResponses", content: largeContent, tool_call_id: "call_5" } as any,
+        { role: "tool", name: "someOtherTool", content: largeContent, tool_call_id: "call_6" } as any,
+      ];
+
+      await processor([], messages);
+
+      // Compression-related tools should NOT be compressed
+      expect(messages[1].content).toBe(largeContent);
+      expect(messages[2].content).toBe(largeContent);
+      expect(messages[3].content).toBe(largeContent);
+      expect(messages[4].content).toBe(largeContent);
+      expect(messages[5].content).toBe(largeContent);
+
+      // A regular tool SHOULD be compressed
+      expect(messages[6].content).toContain("[COMPRESSED_STRING");
+    });
+
+    it("should only compress tool messages from the last batch (after last assistant message)", async () => {
+      const processor = tokenCompressor.createProcessor();
+      const largeContent = "x".repeat(20000);
+
+      // Historical tool message (before last assistant message) should NOT be compressed
+      // Current tool message (after last assistant message) SHOULD be compressed
+      const messages: Message[] = [
+        { role: "user", content: "first user message" },
+        { role: "assistant", content: "first assistant response", tool_calls: [] },
+        { role: "tool", name: "someTool", content: largeContent, tool_call_id: "call_historical" } as any,
+        { role: "assistant", content: "second assistant response", tool_calls: [] },
+        { role: "tool", name: "someTool", content: largeContent, tool_call_id: "call_current" } as any,
+      ];
+
+      await processor([], messages);
+
+      // Historical tool message (index 2, before last assistant at index 3) should NOT be compressed
+      expect(messages[2].content).toBe(largeContent);
+
+      // Current tool message (index 4, after last assistant at index 3) SHOULD be compressed
+      expect(messages[4].content).toContain("[COMPRESSED_STRING");
+    });
+
+    it("should compress all tool messages when there is no assistant message", async () => {
+      const processor = tokenCompressor.createProcessor();
+      const largeContent = "x".repeat(20000);
+
+      const messages: Message[] = [
+        { role: "user", content: "user message" },
+        { role: "tool", name: "someTool", content: largeContent, tool_call_id: "call_1" } as any,
+        { role: "tool", name: "anotherTool", content: largeContent, tool_call_id: "call_2" } as any,
+      ];
+
+      await processor([], messages);
+
+      // With no assistant message (lastAssistantIndex = -1), all tool messages at index >= 0 should be compressed
+      expect(messages[1].content).toContain("[COMPRESSED_STRING");
+      expect(messages[2].content).toContain("[COMPRESSED_STRING");
+    });
   });
 
   describe("storage operations", () => {
