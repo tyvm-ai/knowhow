@@ -151,10 +151,15 @@ export class AgentSyncKnowhowWeb {
       // Inject pending messages into the agent
       const messageIds: string[] = [];
       for (const msg of pendingMessages) {
-        agent.addPendingUserMessage({
-          role: msg.role as "user" | "assistant",
-          content: msg.message,
-        });
+        // Detect slash commands in messages
+        if (msg.message.trim().startsWith("/")) {
+          await this.handleMessageCommand(agent, msg.message.trim());
+        } else {
+          agent.addPendingUserMessage({
+            role: msg.role as "user" | "assistant",
+            content: msg.message,
+          });
+        }
         messageIds.push(msg.id);
       }
 
@@ -164,6 +169,23 @@ export class AgentSyncKnowhowWeb {
     } catch (error) {
       console.error(`❌ Error checking/processing pending messages:`, error);
       // Continue execution even if synchronization fails
+    }
+  }
+
+  /**
+   * Handle slash commands sent as pending messages
+   */
+  private async handleMessageCommand(agent: BaseAgent, input: string): Promise<void> {
+    const [command, ...rest] = input.split(" ");
+    const message = rest.join(" ").trim() || undefined;
+
+    if (command === "/poke") {
+      console.log(`🫵 Received /poke command for task ${this.knowhowTaskId}`);
+      agent.interrupt(message);
+    } else {
+      // Unknown command — treat as a regular message
+      console.warn(`⚠️ Unknown command "${command}", treating as message`);
+      agent.addPendingUserMessage({ role: "user", content: input });
     }
   }
 

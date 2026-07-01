@@ -51,54 +51,59 @@ export class McpService {
     }
 
     this.config = mcpServers;
-    this.transports = mcpServers.map((mcp) => {
-      const commandString = mcp.command
-        ? `${mcp.command} ${mcp.args?.join(" ")}`
-        : "";
-      const logFormat = `${mcp.name}: Command: ${commandString}, URL: ${mcp.url}`;
-
-      console.log("Creating transport for", logFormat);
-      if (mcp.command) {
-        const stdioParams: StdioServerParameters = {
-          command: mcp.command,
-          args: mcp.args,
-          env: mcp.env
-            ? {
-                ...process.env,
-                ...mcp.env,
-              }
-            : undefined,
-        };
-        return new StdioClientTransport(stdioParams);
-      }
-      if (mcp?.params?.socket) {
-        return new MCPWebSocketTransport(mcp.params.socket);
-      }
-      if (mcp.url) {
-        // TODO: also support refresh tokens
-        if (mcp.authorization_token_file) {
-          const token = fs.readFileSync(mcp.authorization_token_file, "utf-8");
-          mcp.authorization_token = token.trim();
-        }
-
-        return new StreamableHTTPClientTransport(new URL(mcp.url), {
-          requestInit: {
-            headers: {
-              "User-Agent": knowhowMcpClient.name,
-              ...(mcp.authorization_token && {
-                Authorization: `Bearer ${mcp.authorization_token}`,
-              }),
-            },
-          },
-        });
-      }
-    });
-
-    this.clients = this.transports.map((transport) => {
-      return new Client(knowhowMcpClient, knowhowConfig);
-    });
+    this.transports = mcpServers.map((mcp) => this.createTransport(mcp));
+    this.clients = this.transports.map(() => new Client(knowhowMcpClient, knowhowConfig));
 
     return this.clients;
+  }
+
+  /**
+   * Create a fresh Transport for a given McpConfig entry.
+   * Re-reads authorization_token_file every time so that token refreshes
+   * are picked up without restarting the agent process.
+   */
+  createTransport(mcp: McpConfig): Transport {
+    if (mcp.command) {
+      const stdioParams: StdioServerParameters = {
+        command: mcp.command,
+        args: mcp.args,
+        env: mcp.env ? { ...process.env, ...mcp.env } : undefined,
+      };
+      return new StdioClientTransport(stdioParams);
+    }
+    if (mcp?.params?.socket) {
+      return new MCPWebSocketTransport(mcp.params.socket);
+    }
+    if (mcp.url) {
+      // Always re-read the token file so refreshed tokens are picked up
+      if (mcp.authorization_token_file) {
+        const token = fs.readFileSync(mcp.authorization_token_file, "utf-8");
+        mcp.authorization_token = token.trim();
+      }
+      const scheme = mcp.authorization_scheme === "basic" ? "Basic" : "Bearer";
+      const transport = new StreamableHTTPClientTransport(new URL(mcp.url), {
+        requestInit: {
+          headers: {
+            "User-Agent": knowhowMcpClient.name,
+            ...(mcp.authorization_token && {
+              Authorization: `${scheme} ${mcp.authorization_token}`,
+            }),
+          },
+        },
+      });
+      // Fix SDK bug: close() aborts _abortController but never resets it to
+      // undefined, so start() throws "already started" on reconnect.
+      // Patch the instance directly so it works regardless of which SDK
+      // copy is loaded at runtime (knowhow vs knowhow-web node_modules).
+      const t = transport as any;
+      const origClose = t.close.bind(t);
+      t.close = async () => {
+        await origClose();
+        t._abortController = undefined;
+      };
+      return transport;
+    }
+    throw new Error(`Cannot create transport for MCP '${mcp.name}': no command, socket, or url configured`);
   }
 
   setMcpPrefix(prefix: string) {
@@ -206,6 +211,12 @@ export class McpService {
     }
 
     try {
+      // Always create a fresh transport + client before connecting.
+      // This handles cases where a previous connection attempt failed and left
+      // the transport in a started-but-not-connected state.
+      this.transports[index] = this.createTransport(this.config[index]);
+      this.clients[index] = new Client(knowhowMcpClient, knowhowConfig);
+
       const client = this.clients[index];
       const transport = this.transports[index];
 
@@ -280,9 +291,30 @@ export class McpService {
         .filter((t) => this.getToolClientIndex(t.function.name) === index)
         .map((t) => t.function.name);
 
-      // Close connection
-      await this.transports[index]?.close();
+      // Close client first (resets Protocol._transport = undefined)
+      // then close transport (aborts the SSE/HTTP connection).
+      // Closing client before transport prevents the "Already connected to a
+      // transport" error on the next connectSingle call.
+      try { await this.clients[index]?.close(); } catch (_) {}
+      try { await this.transports[index]?.close(); } catch (_) {}
+
+      // Patch old transport to prevent any async SSE reconnection from
+      // firing start() after we've already replaced the transport instance.
+      // This avoids "StreamableHTTPClientTransport already started" errors.
+      const oldTransport = this.transports[index] as any;
+      if (oldTransport) {
+        oldTransport._abortController = undefined;
+        oldTransport._startOrAuthSse = async () => {};
+        oldTransport._scheduleReconnection = () => {};
+      }
+
       this.connected[index] = false;
+
+      // Replace with a fresh transport + client so connectSingle() can reconnect
+      // without hitting "StreamableHTTPClientTransport already started".
+      // createTransport() re-reads authorization_token_file, picking up refreshed tokens.
+      this.transports[index] = this.createTransport(this.config[index]);
+      this.clients[index] = new Client(knowhowMcpClient, knowhowConfig);
 
       // Remove tools from cache
       this.tools = this.tools.filter(
@@ -528,7 +560,20 @@ export class McpService {
         // skip adding tools for unconnected clients
         continue;
       }
-      const clientTools = await client.listTools();
+
+      let clientTools: Awaited<ReturnType<typeof client.listTools>>;
+      try {
+        clientTools = await client.listTools();
+      } catch (error) {
+        // The MCP server connected at the transport level but the underlying
+        // server returned an error (e.g. -32603 "Not connected" from the proxy).
+        // Mark it as disconnected and skip — don't crash the worker.
+        console.warn(
+          `⚠ MCP server '${config.name}' failed to list tools (marking as disconnected): ${error instanceof Error ? error.message : error}`
+        );
+        this.connected[i] = false;
+        continue;
+      }
 
       for (const tool of clientTools.tools) {
         const transformed = this.toOpenAiTool(i, tool as any as McpTool);

@@ -1,468 +1,584 @@
-```md
 # Skills Guide (Knowhow CLI)
 
 ## 1) What skills are
 
-**Skills** are reusable instruction sets stored in files named **`SKILL.md`**.
+**Skills** are reusable instruction bundles stored in files named **`SKILL.md`**.  
+When a user asks for something that matches a skill’s **name**, Knowhow automatically loads that skill’s full markdown content and provides it as context to the agent.
 
-When a user’s request mentions the *skill name*, Knowhow loads the matching **full `SKILL.md` content** and injects it into the agent context, so the agent follows your standardized procedure (checklists, commands, rollback plans, etc.).
+A skill file is ordinary markdown, but it includes **frontmatter metadata** at the top:
 
-Each `SKILL.md` file must include **frontmatter metadata** at the top so Knowhow can identify and match the skill.
+- `name` — the skill trigger name (must match what users say)
+- `description` — a short summary shown during “skill discovery”
+- **Body** — the complete instructions the agent should follow
+
+**File naming rule:** the plugin scans for files literally named **`SKILL.md`** (case-sensitive on most systems).
 
 ---
 
-## 2) How skills work (SkillsPlugin behavior)
+## 2) How skills work
 
-Knowhow’s **Skills Plugin** (`src/plugins/SkillsPlugin.ts`) works as follows:
+### What the SkillsPlugin does
+Knowhow’s **Skills Plugin** (`src/plugins/SkillsPlugin.ts`) performs three steps:
 
-1. **Reads configuration** via `getConfig()`.
-2. Loads the configured **skills directories** from `knowhow.json` under a `skills` array.
-3. **Recursively scans** each directory:
-   - Searches for any file named **exactly** `SKILL.md`
-   - Uses recursive directory traversal (`readdir` + recursion)
-4. **Parses frontmatter** from each `SKILL.md`:
-   - Frontmatter must start with:
-     ```md
-     ---
-     ...
-     ---
+1. **Load config**
+   - Reads `.knowhow/knowhow.json` via `getConfig()`
+   - Looks for a `skills` array:
+     ```json
+     {
+       "skills": ["some/directory", "..."]
+     }
      ```
-   - Each frontmatter line is parsed by splitting on the first `:` to extract fields like:
-     - `name: ...`
-     - `description: ...`
-5. **Matches skills to the user prompt** using substring logic:
-   ```ts
-   userPrompt.toLowerCase().includes(skill.name.toLowerCase())
-   ```
-   **Important implication:** matching is **not exact**—it uses `includes()`.
-   - If your skill `name` is `deploy`, it may trigger on: “deploy”, “redeploy”, “deployment”, “deploying”.
 
-6. **If one or more skills match**:
-   - The plugin reads each matched `SKILL.md` file
-   - It injects content into the agent context in a wrapper:
-     - Prepends:
-       - `## Skill: <name>`
-       - `File: <filePath>`
-     - Then includes the **entire `SKILL.md` file content**.
+2. **Scan skill directories**
+   - For each directory in `skills`, it:
+     - Expands `~` to `process.env.HOME`
+     - Recursively searches all subdirectories
+     - Finds files named `SKILL.md`
+     - Reads each file and extracts frontmatter `name` + `description`
+   - Each skill is indexed as:
+     - `name`
+     - `description`
+     - `filePath`
 
-7. **If no skill name matches**:
-   - The plugin returns a **skills discovery summary** listing each discovered skill:
-     - skill name
-     - file path
-     - description
-   - This summary is injected as context so the user can reference the correct skill name.
+3. **Match user input to skills**
+   - If the user prompt contains a skill name **as a substring** (case-insensitive), e.g.:
+     - user: “Please do a **database migration**”
+     - skill name: “database migration”
+   - Then the plugin loads the **entire SKILL.md content** for every matched skill.
+
+### What gets injected into the agent
+For each matched skill, the plugin returns a block like:
+
+```md
+## Skill: <skill.name>
+File: <skill.filePath>
+
+<full SKILL.md content>
+```
+
+If multiple skills match, the plugin provides multiple blocks.
+
+### Skill discovery behavior (no matches)
+If **no** skill name is found in the user prompt, the plugin returns a **summary**:
+
+- “Available skills:”
+- Each skill listed as:
+  - `- <name> (<filePath>): <description>`
+- Plus a reminder:
+  - “To use a skill, reference its name in your request and I will load the full instructions.”
+
+So users can learn what skills exist by asking something that doesn’t match any skill name.
 
 ---
 
 ## 3) `SKILL.md` format
 
-A `SKILL.md` file must contain:
+A skill file must follow this structure:
 
-### Required frontmatter fields
-- `name` — the skill name (must match what users are likely to say; see substring matching)
-- `description` — a short description shown during discovery
-
-### Body content
-Everything after frontmatter is the full instruction set. The plugin injects the **entire file** into context when the skill matches.
-
-### Full template
 ```md
 ---
 name: <skill name>
 description: <short description>
 ---
 
-# <Section title>
-
-Step-by-step instructions...
-
-## Examples
-...
-
-## Edge cases / gotchas
-...
+<instructions and examples here>
 ```
 
-### Frontmatter example
-```md
----
-name: deploy
-description: Deploy an application safely with verification and rollback steps.
----
-```
+### Frontmatter rules (important)
+From the plugin’s `parseFrontmatter()` implementation:
+
+- It expects frontmatter to begin at the **start** of the file with:
+  - `---` then newline
+- It captures content until the next `---`
+- Each frontmatter line is parsed as:
+  - `key: <value>`
+- If a value contains `:` characters, they are preserved because the parser:
+  - splits on the first `:`
+  - rejoins the rest
+
+### Body content
+Everything after the closing `---` is treated as the **full skill instructions** and gets injected into the agent context.
 
 ---
 
 ## 4) Configuring skills
 
-Add your skill directories to `knowhow.json` using a `skills` array.
+Add a `skills` array in your `knowhow.json`:
 
-Example:
+### Example: local project config
+`.knowhow/knowhow.json`
 ```json
 {
-  "plugins": {
-    "skills": true
-  },
   "skills": [
-    "./skills",
-    "~/.knowhow/skills"
+    ".knowhow/skills",
+    "skills"
   ]
 }
 ```
 
-Notes:
-- Paths may be relative or absolute.
-- `~` is expanded using the user’s home directory (`process.env.HOME`).
-- The plugin scans **recursively**, so `./skills/<any-folders>/SKILL.md` is fine.
+**Notes**
+- Directories are scanned **recursively**
+- Every `SKILL.md` found contributes a skill
+- Unreadable/missing directories are ignored
+
+### Path shorthand
+The plugin supports `~`:
+- `~/some/path` → resolved using `process.env.HOME`
 
 ---
 
-## 5) Skill discovery (when no skill matches)
+## 5) Skill discovery
 
-If the user request does **not** contain any skill name, Knowhow injects a context item like:
+If a user’s request does **not** include any configured skill names (as substring matches), the agent will receive the plugin’s “Available skills” summary.
 
-- **`Available skills:`**
-  - `- <name> (<filePath>): <description>`
+To get a skill loaded, the user must:
+- mention the skill name **in the request text**
+- in any casing (the match is case-insensitive)
 
-…and then suggests the user reference a skill by name.
-
-**Author takeaway:** choose `name` values that users will naturally include in their requests.
+**Tip:** choose `name` strings that users will naturally include verbatim (e.g., “code review”, “deploy”, “database migration”).
 
 ---
 
 ## 6) Writing effective skills (best practices)
 
-### A) Use clear, natural `name` values
-Because matching is substring-based (`includes()`), avoid names that are likely to match unintentionally.
+### A) Use a clear, human-friendly `name`
+- Pick wording users are likely to type.
+- Keep it consistent and not overly broad.
+- Avoid punctuation-heavy names; they are harder to match reliably.
 
-- ✅ Good: `deploy`, `code review`, `database migration`
-- ⚠️ Risky: `run`, `update`, `manage`, `test` (may trigger on many unrelated phrases)
+### B) Put the most important instructions early
+Agents work better when:
+- prerequisites and scope are near the top
+- steps are structured and scannable
 
-### B) Write step-by-step instructions
-Use numbered/structured steps with decision points, e.g.:
-- “If you have X, do A; otherwise do B.”
+### C) Use step-by-step structure
+Prefer numbered lists, short sections, and checklists.
 
-### C) Include copy/paste-ready code examples
-Provide exact commands/snippets with clear placeholders:
-- `APP_NAME`, `NAMESPACE`, `RELEASE_TAG`, `MIGRATION_NAME`, etc.
+### D) Include code examples and templates
+If the skill involves commands, configs, queries, or scripts:
+- provide copy/paste examples
+- show placeholders clearly (e.g., `<SERVICE>`, `<ENV>`)
 
-### D) Cover edge cases and failure modes
-Add sections such as:
-- Common failures
-- Rollback plan
-- Verification steps
-- What to do if an environment variable is missing
-- What to do if a deployment health check fails
+### E) Handle edge cases explicitly
+Include a section like:
+- “Edge cases / when to stop”
+- “Common pitfalls”
+- “If you lack access/inputs, ask these questions”
 
-### E) Make the “success criteria” explicit
-Tell the agent what “done” means:
-- expected outputs
-- checklist completion
-- verification queries/commands that must pass
+### F) Match the plugin’s matching behavior
+Because the plugin triggers when:
+- `userPrompt.toLowerCase().includes(skill.name.toLowerCase())`
+
+…avoid names that require exact formatting users won’t reproduce.
+
+**Example:** If you name a skill `DB migrate`, users may type `database migration` instead and won’t match. Prefer a common phrase.
 
 ---
 
 ## 7) Example skills (complete `SKILL.md` files)
 
-Below are complete, copyable examples. Save each as **`SKILL.md`** inside a directory included by your `skills` config.
+Below are **complete** examples you can place in directories scanned by your `skills` config.
 
----
+### Example A: `deploy` skill
 
-### Example 1: `deploy` skill
-
-**File:** `./skills/deploy/SKILL.md`
+**File:** `.knowhow/skills/deploy/SKILL.md` (path arbitrary; filename must be `SKILL.md`)
 ```md
 ---
 name: deploy
-description: Deploy an application safely with verification and rollback steps.
+description: Deploy an application safely using a repeatable, checklist-driven process (plan, validate, release, verify, rollback).
 ---
 
 # Deploy Skill
 
-Use this checklist to deploy an application reliably. Tailor steps to your stack (Node/Python/Go/etc.), but keep the flow the same.
+Use this skill to guide a safe deployment for a typical web/service app. Adapt steps to your stack (Kubernetes, systemd, Heroku, Docker Compose, etc.).
 
-## 1) Pre-deploy verification
-1. Confirm the target environment:
-   - `dev`, `staging`, or `production`
-2. Confirm the artifact/version to deploy:
-   - Commit SHA or release tag
-3. Confirm required secrets/config exist:
-   - API keys
-   - database connection strings
-   - environment variables required by the app
+## Inputs to request (if missing)
+If the user did not provide these, ask:
+1. Deployment target (e.g., `staging`, `production`, a specific environment name)
+2. Release artifact (e.g., docker image tag, build number, commit SHA)
+3. Deployment method/tooling (e.g., Helm, kubectl, Terraform, SSH scripts, GitHub Actions)
+4. Any required approvals or maintenance windows
+5. Current rollback strategy
 
-## 2) Readiness checks
-1. Check current health:
-   - Ensure the service is reachable
-2. Check recent errors:
-   - Look for failing pods/services/jobs
-3. Estimate downtime expectations:
-   - Can deployments be zero-downtime?
+## Step-by-step deployment process
 
-## 3) Deploy procedure (generic)
-1. Backup/ensure rollback readiness
-   - If using containers: ensure you can redeploy the previous image tag
-2. Deploy the new artifact
-   - Update deployment manifest / pipeline configuration
-3. Apply changes
-   - Run CI/CD or execute deployment commands (examples below)
+### 1) Plan & confirm scope
+- Identify what will change:
+  - code changes
+  - config changes
+  - infrastructure changes
+- Confirm:
+  - target environment
+  - expected downtime (if any)
+  - dependencies (databases, queues, caches)
 
-### Example: Kubernetes rollout
+### 2) Pre-deploy validation
+- Verify health of the current environment:
+  - uptime/error rates
+  - logs for obvious incidents
+- Confirm required secrets/configs exist for the target environment.
+- If migrations are involved, identify:
+  - migration ordering and whether they are backward-compatible
+
+### 3) Choose a release strategy
+Pick one:
+- **Blue/Green** (preferred for minimal disruption)
+- **Rolling** (common for Kubernetes/stateful services)
+- **Canary** (gradual traffic shift)
+- **Restart-based** (simpler but higher risk)
+
+State which one you will use and why.
+
+### 4) Execute deployment
+Provide the exact commands/steps for the user’s stack.
+
+#### Kubernetes/Helm template
 ```bash
-kubectl config use-context <context>
-kubectl set image deployment/<app> <container>=<image>:<tag> -n <namespace>
-kubectl rollout status deployment/<app> -n <namespace> --timeout=5m
+# Example variables:
+# RELEASE=<release-name>
+# NAMESPACE=<namespace>
+# CHART=<chart-dir-or-name>
+# IMAGE_TAG=<tag>
+
+helm upgrade --install "$RELEASE" "$CHART" \
+  --namespace "$NAMESPACE" \
+  --set image.tag="$IMAGE_TAG"
 ```
 
-### Example: Docker Compose
+#### Docker Compose template
 ```bash
-export IMAGE_TAG="<tag>"
+# Example:
+# IMAGE_TAG=<tag>
+export IMAGE_TAG="$IMAGE_TAG"
+
 docker compose pull
-docker compose up -d
-docker compose ps
+docker compose up -d --no-deps
 ```
 
-## 4) Post-deploy verification
-1. Health endpoints
-   - Verify `/health` or equivalent returns 200
-2. Smoke tests
-   - Login flow (if applicable)
-   - Minimal read/write operation
-3. Check logs for startup errors
-   - Look for crashes, migrations failing, missing env vars
+### 5) Post-deploy verification (must-do)
+After the deploy completes:
+- Check application health endpoints
+- Confirm critical workflows:
+  - login/session
+  - primary read/write operations
+  - queue consumers / background jobs (if applicable)
+- Monitor logs for errors for at least **10–15 minutes** (or the team’s standard)
 
-## 5) Rollback plan (define before you need it)
-If verification fails:
-1. Identify the previous version/image
-2. Roll back
-   - Kubernetes:
-     ```bash
-     kubectl rollout undo deployment/<app> -n <namespace>
-     kubectl rollout status deployment/<app> -n <namespace> --timeout=5m
-     ```
-   - Compose/Docker:
-     ```bash
-     export IMAGE_TAG="<previous-tag>"
-     docker compose up -d
-     ```
+### 6) Communicate & close out
+Report:
+- what changed
+- verification results
+- link(s) to release notes/build artifacts
+- next steps (if any)
 
-## 6) Report the outcome
-Provide:
-- Environment name
-- Version/artifact deployed
-- Verification results (what succeeded)
-- Any follow-up tasks or incidents
+## Rollback plan (include before executing)
+Before the deployment, define rollback triggers:
+- error budget exceeded
+- health checks failing
+- latency spike
+- incident detected
+
+Provide concrete rollback actions, e.g.:
+- Helm rollback to previous revision:
+  ```bash
+  helm rollback "$RELEASE" <revision-number> --namespace "$NAMESPACE"
+  ```
+- Or redeploy prior image tag.
+
+## Edge cases / stop conditions
+- Stop and ask questions if:
+  - you don’t know the release artifact
+  - there are pending schema changes without a migration plan
+  - rollback strategy is unclear
+- If migrations exist, consider ordering:
+  1) deploy backward-compatible code
+  2) apply migrations
+  3) deploy forward code
+
+## Output format (what to respond with)
+When executing, respond with:
+1. Deployment plan summary
+2. Exact steps/commands
+3. Verification checklist
+4. Rollback instructions and triggers
 ```
 
 ---
 
-### Example 2: `code review` skill (checklist)
+### Example B: `code review` skill
 
-**File:** `./skills/code-review/SKILL.md`
+**File:** `.knowhow/skills/code-review/SKILL.md`
 ```md
 ---
 name: code review
-description: Perform a structured code review with correctness, security, and style checks.
+description: Perform a structured code review with a checklist, risk assessment, and actionable feedback.
 ---
 
 # Code Review Skill
 
-Use this checklist for reviewing PRs or patches. If you lack context (language/framework/test coverage), ask targeted questions.
+Use this skill to review a code change (PR/diff). Provide feedback that is:
+- specific
+- actionable
+- prioritized by risk/impact
 
-## 0) First pass (understand)
-1. What is the change trying to accomplish?
-2. Does the change align with the existing codebase patterns?
-3. Are there any new dependencies or risky integrations?
+## Inputs to request (if missing)
+Ask for:
+1. Language/framework
+2. Repo context (where relevant)
+3. The diff/patch (or key files)
+4. Purpose of change (bug fix? feature?)
+5. Constraints (performance/security/compliance)
 
-## 1) Correctness & behavior
-- [ ] All intended behaviors are implemented
-- [ ] Edge cases are handled (empty input, nulls, timeouts, boundaries)
-- [ ] Error handling is consistent and actionable
-- [ ] Tests exist and cover the changed logic
-- [ ] Performance implications are understood (e.g., new loops, DB queries)
+## Review workflow
 
-## 2) Security review
-- [ ] Input validation is present where needed
-- [ ] Secrets are not logged or exposed
-- [ ] AuthZ/AuthN is enforced (no missing permission checks)
-- [ ] Injection risks are mitigated (SQL/command/template)
-- [ ] File/path handling is safe (no traversal)
+### 1) High-level summary
+- What does the change aim to do?
+- What files/components are most impacted?
 
-## 3) API / interface correctness
-- [ ] Contracts are updated consistently (types, docs, callers)
-- [ ] Backwards compatibility is preserved if required
-- [ ] Status codes / error shapes are stable
+### 2) Checklist review (use this order)
 
-## 4) Code quality & maintainability
-- [ ] Naming is clear and consistent
-- [ ] Complexity is reasonable; no deeply nested logic
-- [ ] Duplicated logic is refactored when appropriate
-- [ ] Comments explain “why”, not “what”
+#### Correctness
+- Does the code match the intended behavior?
+- Are there off-by-one / null / boundary cases?
+- Are errors handled and surfaced appropriately?
 
-## 5) Tests
-- [ ] Unit tests cover core logic
-- [ ] Integration tests cover boundaries (DB/network/interfaces)
-- [ ] Test data is minimal and deterministic
-- [ ] Flaky tests are avoided
+#### Security
+- Input validation and sanitization
+- Authz/authn checks
+- Secrets handling (no secrets in logs)
+- Injection risks (SQL/command/template)
+- CSRF/XSS risks (web)
 
-## 6) Documentation
-- [ ] README or inline docs updated if user-facing behavior changed
-- [ ] Migration notes added when needed
-- [ ] Examples updated
+#### Performance
+- Hot paths and unnecessary allocations
+- N+1 queries / repeated work
+- Unbounded loops or expensive operations
 
-## 7) Final response format
-Return the review as:
+#### Maintainability
+- Naming clarity
+- DRY vs duplication
+- Testability (pure functions, seams for mocks)
+- Code structure and separation of concerns
 
-1. Summary of key changes
-2. Must-fix issues (severity: critical/high)
-3. Should-fix issues (medium/low)
-4. Nice-to-have improvements
-5. Suggested diffs (if possible) or questions for the author
+#### Observability
+- Useful logs (without leaking sensitive data)
+- Metrics/events where appropriate
+- Error logs include sufficient context
+
+#### Testing
+- Unit tests for logic
+- Integration tests for boundaries
+- Regression tests for bug fixes
+- Edge cases covered
+
+### 3) Risk assessment (must include)
+Create a short risk table:
+
+| Area | Risk level (Low/Med/High) | Why | Suggestion |
+|------|------------------------------|-----|------------|
+
+### 4) Actionable feedback
+For each issue:
+- Explain why it’s a problem
+- Provide a suggested change (or example)
+- Label severity: **Must-fix / Should-fix / Nice-to-have**
+
+### 5) Questions for the author (if needed)
+Ask clarifying questions only when assumptions would otherwise be unsafe.
+
+## Example response structure
+Return your output using:
+
+1. Summary
+2. Review (grouped by Correctness/Security/Performance/etc.)
+3. Risk table
+4. Must-fix / Should-fix items (with suggestions)
+5. Tests recommendations
+6. Questions (if any)
+
+## Edge cases / constraints
+- If the diff is incomplete, ask for the missing portions instead of guessing.
+- If you cannot assess security due to missing auth context, explicitly state that limitation and request needed info.
 ```
 
 ---
 
-### Example 3: `database migration` skill
+### Example C: `database migration` skill
 
-**File:** `./skills/db-migration/SKILL.md`
+**File:** `.knowhow/skills/database-migration/SKILL.md`
 ```md
 ---
 name: database migration
-description: Plan and execute a safe database migration with validation and rollback.
+description: Plan and execute database migrations with safety (backward compatibility, ordering, verification, rollback).
 ---
 
 # Database Migration Skill
 
-Use this playbook to design and run a database migration safely in real environments.
+Use this skill to guide migrations for relational databases (Postgres/MySQL/etc.) with production-safety principles.
 
-## 1) Clarify migration intent
-Answer:
-1. What schema change is required? (add/rename/remove column/table, indexes, constraints)
-2. Does it require data backfill?
-3. Is it online/zero-downtime or will it incur downtime?
+## Inputs to request (if missing)
+Ask:
+1. Database type/version (e.g., Postgres 14)
+2. Migration type:
+   - schema change
+   - data backfill
+   - index changes
+   - constraints
+3. Migration tool (e.g., Flyway, Liquibase, Alembic, Prisma Migrate, custom scripts)
+4. Environment (staging vs production)
+5. Constraints:
+   - availability requirements
+   - expected load window
+   - maximum acceptable migration duration
+6. Whether the app code will be deployed concurrently
 
-## 2) Safety prerequisites
-- Ensure you have:
-  - A backup strategy (automated snapshot or external backup)
-  - A way to rollback (or a forward-fix plan if rollback is unsafe)
-- Confirm:
-  - Migration tool (e.g., Alembic, Flyway, Liquibase, Rails)
-  - Database engine (Postgres/MySQL/etc.)
-  - Staging validation environment mirrors production settings
+## Safety principles (follow in order)
+1. **Backward compatible first**
+2. Prefer **expand → migrate → contract**
+3. Keep transactions short when possible
+4. Avoid long locks (reindex/alter carefully)
+5. Validate before/after with queries
 
-## 3) Use a safe migration pattern
-Common safe approach for risky changes:
-1. Additive first
-   - Add new columns/constraints as nullable or non-enforcing
-2. Backfill
-   - Populate existing rows with a controlled job
-3. Validate
-   - Confirm data correctness (counts, null rates, invariants)
-4. Switch reads/writes
-   - Update application code to use the new schema
-5. Finalize
-   - Tighten constraints (NOT NULL, FK constraints, unique indexes)
-6. Clean up
-   - Remove old columns after a safe window
+## Migration plan template
 
-## 4) Concrete checklist
+### Step 1) Understand current state
+- Identify current schema
+- Identify dependencies:
+  - foreign keys
+  - views
+  - triggers
+  - application queries
 
-### Schema change checklist
-- [ ] Avoid dropping columns/constraints in the first pass if downtime is not acceptable
-- [ ] Prefer “expand/contract” patterns when possible
-- [ ] Index changes are planned to avoid locking storms
+### Step 2) Define the target
+- What new columns/tables/indexes/constraints are desired?
+- What data transformations are needed?
 
-### Backfill checklist
-- [ ] Batch updates (avoid locking large tables)
-- [ ] Add progress logging
-- [ ] Validate after backfill (row counts, distribution checks)
+### Step 3) Plan expand/migrate/contract (example)
+#### Expand (backward compatible)
+- Add new nullable column(s)
+- Add new tables
+- Add indexes concurrently (if supported)
+- Do **not** add NOT NULL or strict constraints yet
 
-### Verification checklist
-- [ ] Run migration in staging first
-- [ ] Confirm application health (no errors on startup)
-- [ ] Verify critical queries
+#### Migrate (populate data)
+- Backfill in batches
+- Ensure idempotency
+- Rate limit if needed
 
-### Rollback checklist
-Choose one:
-- [ ] True rollback supported by the migration tool
-- [ ] Or forward-only correction plan (recommended if true rollback is unsafe)
+#### Contract (enforce invariants)
+- Set NOT NULL after backfill completion
+- Add constraints
+- Drop old columns only after code is updated and verified
 
-## 5) Example SQL patterns (Postgres)
+### Step 4) Order of deployments
+If app code changes too, use:
+1. Deploy backward-compatible code
+2. Run expand migration
+3. Deploy code that writes new format (optional)
+4. Run data backfill
+5. Deploy forward code
+6. Run contract migration
 
-### Add nullable column + backfill + enforce NOT NULL
+## Concrete examples
+
+### Example: Backfill a new column in batches (SQL pseudocode)
 ```sql
--- 1) Expand: add column as nullable
-ALTER TABLE users ADD COLUMN email_normalized text;
+-- Add column first (expand)
+ALTER TABLE users ADD COLUMN display_name TEXT;
 
--- 2) Backfill in a controlled way (example)
+-- Backfill in batches (migrate)
+-- Repeat until affected_rows = 0
 UPDATE users
-SET email_normalized = lower(email)
-WHERE email_normalized IS NULL;
-
--- 3) Validate before enforcing (example checks)
-SELECT count(*) FROM users WHERE email_normalized IS NULL;
-
--- 4) Contract: enforce constraint
-ALTER TABLE users ALTER COLUMN email_normalized SET NOT NULL;
+SET display_name = username
+WHERE display_name IS NULL
+LIMIT 10000;
 ```
 
-### Create index with lower blocking risk (conceptual)
+> If your DB doesn’t support `LIMIT` on UPDATE, use a CTE or batch-selection strategy.
+
+### Example: Index creation carefully (Postgres-style)
+- Create index concurrently to reduce locking:
 ```sql
--- If supported, use CONCURRENTLY to reduce blocking
-CREATE INDEX CONCURRENTLY idx_users_email_normalized
-ON users(email_normalized);
+CREATE INDEX CONCURRENTLY users_display_name_idx
+ON users (display_name);
 ```
 
-## 6) What to output as the agent response
-Provide:
-- Migration plan (phases)
-- Estimated risk level and why
-- Exact commands (tool-specific)
-- Validation queries/tests
-- Rollback or forward-fix plan
-- Execution order and required application deploy timing
+## Verification checklist (before and after)
+### Before
+- Confirm migration has a dry run plan
+- Confirm rollback method exists
+- Record:
+  - row counts
+  - min/max timestamps
+  - key aggregates
+
+### After
+- Re-run invariants:
+  - null counts for new required columns
+  - foreign key validity checks
+- Check application health
+- Monitor errors/latency for the migration window
+
+## Rollback strategy
+Define one of:
+- **Down migration** (if safe/possible)
+- **Reverse via feature flag**
+- **Recreate old schema** (last resort)
+- **Data rollback** (restore from snapshot/backups)
+
+State rollback triggers explicitly (e.g., health checks failing, lock contention too high).
+
+## Edge cases
+- If adding NOT NULL column without default to a large table:
+  - do it via expand/migrate/contract
+- If updating huge datasets:
+  - batch and monitor impact
+- If migrations aren’t idempotent:
+  - redesign to be re-runnable safely
 ```
 
 ---
 
 ## 8) Global skills
 
-To reuse skills across multiple projects, store them in:
+If you want skills to be available **across projects**, store them in:
 
 **`~/.knowhow/skills/`**
 
-Then ensure your `knowhow.json` includes that directory in the `skills` array, for example:
-```json
-{
-  "skills": [
-    "~/.knowhow/skills"
-  ]
-}
-```
+Then include that directory in your `skills` configuration (either in global config or project config, depending on how your setup uses `knowhow.json`).
 
-Recommended structure (nested organization is fine because scanning is recursive):
+### Recommended structure
 ```text
 ~/.knowhow/skills/
   deploy/
     SKILL.md
   code-review/
     SKILL.md
-  db-migration/
+  database-migration/
     SKILL.md
 ```
 
-The plugin does not require the folder name to match the skill name—only the `SKILL.md` frontmatter `name` matters.
+### Example `knowhow.json` (point to global + local)
+```json
+{
+  "skills": [
+    "~/.knowhow/skills",
+    ".knowhow/skills"
+  ]
+}
+```
 
 ---
 
-## Summary checklist (quick reference)
+## Quick checklist for creating a new skill
 
-- ✅ Name skill file: **`SKILL.md`**
-- ✅ Add frontmatter at the top:
-  - `name: ...`
-  - `description: ...`
-- ✅ Write clear step-by-step instructions + examples
-- ✅ Include edge cases / rollback / verification
-- ✅ Configure directories in `knowhow.json` under `skills`
-- ✅ For global reuse, use `~/.knowhow/skills/`
-```
+1. Create a folder (any name) and place a file named **`SKILL.md`**
+2. Add frontmatter at the top:
+   - `name: ...`
+   - `description: ...`
+3. Write clear, step-by-step instructions in the body
+4. Include examples and edge cases
+5. Add the directory to the `skills` array in `.knowhow/knowhow.json`
+6. Test by prompting the agent using the exact skill name phrase (case-insensitive substring match)
+
+If you want, tell me your workflow (tools/stack) and I can generate a tailored set of `SKILL.md` templates for your team.

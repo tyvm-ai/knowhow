@@ -1,0 +1,190 @@
+{
+  "config": {
+    "language": "javascript",
+    "maxExercises": 5,
+    "model": "accounts/fireworks/models/kimi-k2p7-code",
+    "provider": "fireworks",
+    "lazyTools": false,
+    "limits": {
+      "maxTurns": 30,
+      "maxTime": 300,
+      "maxCost": 1
+    },
+    "outputFile": "results.json"
+  },
+  "commitHash": "75469bc",
+  "exercises": [
+    {
+      "exerciseName": "accumulate",
+      "status": "success",
+      "turns": 1,
+      "testResult": {
+        "passed": 0,
+        "failed": 1,
+        "total": 5,
+        "skipped": 4,
+        "success": false,
+        "output": "{\"numFailedTestSuites\":1,\"numFailedTests\":1,\"numPassedTestSuites\":0,\"numPassedTests\":0,\"numPendingTestSuites\":0,\"numPendingTests\":4,\"numRuntimeErrorTestSuites\":0,\"numTodoTests\":0,\"numTotalTestSuites\":1,\"numTotalTests\":5,\"openHandles\":[],\"snapshot\":{\"added\":0,\"didUpdate\":false,\"failure\":false,\"filesAdded\":0,\"filesRemoved\":0,\"filesRemovedList\":[],\"filesUnmatched\":0,\"filesUpdated\":0,\"matched\":0,\"total\":0,\"unchecked\":0,\"uncheckedKeysByFile\":[],\"unmatched\":0,\"updated\":0},\"startTime\":1781820902583,\"success\":false,\"testResults\":[{\"assertionResults\":[{\"ancestorTitles\":[\"accumulate()\"],\"duration\":0,\"failureDetails\":[{}],\"failureMessages\":[\"Error: Remove this line and implement the function\\n    at accumulate (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/accumulate.js:7:9)\\n    at Object.<anonymous> (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/accumulate.spec.js:7:22)\\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/utils.js:298:28)\\n    at new Promise (<anonymous>)\\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/utils.js:231:10)\\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:316:40)\\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:252:3)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:126:9)\\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:121:9)\\n    at run (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:71:3)\\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-runner/build/runTest.js:367:16)\\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-runner/build/runTest.js:444:34)\"],\"fullName\":\"accumulate() accumulation empty\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"failed\",\"title\":\"accumulation empty\"},{\"ancestorTitles\":[\"accumulate()\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulate squares\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"accumulate squares\"},{\"ancestorTitles\":[\"accumulate()\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulate upcases\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"accumulate upcases\"},{\"ancestorTitles\":[\"accumulate()\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulate reversed strings\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"accumulate reversed strings\"},{\"ancestorTitles\":[\"accumulate()\"],\"duration\":null,\"failureDetails\":[],\"failureMessages\":[],\"fullName\":\"accumulate() accumulate recursively\",\"invocations\":1,\"location\":null,\"numPassingAsserts\":0,\"retryReasons\":[],\"status\":\"pending\",\"title\":\"accumulate recursively\"}],\"endTime\":1781820902799,\"message\":\"  ● accumulate() › accumulation empty\\n\\n    Remove this line and implement the function\\n\\n      5 |\\n      6 | export const accumulate = () => {\\n    > 7 |   throw new Error('Remove this line and implement the function');\\n        |         ^\\n      8 | };\\n      9 |\\n\\n      at accumulate (accumulate.js:7:9)\\n      at Object.<anonymous> (accumulate.spec.js:7:22)\\n\",\"name\":\"/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/accumulate.spec.js\",\"startTime\":1781820902593,\"status\":\"failed\",\"summary\":\"\"}],\"wasInterrupted\":false}\n",
+        "details": {
+          "numFailedTestSuites": 1,
+          "numFailedTests": 1,
+          "numPassedTestSuites": 0,
+          "numPassedTests": 0,
+          "numPendingTestSuites": 0,
+          "numPendingTests": 4,
+          "numRuntimeErrorTestSuites": 0,
+          "numTodoTests": 0,
+          "numTotalTestSuites": 1,
+          "numTotalTests": 5,
+          "openHandles": [],
+          "snapshot": {
+            "added": 0,
+            "didUpdate": false,
+            "failure": false,
+            "filesAdded": 0,
+            "filesRemoved": 0,
+            "filesRemovedList": [],
+            "filesUnmatched": 0,
+            "filesUpdated": 0,
+            "matched": 0,
+            "total": 0,
+            "unchecked": 0,
+            "uncheckedKeysByFile": [],
+            "unmatched": 0,
+            "updated": 0
+          },
+          "startTime": 1781820902583,
+          "success": false,
+          "testResults": [
+            {
+              "assertionResults": [
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": 0,
+                  "failureDetails": [
+                    {}
+                  ],
+                  "failureMessages": [
+                    "Error: Remove this line and implement the function\n    at accumulate (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/accumulate.js:7:9)\n    at Object.<anonymous> (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/accumulate.spec.js:7:22)\n    at Promise.then.completed (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/utils.js:298:28)\n    at new Promise (<anonymous>)\n    at callAsyncCircusFn (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/utils.js:231:10)\n    at _callCircusTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:316:40)\n    at processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at _runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:252:3)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:126:9)\n    at _runTestsForDescribeBlock (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:121:9)\n    at run (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/run.js:71:3)\n    at runAndTransformResultsToJestFormat (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)\n    at jestAdapter (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)\n    at runTestInternal (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-runner/build/runTest.js:367:16)\n    at runTest (/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/node_modules/jest-runner/build/runTest.js:444:34)"
+                  ],
+                  "fullName": "accumulate() accumulation empty",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "failed",
+                  "title": "accumulation empty"
+                },
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulate squares",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "accumulate squares"
+                },
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulate upcases",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "accumulate upcases"
+                },
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulate reversed strings",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "accumulate reversed strings"
+                },
+                {
+                  "ancestorTitles": [
+                    "accumulate()"
+                  ],
+                  "duration": null,
+                  "failureDetails": [],
+                  "failureMessages": [],
+                  "fullName": "accumulate() accumulate recursively",
+                  "invocations": 1,
+                  "location": null,
+                  "numPassingAsserts": 0,
+                  "retryReasons": [],
+                  "status": "pending",
+                  "title": "accumulate recursively"
+                }
+              ],
+              "endTime": 1781820902799,
+              "message": "  ● accumulate() › accumulation empty\n\n    Remove this line and implement the function\n\n      5 |\n      6 | export const accumulate = () => {\n    > 7 |   throw new Error('Remove this line and implement the function');\n        |         ^\n      8 | };\n      9 |\n\n      at accumulate (accumulate.js:7:9)\n      at Object.<anonymous> (accumulate.spec.js:7:22)\n",
+              "name": "/Users/micah/dev/knowhow/packages/knowhow-benchmarks/benchmarks/exercises/filtered/accumulate/accumulate.spec.js",
+              "startTime": 1781820902593,
+              "status": "failed",
+              "summary": ""
+            }
+          ],
+          "wasInterrupted": false
+        }
+      },
+      "timeElapsed": 8.703,
+      "cost": 0,
+      "tokenUsage": {
+        "totalInputTokens": 0,
+        "totalOutputTokens": 0,
+        "totalCacheReadTokens": 0,
+        "totalCacheWriteTokens": 0
+      },
+      "startTime": "2026-06-18T22:14:54.117Z",
+      "endTime": "2026-06-18T22:15:02.820Z",
+      "finalOutput": "HTTP 400: {\"error\":{\"object\":\"error\",\"type\":\"invalid_request_error\",\"code\":\"invalid_request_error\",\"message\":\"33 request validation errors: Extra inputs are not permitted, field: 'tools[1].function.returns'; Extra inputs are not permitted, field: 'tools[2].function.returns'; Extra inputs are not permitted, field: 'tools[3].function.returns'; Extra inputs are not permitted, field: 'tools[4].function.returns'; Extra inputs are not permitted, field: 'tools[5].function.returns'; Extra inputs are not permitted, field: 'tools[6].function.returns'; Extra inputs are not permitted, field: 'tools[7].function.returns'; Extra inputs are not permitted, field: 'tools[9].function.returns'; Extra inputs are not permitted, field: 'tools[10].function.returns'; Extra inputs are not permitted, field: 'tools[11].function.returns'; Extra inputs are not permitted, field: 'tools[12].function.returns'; Extra inputs are not permitted, field: 'tools[13].function.returns'; Extra inputs are not permitted, field: 'tools[14].function.returns'; Extra inputs are not permitted, field: 'tools[15].function.returns'; Extra inputs are not permitted, field: 'tools[16].function.returns'; Extra inputs are not permitted, field: 'tools[17].function.returns'; Extra inputs are not permitted, field: 'tools[18].function.returns'; Extra inputs are not permitted, field: 'tools[19].function.returns'; Extra inputs are not permitted, field: 'tools[20].function.returns'; Extra inputs are not permitted, field: 'tools[21].function.returns'; Extra inputs are not permitted, field: 'tools[22].function.returns'; Extra inputs are not permitted, field: 'tools[23].function.returns'; Extra inputs are not permitted, field: 'tools[26].function.returns'; Extra inputs are not permitted, field: 'tools[27].function.returns'; Extra inputs are not permitted, field: 'tools[28].function.returns'; Extra inputs are not permitted, field: 'tools[29].function.returns'; Extra inputs are not permitted, field: 'tools[30].function.returns'; Extra inputs are not permitted, field: 'tools[31].function.returns'; Extra inputs are not permitted, field: 'tools[32].function.returns'; Extra inputs are not permitted, field: 'tools[33].function.returns'; Extra inputs are not permitted, field: 'tools[34].function.returns'; Extra inputs are not permitted, field: 'tools[35].function.returns'; Extra inputs are not permitted, field: 'long_ttl_cache', value: False\"}}"
+    }
+  ],
+  "summary": {
+    "totalExercises": 1,
+    "successCount": 1,
+    "testableExercises": 1,
+    "testsPassedCount": 0,
+    "testsFailedCount": 1,
+    "testPassRate": 0,
+    "agentSuccessRate": 1,
+    "failureCount": 0,
+    "timeoutCount": 0,
+    "costLimitCount": 0,
+    "turnLimitCount": 0,
+    "totalTime": 8.703,
+    "totalCost": 0,
+    "averageTurns": 1,
+    "averageTime": 8.703,
+    "successRate": 0,
+    "totalInputTokens": 0,
+    "totalOutputTokens": 0,
+    "totalCacheReadTokens": 0,
+    "totalCacheWriteTokens": 0,
+    "cacheHitRate": 0
+  },
+  "startTime": "2026-06-18T22:14:54.046Z",
+  "endTime": "2026-06-18T22:15:02.820Z"
+}

@@ -1,765 +1,691 @@
-# Knowhow CLI Reference (`knowhow`)
+# Knowhow CLI Reference
 
-AI CLI with plugins and agents.
-
-> **Note on source coverage:** The provided code excerpts explicitly detailed only some commands (`knowhow init`, and the operational functions behind `generate/embed/upload/download/purge`, plus the full `knowhow worker` implementation). For commands whose flags/options are not present in the excerpts, this reference documents the command with **usage syntax** and **no flags** (or marks options as “not defined in provided source”).
+> **Binary:** `knowhow`  
+> **Version:** `knowhow --version`  
+> **Help:** `knowhow --help`
 
 ## Table of Contents
 
-1. [Global](#global)
-2. [Commands](#commands)
-   - [`init`](#init)
-   - [`login`](#login)
-   - [`logout`](#logout)
-   - [`update`](#update)
-   - [`generate`](#generate)
-   - [`gen`](#gen)
-   - [`embed`](#embed)
-   - [`embed:purge`](#embedpurge)
-   - [`purge`](#purge)
-   - [`upload`](#upload)
-   - [`download`](#download)
-   - [`chat`](#chat)
-   - [`agent`](#agent)
-   - [`ask`](#ask)
-   - [`setup`](#setup)
-   - [`search`](#search)
-   - [`sessions`](#sessions)
-   - [`worker`](#worker)
-   - [`files`](#files)
-   - [`workers`](#workers)
-   - [`github-credentials`](#github-credentials)
-3. [Exit Codes / Error Handling](#exit-codes--error-handling)
+1. [Project Initialization](#project-initialization)
+2. [Authentication](#authentication)
+3. [Chat & Agents](#chat--agents)
+4. [Run Pipelines (Generate)](#run-pipelines-generate)
+5. [Embeddings](#embeddings)
+6. [Remote Sync (Upload/Download)](#remote-sync-uploaddownload)
+7. [Workers](#workers)
+8. [File Sync](#file-sync)
+9. [Cloud Workers](#cloud-workers)
+10. [Modules](#modules)
+11. [Git Credential Helper](#git-credential-helper)
 
 ---
 
-## Global
+## Project Initialization
 
-- **Binary name:** `knowhow`
-- **Version:** `knowhow --version`
-- **Config migration:** On startup, the CLI runs config migration (`migrateConfig()`) before dispatching commands.
-- Many operational commands call `setupServices()` first to wire services/clients/tools (and connect to configured backends).
+### `knowhow init`
+**Purpose:** Initialize Knowhow configuration files and folder structure:
+- Creates **global** config in `~/.knowhow/`
+- Creates **local** config in `./.knowhow/`
+- Ensures built-in template prompts/files exist
+- Adds `@tyvm/knowhow-module-script` to the global `~/.knowhow/knowhow.json` modules (if missing)
 
----
-
-## Commands
-
-### `init`
-
-#### Purpose
-Initialize Knowhow configuration and project-local folders/templates.
-
-#### Usage syntax
+**Usage:**
 ```bash
 knowhow init
 ```
 
-#### Options / flags
-None defined in the provided source excerpts.
-
-#### What it creates/writes
-- Creates local directory structure under `./.knowhow/`:
-  - `./.knowhow/`
-  - `./.knowhow/prompts/`
-  - `./.knowhow/docs/`
-  - `./.knowhow/embeddings/`
-- Creates global template/config directory under `~/.knowhow/` and copies template files if missing:
-  - `./.knowhow/knowhow.json` (local)
-  - `./.knowhow/language.json` (local)
-  - `./.knowhow/.ignore`, `./.knowhow/.hashes.json`, `./.knowhow/.jwt` (local)
-  - Prompt templates: `./.knowhow/prompts/*.mdx` (local)
-- Template folder/file permissions are set when created (folder `0o744`, files `0o600`).
-
-#### Example
+**Example:**
 ```bash
 knowhow init
 ```
 
 ---
 
-### `login`
+## Authentication
 
-#### Purpose
-Authenticate the CLI with Knowhow.
+### `knowhow login`
+**Purpose:** Log in to Knowhow. Supports either browser-based login flow or manual JWT input.
 
-#### Usage syntax
+**Usage:**
 ```bash
-knowhow login [--jwt <jwt>]
+knowhow login [--jwt]
 ```
 
-#### Options / flags
-- `--jwt <jwt>` — Use manual JWT input instead of browser login.
+**Options:**
+- `--jwt` — Use manual JWT input instead of browser login
 
-> If `--jwt` is provided, the implementation passes it to the login routine.
-
-#### Example
+**Example:**
 ```bash
 knowhow login
 ```
 
+Manual JWT (exact behavior depends on `login()` implementation):
 ```bash
-knowhow login --jwt "<your-jwt>"
+knowhow login --jwt
 ```
+
+> ✅ **Note:** In the provided code, there is **no `knowhow logout` command registered**. (It may exist elsewhere, but it’s not present in the snippets you provided.)
 
 ---
 
-### `logout`
+## Chat & Agents
 
-#### Purpose
-Log out (clear authentication credentials).
+### `knowhow chat`
+**Purpose:** Start an interactive chat interface.
 
-#### Usage syntax
-```bash
-knowhow logout
-```
-
-#### Options / flags
-Not defined in the provided source excerpts.
-
-#### Example
-```bash
-knowhow logout
-```
-
----
-
-### `update`
-
-#### Purpose
-Update the globally installed `knowhow` CLI to the latest npm version.
-
-#### Usage syntax
-```bash
-knowhow update
-```
-
-#### Options / flags
-None.
-
-#### Behavior
-Runs:
-```bash
-npm install -g knowhow@latest
-```
-
-#### Example
-```bash
-knowhow update
-```
-
----
-
-### `generate`
-
-#### Purpose
-Run the configured sources pipeline to generate outputs (summaries/docs/etc.) based on `config.sources`.
-
-#### Usage syntax
-```bash
-knowhow generate
-```
-
-#### Options / flags
-No flags defined in the provided excerpts. Behavior is **configuration-driven**.
-
-#### Configuration behavior (high level)
-From `config.sources`, the CLI:
-- Computes hashes (prompt hash and input file hash) and skips work if unchanged.
-- For each source:
-  - If `source.kind === "file"` (or falsy): generates from matching files (`source.input`)
-  - Otherwise: treats `source.kind` as a plugin “kind”, writes to `source.output`, then continues with file-handling logic.
-
-#### Example
-```bash
-knowhow generate
-```
-
----
-
-### `gen`
-
-#### Purpose
-Alias of `knowhow generate`.
-
-#### Usage syntax
-```bash
-knowhow gen
-```
-
-#### Options / flags
-Not defined in provided excerpts (assumed equivalent to `generate`).
-
-#### Example
-```bash
-knowhow gen
-```
-
----
-
-### `embed`
-
-#### Purpose
-Generate embeddings for sources configured in `config.embedSources`.
-
-#### Usage syntax
-```bash
-knowhow embed
-```
-
-#### Options / flags
-No flags defined in the provided excerpts. Behavior is **configuration-driven**.
-
-#### Configuration behavior (high level)
-From `config.embedSources` (if unset, it exits immediately):
-- Uses `config.embeddingModel` or defaults to `EmbeddingModels.openai.EmbeddingAda2`
-- Uses ignore pattern from `getIgnorePattern()`
-- Calls `embedSource(defaultModel, source, ignorePattern)` per configured embedding source.
-
-#### Example
-```bash
-knowhow embed
-```
-
----
-
-### `embed:purge`
-
-#### Purpose
-Purge embeddings matching a glob pattern.  
-(Depending on the CLI implementation, this may be an alias of `knowhow purge`.)
-
-#### Usage syntax
-```bash
-knowhow embed:purge <pattern>
-```
-
-#### Options / flags
-None defined in provided excerpts.
-
-#### Arguments
-- `<pattern>` — Glob expression for files/chunks to purge.
-
-#### Example
-```bash
-knowhow embed:purge "**/*.md"
-```
-
----
-
-### `purge`
-
-#### Purpose
-Purge (remove) embedding chunks for files matching a provided glob.
-
-#### Usage syntax
-```bash
-knowhow purge <globPath>
-```
-
-#### Options / flags
-None defined in the provided excerpts.
-
-#### Arguments
-- `<globPath>` — Glob expression for matching files whose chunks should be purged.
-
-#### Behavior (from provided excerpt)
-- Matches files via `globSync(globPath)`
-- Loads configured embeddings map and config (`config.embedSources`)
-- For each embedding “file” key:
-  - Filters out entries whose:
-    - `id` starts with `"./" + filePath` (removes chunks for that file)
-    - `text.length` exceeds the configured `chunkSize` for that embedding output
-- Saves the pruned embeddings.
-
-#### Example
-```bash
-knowhow purge "src/**/*.ts"
-```
-
----
-
-### `upload`
-
-#### Purpose
-Upload embedding JSON artifacts to remote storage destinations configured in `config.embedSources`.
-
-#### Usage syntax
-```bash
-knowhow upload
-```
-
-#### Options / flags
-No flags defined in the provided excerpts. Behavior is **configuration-driven**.
-
-#### Configuration behavior (high level)
-For each `config.embedSources[]` entry:
-- Requires `source.remoteType`
-- Reads embedding JSON from `source.output`
-- Determines `embeddingName` from the output filename
-
-Supports:
-- **`remoteType: "s3"`**
-  - Uploads to: `s3://{bucketName}/{embeddingName}.json`
-- **`remoteType: "knowhow"`**
-  - Requires `source.remoteId`
-  - Gets a presigned upload URL from the Knowhow API
-  - Uploads via S3 helper
-  - Calls `updateEmbeddingMetadata(...)` to sync metadata back to the backend
-- Other types: skipped with a log.
-
-#### Example
-```bash
-knowhow upload
-```
-
----
-
-### `download`
-
-#### Purpose
-Download embedding JSON artifacts from remote storage into local `source.output` paths.
-
-#### Usage syntax
-```bash
-knowhow download
-```
-
-#### Options / flags
-No flags defined in the provided excerpts. Behavior is **configuration-driven**.
-
-#### Configuration behavior (high level)
-For each `config.embedSources[]` entry:
-- Requires `source.remoteType`
-- Computes destination:
-  - `fileName = "${name}.json"` where `name` is derived from `source.output`
-  - `destinationPath = source.output`
-
-Supports:
-- **`remoteType: "s3"`**
-  - Downloads `/{bucket}/{fileName}` into `destinationPath`
-- **`remoteType: "github"`**
-  - Downloads from GitHub into local `.knowhow/embeddings/${fileName}`
-- **`remoteType: "knowhow"`**
-  - Requires `source.remoteId`
-  - Gets presigned download URL from Knowhow API and downloads locally
-- Other types: logs message.
-
-#### Example
-```bash
-knowhow download
-```
-
----
-
-### `chat`
-
-#### Purpose
-Start an interactive chat session with configured agents.
-
-#### Usage syntax
+**Usage:**
 ```bash
 knowhow chat
 ```
 
-#### Options / flags
-Not defined in provided source excerpts.
-
-#### Example
+**Example:**
 ```bash
 knowhow chat
 ```
 
 ---
 
-### `agent`
+### `knowhow agent`
+**Purpose:** Run a one-shot agent task directly from the CLI (default agent: `Patcher`). Can also resume a previously started task.
 
-#### Purpose
-Run a one-shot agent task with limits and optional resume.
-
-#### Usage syntax
+**Usage:**
 ```bash
 knowhow agent [options]
 ```
 
-#### Options / flags
-Not defined in provided source excerpts.
+#### Options
+- `--provider <provider>`  
+  AI provider (e.g. `openai`, `anthropic`, `google`, `xai`)
+- `--model <model>`  
+  Specific model for the selected provider
+- `--agent-name <name>`  
+  Which agent to use (default: `Patcher`)
+- `--max-time-limit <minutes>`  
+  Execution time limit in minutes (default: `30`)
+- `--max-spend-limit <dollars>`  
+  Cost limit in dollars (default: `10`)
+- `--message-id <messageId>`  
+  Knowhow message ID for task tracking
+- `--sync-fs`  
+  Enable filesystem-based synchronization
+- `--task-id <taskId>`  
+  Pre-generated task ID (used with `--sync-fs` for predictable agent directory)
+- `--prompt-file <path>`  
+  Custom prompt template file with a `{text}` placeholder
+- `--input <text>`  
+  Task input (fallback to stdin if not provided)
+- `--resume`  
+  Resume a previously started task using `--task-id` (local FS or remote)
+- `--renderer <name>`  
+  Renderer to use: `basic`, `compact`, `fancy`, or a path/package  
+  (default: from config or `basic`)
 
-> If you have the command/CLI parser code for `agent`, share it and this section can be updated with exact flags/options.
+#### Input rules
+- If you don’t pass `--input` and don’t pass `--prompt-file`, the CLI reads from **stdin** (only if stdin is not a TTY).
+- `--prompt-file` is processed through `readPromptFile(options.promptFile, input)`.
 
-#### Example
+**Examples**
+
+Run the default agent with inline input:
 ```bash
-knowhow agent
+knowhow agent --input "Summarize the project in 10 bullets"
+```
+
+Use a custom prompt template file:
+```bash
+knowhow agent --prompt-file .knowhow/prompts/BasicCodeDocumenter.mdx --input "src/index.ts"
+```
+
+Resume a task:
+```bash
+knowhow agent --resume --task-id 123 --message-id 456 --input "Continue where you left off"
+```
+
+Choose provider + renderer:
+```bash
+knowhow agent --provider openai --model gpt-4.1-mini --renderer fancy --input "Fix the failing tests"
 ```
 
 ---
 
-### `ask`
+### `knowhow ask`
+**Purpose:** Direct AI questioning without agent overhead.
 
-#### Purpose
-Direct AI questioning without agent orchestration.
-
-#### Usage syntax
+**Usage:**
 ```bash
 knowhow ask [options]
 ```
 
-#### Options / flags
-Not defined in provided source excerpts.
+#### Options
+- `--provider <provider>` — AI provider to use
+- `--model <model>` — Specific model
+- `--input <text>` — Question (fallback to stdin if not provided)
+- `--prompt-file <path>` — Custom prompt template file
 
-#### Example
+**Input rules**
+- If `--input` is not provided and `--prompt-file` is not provided, it reads from **stdin** (non-TTY).
+
+**Example:**
 ```bash
-knowhow ask "What is Knowhow?"
+knowhow ask --input "What does Knowhow do?"
+```
+
+With a prompt template:
+```bash
+knowhow ask --prompt-file .knowhow/prompts/BasicAsk.mdx --input "Explain embeddings."
 ```
 
 ---
 
-### `setup`
+### `knowhow setup`
+**Purpose:** Ask the agent to configure Knowhow (runs the setup agent flow).
 
-#### Purpose
-Ask the agent to configure Knowhow (runs setup workflow).
-
-#### Usage syntax
+**Usage:**
 ```bash
 knowhow setup
 ```
 
-#### Options / flags
-Not defined in provided source excerpts.
-
-#### Example
+**Example:**
 ```bash
 knowhow setup
 ```
 
 ---
 
-### `search`
+### `knowhow search`
+**Purpose:** Search embeddings directly from the CLI.
 
-#### Purpose
-Search embeddings directly from the CLI.
-
-#### Usage syntax
+**Usage:**
 ```bash
 knowhow search [options]
 ```
 
-#### Options / flags
-Not defined in provided source excerpts.
+#### Options
+- `--input <text>` — Search query (fallback to stdin if not provided)
+- `-e, --embedding <path>` — Specific embedding path (default: `all`)
 
-#### Example
+**Example:**
 ```bash
-knowhow search "how to configure plugins"
+knowhow search --input "How do I configure auth?" --embedding .knowhow/embeddings/docs.json
+```
+
+Read query from stdin:
+```bash
+echo "What is a worker?" | knowhow search
 ```
 
 ---
 
-### `sessions`
+### `knowhow sessions`
+**Purpose:** Manage agent sessions from CLI (prints session table, optionally all historical sessions).
 
-#### Purpose
-Manage and list agent sessions from the CLI.
-
-#### Usage syntax
+**Usage:**
 ```bash
 knowhow sessions [options]
 ```
 
-#### Options / flags
-Not defined in provided source excerpts.
+#### Options
+- `--all` — Show all historical sessions (default: current process only)
+- `--csv` — Output sessions as CSV
 
-#### Example
+**Example:**
 ```bash
-knowhow sessions --all
+knowhow sessions
+```
+
+All sessions as CSV:
+```bash
+knowhow sessions --all --csv
 ```
 
 ---
 
-### `worker`
+## Run Pipelines (Generate)
 
-#### Purpose
-Start a Knowhow **worker** process exposing worker’s MCP tools over WebSocket to the Knowhow API.
+### `knowhow generate`
+**Purpose:** Run the **sources pipeline** for documentation generation based on `config.sources`.
 
-Worker can run in:
-- **Host mode** (default)
-- **Docker sandbox mode** (`--sandbox`)
-- **Passkey-gated locked mode** (when passkey auth is configured; worker starts locked)
+**Usage:**
+```bash
+knowhow generate
+```
 
-It can also register/share/unshare the worker and can set up a tunnel (config-driven).
+**Example:**
+```bash
+knowhow generate
+```
 
-#### Usage syntax
+> ✅ **Note:** The provided code registers `generate` only. There is **no `knowhow gen` alias** in the snippets you provided.
+
+---
+
+## Embeddings
+
+### `knowhow embed`
+**Purpose:** Create embeddings for entries in `config.embedSources`.
+
+**Usage:**
+```bash
+knowhow embed
+```
+
+**Example:**
+```bash
+knowhow embed
+```
+
+### `knowhow embed:purge <pattern>`
+**Purpose:** Purge embeddings matching a glob pattern.
+
+**Usage:**
+```bash
+knowhow embed:purge <pattern>
+```
+
+**Arguments**
+- `<pattern>` — Glob pattern to match files for purging
+
+**Example:**
+```bash
+knowhow embed:purge "src/**/old*.ts"
+```
+
+---
+
+## Remote Sync (Upload/Download)
+
+### `knowhow upload`
+**Purpose:** Upload generated embeddings/configured embedding outputs to configured remotes (`config.embedSources`).
+
+**Usage:**
+```bash
+knowhow upload
+```
+
+**Example:**
+```bash
+knowhow upload
+```
+
+### `knowhow download`
+**Purpose:** Download embeddings from configured remotes.
+
+**Usage:**
+```bash
+knowhow download
+```
+
+**Example:**
+```bash
+knowhow download
+```
+
+---
+
+## Workers
+
+### `knowhow worker`
+**Purpose:** Start a worker process (optionally registering it). Supports host mode or sandbox mode (Docker).
+
+**Usage:**
 ```bash
 knowhow worker [options]
 ```
 
-#### Options / flags (from `src/worker.ts`)
-
-##### `--register`
-- **Type:** boolean
-- **Purpose:** Register the current directory (`process.cwd()`) as a worker path.
-- **Effect:** Calls `registerWorkerPath(process.cwd())` and **exits** (does not start the worker loop).
-
-**Example**
-```bash
-knowhow worker --register
-```
-
----
-
-##### `--share`
-- **Type:** boolean
-- **Purpose:** Share this worker with your organization.
-- **Effect:** Adds request header `Shared: "true"`.
-
-**Example**
-```bash
-knowhow worker --share
-```
-
----
-
-##### `--unshare`
-- **Type:** boolean
-- **Purpose:** Make this worker private/unshared.
-- **Effect:** Adds request header `Shared: "false"`.
-
-**Example**
-```bash
-knowhow worker --unshare
-```
-
----
-
-##### `--sandbox`
-- **Type:** boolean
-- **Purpose:** Run the worker in a **Docker container** for isolation.
-- **Effect in code:**
-  - Checks Docker availability
-  - Rebuilds worker Docker image (`Docker.buildWorkerImage()`)
-  - Starts Docker with:
-    - `workspaceDir: process.cwd()`
-    - JWT + API URL + tunnel/config wiring
-    - share/unshare mapping via container options
-  - Persists config preference: `config.worker.sandbox = true`
-
-**Example**
-```bash
-knowhow worker --sandbox
-```
-
----
-
-##### `--no-sandbox`
-- **Type:** boolean
-- **Purpose:** Force host mode (disable Docker sandbox).
-- **Effect:** Persists `config.worker.sandbox = false`.
-
-**Example**
-```bash
-knowhow worker --no-sandbox
-```
-
----
-
-##### `--passkey`
-- **Type:** boolean
-- **Purpose:** Run passkey setup for this worker (browser-based registration flow).
-- **Effect in code:**
-  - Requires you to be logged in (`loadJwt()`).
-  - If not logged in: prints error:
-    - `You must be logged in to set up a passkey. Run 'knowhow login' first.`
-  - Calls `new PasskeySetupService().setup(jwt)`
-
-**Example**
-```bash
-knowhow worker --passkey
-```
-
----
-
-##### `--passkey-reset`
-- **Type:** boolean
-- **Purpose:** Reset/remove passkey configuration.
-- **Effect:** Calls `new PasskeySetupService().reset()` and exits.
-
-**Example**
-```bash
-knowhow worker --passkey-reset
-```
-
----
-
-#### Behavior notes
-
-##### Docker-in-Docker detection
-If `process.env.KNOWHOW_DOCKER === "true"`:
-- It forces sandbox off:
-  - `options.sandbox = false`
-  - `options.noSandbox = true`
-
-##### Sandbox mode selection priority
-- CLI flags `--sandbox` / `--no-sandbox`
-- then config: `config.worker?.sandbox`
-- default: host mode (`false`)
-
-##### Allowed tools auto-initialization
-If `config.worker.allowedTools` is missing:
-- Populates allowed tools from `Tools.getToolNames()`
-- Persists it via `updateConfig(config)`
-- Exits without starting worker loop.
-
-##### Passkey-gated locked worker
-If config includes:
-- `config.worker?.auth?.passkey?.publicKey`
-- `config.worker?.auth?.passkey?.credentialId`
-
-Then:
-- Worker starts **locked**
-- Tool calls are wrapped so tools return:
-```json
-{
-  "error": "WORKER_LOCKED",
-  "message": "Worker is locked. Call the `unlock` tool with your passkey assertion to unlock it first."
-}
-```
-
-Additionally, the tools `unlock` and `lock` are registered.
-
-##### Tunnel configuration (config-driven)
-If `config.worker.tunnel.enabled === true`, the worker may open an additional WebSocket to `/ws/tunnel` and configure:
-- `allowedPorts` (warns if unset)
-- `maxConcurrentStreams` (default `50`)
-- `localHost` (auto-detects `host.docker.internal` when inside Docker, otherwise `127.0.0.1`)
-- URL rewriting behavior (config-driven)
-
-No CLI flags are defined for tunnel options in the provided excerpt.
+#### Options
+- `--register`  
+  Register current directory as a worker path
+- `--share`  
+  Share this worker with your organization
+- `--unshare`  
+  Make this worker private (only you can use it)
+- `--sandbox`  
+  Run worker in a Docker container for isolation
+- `--no-sandbox`  
+  Run worker directly on host (disable sandbox mode)
+- `--passkey`  
+  Set up passkey authentication for this worker
+- `--passkey-reset`  
+  Remove passkey authentication requirement
+- *(internal, not a direct CLI flag)* `allowedTools`  
+  Used by tunnel mode to restrict tool set; not exposed as a CLI option in the provided code.
 
 #### Examples
 
-Start worker in host mode:
+Start in default mode:
 ```bash
 knowhow worker
 ```
 
-Start worker in Docker sandbox and share it:
+Register and share:
 ```bash
-knowhow worker --sandbox --share
+knowhow worker --register --share
 ```
 
-Register current directory as a worker:
+Sandbox mode:
 ```bash
-knowhow worker --register
+knowhow worker --sandbox
 ```
 
-Set up passkey auth (requires `knowhow login` first):
+Host mode:
+```bash
+knowhow worker --no-sandbox
+```
+
+Setup passkey:
 ```bash
 knowhow worker --passkey
 ```
 
-Reset passkey:
+Reset passkey requirement:
 ```bash
 knowhow worker --passkey-reset
 ```
 
 ---
 
-### `files`
+### `knowhow workers`
+**Purpose:** Manage and start all registered workers.
 
-#### Purpose
-Sync files between local filesystem and Knowhow FS using configured `fileMounts`.
-
-#### Usage syntax
-```bash
-knowhow files [options]
-```
-
-#### Options / flags
-Not defined in provided source excerpts.
-
-#### Example
-```bash
-knowhow files --dry-run --download
-```
-
----
-
-### `workers`
-
-#### Purpose
-Manage and start registered workers.
-
-#### Usage syntax
+**Usage:**
 ```bash
 knowhow workers [options]
 ```
 
-#### Options / flags
-Not defined in provided source excerpts.
+#### Options (mutually exclusive in practice)
+- `--list`  
+  List all registered worker paths
+- `--unregister <path>`  
+  Unregister a worker path
+- `--clear`  
+  Clear all registered worker paths
 
-#### Examples
+**Examples**
+List:
 ```bash
 knowhow workers --list
 ```
 
+Unregister:
 ```bash
 knowhow workers --unregister /path/to/worker
 ```
 
-```bash
-knowhow workers --clear
-```
-
-Start all workers:
+Start all workers (default action):
 ```bash
 knowhow workers
 ```
 
+Clear registry:
+```bash
+knowhow workers --clear
+```
+
 ---
 
-### `github-credentials`
+### `knowhow tunnel`
+**Purpose:** Start a minimal worker with **tunnel enabled** (exposes local ports to the cloud). Registers essential tools needed by the backend.
 
-#### Purpose
-Git credential helper for GitHub using Knowhow as the backend.
+**Usage:**
+```bash
+knowhow tunnel [options]
+```
 
-#### Usage syntax
+#### Options
+- `--share` — Share this tunnel with your organization
+- `--unshare` — Make this tunnel private (only you can use it)
+
+**Example:**
+```bash
+knowhow tunnel --share
+```
+
+---
+
+## File Sync
+
+### `knowhow files`
+**Purpose:** Sync files between local filesystem and Knowhow FS using `fileMounts` config.
+
+**Usage:**
+```bash
+knowhow files [options]
+```
+
+#### Options
+- `--upload`  
+  Force upload direction for all mounts
+- `--download`  
+  Force download direction for all mounts
+- `--config <path>`  
+  Path to `knowhow.json` (default: `./knowhow.json`)
+- `--dry-run`  
+  Print what would be synced without doing it
+
+**Examples**
+Dry-run:
+```bash
+knowhow files --dry-run
+```
+
+Force upload:
+```bash
+knowhow files --upload
+```
+
+Use a custom config path:
+```bash
+knowhow files --config ./my-knowhow.json --download
+```
+
+---
+
+## Cloud Workers
+
+### `knowhow cloudworker`
+**Purpose:** Create or sync a cloud worker with your local knowhow config.
+
+**Usage:**
+```bash
+knowhow cloudworker [options]
+```
+
+#### Options
+- `--init`  
+  Initialize `config.files` entries based on what exists in `.knowhow/` (run once before `--push`)
+- `--create`  
+  Create a new cloud worker with synced config and files
+- `--push <uid>`  
+  Push/sync local config and files to an existing cloud worker (by `<uid>`)
+- `--pull <id>`  
+  Pull the latest `workerConfigJson` from a cloud worker and update local config
+- `--name <name>`  
+  Name for the cloud worker (used with `--create`)
+- `--dry-run`  
+  Print what would be synced without doing it
+
+**Examples**
+Initialize config files entries:
+```bash
+knowhow cloudworker --init
+```
+
+Create a new cloud worker:
+```bash
+knowhow cloudworker --create --name "My Cloud Worker"
+```
+
+Push to an existing worker:
+```bash
+knowhow cloudworker --push 9f2c1a
+```
+
+Pull latest config:
+```bash
+knowhow cloudworker --pull 12345
+```
+
+Dry-run push:
+```bash
+knowhow cloudworker --push 9f2c1a --dry-run
+```
+
+---
+
+## Modules
+
+All commands are under:
+```bash
+knowhow modules <subcommand>
+```
+
+### `knowhow modules setup`
+**Purpose:** Add default built-in modules to your config and install them into `./.knowhow/node_modules`.
+
+**Usage:**
+```bash
+knowhow modules setup [--global]
+```
+
+#### Options
+- `--global`  
+  Use the global config `~/.knowhow/knowhow.json` instead of local `./.knowhow/knowhow.json`
+
+**Example:**
+```bash
+knowhow modules setup
+```
+
+Global setup:
+```bash
+knowhow modules setup --global
+```
+
+---
+
+### `knowhow modules install [module]`
+**Purpose:** Install a module into `./.knowhow/node_modules` and add it to your config.  
+If no module is provided, installs all installable modules already listed in config.
+
+**Usage:**
+```bash
+knowhow modules install [module] [--global] [--latest]
+```
+
+#### Options
+- `--global` — Use global config
+- `--latest` — Force install the latest version (bypasses package-lock)
+
+**Examples**
+Install a specific module:
+```bash
+knowhow modules install @tyvm/knowhow-module-script
+```
+
+Install into global config:
+```bash
+knowhow modules install @tyvm/knowhow-module-script --global
+```
+
+Install all modules from config:
+```bash
+knowhow modules install
+```
+
+Install latest version of a module:
+```bash
+knowhow modules install @tyvm/knowhow-module-script --latest
+```
+
+---
+
+### `knowhow modules list`
+**Purpose:** List modules in your config (global and/or local).
+
+**Usage:**
+```bash
+knowhow modules list [--global]
+```
+
+#### Options
+- `--global` — Show global config modules only
+
+**Example:**
+```bash
+knowhow modules list
+```
+
+Global only:
+```bash
+knowhow modules list --global
+```
+
+---
+
+### `knowhow modules update`
+**Purpose:** Check for updates to all modules in your config and update them.  
+Shows installed vs latest (with publish date) before updating.
+
+**Usage:**
+```bash
+knowhow modules update [--global] [-y]
+```
+
+#### Options
+- `--global` — Use the global config
+- `-y, --yes` — Skip confirmation prompt; update all outdated modules automatically
+
+**Example:**
+```bash
+knowhow modules update
+```
+
+Auto-update without confirmation:
+```bash
+knowhow modules update --yes
+```
+
+---
+
+## Git Credential Helper
+
+### `knowhow github-credentials [action]`
+**Purpose:** Provide GitHub credentials to Git via Git’s credential helper protocol.
+
+Designed to be used with:
+```bash
+git config credential.helper 'knowhow github-credentials'
+```
+
+**Usage:**
 ```bash
 knowhow github-credentials [action] [--repo <repo>]
 ```
 
 #### Arguments
-- `[action]` — credential helper action (commonly `get`, `store`, `erase`)
-- `--repo <repo>` — repository in `owner/repo` format
+- `[action]` — Optional. Supported behaviors in the code:
+  - `get` — read credentials from stdin and output credential lines
+  - `store` — exit immediately
+  - `erase` — exit immediately
 
-#### Options / flags
-- `--repo <repo>` — Repo to fetch credentials for.
-  - If omitted, and `git remote get-url origin` exists, it attempts to infer `owner/repo` from origin URL.
-
-#### Behavior (from provided excerpt)
-- If `action === "get"`:
-  - Reads stdin for git credential protocol/host lines (implementation ignores parsed host and always fetches for the repo)
-  - Fetches credentials via `KnowhowSimpleClient().getGitCredential(repo || "")`
-  - Outputs:
-    - `protocol=...`
-    - `host=...`
-    - `username=...`
-    - `password=...`
-- If `action` is `store` or `erase`:
-  - exits successfully without output.
+#### Options
+- `--repo <repo>` — Repository in `owner/repo` format (e.g. `myorg/myrepo`)
 
 #### Examples
 
-Configure git to use the helper:
+Configure git:
 ```bash
-git config credential.helper 'knowhow github-credentials'
+git config --global credential.helper 'knowhow github-credentials'
 ```
 
-Manual credential request:
+Request credentials for a repo explicitly:
 ```bash
-knowhow github-credentials get --repo "myorg/myrepo"
+knowhow github-credentials get --repo myorg/myrepo
 ```
 
----
+> If `--repo` is not provided, the helper attempts to infer it from:
+> `git remote get-url origin`.
 
-## Exit Codes / Error Handling
+--- 
 
-- Many command implementations use `try/catch` and call `process.exit(1)` on errors.
-- For `update`, npm install errors are logged and exit code is `1`.
-- On startup, command dispatch is handled by `program.parseAsync(...)`, and the CLI follows standard Node process error handling when uncaught errors occur.
+If you share additional source files (e.g., `src/login.ts`, `src/chat/*`, `src/fileSync.ts`, `src/commands/*` beyond what’s included), I can extend this reference to cover any commands currently missing from the snippets you provided (such as a possible `knowhow logout`, `knowhow gen` alias, or additional chat subcommands).

@@ -1,4 +1,5 @@
 import { Plugin, PluginContext } from "../../plugins/types";
+import { Command } from "commander";
 import { IAgent } from "../../agents/interface";
 import { Tool } from "../../clients/types";
 import { Config } from "../../types";
@@ -10,6 +11,8 @@ import { AIClient } from "../../clients";
 import { ToolsService } from "../Tools";
 import { MediaProcessorService } from "../MediaProcessorService";
 import { TunnelHandler } from "@tyvm/knowhow-tunnel";
+import { EventService } from "../EventService";
+import { ConversionService } from "../conversion/ConversionService";
 
 /*
  *
@@ -53,8 +56,11 @@ export interface ModuleContext {
   Plugins: PluginService;
   Clients: AIClient;
   Tools: ToolsService;
+  Events: EventService;
   MediaProcessor?: MediaProcessorService;
+  Conversion?: ConversionService;
   Tunnel?: TunnelHandler;
+  Program?: Command;
 }
 
 export interface KnowhowModule {

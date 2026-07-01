@@ -52,7 +52,6 @@ export type Config = {
     modules?: string[];
   };
   modules: string[];
-  pluginPackages?: Record<string, string>;
   agents: Assistant[];
   mcps: McpConfig[];
   modelProviders: ModelProvider[];
@@ -113,6 +112,7 @@ export type McpConfig = {
   params?: Partial<{ socket: WebSocket }>;
   authorization_token?: string;
   authorization_token_file?: string;
+  authorization_scheme?: "bearer" | "basic";
 };
 
 export type ModelProvider = {

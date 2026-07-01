@@ -1,11 +1,14 @@
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 import { KnowhowSimpleClient, KNOWHOW_API_URL } from "./services/KnowhowClient";
 import { loadJwt } from "./login";
 import { getConfig } from "./config";
 import { services } from "./services";
 import { S3Service } from "./services/S3";
-import { getHashes, hasFileChangedSinceUpload, saveUploadHash, isLocalFileMatchingRemote, isLocalFileMatchingDownloadHash, saveDownloadHash } from "./hashes";
+import { getHashes, saveHashes, hasFileChangedSinceUpload, saveUploadHash, isLocalFileMatchingRemote, isLocalFileMatchingDownloadHash, saveDownloadHash } from "./hashes";
+
+export const DEFAULT_BATCH_SIZE = 5;
 
 export interface FileSyncOptions {
   upload?: boolean;
@@ -13,6 +16,33 @@ export interface FileSyncOptions {
   apiUrl?: string;
   configPath?: string;
   dryRun?: boolean;
+}
+
+/**
+ * Run an array of async tasks in batches of `batchSize` at a time.
+ * Returns results in the same order as the input tasks.
+ */
+export async function batchRun<T>(
+  tasks: (() => Promise<T>)[],
+  batchSize: number = DEFAULT_BATCH_SIZE
+): Promise<T[]> {
+  const results: T[] = [];
+  for (let i = 0; i < tasks.length; i += batchSize) {
+    const batch = tasks.slice(i, i + batchSize);
+    const batchResults = await Promise.all(batch.map((t) => t()));
+    results.push(...batchResults);
+  }
+  return results;
+}
+
+/**
+ * Expands a leading ~ to the user's home directory
+ */
+function expandHome(p: string): string {
+  if (p === "~" || p.startsWith("~/") || p.startsWith("~\\")) {
+    return path.join(os.homedir(), p.slice(1));
+  }
+  return p;
 }
 
 /**
@@ -25,7 +55,7 @@ function isDirectoryPath(p: string): boolean {
 /**
  * Recursively list all files in a local directory, returning relative paths
  */
-function listFilesRecursively(dir: string): string[] {
+export function listFilesRecursively(dir: string): string[] {
   const results: string[] = [];
   if (!fs.existsSync(dir)) return results;
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -83,7 +113,8 @@ export async function fileSync(options: FileSyncOptions = {}) {
 
   // Process each file mount
   for (const mount of config.files) {
-    const { remotePath, localPath, direction = "download" } = mount;
+    const { remotePath, localPath: rawLocalPath, direction = "download" } = mount;
+    const localPath = expandHome(rawLocalPath);
 
     // Determine actual direction based on flags and config
     let actualDirection = direction;
@@ -126,16 +157,16 @@ export async function fileSync(options: FileSyncOptions = {}) {
   }
 }
 
-
 /**
  * Download a file from Knowhow FS to local filesystem
  */
-async function downloadFile(
+export async function downloadFile(
   client: KnowhowSimpleClient,
   s3Service: S3Service,
   remotePath: string,
   localPath: string,
-  dryRun: boolean
+  dryRun: boolean,
+  hashes?: any
 ): Promise<void> {
   console.log(`⬇️  Downloading ${remotePath} → ${localPath}`);
 
@@ -146,8 +177,7 @@ async function downloadFile(
 
   try {
     // Fast-path: check stored download hash before hitting the API
-    const hashes = await getHashes();
-    if (await isLocalFileMatchingDownloadHash(localPath, hashes)) {
+    if (hashes && await isLocalFileMatchingDownloadHash(localPath, hashes)) {
       console.log(`   ✓ Skipping ${localPath} (matches stored download hash)`);
       return;
     }
@@ -159,7 +189,7 @@ async function downloadFile(
     if (isLocalFileMatchingRemote(localPath, checksumSHA256)) {
       console.log(`   ✓ Skipping ${localPath} (matches remote checksum)`);
       // Store the hash so future syncs can skip without hitting the API
-      await saveDownloadHash(localPath);
+      await saveDownloadHash(localPath, hashes);
       return;
     }
 
@@ -173,7 +203,7 @@ async function downloadFile(
     await s3Service.downloadFromPresignedUrl(downloadUrl, localPath);
 
     // Save download hash so we can skip unchanged files next time
-    await saveDownloadHash(localPath);
+    await saveDownloadHash(localPath, hashes);
 
     // Get file size for logging
     const stats = fs.statSync(localPath);
@@ -186,12 +216,13 @@ async function downloadFile(
 /**
  * Upload a file from local filesystem to Knowhow FS
  */
-async function uploadFile(
+export async function uploadFile(
   client: KnowhowSimpleClient,
   s3Service: S3Service,
   remotePath: string,
   localPath: string,
-  dryRun: boolean
+  dryRun: boolean,
+  hashes?: any
 ): Promise<void> {
   console.log(`⬆️  Uploading ${localPath} → ${remotePath}`);
 
@@ -207,15 +238,14 @@ async function uploadFile(
   }
 
   // Skip upload if file hasn't changed since last upload
-  const hashes = await getHashes();
-  const changed = await hasFileChangedSinceUpload(localPath, hashes);
+  const changed = hashes ? await hasFileChangedSinceUpload(localPath, hashes) : true;
   if (!changed) {
     console.log(`   ✓ Skipping ${localPath} (unchanged since last upload)`);
     return;
   }
 
   // Get presigned upload URL
-  const presignedUrl = await client.getOrgFilePresignedUploadUrl(remotePath);
+  const presignedUrl = await client.getOrgFilePresignedUploadUrl(remotePath, localPath);
 
   // Upload file using presigned URL
   await s3Service.uploadToPresignedUrl(presignedUrl, localPath);
@@ -224,7 +254,7 @@ async function uploadFile(
   await client.markOrgFileUploadComplete(remotePath);
 
   // Save upload hash so we can skip unchanged files next time
-  await saveUploadHash(localPath);
+  await saveUploadHash(localPath, hashes);
 
   const stats = fs.statSync(localPath);
   console.log(`   ✓ Uploaded ${stats.size} bytes`);
@@ -246,6 +276,8 @@ export async function uploadDirectory(
 
   console.log(`⬆️  Uploading directory ${localDir} → ${remoteDir}`);
 
+  const hashes = await getHashes();
+
   if (!fs.existsSync(localDir)) {
     console.warn(`   ⚠️  Local directory not found: ${localDir}`);
     return 0;
@@ -261,26 +293,30 @@ export async function uploadDirectory(
 
   console.log(`   Found ${localFiles.length} local file(s)`);
 
-  let count = 0;
-  for (const relFile of localFiles) {
+  const tasks = localFiles.map((relFile) => async () => {
     const localFilePath = localDir + relFile;
     const remoteFilePath = remoteDir + relFile;
     try {
-      await uploadFile(client, s3Service, remoteFilePath, localFilePath, dryRun);
-      count++;
+      await uploadFile(client, s3Service, remoteFilePath, localFilePath, dryRun, hashes);
+      return 1;
     } catch (error) {
       console.error(
         `   ❌ Failed to upload ${localFilePath}, skipping: ${error.message}`
       );
+      return 0;
     }
-  }
-  return count;
+  });
+
+  const counts = await batchRun(tasks);
+  await saveHashes(hashes);
+
+  return counts.reduce((sum, n) => sum + n, 0);
 }
 
 /**
  * Download all files from a remote directory path to a local directory
  */
-async function downloadDirectory(
+export async function downloadDirectory(
   client: KnowhowSimpleClient,
   s3Service: S3Service,
   remotePath: string,
@@ -292,6 +328,8 @@ async function downloadDirectory(
   const localDir = localPath.endsWith("/") ? localPath : localPath + "/";
 
   console.log(`⬇️  Downloading directory ${remoteDir} → ${localDir}`);
+
+  const hashes = await getHashes();
 
   // List all org files and find those in the remote directory
   const response = await client.listOrgFiles();
@@ -313,16 +351,19 @@ async function downloadDirectory(
 
   console.log(`   Found ${matchingFiles.length} remote file(s)`);
 
-  let count = 0;
-  for (const f of matchingFiles) {
+  const tasks = matchingFiles.map((f) => async () => {
     const fullRemotePath = f.folderPath.endsWith("/")
       ? f.folderPath + f.fileName
       : f.folderPath + "/" + f.fileName;
     // Strip the base remote dir prefix to get relative path
     const relativePath = fullRemotePath.slice(remoteDir.length);
     const localFilePath = localDir + relativePath;
-    await downloadFile(client, s3Service, fullRemotePath, localFilePath, dryRun);
-    count++;
-  }
-  return count;
+    await downloadFile(client, s3Service, fullRemotePath, localFilePath, dryRun, hashes);
+    return 1;
+  });
+
+  const counts = await batchRun(tasks);
+  await saveHashes(hashes);
+
+  return counts.reduce((sum, n) => sum + n, 0);
 }

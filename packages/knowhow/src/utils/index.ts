@@ -40,6 +40,7 @@ export const setOnNewHistoryEntry = (
   inputQueue.setOnNewEntry(callback);
 };
 
+
 export const Marked = marked;
 
 export function dotp(x, y) {

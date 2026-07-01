@@ -1,152 +1,131 @@
-# Language Plugin Guide (Knowhow CLI)
+# Knowhow Language Plugin Guide
 
-The **Language Plugin** is one of the most powerful features of Knowhow. It lets you define custom **hotwords / terms** (like `frontend`, `backend`, `my PR`, `API`, `prod`) that automatically **inject context** into your chat sessions whenever you use those terms—pulling in **files, inline text, GitHub content, and URLs**.
+## 1) What the language plugin does
 
----
+The **Language Plugin** lets you define custom “hotwords” (called **terms**) in `.knowhow/language.json`. When you use one of those terms in a chat (or when specific file events happen), Knowhow automatically:
 
-## 1) What the Language Plugin does
+1. **Finds matching terms** inside your input (via glob/wildcard + substring matching).
+2. **Resolves the configured sources** for each matching term (files, raw text, GitHub content, URLs, etc.).
+3. **Injects the resolved context** into the workflow by emitting an internal agent message (`agent:msg`) containing the expanded sources.
 
-When you send a message (or when certain file events occur), the Language Plugin:
-
-1. Loads your term configuration from **`.knowhow/language.json`**
-2. Finds which configured **term keys/patterns** match your input
-3. Expands each matching term into one or more **sources**:
-   - file contents from disk
-   - raw inline text
-   - GitHub PR/issue/file content
-   - content fetched from a URL
-4. Injects the loaded context into the session so your agent can answer using your real project/docs.
-
-**In short:** typing a term like `API` can automatically attach your local API docs/specs—no copy/paste required.
+In short: **typing words like “frontend”, “API”, “prod” can automatically pull in the right docs, specs, PR details, or environment notes—without you manually copying/pasting them.**
 
 ---
 
 ## 2) Configuration file: `.knowhow/language.json`
 
-Create or edit this file in your project:
+Knowhow reads **only** the local file:
 
-```text
-./.knowhow/language.json
-```
+- **Local:** `.knowhow/language.json`
 
-### Example structure
+If the file does not exist, the plugin behaves as if there are **no language terms**.
+
+### Structure (high level)
+
+Your file is a JSON object where each **key** is a term (or multiple patterns in one key), and each value defines:
+
+- `events` (optional): triggers for file events / agent events
+- `sources`: what to load when the term matches
 
 ```jsonc
 {
-  "term-or-pattern-key": {
+  "term-or-patterns": {
+    "events": ["file:open", "file:save", "agent:message", "..."],
     "sources": [
-      { "kind": "file",  "data": ["glob-or-path-1", "glob-or-path-2"] },
-      { "kind": "text",  "data": "Inline raw text to inject" },
-      { "kind": "github","data": ["github input payload(s)"] },
-      { "kind": "url",   "data": ["https://example.com/..."] }
-    ],
-    "events": ["file:open", "file:save"]
-  }
-}
-```
-
-### Required fields
-- **`sources`**: an array of source entries, each with:
-  - **`kind`**: one of `file`, `text`, `github`, `url`
-  - **`data`**: varies by kind (see section 4)
-
-### Optional fields
-- **`events`**: an array of event names (commonly file events).  
-  When present, the term is considered for **event-driven triggers** based on the file operation type.
-
----
-
-## 3) Term matching (comma-separated keys + glob/wildcard matching)
-
-### Comma-separated keys = multiple match patterns
-
-A single top-level JSON key can represent multiple patterns:
-
-```jsonc
-{
-  "frontend, ui, web": {
-    "sources": [ /* ... */ ]
-  }
-}
-```
-
-This means any of these can trigger the same term expansion:
-- `frontend`
-- `ui`
-- `web`
-
-### Matching behavior for generic prompt text
-
-For normal chat input matching:
-
-- If a pattern contains `*`, Knowhow treats it as a **glob/wildcard pattern**
-  - matching is performed with glob logic (e.g., via `minimatch`)
-- Otherwise, Knowhow performs **case-insensitive substring** matching:
-  - `userPrompt.toLowerCase().includes(pattern.toLowerCase())`
-
-**Implication:**
-- Use `*` for families like `api*`, `payment*`, `spec-*`
-- Use plain words for hotphrases like `API`, `prod`, `staging`
-
-### Matching behavior for file open/save events
-
-For event-driven matching (file open/save), Knowhow checks patterns against the file:
-
-- It only considers terms whose config includes the event type in **`events`**
-- For each pattern in the comma-separated key:
-  - Match if `minimatch(filePath, pattern)` succeeds **(path glob match)**  
-  **OR**
-  - Match if the file contents contain the pattern (case-insensitive substring match)
-
-**Implication:**
-- You can target files by **path globs** (recommended)
-- Or by **content markers** when the path is unpredictable
-
----
-
-## 4) Source kinds supported
-
-A matching term expands into one or more sources. Knowhow supports these kinds:
-
-### `file` — load file contents (supports glob patterns)
-
-Loads matching files from your repo/workspace.
-
-- `data` is treated as a list of glob/path strings
-- Each file is:
-  - checked to exist
-  - verified not to be a directory
-  - read as UTF-8
-
-**Example:**
-
-```jsonc
-{
-  "API, apis": {
-    "sources": [
-      { "kind": "file", "data": ["docs/api/**/*.md", "specs/openapi*.{json,yaml}"] }
+      { "kind": "file",   "data": ["path-or-glob", "..."] },
+      { "kind": "text",   "data": "some inline text" },
+      { "kind": "github", "data": ["pr:123", "issue:456", "..."] },
+      { "kind": "url",    "data": ["https://example.com/docs", "..."] }
     ]
   }
 }
 ```
 
-> Tip: keep paths tight to avoid injecting huge irrelevant bundles.
+### Term key format (important)
+A single JSON key can contain **multiple comma-separated patterns**. Those patterns are treated as alternatives that map to the same `sources`.
+
+Example key with alternatives:
+
+```json
+{
+  "frontend,fe,ui": {
+    "sources": [
+      { "kind": "file", "data": [".knowhow/docs/frontend-architecture.md"] }
+    ]
+  }
+}
+```
 
 ---
 
-### `text` — inline raw text
+## 3) Term matching (glob/wildcard + comma-separated keys)
 
-Injects literal text directly.
+### 3.1 User prompt matching (generic events)
+When the plugin checks a message, it:
 
-**Example:**
+- iterates over all term keys
+- splits each key by commas: `term.split(",")`
+- trims each pattern
+- checks for match using:
+  - **glob/wildcard** matching when the pattern contains `*`
+  - otherwise **case-insensitive substring** match
 
-```jsonc
+**Rule from the code:**
+- If pattern contains `*`: uses `minimatch(userPrompt, pattern)`
+- Else: `userPrompt.toLowerCase().includes(pattern.toLowerCase())`
+
+✅ Examples:
+- `"API"` matches when user prompt contains `"api"` anywhere.
+- `"api*"` matches when user prompt matches the glob.
+- `"prod,production"` matches either `prod` or `production`.
+
+### 3.2 File operation matching (file events)
+For `file:*` events, the plugin finds matching terms based on:
+
+- **file path** pattern matching (glob via `minimatch(filePath, pattern)`)
+- OR **file content** containing the pattern as a substring (case-insensitive)
+
+So file triggers can be far more contextual, e.g.:
+- Opening `apps/web/src/routes/login.tsx` can match terms like `apps/web/*` or keywords found in the file.
+
+---
+
+## 4) Supported source kinds
+
+The Language Plugin loads **sources** for every matching term.
+
+### 4.1 `file` — load file contents
+- **Purpose:** read local file content and include it in the context.
+- **Supports glob patterns** (configure `data` as globs like `specs/**/*.md`).
+- Internally, it reads each resolved path as UTF-8 and includes `{ filePath, content }` for file expansions.
+
+Example:
+```json
 {
-  "review rubric": {
+  "API": {
+    "sources": [
+      { "kind": "file", "data": [".knowhow/docs/api/**/*.md"] }
+    ]
+  }
+}
+```
+
+> Tip: Prefer smaller “topic” files (or glob only within a narrow folder) to keep prompts readable.
+
+---
+
+### 4.2 `text` — inline raw text
+- **Purpose:** embed static text directly in the configuration.
+- No file IO or fetching.
+
+Example:
+```json
+{
+  "triage": {
     "sources": [
       {
         "kind": "text",
-        "data": "Review checklist:\n- correctness\n- edge cases\n- performance\n- tests\n- migration plan\n"
+        "data": "Triage checklist:\n1) Identify user impact\n2) Repro steps\n3) Logs/metrics\n4) Proposed fix area\n5) Risk assessment"
       }
     ]
   }
@@ -155,289 +134,284 @@ Injects literal text directly.
 
 ---
 
-### `github` — loads GitHub PR/issue/file content
+### 4.3 `github` — load GitHub PR/issue/file content
+- **Purpose:** fetch and include GitHub content.
+- **Implemented via the `github` plugin.**
+- The Language Plugin does not parse GitHub URLs itself; it **hands off the `data`** to the enabled plugin matching the `kind`.
 
-This is resolved through the **GitHub plugin** mechanism. In the language config, you specify what you want loaded via `data`.
+So `kind: "github"` means: *“call the `github` plugin with these selectors/identifiers.”*
 
-**Example (conceptual locator payloads):**
-
-```jsonc
+Example:
+```json
 {
-  "my PR, current PR": {
+  "my PR": {
     "sources": [
-      { "kind": "github", "data": ["CURRENT_PR"] }
+      { "kind": "github", "data": ["pr:current", "repo:my-org/my-repo"] }
     ]
   }
 }
 ```
 
-> The exact `github` payload format depends on your GitHub plugin configuration, but the language plugin will delegate fetching/injection to that plugin.
+> Use the selector format your `github` plugin expects (commonly things like `pr:<number>`, `issue:<number>`, repo selectors, or URL strings).
 
 ---
 
-### `url` — fetches a web URL
+### 4.4 `url` — fetch web content
+- **Purpose:** fetch a URL and include its contents.
+- **Implemented via the `url` plugin.**
+- Like `github`, the Language Plugin delegates to the enabled plugin where `kind === plugin key`.
 
-Resolved via the **URL plugin**. You provide the URL(s) in `data`.
-
-**Example:**
-
-```jsonc
+Example:
+```json
 {
-  "k8s docs": {
+  "security model": {
     "sources": [
-      { "kind": "url", "data": ["https://kubernetes.io/docs/home/"] }
+      { "kind": "url", "data": ["https://example.com/security/model"] }
     ]
   }
 }
 ```
+
+---
+
+### How other `kind` values work
+The Language Plugin treats any `kind` that matches an **enabled plugin key** as a delegated call. In other words, besides `file` and `text`, your `kind` values typically should correspond to the plugin names you enabled in `.knowhow/knowhow.json` (the default enables `github` and `url`).
 
 ---
 
 ## 5) Event-driven triggers (`events` field)
 
-If you want terms to expand based on file activity (open/save), include an **`events`** array on the term.
+The Language Plugin can trigger context expansions not just from chat text, but also from **events**.
 
-Typical usage:
+### 5.1 What `events` does
+In the Language Plugin constructor, it:
 
-```jsonc
+1. loads `.knowhow/language.json`
+2. collects all unique event names from all terms’ `events`
+3. registers handlers:
+   - events starting with `"file"` → special file handler
+   - everything else → generic handler
+
+### 5.2 Common patterns
+Even though event names are configured by your environment, the code clearly distinguishes:
+
+- **File events:** anything like `file:*`
+  - matching uses file path + file content
+  - good for “while I edit this area, always bring these docs”
+
+- **Non-file events:** anything else (e.g. agent messages)
+  - matching uses the event payload serialized as JSON (`JSON.stringify(eventData)`)
+
+### Example: trigger when saving frontend files
+```json
 {
-  "OpenAPI, swagger": {
-    "events": ["file:open", "file:save"],
+  "frontend": {
+    "events": ["file:save", "file:open"],
     "sources": [
-      { "kind": "file", "data": ["specs/openapi*.yaml", "specs/openapi*.json"] }
+      { "kind": "file", "data": [".knowhow/docs/frontend-architecture.md"] }
     ]
   }
 }
 ```
 
-### How it behaves
-- Knowhow collects all event types referenced in `events`
-- When those events occur, it:
-  - filters terms to those that include the active event
-  - runs matching against file path and (optionally) file contents
-  - injects the configured sources
+When you open/save frontend files, the term can auto-inject the architecture doc.
 
 ---
 
 ## 6) Practical examples (full config snippets)
 
-Below are copy/paste-friendly examples you can adapt.
-
-> Put these entries into `./.knowhow/language.json`.
+Below are real-world, copy/paste-ready examples. You can combine multiple terms in the same `language.json`.
 
 ---
 
-### Example A — Load frontend/backend architecture docs when you say “frontend” or “backend”
+### Example A — Load frontend/backend architecture docs for “frontend” / “backend”
 
-```jsonc
+```json
 {
-  "frontend, ui, web": {
+  "frontend": {
     "sources": [
-      { "kind": "file", "data": ["docs/architecture/frontend/**/*.md", "docs/architecture/web-frontend.md"] },
       {
-        "kind": "text",
-        "data": "Frontend conventions:\n- Prefer feature-based folder structure\n- Keep API calls in data layer\n- Use typed DTOs\n"
+        "kind": "file",
+        "data": [".knowhow/docs/architecture/frontend-architecture.md"]
       }
     ]
   },
-
-  "backend, api, service": {
+  "backend": {
     "sources": [
-      { "kind": "file", "data": ["docs/architecture/backend/**/*.md", "docs/architecture/services/**/*.md"] },
       {
-        "kind": "text",
-        "data": "Backend conventions:\n- Validate at boundaries\n- Prefer idempotent endpoints when possible\n- Log correlation IDs\n"
+        "kind": "file",
+        "data": [".knowhow/docs/architecture/backend-architecture.md"]
       }
     ]
   }
 }
 ```
 
-**Workflow payoff**
-- Ask: “How does auth work in the frontend?” → Knowhow injects frontend architecture docs automatically.
-- Ask: “Where should we implement input validation in backend?” → Knowhow injects backend guidance.
+**Workflow:**
+- Say **“frontend”** → the frontend architecture doc is injected
+- Say **“backend”** → the backend architecture doc is injected
 
 ---
 
 ### Example B — Load your current PR when you say “my PR”
 
-```jsonc
+```json
 {
-  "my PR, current PR, pr": {
+  "my PR": {
     "sources": [
-      { "kind": "github", "data": ["CURRENT_PR"] },
       {
-        "kind": "text",
-        "data": "Review approach:\n- Summarize intent\n- Identify risks (correctness, security, perf)\n- Suggest tests and rollback strategy\n"
+        "kind": "github",
+        "data": ["pr:current"]
+      },
+      {
+        "kind": "file",
+        "data": [".knowhow/docs/pr-review-checklist.md"]
       }
     ]
   }
 }
 ```
 
-**Workflow payoff**
-- “Review my PR for concurrency issues and test coverage.”
-- “Summarize changes + highlight any breaking behavior.”
+**Workflow:**
+- You ask: “Can you review my PR for risk and edge cases?”
+- The plugin injects:
+  - your PR content (via `github` plugin)
+  - a review checklist (via `file` kind)
+
+> If `pr:current` isn’t supported in your setup, replace it with whatever your `github` plugin accepts (e.g. `pr:123`, or `https://github.com/org/repo/pull/123`).
 
 ---
 
-### Example C — Load a spec file when you mention a feature name (wildcards)
+### Example C — Load a spec file when you mention a feature name
 
-Assume specs are organized like:
+Assume you keep specs under:
+- `specs/features/<feature-name>/spec.md`
 
-```text
-specs/features/<feature>.md
-specs/features/<feature>/openapi*.yaml
-```
+Use globs so the term can map to the right file(s):
 
-```jsonc
+```json
 {
-  "feature search, search feature": {
+  "payments, payment-processing": {
     "sources": [
-      { "kind": "file", "data": ["specs/features/search.md", "specs/features/search/**/*.md"] }
+      {
+        "kind": "file",
+        "data": ["specs/features/payments/spec.md"]
+      }
     ]
   },
-
-  "payments*, payment*": {
+  "search": {
     "sources": [
-      { "kind": "file", "data": ["specs/features/payments*.md", "specs/features/payments/**/openapi*.{yaml,json}"] },
-      { "kind": "text", "data": "Focus for payments:\n- retries & idempotency\n- refund/reconciliation flows\n- edge cases\n" }
-    ]
-  }
-}
-```
-
-**How it works**
-- `payments*` includes `*`, so it matches using wildcard/glob logic.
-- `feature search` is a plain substring hotphrase.
-
-**Workflow payoff**
-- “Explain the payments retry strategy.” → injects payments specs automatically.
-
----
-
-### Example D — Load API docs when you say “API”
-
-```jsonc
-{
-  "API, apis, api documentation": {
-    "sources": [
-      { "kind": "file", "data": ["docs/api/**/*.md", "docs/api/**/*.mdx"] },
-      { "kind": "file", "data": ["specs/openapi*.json", "specs/openapi*.yaml"] },
       {
-        "kind": "text",
-        "data": "API answering guidelines:\n- Prefer documented behavior\n- Include request/response schema notes\n- Call out auth and error codes\n- Mention rate limits and pagination\n"
+        "kind": "file",
+        "data": ["specs/features/search/**/*.md"]
       }
     ]
   }
 }
 ```
 
-**Workflow payoff**
-- “What’s the contract for POST /sessions and what errors can it return?”
-- “How do I authenticate for the payments endpoints?”
+**Workflow:**
+- “Explain the payments flow” → loads payments spec(s)
+- “What’s the intended behavior for search?” → loads search spec(s)
+
+---
+
+### Example D — Load API docs when you say “API” (and optionally “endpoints”, “REST”, etc.)
+
+```json
+{
+  "API, api, rest*, endpoints*": {
+    "sources": [
+      {
+        "kind": "file",
+        "data": [".knowhow/docs/api/**/*.md"]
+      }
+    ]
+  }
+}
+```
+
+**Matching behavior examples:**
+- Saying “API” or “api” triggers via substring match.
+- Saying “endpoints v2” can trigger via patterns like `endpoints*`.
 
 ---
 
 ### Example E — Load environment info when you say “prod” or “staging”
 
-```jsonc
+Keep environment runbooks locally:
+
+```json
 {
-  "prod, production, live": {
+  "prod, production": {
+    "events": ["file:open", "file:save"],
     "sources": [
-      { "kind": "file", "data": ["ops/runbooks/prod/**/*.md"] },
-      { "kind": "file", "data": ["ops/env/prod.env.example", "ops/env/prod.*.example"] },
-      { "kind": "url", "data": ["https://status.yourcompany.com/"] }
+      { "kind": "file", "data": [".knowhow/env/prod-runbook.md"] },
+      { "kind": "file", "data": [".knowhow/env/prod-env-variables.md"] }
     ]
   },
-
-  "staging, stage, preprod": {
+  "staging, stage": {
     "sources": [
-      { "kind": "file", "data": ["ops/runbooks/staging/**/*.md"] },
-      { "kind": "file", "data": ["ops/env/staging.env.example"] }
+      { "kind": "file", "data": [".knowhow/env/staging-runbook.md"] }
     ]
   }
 }
 ```
 
-**Workflow payoff**
-- “How do we roll out this change to prod safely?”
-- “What’s the rollback procedure for staging failures?”
+**Workflow:**
+- Ask “Is this safe to roll out to prod?” → injects prod runbook + env vars.
+- Say “staging” while working on deployment-related files → brings staging context.
 
 ---
 
-## 7) Dynamic language terms (runtime): `addLanguageTerm` tool
+## 7) Dynamic language terms (runtime)
 
-Static `.knowhow/language.json` is great, but sometimes you want **temporary terms** created at runtime—for example:
-- “incident-123” should load the incident doc
-- “release candidate 1.2.3” should load the right notes
-- “my PR” should load the PR for the current branch/selection
+The guide mentions an `addLanguageTerm` tool. While it’s not shown in the provided plugin source, the intended workflow is:
 
-Knowhow provides an `addLanguageTerm` capability to add language terms during execution.
+- Add new terms **at runtime** (e.g. term = feature name, term = ticket title, term = customer name)
+- Knowhow persists them into your local language config (commonly `.knowhow/language.json`)
+- Subsequent messages immediately benefit from the new hotword mappings
 
-### Typical pattern (conceptual)
-1. Call `addLanguageTerm` with:
-   - the term key
-   - its sources (kind/data)
-   - optional `events`
-2. The new term becomes matchable immediately
-3. Next user message can trigger it
+**Common use cases:**
+- Add “ACME widget” → map it to the widget spec file URL/path.
+- Add “Jira ABC-123” → map it to an issue link or local sprint notes.
+- Add “Release 2026-05” → map it to a release checklist.
 
-**Example (conceptual)**
-```ts
-addLanguageTerm({
-  key: "incident-123",
-  sources: [
-    { kind: "file", data: ["ops/incidents/incident-123.md"] }
-  ]
-});
-```
+Example conceptual usage (tool name/arguments may vary in your installation):
+- Call `addLanguageTerm(term="my-customer", sources=[...])`
+- Then say “my-customer” in chat to trigger expansions.
 
-**Workflow payoff**
-- During an incident response flow, you can dynamically register terms so the agent always references the correct incident/runbook material.
-
-> Exact tool argument shapes vary by environment, but the core idea is: **runtime registration of term → sources**.
+> If you tell me the exact `addLanguageTerm` tool signature available in your Knowhow version, I can provide a precise snippet.
 
 ---
 
 ## 8) Global vs local language config
 
-### Local (project) config
-- Active config for term matching:
-  - `./.knowhow/language.json`
+### What Knowhow loads for language terms
+From the code:
+- `getLanguageConfig()` reads **only**: `.knowhow/language.json`
 
-### Global config
-- Your Knowhow installation may create a template at:
-  - `~/.knowhow/language.json`
-- Whether it is merged automatically depends on your Knowhow version/config behavior.
+So in practice:
 
-### Recommended practice
-- Put **project/team-specific** rules in `./.knowhow/language.json`
-  - architecture docs
-  - feature specs
-  - environment runbooks
-  - repo-specific review rubrics
-- If you maintain global defaults, keep them **broad and non-conflicting**
-  - e.g., standard “review rubric”, “testing strategy”, “security checklist”
+- **Local language terms** in `.knowhow/language.json` are what the Language Plugin uses.
+- The **global template** `~/.knowhow/language.json` may be created during `knowhow init`, but it is not directly read by the Language Plugin in the shown implementation.
 
-**Tip:** avoid overly broad patterns like `"api"` if other teams/tools use the same word differently—prefer `"API,"` or `"api docs"`.
+### Recommended workflow
+- Use `knowhow init` to generate the local `.knowhow/language.json`
+- Edit **local** terms per project
+- Keep environment-specific terms (prod/staging, feature specs, architecture docs) in that local file
 
 ---
 
-## Best practices (real-world)
+## Summary: why teams love this
 
-- **Target sources tightly**
-  - A “frontend” term that injects *every* frontend file can overwhelm answers.
-- **Use globs intentionally**
-  - Great: `payments*`, `openapi*`, `docs/api/**/*.md`
-  - Risky: `*` or extremely short substrings that match too often
-- **Use `events` for file-driven workflows**
-  - Example: expand API spec context only when editing OpenAPI files.
-- **Layer sources**
-  - Combine `file` (authoritative docs) + `text` (answering rules)
-- **Prefer human hotphrases**
-  - `my PR`, `release notes`, `prod rollback`, `incident <id>`
+With a well-tuned `.knowhow/language.json`, developers can:
 
----
+- Reduce “where is the doc?” interruptions
+- Guarantee consistent architecture context (frontend/backend)
+- Speed up PR review by pulling PR content + checklists automatically
+- Tie feature names/ticket identifiers to specs
+- Make environment questions (prod/staging) immediately grounded in runbooks
+- Trigger expansions automatically while editing relevant files via `events`
 
-If you paste your current directory structure (or a redacted `.knowhow/language.json`), I can propose an optimized set of term keys + globs tailored to your repo and workflows.
+If you share your current `language.json` (or your repo’s docs layout), I can propose an optimized set of terms and globs tailored to your workflow.

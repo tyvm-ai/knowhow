@@ -1,0 +1,40 @@
+{
+  "name": "@tyvm/knowhow-module-script",
+  "version": "0.22.2",
+  "description": "Script execution module for @tyvm/knowhow — isolated-vm sandbox",
+  "main": "ts_build/index.js",
+  "types": "ts_build/index.d.ts",
+  "scripts": {
+    "build": "npm run compile",
+    "compile": "npm run clean && tsc",
+    "clean": "rm -rf ts_build",
+    "prepublishOnly": "npm run compile",
+    "version:nightly": "bash ../knowhow/scripts/publish.sh version:nightly",
+    "version:dev": "bash ../knowhow/scripts/publish.sh version:dev",
+    "publish:nightly": "bash ../knowhow/scripts/publish.sh nightly",
+    "publish:dev": "bash ../knowhow/scripts/publish.sh dev",
+    "publish:latest": "bash ../knowhow/scripts/publish.sh stable",
+    "publish:stable": "bash ../knowhow/scripts/publish.sh stable"
+  },
+  "keywords": [
+    "knowhow",
+    "script",
+    "isolated-vm",
+    "sandbox"
+  ],
+  "author": "Tyvm AI",
+  "license": "MIT",
+  "peerDependencies": {
+    "@tyvm/knowhow": "*"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "isolated-vm": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.6.3",
+    "typescript": "^5.0.0"
+  }
+}

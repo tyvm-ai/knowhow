@@ -63,6 +63,10 @@ export class GenericOpenAiClient implements GenericClient {
     });
   }
 
+  /**
+   * Execute a function with timeout, retries, and exponential backoff.
+   * Retriable errors: 5xx, timeout, ECONNRESET, ETIMEDOUT, rate limits (429).
+   */
   reasoningEffort(
     messages: CompletionOptions["messages"]
   ): "low" | "medium" | "high" {
@@ -155,12 +159,11 @@ export class GenericOpenAiClient implements GenericClient {
         max_completion_tokens: Math.max(options.max_tokens ?? 0, 16_000),
         reasoning_effort: this.resolveReasoningEffort(options),
       }),
-
       ...(options.tools && {
         tools: options.tools,
         tool_choice: "auto",
       }),
-    });
+    }, { signal: options.signal });
 
     const usdCost = this.calculateCost(options.model, response.usage);
 
@@ -187,6 +190,64 @@ export class GenericOpenAiClient implements GenericClient {
       usd_cost: usdCost,
     };
   }
+
+  /**
+   * Streams a chat completion token-by-token.
+   * Yields delta content strings as they arrive, then yields a final
+   * CompletionResponse with usage info when the stream ends.
+   */
+  async *createChatCompletionStream(
+    options: CompletionOptions
+  ): AsyncGenerator<{ delta?: string; done: boolean; usage?: CompletionResponse['usage']; usd_cost?: number }> {
+    if (OpenAiResponsesOnlyModels.includes(options.model)) {
+      // Fallback: non-streaming for Responses-only models
+      const result = await this.createChatCompletion(options);
+      yield { delta: result.choices[0]?.message?.content ?? "", done: false };
+      yield { done: true, usage: result.usage, usd_cost: result.usd_cost };
+      return;
+    }
+
+    const openaiMessages = options.messages.map((msg) => {
+      if (msg.role === "tool") {
+        return {
+          ...msg,
+          content: msg.content || "",
+          role: "tool",
+          tool_call_id: msg.tool_call_id,
+        } as ChatCompletionToolMessageParam;
+      }
+      return msg as ChatCompletionMessageParam;
+    });
+
+    const stream = await this.client.chat.completions.create({
+      model: options.model,
+      messages: openaiMessages,
+      max_tokens: options.max_tokens,
+      stream: true,
+      stream_options: { include_usage: true },
+      ...(options.tools && { tools: options.tools, tool_choice: "auto" }),
+    }, { signal: options.signal });
+
+    let usage: CompletionResponse['usage'] | undefined;
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta?.content;
+      if (delta) {
+        yield { delta, done: false };
+      }
+      if (chunk.usage) {
+        usage = {
+          prompt_tokens: chunk.usage.prompt_tokens ?? 0,
+          completion_tokens: chunk.usage.completion_tokens ?? 0,
+          total_tokens: chunk.usage.total_tokens ?? 0,
+        };
+      }
+    }
+    const usdCost = usage
+      ? this.calculateCost(options.model, usage as OpenAI.ChatCompletion["usage"])
+      : undefined;
+    yield { done: true, usage, usd_cost: usdCost };
+  }
+
   /**
    * Creates a completion using the OpenAI Responses API.
    * Used for models that only support the Responses API (e.g. gpt-5.3-codex, gpt-5.4).
@@ -374,6 +435,13 @@ export class GenericOpenAiClient implements GenericClient {
     return OpenAiTextPricing;
   }
 
+  getPricing(model?: string): import("./pricing/types").ModelPricing | Record<string, import("./pricing/types").ModelPricing> | undefined {
+    if (model !== undefined) {
+      return OpenAiTextPricing[model as keyof typeof OpenAiTextPricing] as import("./pricing/types").ModelPricing | undefined;
+    }
+    return OpenAiTextPricing as unknown as Record<string, import("./pricing/types").ModelPricing>;
+  }
+
   calculateCost(
     model: string,
     usage:
@@ -453,7 +521,7 @@ export class GenericOpenAiClient implements GenericClient {
       prompt: options.prompt,
       response_format: options.response_format || "verbose_json",
       temperature: options.temperature,
-    });
+    }, { signal: options.signal });
 
     // Calculate cost: $0.006 per minute for Whisper
     const duration = typeof response === "object" && "duration" in response && typeof response.duration === "number"
@@ -489,7 +557,7 @@ export class GenericOpenAiClient implements GenericClient {
       voice: options.voice as any,
       response_format: options.response_format || "mp3",
       speed: options.speed,
-    });
+    }, { signal: options.signal });
 
     const buffer = Buffer.from(await response.arrayBuffer());
 
@@ -518,7 +586,7 @@ export class GenericOpenAiClient implements GenericClient {
       style: options.style,
       response_format: options.response_format,
       user: options.user,
-    });
+    }, { signal: options.signal });
 
     // Cost calculation varies by model and settings
     // DALL-E 3: $0.040-$0.120 per image depending on quality/size

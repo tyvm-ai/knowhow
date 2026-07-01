@@ -15,6 +15,8 @@ import { SessionManager } from "./SessionManager";
 import { TaskRegistry } from "./TaskRegistry";
 import { MediaProcessorService } from "./MediaProcessorService";
 
+import { ConversionService } from "./conversion/ConversionService";
+
 export * from "./AgentService";
 export * from "./EventService";
 export * from "./flags";
@@ -34,6 +36,7 @@ export * from "./SyncedAgentWatcher";
 export * from "./SyncerService";
 export * from "./watchers";
 export { Clients } from "../clients";
+export * from "./conversion";
 
 let Singletons = {} as {
   Tools: ToolsService;
@@ -48,6 +51,7 @@ let Singletons = {} as {
   Plugins: PluginService;
   Clients: AIClient;
   MediaProcessor: MediaProcessorService;
+  Conversion: ConversionService;
 };
 
 export const services = (): typeof Singletons => {
@@ -55,6 +59,8 @@ export const services = (): typeof Singletons => {
     const Tools = new ToolsService();
     const Events = new EventService();
     const Agents = new AgentService(Tools, Events);
+    const MediaProcessor = new MediaProcessorService(Clients);
+    const Conversion = new ConversionService(Clients, MediaProcessor);
     const Plugins = new PluginService({
       Agents,
       Events,
@@ -71,7 +77,8 @@ export const services = (): typeof Singletons => {
       Embeddings: new EmbeddingsService(),
       Flags: new FlagsService(),
       Mcp: new McpService(),
-      MediaProcessor: new MediaProcessorService(Clients),
+      MediaProcessor,
+      Conversion,
       Plugins,
       Tools,
       knowhowApiClient: new KnowhowSimpleClient(),

@@ -1,6 +1,6 @@
 import ivm from "isolated-vm";
-import { services, ToolsService } from "../../services";
-import { AIClient, Clients } from "../../clients";
+import { ToolsService } from "@tyvm/knowhow/ts_build/src/services/Tools";
+import { AIClient } from "@tyvm/knowhow/ts_build/src/clients";
 import { SandboxContext } from "./SandboxContext";
 import { ScriptTracer } from "./ScriptTracer";
 import { ScriptPolicyEnforcer } from "./ScriptPolicy";
@@ -9,7 +9,6 @@ import {
   ExecutionResult,
   ResourceQuotas,
   SecurityPolicy,
-  ExecutionTrace,
 } from "./types";
 
 /**
@@ -45,30 +44,28 @@ export class ScriptExecutor {
    * Validate that Node.js environment is properly configured for isolated-vm
    */
   private validateNodejsEnvironment(): void {
-    // Get Node.js version
     const nodeVersion = process.version;
-    const majorVersion = parseInt(nodeVersion.slice(1).split('.')[0], 10);
-    
-    // Check if Node.js 20+ and --no-node-snapshot flag is required
+    const majorVersion = parseInt(nodeVersion.slice(1).split(".")[0], 10);
+
     if (majorVersion >= 20) {
-      const hasNoNodeSnapshot = process.execArgv.includes('--no-node-snapshot');
-      
+      const hasNoNodeSnapshot = process.execArgv.includes("--no-node-snapshot");
+
       if (!hasNoNodeSnapshot) {
         const errorMessage = [
           `Node.js ${nodeVersion} detected. The executeScript tool requires the --no-node-snapshot flag for isolated-vm compatibility.`,
-          '',
-          'This flag is automatically included when running knowhow commands via the CLI (e.g., `knowhow agent`, `knowhow chat`).',
-          '',
-          'If you are programmatically using knowhow or running custom scripts:',
-          '1. Start your application with: node --no-node-snapshot your-app.js',
+          "",
+          "This flag is automatically included when running knowhow commands via the CLI (e.g., `knowhow agent`, `knowhow chat`).",
+          "",
+          "If you are programmatically using knowhow or running custom scripts:",
+          "1. Start your application with: node --no-node-snapshot your-app.js",
           '2. Or update your package.json scripts to include the flag:',
           '   "scripts": {',
           '     "start": "node --no-node-snapshot dist/index.js"',
-          '   }',
-          '',
-          'Note: This flag is required for Node.js 20+ to ensure isolated-vm works correctly.'
-        ].join('\n');
-        
+          "   }",
+          "",
+          "Note: This flag is required for Node.js 20+ to ensure isolated-vm works correctly.",
+        ].join("\n");
+
         throw new Error(errorMessage);
       }
     }
@@ -88,7 +85,6 @@ export class ScriptExecutor {
       quotas,
       policy: {
         ...policy,
-        // Don't log the full tool lists
         allowlistedTools: `${policy.allowlistedTools.length} tools`,
         denylistedTools: `${policy.denylistedTools.length} tools`,
       },
@@ -96,7 +92,10 @@ export class ScriptExecutor {
 
     try {
       // Validate script
-      const validation = policyEnforcer.validateScript(request.script, policy.allowNetworkAccess);
+      const validation = policyEnforcer.validateScript(
+        request.script,
+        policy.allowNetworkAccess
+      );
       if (!validation.valid) {
         tracer.emitEvent("script_validation_failed", {
           issues: validation.issues,
@@ -123,7 +122,6 @@ export class ScriptExecutor {
       );
 
       // Execute script with timeout
-      const startTime = Date.now();
       const timeoutMs = quotas.maxExecutionTimeMs;
 
       const result = await this.executeWithTimeout(
@@ -134,9 +132,7 @@ export class ScriptExecutor {
         policyEnforcer
       );
 
-      const executionTime = Date.now() - startTime;
       tracer.emitEvent("execution_complete", {
-        executionTimeMs: executionTime,
         finalUsage: policyEnforcer.getUsage(),
       });
 
@@ -184,7 +180,6 @@ export class ScriptExecutor {
         reject(new Error(`Script execution timed out after ${timeoutMs}ms`));
       }, timeoutMs);
 
-      // Use isolated-vm for secure execution
       this.executeScriptSecure(script, context, tracer, policyEnforcer)
         .then((result) => {
           clearTimeout(timeoutId);
@@ -210,28 +205,19 @@ export class ScriptExecutor {
       note: "Using isolated-vm for secure execution",
     });
 
-    // Create isolated VM instance with memory limit
     const isolate = new ivm.Isolate({
       memoryLimit: policyEnforcer.getQuotas().maxMemoryMb,
     });
 
     try {
-      // Create new context within the isolate
       const vmContext = await isolate.createContext();
 
       tracer.emitEvent("vm_context_created", {});
 
-      // Set up the global environment in the isolated context
       await this.setupIsolatedContext(vmContext, context, tracer);
 
       tracer.emitEvent("script_compilation_start", {});
 
-      // Compile the script.
-      // Many scripts follow the pattern: define functions, then call `main();` at the end.
-      // The IIFE wrapper captures the *return value* of the function body, but `main();`
-      // is an expression statement — it doesn't return anything from the IIFE.
-      // We fix this by rewriting the last bare expression-statement into `return <expr>;`
-      // so that the script's return value (e.g. the object from main()) is captured.
       const scriptWithReturn = this.injectReturnForLastExpression(script);
 
       const wrappedScript = `
@@ -246,9 +232,6 @@ export class ScriptExecutor {
       tracer.emitEvent("script_compilation_complete", {});
       tracer.emitEvent("script_execution_start", {});
 
-      // Execute the script and get the result
-      // Note: do NOT set timeout here — it kills the isolate while awaiting host async promises.
-      // The outer executeWithTimeout wrapper handles wall-clock timeout instead.
       const result = await compiledScript.run(vmContext, {
         promise: true,
         copy: true,
@@ -260,7 +243,6 @@ export class ScriptExecutor {
 
       return result;
     } finally {
-      // Clean up the isolate
       isolate.dispose();
       tracer.emitEvent("vm_cleanup_complete", {});
     }
@@ -279,7 +261,6 @@ export class ScriptExecutor {
     const globalRef = vmContext.global;
     await globalRef.set("globalThis", globalRef.derefInto());
 
-    // Helper function to expose async host functions
     const exposeAsync = async (
       name: string,
       fn: (...a: any[]) => Promise<any>
@@ -290,22 +271,16 @@ export class ScriptExecutor {
           const result = await fn(...args);
           const safeResult = result !== undefined ? result : null;
           const plainResult =
-            safeResult !== null && typeof safeResult === 'object'
+            safeResult !== null && typeof safeResult === "object"
               ? JSON.parse(JSON.stringify(safeResult))
               : safeResult;
-          // copyInto() transfers the value into the isolate heap so it's directly usable
           return new ivm.ExternalCopy(plainResult).copyInto();
         })
       );
-      // Use applySyncPromise so the script isolate suspends and yields the Node.js event loop
-      // back to the host while waiting for async host operations (MCP stdio calls etc.).
-      // Without this, the ivm isolate blocks the event loop and stdio-based MCP transports
-      // can never deliver their responses → deadlock.
       await vmContext.eval(`
         globalThis.${name} = (...a) =>
           new Promise((resolve, reject) => {
             try {
-              // applySyncPromise does not support result options — the Reference fn returns ExternalCopy
               const result = __host_${name}.applySyncPromise(undefined, a,
                 { arguments: { copy: true } });
               resolve(result);
@@ -314,7 +289,6 @@ export class ScriptExecutor {
       `);
     };
 
-    // Helper function to expose sync host functions
     const exposeSync = async (name: string, fn: (...a: any[]) => any) => {
       await globalRef.set(
         `__host_${name}`,
@@ -330,7 +304,6 @@ export class ScriptExecutor {
       `);
     };
 
-    // Expose async sandbox functions
     await exposeAsync("callTool", async (tool, params) => {
       try {
         const result = await sandboxContext.callTool(tool as string, params);
@@ -345,13 +318,11 @@ export class ScriptExecutor {
     );
     await exposeAsync("sleep", (ms) => sandboxContext.sleep(ms));
 
-    // Expose sync sandbox functions
     await exposeSync("createArtifact", (name, content, type) =>
       sandboxContext.createArtifact(name as string, content, type)
     );
     await exposeSync("getQuotaUsage", () => sandboxContext.getQuotaUsage());
 
-    // Set up console bridging with individual function references
     for (const level of ["log", "info", "warn", "error"] as const) {
       await globalRef.set(
         `__console_${level}`,
@@ -373,19 +344,6 @@ export class ScriptExecutor {
   }
 
   /**
-   * Legacy fallback execution method
-   */
-  private async executeScriptFallback(
-    script: string,
-    context: SandboxContext,
-    tracer: ScriptTracer,
-    policyEnforcer: ScriptPolicyEnforcer
-  ): Promise<any> {
-    // This is a fallback method that could use vm2 or other sandboxing
-    throw new Error("Isolated-vm execution failed, no fallback available");
-  }
-
-  /**
    * Get default quotas
    */
   getDefaultQuotas(): ResourceQuotas {
@@ -399,43 +357,42 @@ export class ScriptExecutor {
     return { ...this.defaultPolicy };
   }
 
-
   /**
-   * Rewrite the last bare expression-statement in a script to use `return` so
-   * that the value propagates out of the IIFE wrapper.
-   *
-   * For example:
-   *   main();        →  return main();
-   *   main()         →  return main()
-   *   someExpr;      →  return someExpr;
-   *
-   * We only transform the last non-empty, non-comment line that looks like a
-   * plain expression statement (i.e. does NOT start with keywords that aren't
-   * valid in expression position: `function`, `class`, `const`, `let`, `var`,
-   * `if`, `for`, `while`, `do`, `switch`, `try`, `return`, `throw`, `break`,
-   * `continue`, `import`, `export`, `{`).
+   * Rewrite the last bare expression-statement in a script to use `return`
    */
   private injectReturnForLastExpression(script: string): string {
-    const lines = script.split('\n');
+    const lines = script.split("\n");
 
-    // Walk backwards to find the last non-empty, non-comment line
+    // Track whether we're inside a string literal by counting unescaped quotes
+    // Simple heuristic: if the script's last top-level statement ends with });
+    // or }); patterns, it's a call expression — don't inject return anywhere.
+    // Walk backwards only through "real" top-level lines.
     for (let i = lines.length - 1; i >= 0; i--) {
       const trimmed = lines[i].trim();
-      if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*')) {
+      if (
+        !trimmed ||
+        trimmed.startsWith("//") ||
+        trimmed.startsWith("*") ||
+        trimmed.startsWith("/*") ||
+        // Inside a multiline string argument — lines that don't look like JS
+        // (no semicolons, no JS keywords, not a closing bracket line)
+        // but DO contain characters typical of string content mid-injection.
+        // Safest: skip any line that contains a quote char mid-content.
+        (trimmed.includes('"') && !trimmed.startsWith('"') && !trimmed.endsWith('";') && !trimmed.endsWith('",'))
+      ) {
         continue;
       }
 
-      // Skip lines that start with statement keywords — these can't be returned
-      const statementKeywords = /^(function\s|class\s|const\s|let\s|var\s|if\s*[(]|for\s*[(]|while\s*[(]|do\s*[{]|switch\s*[(]|try\s*[{]|return\s|throw\s|break;|continue;|import\s|export\s|[{])/;
+      const statementKeywords =
+        /^(function\s|class\s|const\s|let\s|var\s|if\s*[(]|for\s*[(]|while\s*[(]|do\s*[{]|switch\s*[(]|try\s*[{]|return\s|throw\s|break;|continue;|import\s|export\s|[{]|})/;
       if (statementKeywords.test(trimmed)) {
-        break; // last meaningful line is a statement — don't touch it
+        break;
       }
 
-      // It looks like an expression statement — prepend `return`
       lines[i] = lines[i].replace(trimmed, `return ${trimmed}`);
-      return lines.join('\n');
+      return lines.join("\n");
     }
 
-    // No suitable last expression found — return script unchanged
     return script;
-  }}
+  }
+}

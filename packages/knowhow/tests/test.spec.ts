@@ -136,7 +136,7 @@ describe("Agent Tools Tests", () => {
     const result = await patchFile(filePath, patch);
 
     // Verify the function returns a success message
-    expect(result).toContain("Patch applied successfully");
+    expect(result).toContain("Patch applied to");
   }, 60000); // Increase timeout to 60 seconds
 
   test("execCommand should execute a system command and return its output", async () => {

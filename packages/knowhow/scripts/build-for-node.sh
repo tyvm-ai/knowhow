@@ -7,11 +7,10 @@
 # This script:
 #   1. Compiles TypeScript with Node 20 (required for workspace deps)
 #   2. Creates /tmp/knowhow-node-<major> with the compiled output
-#   3. Installs the correct isolated-vm version for the target node in that dir
-#   4. Symlinks the package globally for ALL installed nvm versions matching the target
+#   3. Symlinks the package globally for ALL installed nvm versions matching the target
 #
-# This approach avoids polluting the workspace node_modules with a different
-# isolated-vm ABI, so Node 20 and Node 24 builds can coexist.
+# Note: isolated-vm is now in @tyvm/knowhow-module-script — install that separately
+# for the correct node version if you need script execution support.
 
 set -e
 
@@ -81,22 +80,10 @@ fi
 
 # Use the last (latest patch) for building
 TARGET_NODE_BIN="${TARGET_NODE_BINS[${#TARGET_NODE_BINS[@]}-1]}"
-TARGET_NODE_NPM="$(dirname "$TARGET_NODE_BIN")/npm"
-TARGET_NODE_DIR="$(dirname "$TARGET_NODE_BIN")"
 TARGET_NODE_ACTUAL_VERSION="$("$TARGET_NODE_BIN" --version)"
 
 echo "🎯 Found Node $TARGET_VERSION installs: ${TARGET_NODE_BINS[*]}"
 echo "🔨 Building with: $TARGET_NODE_BIN ($TARGET_NODE_ACTUAL_VERSION)"
-
-# --- Pick the right isolated-vm version for the target node ---
-# isolated-vm@5.x supports Node <22, isolated-vm@6.x requires Node >=22
-if [ "$TARGET_MAJOR" -ge 22 ]; then
-  IVM_VERSION="^6.0.0"
-  echo "📌 Using isolated-vm@6.x (Node >= 22)"
-else
-  IVM_VERSION="^5.0.4"
-  echo "📌 Using isolated-vm@5.x (Node < 22)"
-fi
 
 # --- Create staging directory ---
 STAGING_DIR="/tmp/knowhow-node-${TARGET_MAJOR}"
@@ -114,13 +101,11 @@ for item in README.md LICENSE .npmignore; do
   [ -e "$PACKAGE_DIR/$item" ] && cp "$PACKAGE_DIR/$item" "$STAGING_DIR/" || true
 done
 
-# --- Patch package.json for target isolated-vm version ---
-echo "📝 Patching package.json for isolated-vm $IVM_VERSION..."
+# --- Patch package.json to remove workspace protocol deps ---
+echo "📝 Patching package.json..."
 "$NODE20_BIN" -e "
   const fs = require('fs');
   const pkg = JSON.parse(fs.readFileSync('$STAGING_DIR/package.json', 'utf8'));
-  pkg.dependencies['isolated-vm'] = '$IVM_VERSION';
-  // Remove workspace protocol deps that won't resolve outside the monorepo
   if (pkg.dependencies) {
     for (const [k, v] of Object.entries(pkg.dependencies)) {
       if (String(v).startsWith('workspace:')) delete pkg.dependencies[k];
@@ -130,13 +115,14 @@ echo "📝 Patching package.json for isolated-vm $IVM_VERSION..."
   console.log('✅ package.json patched');
 "
 
-# --- Install deps in staging dir using target node ---
+# --- Install dependencies in staging dir with target Node ---
+TARGET_NODE_NPM="$(dirname "$TARGET_NODE_BIN")/npm"
 echo ""
 echo "📦 Installing dependencies in staging dir with Node $TARGET_MAJOR..."
 cd "$STAGING_DIR"
-# Prepend target node bin to PATH so npm/node-gyp uses the correct node version
-PATH="$TARGET_NODE_DIR:$PATH" "$TARGET_NODE_NPM" install --no-save 2>&1
-echo "✅ Dependencies installed (isolated-vm compiled for Node $TARGET_MAJOR)"
+"$TARGET_NODE_NPM" install --omit=dev
+echo "✅ Dependencies installed"
+cd "$PACKAGE_DIR"
 
 # --- Symlink globally for ALL matching Node version installs ---
 PKG_NAME="$("$NODE20_BIN" -e "console.log(require('$STAGING_DIR/package.json').name)")"

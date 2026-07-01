@@ -1,5 +1,8 @@
 import { EventEmitter } from "events";
 import { IAgent } from "../agents/interface";
+import { logger } from "../logger";
+
+export type LogLevel = "info" | "warn" | "error";
 
 export type EventHandlerFn = (...args: any[]) => any;
 
@@ -31,6 +34,34 @@ type ManagedListenerRecord = {
   blocking: boolean;
 };
 
+/**
+ * Default console handler for plugin:log events.
+ * Active when no renderer has taken over (e.g. worker mode, CLI before chat starts).
+ * Respects logger.silence() — if the logger is silenced, this handler is a no-op.
+ *
+ * Uses process.stdout/stderr directly to avoid infinite recursion
+ * with logger.installConsoleOverload() which overrides console.log/warn.
+ */
+function defaultConsoleLogHandler(event: {
+  source: string;
+  message: string;
+  level: LogLevel;
+}): void {
+  if (logger.isSilenced()) return;
+  const prefix = event.source ? `[${event.source}] ` : "";
+  const line = `${prefix}${event.message}\n`;
+  switch (event.level) {
+    case "warn":
+      process.stderr.write(line);
+      break;
+    case "error":
+      process.stderr.write(line);
+      break;
+    default:
+      process.stdout.write(line);
+  }
+}
+
 export class EventService extends EventEmitter {
   private blockingHandlers: Map<string, EventHandler[]> = new Map();
   private managedListeners: Map<string, ManagedListenerRecord> = new Map();
@@ -45,6 +76,7 @@ export class EventService extends EventEmitter {
   constructor() {
     super();
     this.setMaxListeners(100);
+    this.on(this.eventTypes.pluginLog, defaultConsoleLogHandler);
   }
 
   /**
@@ -232,7 +264,7 @@ export class EventService extends EventEmitter {
   log(
     source: string,
     message: string,
-    level: "info" | "warn" | "error" = "info"
+    level: LogLevel = "info"
   ): void {
     this.emit(this.eventTypes.pluginLog, {
       source,

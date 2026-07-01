@@ -17,6 +17,23 @@ interface TextContent {
   text: string;
 }
 
+/**
+ * Regex that matches common image file paths (absolute, relative, or just filenames)
+ * ending in a known image extension.
+ */
+const IMAGE_PATH_REGEX =
+  /(?:^|[\s"'(,\[{])([^\s"'(,\[{]*?\.(?:png|jpe?g|gif|webp|bmp|svg))(?=$|[\s"'),\]}])/gi;
+
+const IMAGE_EXTENSIONS = ["png", "jpeg", "jpg", "gif", "webp", "bmp", "svg"];
+
+/**
+ * Sentinel prefix used to identify image-path hint blocks injected by this processor.
+ * Any existing hint block starting with this prefix is stripped before re-evaluation,
+ * ensuring the hint is idempotent and never duplicated across processor invocations.
+ */
+const TIP_SENTINEL = "[TIP: An image file path was detected:";
+const TIP_SENTINEL_MULTI = "[TIP: Image file paths were detected.";
+
 export class Base64ImageProcessor {
   private imageDetail: "auto" | "low" | "high" = "auto";
   private supportedFormats = ["png", "jpeg", "jpg", "gif", "webp"];
@@ -118,6 +135,68 @@ export class Base64ImageProcessor {
     }
   }
 
+  /**
+   * Finds all image file paths mentioned in a text string.
+   * Returns deduplicated list of paths like "/tmp/screenshot.png" or "screenshot.jpg".
+   */
+  private findImageFilePaths(text: string): string[] {
+    const found: string[] = [];
+    const seen = new Set<string>();
+    IMAGE_PATH_REGEX.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = IMAGE_PATH_REGEX.exec(text)) !== null) {
+      const filePath = match[1];
+      if (filePath && !seen.has(filePath)) {
+        seen.add(filePath);
+        found.push(filePath);
+      }
+    }
+    return found;
+  }
+
+  /**
+   * Appends a hint to a text string if image file paths are detected.
+   * The hint tells the model it can use loadImageAsBase64 to view the image.
+   */
+  private addImagePathHint(text: string): string {
+    // If a hint was already injected into this text, leave it unchanged.
+    // Since we only process the last message per call, a hint is added once
+    // and then the message becomes historical — it is never processed again.
+    if (text.includes(TIP_SENTINEL) || text.includes(TIP_SENTINEL_MULTI)) {
+      return text;
+    }
+
+    const paths = this.findImageFilePaths(text);
+    if (paths.length === 0) return text;
+
+    const hints = paths.map(
+      (p) =>
+        `loadImageAsBase64("${p}") to view the image at ${p}`
+    );
+
+    const hintBlock =
+      paths.length === 1
+        ? `\n\n[TIP: An image file path was detected: ${paths[0]}. Use the \`loadImageAsBase64\` tool with this path to load and view the image: ${hints[0]}]`
+        : `\n\n[TIP: Image file paths were detected. Use the \`loadImageAsBase64\` tool to load and view them:\n${hints.map((h) => `  - ${h}`).join("\n")}]`;
+
+    return text + hintBlock;
+  }
+
+  /**
+   * Applies image path hints to a message's text content items.
+   */
+  private applyImagePathHintsToMessage(message: Message): void {
+    if (typeof message.content === "string") {
+      message.content = this.addImagePathHint(message.content);
+    } else if (Array.isArray(message.content)) {
+      for (const item of message.content) {
+        if (item && (item as TextContent).type === "text" && typeof (item as TextContent).text === "string") {
+          (item as TextContent).text = this.addImagePathHint((item as TextContent).text);
+        }
+      }
+    }
+  }
+
   private processToolCallArguments(message: Message): void {
     if (message.tool_calls) {
       for (const toolCall of message.tool_calls) {
@@ -198,22 +277,38 @@ export class Base64ImageProcessor {
 
   createProcessor(): MessageProcessorFunction {
     return (originalMessages: Message[], modifiedMessages: Message[]) => {
-      for (const message of modifiedMessages) {
-        // Process user messages (images from user input)
-        if (message.role === "user") {
-          this.processMessageContent(message);
-        }
-        
-        // Process tool messages (images from loadImageAsBase64 tool)
-        // Tool responses come back as JSON strings that need to be parsed
-        // and converted to proper image content before the agent sees them
-        if (message.role === "tool") {
-          this.processToolMessageContent(message);
-        }
+      // Only process the last (newest) message for hint injection.
+      // Processing all historical messages on every call would re-append hints
+      // to already-processed messages, causing the hint to multiply and busting
+      // Anthropic's prefix cache (which requires byte-identical prior messages).
+      const lastIndex = modifiedMessages.length - 1;
+      if (lastIndex < 0) return;
 
-        // Process tool calls in any message
-        this.processToolCallArguments(message);
+      const lastMessage = modifiedMessages[lastIndex];
+
+      // Process user messages (images from user input)
+      if (lastMessage.role === "user") {
+        this.processMessageContent(lastMessage);
       }
+
+      // Process tool messages (images from loadImageAsBase64 tool)
+      // Tool responses come back as JSON strings that need to be parsed
+      // and converted to proper image content before the agent sees them
+      if (lastMessage.role === "tool") {
+        this.processToolMessageContent(lastMessage);
+        // After processing tool content (which may not convert to image if it's plain text
+        // describing a screenshot path), add hints for any image file paths found in the text.
+        this.applyImagePathHintsToMessage(lastMessage);
+      }
+
+      // Also apply hints to assistant messages — e.g. when an assistant message
+      // contains the result of a screenshot tool that returned a file path.
+      if (lastMessage.role === "assistant") {
+        this.applyImagePathHintsToMessage(lastMessage);
+      }
+
+      // Process tool calls in any message
+      this.processToolCallArguments(lastMessage);
     };
   }
 

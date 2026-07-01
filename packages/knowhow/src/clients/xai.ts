@@ -258,6 +258,13 @@ export class GenericXAIClient implements GenericClient {
     return XaiTextPricing;
   }
 
+  getPricing(model?: string): import("./pricing/types").ModelPricing | Record<string, import("./pricing/types").ModelPricing> | undefined {
+    if (model !== undefined) {
+      return XaiTextPricing[model as keyof typeof XaiTextPricing] as import("./pricing/types").ModelPricing | undefined;
+    }
+    return XaiTextPricing as unknown as Record<string, import("./pricing/types").ModelPricing>;
+  }
+
   calculateCost(
     model: string,
     usage: OpenAI.ChatCompletion["usage"]
@@ -445,24 +452,29 @@ export class GenericXAIClient implements GenericClient {
 
     // Map XAI status to standard status
     let mappedStatus: "queued" | "in_progress" | "completed" | "failed" | "expired";
-    switch (statusData.status) {
-      case "pending":
-        mappedStatus = "queued";
-        break;
-      case "processing":
-        mappedStatus = "in_progress";
-        break;
-      case "succeeded":
-        mappedStatus = "completed";
-        break;
-      case "failed":
-        mappedStatus = "failed";
-        break;
-      case "expired":
-        mappedStatus = "expired";
-        break;
-      default:
-        mappedStatus = "queued";
+    // XAI returns video.url directly when complete (no status:"succeeded")
+    if (statusData.video?.url) {
+      mappedStatus = "completed";
+    } else {
+      switch (statusData.status) {
+        case "pending":
+          mappedStatus = "queued";
+          break;
+        case "processing":
+          mappedStatus = "in_progress";
+          break;
+        case "succeeded":
+          mappedStatus = "completed";
+          break;
+        case "failed":
+          mappedStatus = "failed";
+          break;
+        case "expired":
+          mappedStatus = "expired";
+          break;
+        default:
+          mappedStatus = "queued";
+      }
     }
 
     const response: VideoStatusResponse = {
@@ -485,8 +497,25 @@ export class GenericXAIClient implements GenericClient {
   async downloadVideo(
     options: FileDownloadOptions
   ): Promise<FileDownloadResponse> {
-    // XAI returns a URL for the video, not raw bytes from their API
-    const url = options.uri || options.fileId;
+    // XAI returns a presigned URL from the status endpoint, not raw bytes.
+    // options.fileId is the request_id (jobId) — we need to fetch the status
+    // to get the actual video URL, then download from there.
+    let url = options.uri;
+    if (!url) {
+      const statusResponse = await fetch(
+        `https://api.x.ai/v1/videos/${options.fileId}`,
+        { headers: { Authorization: `Bearer ${this.apiKey}` } }
+      );
+      if (!statusResponse.ok) {
+        const errorText = await statusResponse.text();
+        throw new Error(`XAI video status fetch failed: ${statusResponse.status} ${errorText}`);
+      }
+      const statusData = await statusResponse.json();
+      url = statusData.video?.url;
+      if (!url) {
+        throw new Error(`XAI video not ready yet or no URL available (status: ${statusData.status})`);
+      }
+    }
 
     const response = await fetch(url);
     if (!response.ok) {

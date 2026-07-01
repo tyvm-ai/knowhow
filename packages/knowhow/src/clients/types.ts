@@ -1,4 +1,10 @@
-export type ModelModality = "completion" | "embedding" | "image" | "audio" | "video" | "transcription";
+export type ModelModality =
+  | "completion"
+  | "embedding"
+  | "image"
+  | "audio"
+  | "video"
+  | "transcription";
 
 export type MessageContent =
   | { type: "text"; text: string }
@@ -8,7 +14,7 @@ export type MessageContent =
 
 export interface Message {
   role: "system" | "user" | "assistant" | "tool";
-  content?: string | MessageContent[];
+  content?: string | MessageContent[] | null;
 
   name?: string;
   tool_call_id?: string;
@@ -16,7 +22,7 @@ export interface Message {
 }
 
 export interface OutputMessage extends Message {
-  content: string;
+  content?: string | null;
 }
 
 export interface ToolProp {
@@ -51,7 +57,30 @@ export interface ToolCall {
   };
 }
 
-export interface CompletionOptions {
+export interface RetryOptions {
+  /**
+   * Request timeout in milliseconds per attempt. If the request does not complete
+   * within this time it is aborted and retried according to maxRetries.
+   */
+  timeout?: number;
+  /**
+   * Maximum number of retry attempts for retriable errors (5xx, timeout, ECONNRESET, 429).
+   * Default: 2. Set to 0 to disable retries.
+   */
+  maxRetries?: number;
+  /**
+   * Base backoff delay in milliseconds for exponential retry backoff.
+   * Default: 1000ms. Each retry waits backoffMs * 2^attempt ms.
+   */
+  backoffMs?: number;
+  /**
+   * Optional external AbortSignal. When the signal is aborted the current
+   * attempt is cancelled immediately and no further retries are made.
+   */
+  signal?: AbortSignal;
+}
+
+export interface CompletionOptions extends RetryOptions {
   model: string;
   messages: Message[];
   tools?: Tool[];
@@ -107,7 +136,17 @@ export interface CompletionResponse {
   usd_cost?: number;
 }
 
-export interface EmbeddingOptions {
+/** A single chunk yielded by a streaming completion. */
+export interface StreamChunk {
+  /** Incremental text token(s). Only present on intermediate chunks. */
+  delta?: string;
+  /** True on the final chunk (no delta, but usage/cost available). */
+  done: boolean;
+  usage?: TokenUsage;
+  usd_cost?: number;
+}
+
+export interface EmbeddingOptions extends RetryOptions {
   input: string;
   model?: string;
 }
@@ -126,7 +165,7 @@ export interface EmbeddingResponse {
   usd_cost?: number;
 }
 
-export interface AudioTranscriptionOptions {
+export interface AudioTranscriptionOptions extends RetryOptions {
   file: Blob | File | any; // Support for Node.js ReadStream or web File/Blob
   model?: string;
   language?: string;
@@ -156,7 +195,7 @@ export interface AudioTranscriptionResponse {
   usd_cost?: number;
 }
 
-export interface AudioGenerationOptions {
+export interface AudioGenerationOptions extends RetryOptions {
   model: string;
   input: string;
   voice: string; // e.g. "alloy", "echo", "fable", "onyx", "nova", "shimmer" for OpenAI; "Kore", "Puck" etc. for Gemini
@@ -170,7 +209,7 @@ export interface AudioGenerationResponse {
   usd_cost?: number;
 }
 
-export interface ImageGenerationOptions {
+export interface ImageGenerationOptions extends RetryOptions {
   model: string;
   prompt: string;
   n?: number;
@@ -191,7 +230,7 @@ export interface ImageGenerationResponse {
   usd_cost?: number;
 }
 
-export interface VideoGenerationOptions {
+export interface VideoGenerationOptions extends RetryOptions {
   model: string;
   prompt: string;
   duration?: number; // seconds
@@ -276,6 +315,8 @@ export interface FileDownloadResponse {
 export interface GenericClient {
   setKey(key: string): void;
   createChatCompletion(options: CompletionOptions): Promise<CompletionResponse>;
+  /** Optional streaming variant — yields incremental tokens then a final done chunk. */
+  createChatCompletionStream?(options: CompletionOptions): AsyncGenerator<StreamChunk>;
   createEmbedding(options: EmbeddingOptions): Promise<EmbeddingResponse>;
   createAudioTranscription?(
     options: AudioTranscriptionOptions
@@ -301,7 +342,9 @@ export interface GenericClient {
    * When modality is provided, return only models for that modality (static list).
    * When omitted, return ALL models (backward compat — may do a live API call).
    */
-  getModels(modality?: ModelModality): Promise<{ id: string; modality?: ModelModality[] }[]>;
+  getModels(
+    modality?: ModelModality
+  ): Promise<{ id: string; modality?: ModelModality[] }[]>;
   /**
    * Returns the context window limit and compression threshold for a given model,
    * or undefined if the model is not known to this client.
@@ -312,4 +355,10 @@ export interface GenericClient {
   getContextLimit?(
     model: string
   ): { contextLimit: number; threshold: number } | undefined;
+  /**
+   * Returns the pricing entry for a specific model, or the entire pricing map if no model is given.
+   * Returns undefined for a specific model if no pricing is known.
+   * Only implemented by HttpClient-based providers that have been given a pricing map via setPrices().
+   */
+  getPricing?(model?: string): import("./pricing/types").ModelPricing | Record<string, import("./pricing/types").ModelPricing> | undefined;
 }

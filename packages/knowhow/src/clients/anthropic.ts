@@ -329,12 +329,22 @@ export class GenericAnthropicClient implements GenericClient {
             },
           } as Anthropic.ContentBlockParam;
         } else {
+          // Data URL or raw base64. Anthropic's base64 source expects the
+          // media_type separately and the data WITHOUT the
+          // "data:<mime>;base64," prefix. Parse it out here.
+          const dataUrlMatch = e.image_url.url.match(
+            /^data:([^;]+);base64,(.*)$/s
+          );
+          const mediaType = dataUrlMatch ? dataUrlMatch[1] : "image/jpeg";
+          const data = dataUrlMatch
+            ? dataUrlMatch[2]
+            : e.image_url.url.replace(/^data:[^,]*,/, "");
           return {
             type: "image",
             source: {
               type: "base64" as const,
-              media_type: "image/jpeg",
-              data: e.image_url.url,
+              media_type: mediaType,
+              data,
             },
           } as Anthropic.ContentBlockParam;
         }
@@ -376,7 +386,7 @@ export class GenericAnthropicClient implements GenericClient {
           tool_choice: { type: "auto" },
           tools,
         }),
-      });
+      }, { signal: options.signal });
 
       if (!response.content || !response.content.length) {
         console.log("no content in Anthropic response", response);
@@ -438,6 +448,13 @@ export class GenericAnthropicClient implements GenericClient {
 
   pricesPerMillion() {
     return AnthropicTextPricing;
+  }
+
+  getPricing(model?: string): import("./pricing/types").ModelPricing | Record<string, import("./pricing/types").ModelPricing> | undefined {
+    if (model !== undefined) {
+      return AnthropicTextPricing[model as keyof typeof AnthropicTextPricing] as import("./pricing/types").ModelPricing | undefined;
+    }
+    return AnthropicTextPricing as unknown as Record<string, import("./pricing/types").ModelPricing>;
   }
 
   calculateCost(model: string, usage: Usage): number | undefined {

@@ -220,16 +220,38 @@ export class AgentSyncFs {
         );
         this.lastInputContent = input;
 
-        agent.addPendingUserMessage({
-          role: "user",
-          content: input,
-        });
+        // Detect slash commands in the input
+        if (input.trim().startsWith("/")) {
+          await this.handleInputCommand(agent, input.trim());
+        } else {
+          agent.addPendingUserMessage({
+            role: "user",
+            content: input,
+          });
+        }
 
         // Clear the input file after processing
         await this.writeInput("");
       }
     } catch (error) {
       console.error(`❌ Error checking for changes:`, error);
+    }
+  }
+
+  /**
+   * Handle slash commands sent via input.txt
+   */
+  private async handleInputCommand(agent: BaseAgent, input: string): Promise<void> {
+    const [command, ...rest] = input.split(" ");
+    const message = rest.join(" ").trim() || undefined;
+
+    if (command === "/poke") {
+      console.log(`🫵 Received /poke command for task ${this.taskId}`);
+      agent.interrupt(message);
+    } else {
+      // Unknown command — treat as a regular message
+      console.warn(`⚠️ Unknown command "${command}", treating as message`);
+      agent.addPendingUserMessage({ role: "user", content: input });
     }
   }
 

@@ -6,6 +6,7 @@ import { ChatCommand, ChatMode, ChatContext, ChatService } from "../types";
 import { loadRenderer } from "../renderer/loadRenderer";
 import { ConsoleRenderer } from "../renderer";
 import { AgentModule } from "./AgentModule";
+import { getConfig, updateConfig } from "../../config";
 
 const BUILTIN_RENDERERS = ["basic", "compact", "fancy"];
 
@@ -27,10 +28,25 @@ export class RendererModule extends BaseChatModule {
   async initialize(service: ChatService): Promise<void> {
     await super.initialize(service);
 
-    // Initialize context.renderer with a default ConsoleRenderer if not already set
+    // Initialize context.renderer from config or default to ConsoleRenderer
     const context = service.getContext();
     if (!context.renderer) {
-      service.setContext({ renderer: new ConsoleRenderer() });
+      try {
+        const config = await getConfig();
+        const savedName = config.chat?.renderer;
+        if (savedName && savedName !== "basic") {
+          const savedRenderer = await loadRenderer(savedName);
+          this.currentRendererName = savedName;
+          service.setContext({ renderer: savedRenderer });
+        } else {
+          service.setContext({ renderer: new ConsoleRenderer() });
+          if (savedName === "basic" || !savedName) {
+            this.currentRendererName = "basic";
+          }
+        }
+      } catch {
+        service.setContext({ renderer: new ConsoleRenderer() });
+      }
     }
   }
 
@@ -84,6 +100,18 @@ export class RendererModule extends BaseChatModule {
 
       this.chatService?.setContext({ renderer: newRenderer });
       this.currentRendererName = specifier;
+
+      // Persist renderer preference to config
+      try {
+        const config = await getConfig();
+        config.chat = {
+          ...config.chat,
+          renderer: specifier,
+        };
+        await updateConfig(config);
+      } catch (saveErr: any) {
+        console.warn(`⚠️  Could not save renderer preference: ${saveErr.message}`);
+      }
 
       // Rewire agent rendering event listeners to the new renderer so live
       // events are forwarded correctly even mid-session.

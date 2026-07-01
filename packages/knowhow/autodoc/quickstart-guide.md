@@ -1,129 +1,126 @@
 # Knowhow Quickstart
 
-Knowhow is an AI CLI (plugins + agents) for generating docs, creating embeddings, and running chat/agents.
+Knowhow is an AI CLI that uses plugins/tools, builds embeddings from your files, and lets you chat/ask using a configured project.
 
-Project home: https://knowhow.tyvm.ai
+Website: https://knowhow.tyvm.ai
 
 ---
 
 ## 1) Installation
 
-### npm (global install)
+### Option A: Install globally
 ```bash
 npm i -g @tyvm/knowhow
 ```
 
-### npx (run without installing globally)
+### Option B: Use with `npx` (no global install)
 ```bash
-npx @tyvm/knowhow@latest --version
+npx @tyvm/knowhow@latest knowhow --version
 ```
 
-Now you can run:
-```bash
-knowhow --help
-```
+> After that, you can run commands as `knowhow ...` (or via `npx ... knowhow ...`).
 
 ---
 
 ## 2) Initialize a project (`knowhow init`)
 
-From your project directory:
+From your project folder, run:
 ```bash
 knowhow init
 ```
 
-This creates:
+This creates a local **Knowhow workspace** in `./.knowhow/` and also sets up global templates in `~/.knowhow/`.
 
-- **Local config** (in your current directory):
-  - `.knowhow/` directory
-    - `.knowhow/knowhow.json` (your config)
-    - `.knowhow/prompts/` (prompt templates)
-    - `.knowhow/docs/` (generated docs)
-    - `.knowhow/embeddings/` (generated embeddings)
-    - `.knowhow/language.json`
-    - `.knowhow/.ignore`, `.knowhow/.hashes.json`, `.knowhow/.jwt` (JWT placeholder)
+### What it creates locally
 
-- **Global template config** (in your home directory):
-  - `~/.knowhow/` (stores template copies used by `init`)
+In your current directory:
+- `./.knowhow/`
+  - `knowhow.json` (your project configuration)
+  - `language.json`
+  - `prompts/` (prompt templates)
+  - `docs/` (generated docs output)
+  - `embeddings/` (generated embedding output)
+  - `.ignore`, `.hashes.json`, `.jwt` (runtime/support files)
+
+You can edit `./.knowhow/knowhow.json` to customize sources, embeddings, plugins, agents, etc.
 
 ---
 
 ## 3) Login (`knowhow login`)
 
-Login uses **browser-based OAuth** by default (you approve in a browser, the CLI polls for approval, then retrieves a JWT).
-
+Run:
 ```bash
 knowhow login
 ```
 
-If you prefer to paste a token manually:
+### What login does
+- Starts a **browser-based OAuth/login flow** (it creates a short-lived login session, opens your browser, waits until you approve).
+- Retrieves a **JWT token** after approval.
+- Stores the JWT at:
+  - `./.knowhow/.jwt` (permissions are set so only you can read it)
+
+### If you already have a JWT
 ```bash
 knowhow login --jwt
 ```
 
-What it does:
-- Performs browser login flow against **https://knowhow.tyvm.ai**
-- Stores the returned **JWT** in:
-  - `.knowhow/.jwt` (permissioned to be read/write only by you)
-- Updates `knowhow.json` by adding a **model provider** entry for the `knowhow` proxy (so Knowhow-backed models work with your config)
+After authentication, Knowhow:
+- Calls Knowhow’s API (`/api/users/me`) using your JWT
+- Prints your current user + organization
+- Saves `orgId` into `./.knowhow/knowhow.json`
+- Ensures the `knowhow` model provider is enabled in your config
 
 ---
 
 ## 4) Basic first run
 
-After `init` + `login`, you can immediately start a chat UI:
+After `knowhow init` + `knowhow login`, you can start immediately.
 
+### Recommended: build embeddings first
+```bash
+knowhow embed
+```
+
+### Then chat
 ```bash
 knowhow chat
 ```
 
-You can also ask directly (no agent overhead):
-```bash
-knowhow ask --input "What should I work on next?"
-```
-
-(Optionally) search embeddings:
-```bash
-knowhow search --input "How do plugins work in Knowhow?"
-```
+You can ask questions about your indexed project content.
 
 ---
 
-## 5) Key concepts (quick mental model)
+## 5) Key concepts (quick overview)
 
-- **`knowhow.json` (config file)**  
-  The main project configuration inside `.knowhow/knowhow.json`. It controls:
-  - **plugins** (enabled/disabled)
-  - **sources** (what to generate and where)
-  - **embedSources** (what to embed and where)
-  - **embeddingModel**, agents, model providers, worker settings, etc.
+### `knowhow.json` (project config)
+Your main configuration file at `./.knowhow/knowhow.json`. It controls:
+- enabled plugins
+- what files to turn into docs/artifacts (**sources**)
+- what files to embed for retrieval (**embedSources**)
+- model providers and the worker/tunneling behavior
 
-- **Plugins**  
-  Small capability modules (e.g., language, git, embeddings, etc.). Knowhow enables/loads them based on `knowhow.json`.
+### Plugins
+Plugins are “tools” Knowhow can use (for example: embeddings, git, agents, download, etc.).  
+They’re enabled/disabled via `config.plugins.enabled/disabled`.
 
-- **Sources**  
-  Inputs that Knowhow can **generate** from. Each source defines things like:
-  - `input` glob/pattern
-  - `output` path
-  - `prompt` template to use
+### Sources
+**Sources** describe generation tasks (input files → output file(s) + which prompt to use).  
+Example fields (names vary by config): `sources[].input`, `sources[].output`, `sources[].prompt`.
 
-- **Embeddings (and `embedSources`)**  
-  Defines what files to chunk/embed and where to write embedding JSON outputs (typically under `.knowhow/embeddings/`).
+### Embeddings
+**Embeddings** are vector indexes built from configured inputs (`embedSources`).  
+Running:
+```bash
+knowhow embed
+```
+creates embedding data under `./.knowhow/embeddings/` (based on your `embedSources`).
 
-- **Worker**  
-  A separate runnable process to execute work in a sandbox/isolated way. You can start/register workers with:
-  ```bash
-  knowhow worker --register
-  ```
-  and manage them with:
-  ```bash
-  knowhow workers --list
-  ```
+### Worker
+A **worker** controls background execution features (for example, tunneling/remote execution support).  
+This lives under the `worker` section in `knowhow.json`.
 
 ---
 
-See you inside the CLI. 👍
-
-**Links**
+## Links
 - https://knowhow.tyvm.ai  
 - https://x.com/micahriggan

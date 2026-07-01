@@ -1,271 +1,145 @@
 # `knowhow chat` Guide
 
-`knowhow chat` is the primary interactive interface for the **Knowhow CLI**. It runs a REPL-style chat loop where you type messages and can control behavior using **slash commands** (`/…`).
-
-At startup, Knowhow typically prints a list of available commands based on:
-- enabled chat modules (agent/search/sessions/shell/voice/etc.)
-- your configuration (`knowhow.json`)
-- the current chat mode (agent vs attached vs voice)
-
-> **Tip:** Always look at the startup line like `Commands: /agent, /agents, ...` to confirm what your build exposes.
+`knowhow chat` is the primary interactive terminal experience for Knowhow. You’ll start a chat loop, then use built-in slash commands (`/…`) to control agents, sessions, rendering, input modes, and more.
 
 ---
 
-## 1) Starting a chat session
+## 1) Start a chat session
 
-Start chat with:
+Start Knowhow’s interactive chat:
 
 ```bash
 knowhow chat
 ```
 
-You then enter a prompt loop where you can type normal messages or slash commands.
+After starting, Knowhow will show the available commands for the current mode.
 
-### Common CLI flags (version/build-dependent)
-Your exact flags depend on the CLI build. Check:
-
-```bash
-knowhow chat --help
-```
-
-Common patterns you may see include:
-- selecting a starting **agent**
-- selecting a **renderer**
-- enabling **voice**
-- attaching/resuming a prior session/task (if your build supports it)
-
-Examples (illustrative—verify with `--help`):
-```bash
-knowhow chat --agent Patcher
-knowhow chat --renderer compact
-knowhow chat --voice
-```
+> Tip: While chatting, you can usually discover functionality from `/` commands (documented below). If you’re ever unsure, run:
+>
+> ```bash
+> knowhow chat --help
+> ```
 
 ---
 
-## 2) Chat modes (agent, attached, voice)
+## 2) Chat modes (what changes with `/...`)
 
-Knowhow changes behavior based on mode. Mode determines:
-- how inputs are interpreted
-- which slash commands are enabled
-- whether you’re controlling a running task (attached) vs just chatting
+Knowhow’s CLI chat behavior changes based on active modes.
 
-### Agent mode
-You’re using a configured agent to respond.
+### Default (normal) chat
+- You send plain text (no leading `/`) and Knowhow responds as a standard assistant.
+- Agent mode is **off** until you enable it with `/agent`.
 
-In this mode, commands like `/agent`, `/agents`, `/render`, `/search`, `/multi`, etc. are usually available.
+### Agent mode: `/agent` (agent interaction mode)
+When you enable agent mode:
+- Your prompt becomes: `Ask knowhow <AgentName>:`
+- Your input becomes an initial task for that agent.
+- The agent streams events into the active renderer.
 
-### Attached mode (`agent:attached`)
-In attached mode, Knowhow is connected to a running agent task/session and you can inspect/steer it using attached-only commands (if provided by your agent module).
+Command:
+- `/agent <agent_name>`
 
-### Voice mode
-If voice is available in your build, voice mode switches input handling so speech is transcribed and sent into the chat loop.
+### Agent attached mode: `/attach` (agent:attached)
+When you attach to a running task/session:
+- You’re “attached” to a specific agent task that’s already running.
+- Mode switches to `agent:attached`, unlocking attached-mode commands like:
+  - `/logs`, `/pause`, `/unpause`, `/kill`, `/detach`, `/done`
+
+Commands:
+- `/attach <taskId>`
+- `/resume <taskId>` (for completed/saved sessions)
+
+### Voice mode: `/voice`
+When voice mode is enabled:
+- Input comes from `voiceToText()` instead of the normal text prompt.
+- Mode affects how the CLI collects your next user input.
+
+Command:
+- `/voice`
+
+### Multi-line mode: `/multi`
+When multi-line mode is enabled:
+- Input is collected using a text editor UI (via Inquirer’s editor).
+- After submitting, multiline mode is reset.
+
+Command:
+- `/multi`
 
 ---
 
-## 3) Built-in slash commands (`/…`)
+## 3) Built-in slash commands (`/`)
 
-Below is the command reference for the commands known to be implemented by the chat modules in the Knowhow codebase (agent/search/sessions/renderer/shell/voice modules).  
-If your `Commands:` list includes additional items, use those as well—modules register commands at runtime.
+The following commands are available from the CLI modules shown in the code. (Additional commands may exist in other modules or via custom command modules/plugins.)
 
-### Agent switching
-- **`/agent <name>`** — switch to a specific configured agent  
-  **Example**
-  ```text
-  /agent Patcher
-  ```
+### Agent controls
+| Command | Description | Mode |
+|---|---|---|
+| `/agent <agent_name>` | Enable agent mode and select an agent | default / non-agent |
+| `/agents` | List available agents, then optionally select one | default / non-agent |
+| `/pause` | Pause the attached agent | `agent:attached` |
+| `/unpause` | Unpause the attached agent | `agent:attached` |
+| `/kill` | Terminate the attached agent | `agent:attached` |
+| `/detach` | Detach from the attached agent task (leaves agent running) | `agent:attached` |
+| `/done` | Exit the current agent interaction (detaches) | `agent:attached` |
 
-- **`/agents`** — list configured agents (and/or selection help)  
-  **Example**
-  ```text
-  /agents
-  ```
+### Session / attachment management
+| Command | Description | Mode |
+|---|---|---|
+| `/attach [taskId]` | Attach to a running session/task | any (but useful in agent workflows) |
+| `/resume [taskId]` | Resume a completed/saved session | any |
+| `/sessions` | List sessions (running + optionally completed) | any |
+| `/logs [N]` | Show the last N messages from the attached agent (default `N=20`) | `agent:attached` |
 
-> In attached mode, some agent-control commands may be restricted to attached mode only (see below).
+Important flags for these commands:
+- `/attach --completed` : show saved/completed sessions in addition to running ones
+- `/sessions --completed` or `/sessions --all`
+- `/sessions --csv` : output sessions as CSV
 
-### Attached-mode controls (if provided by your agent module)
-These commands are typically only enabled when you are attached to a running agent task:
+### Shell execution (command helpers)
+| Command | Description | Mode |
+|---|---|---|
+| `/! <command>` | Execute a shell command (interactive: inherits stdio) | `agent` / `agent:attached` |
+| `/!! <command>` | Execute a shell command, then send its output to the AI | `agent` / `agent:attached` |
 
-- **`/pause`** — pause the attached agent
-- **`/unpause`** — resume the attached agent
-- **`/kill`** — terminate the attached agent task (and typically detach)
-- **`/detach`** — detach from the attached agent task
-- **`/done`** — finish/exit the current attached interaction
+### Renderer switching
+| Command | Description | Mode |
+|---|---|---|
+| `/render [specifier]` | Switch output renderer, or show current renderer + built-ins | any |
 
-**Examples**
-```text
-/pause
-/unpause
-/detach
-/done
-```
+Built-in renderers:
+- `basic`
+- `compact`
+- `fancy`
 
-### Multi-line input
-- **`/multi`** — start a multi-line input editor for your *next* message (or until you exit the editor, depending on implementation)
+Also supports:
+- a filesystem path (e.g. `./my-renderer.js`)
+- a package name (e.g. `@my-org/knowhow-renderer`)
 
-**Example**
-```text
-/multi
-Write a runbook for:
-1) Setup
-2) Daily use
-3) Troubleshooting
+### Input / chat behavior
+| Command | Description | Mode |
+|---|---|---|
+| `/multi` | Toggle multiline input mode | any |
+| `/voice` | Toggle voice input mode | any |
+| `/exit` | Exit the chat process | any |
 
-Include a checklist.
-```
-
-### Rendering control
-- **`/render`** — show current renderer / help for renderer switching
-- **`/render <basic|compact|fancy>`** — switch built-in renderer
-
-**Examples**
-```text
-/render basic
-/render compact
-/render fancy
-```
-
-#### Custom renderer support (from the renderer module)
-Depending on build support, `/render` may also load a renderer from:
-- a path
-- an npm package specifier
-
-**Examples**
-```text
-/render ./my-renderer.js
-/render @my-org/knowhow-renderer
-```
+### Model / provider / debug / history
+| Command | Description | Mode |
+|---|---|---|
+| `/model` | Select a model for the active context (and update active agent prefs) | any |
+| `/provider` | Select a provider (and update active agent prefs) | any |
+| `/debug` | Toggle debug mode | any |
+| `/clear` | Clear chat history (AI will not remember previous messages) | any |
 
 ### Search
-- **`/search`** — enter the interactive search loop (Search module)
+| Command | Description | Mode |
+|---|---|---|
+| `/search` | Search embeddings interactively | any |
 
-**Example**
-```text
-/search
-```
+Inside embedding search, it uses non-slash commands:
+- `next`, `exit`, `embeddings`, `use`
 
-#### Inside `/search` (interactive sub-commands)
-Within the search loop, Knowhow accepts:
-
-- **`next`** — show the next result
-- **`exit`** — leave search mode
-- **`embeddings`** — list available embedding scopes
-- **`use`** — choose which embedding scope(s) to search
-
-Any other input is treated as a new search query.
-
-**Example session**
-```text
-/search
-searching: "postgres query planner tuning"
-
-### TEXT
-...match content...
-
-### METADATA
-{ "source": "...", "chunk": 12 }
-
-searching: next
-### TEXT
-...next match...
-
-searching: use
-Embedding to search: snippets
-searching: "how to configure agents"
-(search results...)
-searching: exit
-```
-
-### Session management (attach/resume/logs and listing)
-These are implemented by the Sessions module.
-
-- **`/attach [taskId] [--completed]`**
-  - With **no args**, opens an interactive selection of attachable sessions/tasks.
-  - With `<taskId>`, attaches directly.
-  - `--completed` may include completed items in the chooser; completed items are routed to **`/resume`**.
-
-**Examples**
-```text
-/attach
-/attach 8d9f1c2b-3a4e-...
-/attach --completed
-```
-
-- **`/resume [taskId]`**
-  - With **no args**, opens an interactive list of saved/completed sessions to resume.
-  - With `<taskId>`, resumes that session.
-  - When resuming, Knowhow can prompt you to add additional context.
-
-**Examples**
-```text
-/resume
-/resume 8d9f1c2b-3a4e-...
-```
-
-- **`/sessions [--all] [--completed] [--csv]`**
-  Lists sessions/tasks so you can choose to attach or resume.
-
-  - `--completed` includes completed sessions
-  - `--all` includes more history/scope (implementation-defined)
-  - `--csv` outputs table data in CSV format
-
-**Examples**
-```text
-/sessions
-/sessions --completed
-/sessions --completed --csv
-```
-
-- **`/logs [N]`**
-  Shows the last **N** messages from the **currently attached** agent (default `N=20`).  
-  Typically restricted to **attached mode**.
-
-**Examples**
-```text
-/logs
-/logs 50
-```
-
-> **Note on “save/load”:** the Sessions module primarily exposes **attach** (running tasks) and **resume** (completed/saved tasks). If your build includes explicit `save/load` subcommands under `/sessions`, they will appear in your runtime `Commands:` list or via `/sessions` help.
-
-### Shell commands
-These are provided by the shell module and work in agent/attached modes where enabled.
-
-- **`/! [command]`** — run shell commands interactively (module behavior may vary)
-- **`/!! <command>`** — run a shell command, capture output, and send it to the AI for analysis
-
-**Examples**
-```text
-/! 
-# (interactive shell mode, if your build uses it)
-
-/!! ls -la
-/!! cat ./build.log | tail -n 200
-```
-
-**Typical workflow**
-```text
-/!
-npm test
-/!!
-npm test
-# then ask the AI to explain failures based on captured output
-```
-
-### Voice input (if available)
-If your build includes voice support, the Voice module typically exposes a command like:
-
-- **`/voice`** — toggle voice mode on/off
-
-**Example**
-```text
-/voice
-```
-
-If `/voice` isn’t present, voice may be controlled only via CLI flags—check:
-```bash
-knowhow chat --help
-```
+### Notes about other commands
+Some commands referenced in fuzzy-match logic (like `help`) may exist in modules not included in the provided code excerpts. If your build includes more modules, run `knowhow chat` and look at the “Commands:” line that appears at startup and updates per mode.
 
 ---
 
@@ -276,265 +150,294 @@ knowhow chat --help
 /agents
 ```
 
-### Switch to a configured agent
+Knowhow prints available agent names, then prompts:
+
 ```text
-/agent <AgentName>
+Select an agent to start:
 ```
 
-**Example**
+### Start a specific agent
 ```text
-/agents
 /agent Researcher
-Summarize the tradeoffs between two approaches...
 ```
 
-> If you attach/resume a session, Knowhow may also restore the session’s agent context (when the agent still exists in your `knowhow.json`).
+When successful:
+- agent mode is enabled
+- your prompt changes to `Ask knowhow Researcher:`
+- the agent begins a task when you type input (non-command text)
+
+### Example: switch agents in one session
+```text
+> /agents
+Available agents:
+  - Patcher
+  - Researcher
+  - DevOpsBot
+────────────────────────────────────────────────
+
+Select an agent to start: Researcher
+
+Agent mode enabled. Selected agent: Researcher. Type your task to get started.
+
+Ask knowhow Researcher: Summarize the latest changes in X.
+```
+
+To switch again:
+- start another agent with `/agent <name>` (or disable agent mode by `/agent` with no args—see next tip)
+
+### Disable agent mode
+In `AgentModule.handleAgentCommand`, `/agent` with **no arguments** toggles agent mode off (only if agent mode is already active):
+
+```text
+/agent
+```
 
 ---
 
 ## 5) Multi-line input (`/multi`)
 
-Use `/multi` when you want to paste structured content (requirements, logs, code blocks, JSON/YAML).
+Toggle multi-line mode:
 
-**Example**
 ```text
 /multi
-Create a step-by-step plan to debug a failing CI job.
+```
 
-Input:
-- command I ran:
-- relevant log excerpt:
-- what I already tried:
+Then enter a task in a multi-line editor UI.
 
-Output:
-- hypotheses
-- commands to verify
-- minimal fix suggestions
+After you submit the edited content:
+- the CLI disables multiline mode automatically (`multilineMode = false` after use)
+
+Example workflow:
+```text
+> /multi
+Multiline mode: enabled
+
+> (editor opens)
+Write a detailed plan for migrating service A to service B:
+- include risks
+- include rollback steps
+- include timeline
 ```
 
 ---
 
 ## 6) Shell commands (`/!` and `/!!`)
 
-### `/!` — interactive shell
-Use `/!` to run shell commands in an interactive way (depending on your build). For some builds, `/!` may also accept a command directly.
+These commands exist specifically to help you run local shell work while an agent is active.
 
-**Example**
+### `/!` — interactive execution
+Runs a shell command and uses inherited stdio (so interactive prompts work):
+
 ```text
-/!
-ls -la
-cat package.json
+/! ls -la
 ```
 
-### `/!!` — send shell output to the AI
-Use `/!!` when you want Knowhow to *capture* command output and include it in the AI context.
+### `/!!` — send output to the AI
+Runs a command, captures its output, and sends that output to the agent as message content.
 
-**Example**
 ```text
-/!! npm test --silent
+/!! cat package.json
 ```
 
-Then ask:
+The command output will be wrapped and forwarded to the agent like:
+
 ```text
-What caused the failure, and what minimal changes should I make?
+Command output from `cat package.json`:
+<output...>
 ```
 
-> **Safety note:** Shell commands run on your machine. Be careful with commands that modify or delete files.
+### Example: use shell output to guide an agent
+```text
+> /agent Patcher
+Agent mode enabled. Selected agent: Patcher. Type your task to get started.
+
+Ask knowhow Patcher: Inspect the repo and patch any failing tests.
+
+Ask knowhow Patcher: /!! npm test
+```
 
 ---
 
-## 7) Session management (attach/resume and listing)
+## 7) Session management (attach/resume + session persistence)
 
-Think of sessions in two categories:
-- **Attach** to a **running** task/taskId
-- **Resume** a **completed/saved** task/taskId
+Knowhow supports continuing work across time and processes by saving agent session state.
 
-### List sessions/tasks
+### Key concepts
+- **Running tasks** can be attached to with `/attach`.
+- **Completed/saved sessions** can be resumed with `/resume`.
+- Session metadata may also exist on disk under agent process directories (used for filesystem-backed attachments).
+
+### List sessions
 ```text
 /sessions
 ```
 
-Include completed items:
-```text
-/sessions --completed
-```
-
-CSV output:
-```text
-/sessions --completed --csv
-```
+Options:
+- `/sessions --completed` : include saved/completed
+- `/sessions --all` : include more historical sessions
+- `/sessions --csv` : CSV output
 
 ### Attach to a running task
+```text
+/attach <taskId>
+```
+
+Or interactively:
 ```text
 /attach
 ```
 
-Direct attach:
-```text
-/attach <taskId>
-```
+The session list can include filesystem/web tasks, depending on what’s available.
 
-### Resume a saved/completed session
-Resume interactively:
-```text
-/resume
-```
-
-Resume by id:
+### Resume a completed session
 ```text
 /resume <taskId>
 ```
 
-### View logs from attached agent
+Or interactively:
 ```text
-/attach <taskId>
-/logs
+/resume
 ```
+
+You’ll be prompted to add additional context for resuming.
+
+### Attach/detach during `agent:attached`
+While attached:
+- `/detach` detaches from the running task
+- `/done` exits interaction (detaches)
 
 ---
 
-## 8) Renderers (basic, compact, fancy) and switching with `/render`
+## 8) Renderers (`/render`)
 
-Use renderers to change how output appears in your terminal.
+Knowhow can change how messages/events are displayed.
 
-### Switch renderer
-```text
-/render basic
-/render compact
-/render fancy
-```
+### Built-in renderers
+`/render` shows:
+- Current renderer
+- Built-ins: `basic`, `compact`, `fancy`
 
-### Custom renderers (if supported)
-```text
-/render ./my-renderer.js
-/render @my-org/knowhow-renderer
-```
-
-**Example flow**
+Switch to a built-in:
 ```text
 /render compact
-Write release notes for version 1.4.2 based on these changes:
-(multi-line text...)
 ```
+
+### Example: show renderer info
+```text
+/render
+```
+
+### Switching while an agent is running
+When you switch renderers:
+- the CLI preserves the active task id (if one exists)
+- agent event wiring is rewired so live agent output continues to render in the new renderer
 
 ---
 
-## 9) Voice input (if available)
+## 9) Voice input (`/voice`)
 
-If voice is enabled in your build, toggle voice mode with:
-
+Enable voice mode:
 ```text
 /voice
 ```
 
-Then speak your prompt. Knowhow will transcribe and send it into the same pipeline as typed input.
+When enabled, the next input prompt is satisfied by calling `voiceToText()` (microphone integration). If voice input fails or isn’t configured, you may get an empty string / an error.
 
-If `/voice` isn’t available, use startup flags (check `knowhow chat --help`).
+Disable it again:
+```text
+/voice
+```
 
 ---
 
-## 10) Custom agents (`knowhow.json` → `agents` array)
+## 10) Custom agents (configure in `knowhow.json`)
 
-You can define custom agents in `knowhow.json` under an `agents` array.
+Custom agents are loaded as agent constructors (used by `/agent` and `/agents`). In this guide, custom agents are configured in `knowhow.json` under an `agents` array.
+
+> ⚠️ The exact schema of your agent config can depend on your Knowhow version and agent implementation. The examples below show the typical structure and the most important part: the **agent name** you will use with `/agent <name>`.
 
 ### Example `knowhow.json` with custom agents
-
 ```json
 {
   "agents": [
     {
-      "name": "Patcher",
-      "description": "Edits code safely and provides patch-style output.",
-      "model": "gpt-4.1-mini",
+      "name": "ResearcherPro",
       "provider": "openai",
-      "tools": ["repo", "diff", "tests"],
-      "systemPrompt": "You are a careful code patcher. Make minimal changes, explain reasoning, and include a test plan."
+      "model": "gpt-5.4-nano",
+      "systemPrompt": "You are a rigorous research agent. Provide sourced, structured answers.",
+      "tools": ["search", "render", "code-execution"]
     },
     {
-      "name": "Researcher",
-      "description": "Focuses on explanation, tradeoffs, and decision guidance.",
-      "model": "gpt-4.1-mini",
-      "provider": "openai",
-      "tools": ["web", "search"],
-      "systemPrompt": "You are a research assistant. Provide sourced tradeoffs and clear recommendations."
+      "name": "PatchMaster",
+      "provider": "anthropic",
+      "model": "sonnet-4-6",
+      "systemPrompt": "You are an expert software patching agent. Be precise and safe.",
+      "tools": ["askHuman", "file-edit", "diff-preview"]
     }
   ]
 }
 ```
 
-### Use your custom agents in chat
+### Using your custom agent
+After updating `knowhow.json`, restart Knowhow and run:
+
 ```text
 /agents
-/agent Researcher
-Ask knowhow: What are the tradeoffs between approach A and approach B?
+/agent ResearcherPro
 ```
 
-> **Field names can vary by version/build.** The key requirement is that each agent has a unique **`name`** so it can be selected via `/agent <name>`.
+Then provide your task as normal text (non-slash).
 
 ---
 
-## Practical examples
+## End-to-end examples
 
-### Example A: Switch agent + compact renderer + normal prompt
+### Example A: Start an agent and run work
 ```text
-/agents
-/agent Researcher
-/render compact
-Summarize the pros/cons of using RAG vs fine-tuning for my product.
+> /agent Patcher
+Agent mode enabled. Selected agent: Patcher. Type your task to get started.
+
+Ask knowhow Patcher: Fix the failing unit test in the repo.
 ```
 
-### Example B: Multi-line spec
+### Example B: Run a shell command and feed output to the agent
 ```text
-/multi
-You are helping me design a CLI command system.
-
-Requirements:
-- Commands begin with `/`
-- Support agent switching
-- Include rendering and sessions
-
-Return:
-1) Proposed architecture
-2) Command registry design
-3) Example user flows
+> /agent Patcher
+Ask knowhow Patcher: /!! npm test
+Ask knowhow Patcher: Based on the output, propose a minimal patch.
 ```
 
-### Example C: Run shell command and ask the AI to interpret
+### Example C: Attach to a running agent task and view logs
 ```text
-/!! cat ./build.log | tail -n 200
-What does the failure indicate, and what is the likely fix?
+> /sessions
+1) a1b2c3...  (running)  Patcher
+2) d4e5f6...  (saved)    ResearcherPro
+
+> /attach a1b2c3...
+🔄 Attached to running task: a1b2c3...
+   Agent : Patcher
+   Task  : Fix the failing unit test...
+   Status: running
+
+> /logs 10
 ```
 
-### Example D: Attach to a running task and inspect logs
+### Example D: Resume a completed session
 ```text
-/sessions
-/attach <taskId>
-/logs 30
+> /resume d4e5f6...
+📋 Session found: d4e5f6...
+   Agent  : ResearcherPro
+   Task   : Summarize...
+
+Add any additional context for resuming this session (or press Enter to skip): Focus on migration risks.
 ```
 
-### Example E: Resume a completed session later
+### Example E: Switch renderer mid-session
 ```text
-/resume <taskId>
-Add a brief test plan for the next iteration.
+> /render fancy
+✅ Renderer switched to: fancy
 ```
 
 ---
 
-## Quick command reference
-
-- **Start chat:** `knowhow chat`
-- **List agents:** `/agents`
-- **Switch agent:** `/agent <name>`
-- **Multi-line input:** `/multi`
-- **Renderers:** `/render basic|compact|fancy`
-- **Search:** `/search` (then use `next`, `exit`, `embeddings`, `use`)
-- **Sessions listing:** `/sessions [--completed] [--all] [--csv]`
-- **Attach:** `/attach [taskId] [--completed]`
-- **Resume:** `/resume [taskId]`
-- **Attached logs:** `/logs [N]`
-- **Shell:** `/!` and `/!! <command>`
-- **Voice (if available):** `/voice`
-
---- 
-
-If you paste the actual module source files that register the `/…` commands in your environment (agent/search/sessions/shell/voice/system modules), I can turn the “known commands” above into a **fully exact** reference (including any optional flags and exact argument syntax for every subcommand).
+If you want, paste your `knowhow.json` (redact secrets) and I can help you write a correct custom-agent schema that matches how your Knowhow build expects agent definitions.

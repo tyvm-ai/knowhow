@@ -19,6 +19,7 @@ import editor from "@inquirer/editor";
 import fs from "fs";
 import path from "path";
 import { services } from "../services";
+import { logger } from "../logger";
 
 export class CliChatService implements ChatService {
   private context: ChatContext;
@@ -37,7 +38,7 @@ export class CliChatService implements ChatService {
       searchMode: false,
       voiceMode: false,
       multilineMode: false,
-      currentModel: "gpt-4o",
+      currentModel: "gpt-5.4-nano",
       currentProvider: "openai",
       chatHistory: this.chatHistory,
       plugins,
@@ -215,12 +216,20 @@ export class CliChatService implements ChatService {
       } else {
         // Input starts with "/" but no matching command found - warn the user
         const availableCommands = this.getCommandsForActiveModes();
-        console.log(
-          `Unknown command "/${commandName}". Available commands: ${availableCommands
-            .map((cmd) => `/${cmd.name}`)
-            .join(", ")}`
-        );
-        return true;
+        // If the input looks like a filepath (contains path separators or file extensions),
+        // don't treat it as a failed command - let it fall through to modules
+        const looksLikeFilepath =
+          commandName.includes("/") ||
+          commandName.includes(".") ||
+          commandName.includes("\\");
+        if (!looksLikeFilepath) {
+          console.log(
+            `Unknown command "/${commandName}". Available commands: ${availableCommands
+              .map((cmd) => `/${cmd.name}`)
+              .join(", ")}`
+          );
+          return true;
+        }
       }
     }
 
@@ -265,7 +274,15 @@ export class CliChatService implements ChatService {
     if (this.context.voiceMode) {
       value = await voiceToText();
     } else if (this.context.multilineMode) {
-      value = await editor({ message: prompt });
+      const renderer = this.context.renderer;
+      if (renderer) renderer.pause();
+      logger.silence();
+      try {
+        value = await editor({ message: prompt });
+      } finally {
+        if (renderer) renderer.resume();
+        logger.unsilence();
+      }
       this.context.multilineMode = false; // Disable after use like original
     } else {
       // Use saved input history for scrollback (InputQueueManager handles reverse access)

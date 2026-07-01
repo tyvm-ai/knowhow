@@ -1,12 +1,21 @@
 {
   "name": "@tyvm/knowhow-module-terminal",
-  "version": "0.0.1",
+  "version": "0.0.8",
   "description": "Terminal addon module for @tyvm/knowhow — portless PTY over the tunnel WebSocket",
   "main": "ts_build/index.js",
   "types": "ts_build/index.d.ts",
   "scripts": {
-    "compile": "tsc",
-    "prepublishOnly": "npm run compile"
+    "postinstall": "node -e \"const{spawnSync}=require('child_process');const os=require('os');const path=require('path');const dirs=['node_modules/node-pty/prebuilds',path.join(os.homedir(),'.knowhow/node_modules/node-pty/prebuilds')];for(const d of dirs){spawnSync('find',[d,'-name','spawn-helper','-exec','chmod','+x','{}',';'],{stdio:'ignore'});}\" 2>/dev/null || true",
+    "build": "npm run compile",
+    "compile": "npm run clean && tsc",
+    "clean": "rm -rf ts_build",
+    "prepublishOnly": "npm run compile",
+    "version:nightly": "bash ../knowhow/scripts/publish.sh version:nightly",
+    "version:dev": "bash ../knowhow/scripts/publish.sh version:dev",
+    "publish:nightly": "bash ../knowhow/scripts/publish.sh nightly",
+    "publish:dev": "bash ../knowhow/scripts/publish.sh dev",
+    "publish:latest": "bash ../knowhow/scripts/publish.sh stable",
+    "publish:stable": "bash ../knowhow/scripts/publish.sh stable"
   },
   "keywords": [
     "knowhow",
@@ -21,10 +30,12 @@
   },
   "dependencies": {
     "@tyvm/knowhow-tunnel": "*",
-    "node-pty": "^1.0.0"
+    "node-pty": "^1.1.0",
+    "ws": "^8.18.1"
   },
   "devDependencies": {
     "@types/node": "^20.19.39",
+    "@types/ws": "^8.5.14",
     "typescript": "^5.0.0"
   }
 }

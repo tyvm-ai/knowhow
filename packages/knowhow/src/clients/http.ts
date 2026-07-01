@@ -3,6 +3,7 @@ import {
   GenericClient,
   CompletionOptions,
   CompletionResponse,
+  StreamChunk,
   EmbeddingOptions,
   EmbeddingResponse,
 } from "./types";
@@ -89,6 +90,17 @@ export class HttpClient implements GenericClient {
    */
   setPrices(pricingMap: Record<string, ModelPricing>) {
     this.pricingMap = pricingMap;
+  }
+
+  /**
+   * Returns the pricing entry for a specific model, or all pricing entries if no model is given.
+   * Returns undefined for a specific model if no pricing is known.
+   */
+  getPricing(model?: string): ModelPricing | Record<string, ModelPricing> | undefined {
+    if (model !== undefined) {
+      return this.pricingMap[model];
+    }
+    return this.pricingMap;
   }
 
   /**
@@ -184,6 +196,88 @@ export class HttpClient implements GenericClient {
         usd_cost: data.usd_cost ?? this.calculateCost(options.model, data.usage),
       };
     });
+  }
+
+  /**
+   * Streams a chat completion via OpenAI-compatible SSE (`stream: true`).
+   * Parses `data: {...}` lines and yields token deltas, then a final done chunk.
+   */
+  async *createChatCompletionStream(
+    options: CompletionOptions
+  ): AsyncGenerator<StreamChunk> {
+    const body = {
+      ...options,
+      model: options.model,
+      messages: options.messages,
+      max_tokens: options.max_tokens || 4000,
+      ...this.extra_body,
+      stream: true,
+      stream_options: { include_usage: true },
+      ...(options.tools && {
+        tools: options.tools,
+        tool_choice: "auto",
+      }),
+    };
+
+    const response = await fetch(`${this.baseUrl}/v1/chat/completions`, {
+      method: "POST",
+      headers: {
+        ...(this.headers as Record<string, string>),
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+      },
+      body: JSON.stringify(body),
+      signal: options.signal,
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      throw new Error(`HTTP ${response.status}: ${text}`);
+    }
+
+    if (!response.body) {
+      throw new Error("No response body for streaming request");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let usage: StreamChunk["usage"] | undefined;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith("data: ")) continue;
+        const jsonStr = trimmed.slice(6);
+        if (jsonStr === "[DONE]") continue;
+        try {
+          const chunk = JSON.parse(jsonStr);
+          const delta = chunk.choices?.[0]?.delta?.content;
+          if (delta) {
+            yield { delta, done: false };
+          }
+          if (chunk.usage) {
+            usage = {
+              prompt_tokens: chunk.usage.prompt_tokens ?? 0,
+              completion_tokens: chunk.usage.completion_tokens ?? 0,
+              total_tokens: chunk.usage.total_tokens,
+            };
+          }
+        } catch {
+          // Ignore malformed SSE lines
+        }
+      }
+    }
+
+    const usdCost = this.calculateCost(options.model, usage);
+    yield { done: true, usage, usd_cost: usdCost };
   }
 
   /**

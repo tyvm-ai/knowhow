@@ -123,6 +123,18 @@ export class AgentModule extends BaseChatModule {
         },
       },
       {
+        name: "poke",
+        description: "Interrupt the agent's current tool call or AI completion, so it can continue with the next step",
+        modes: ["agent:attached"],
+        handler: async (args: string[]): Promise<void> => {
+          if (this.attachedAgent) {
+            const message = args.length > 0 ? args.join(" ") : undefined;
+            this.attachedAgent.interrupt(message);
+            console.log("Agent interrupted — it will continue with the next step.");
+          }
+        },
+      },
+      {
         name: "detach",
         description: "Detach from the currently attached agent",
         modes: ["agent:attached"],
@@ -517,7 +529,12 @@ export class AgentModule extends BaseChatModule {
 
       // Restore the full message history from the last thread
       const threads = session.threads || [];
-      const lastThread = threads.length > 0 ? threads[threads.length - 1] : [];
+      // Guard against sessions saved with a flat Message[] instead of Message[][]
+      // (a bug where threadUpdate emitted a single thread instead of all threads)
+      const normalizedThreads: Message[][] = threads.length > 0 && !Array.isArray(threads[0])
+        ? [threads as unknown as Message[]]
+        : threads as Message[][];
+      const lastThread = normalizedThreads.length > 0 ? normalizedThreads[normalizedThreads.length - 1] : [];
       const resumeMessages = [...lastThread];
 
       // Append the resume prompt to the last user message (or add a new one)
@@ -701,7 +718,7 @@ export class AgentModule extends BaseChatModule {
 
       // Set up session update listener
       const threadUpdateHandler = async (threadState: any) => {
-        this.updateSession(taskId, threadState);
+        this.updateSession(taskId, agent.getThreads());
         taskInfo.totalCost = agent.getTotalCostUsd();
       };
       agent.agentEvents.on(agent.eventTypes.threadUpdate, threadUpdateHandler);
@@ -751,10 +768,12 @@ export class AgentModule extends BaseChatModule {
         ),
       ];
 
+      const customVariables = new CustomVariables(agent.tools);
+
       agent.messageProcessor.setProcessors("pre_call", [
         new Base64ImageProcessor(agent.tools).createProcessor(),
         ...caching,
-        new CustomVariables(agent.tools).createProcessor(),
+        customVariables.createProcessor(),
       ]);
 
       agent.messageProcessor.setProcessors("post_call", [
@@ -765,6 +784,7 @@ export class AgentModule extends BaseChatModule {
       agent.messageProcessor.setProcessors("post_tools", [
         new Base64ImageProcessor(agent.tools).createProcessor(),
         ...caching,
+        customVariables.createRepetitionHintProcessor(),
       ]);
 
       // Set up event listeners

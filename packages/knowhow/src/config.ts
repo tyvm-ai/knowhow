@@ -74,7 +74,7 @@ const defaultConfig = {
       description:
         "You can define agents in the config. They will have access to all tools.",
       instructions: "Reply to the user saying 'Hello, world!'",
-      model: "gpt-4o-2024-08-06",
+      model: "gpt-5.4-nano",
       provider: "openai",
     },
   ],
@@ -167,6 +167,27 @@ async function ensureGlobalConfigDir() {
 export async function init() {
   console.log("Initializing global knowhow config at ~/.knowhow");
   const globalConfigDir = await ensureGlobalConfigDir();
+
+  // Ensure the script module is registered in the global config so that
+  // `knowhow script` and the `executeScript` tool are available everywhere.
+  const SCRIPT_MODULE = "@tyvm/knowhow-module-script";
+  const globalConfigPath = path.join(globalConfigDir, "knowhow.json");
+  try {
+    const rawGlobal = fs.existsSync(globalConfigPath)
+      ? fs.readFileSync(globalConfigPath, "utf8")
+      : JSON.stringify(defaultConfig, null, 2);
+    const globalConf = JSON.parse(rawGlobal) as Config;
+    if (!globalConf.modules) {
+      globalConf.modules = [];
+    }
+    if (!globalConf.modules.includes(SCRIPT_MODULE)) {
+      globalConf.modules.push(SCRIPT_MODULE);
+      fs.writeFileSync(globalConfigPath, JSON.stringify(globalConf, null, 2));
+      console.log(`✅ Added ${SCRIPT_MODULE} to ~/.knowhow/knowhow.json modules`);
+    }
+  } catch (e) {
+    console.warn(`⚠ Could not update global config to add script module:`, e);
+  }
 
   // create the folder structure
   console.log("Initializing local knowhow config at ./.knowhow");
@@ -285,6 +306,22 @@ export async function getGlobalConfig(): Promise<Config> {
     console.warn("Failed to load global knowhow config:", error);
     return {} as Config;
   }
+}
+
+export async function updateGlobalConfig(config: Config) {
+  if (!config || typeof config !== "object") {
+    throw new Error("Invalid config object");
+  }
+
+  const globalConfigDir = getGlobalConfigDir();
+  await mkdir(globalConfigDir, { recursive: true });
+  const globalConfigPath = path.join(globalConfigDir, "knowhow.json");
+
+  if (fs.existsSync(globalConfigPath)) {
+    await fs.promises.copyFile(globalConfigPath, globalConfigPath + ".bak");
+  }
+
+  await writeFile(globalConfigPath, JSON.stringify(config, null, 2));
 }
 
 export async function migrateConfig() {

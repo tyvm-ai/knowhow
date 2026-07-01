@@ -2,6 +2,7 @@ import { Message } from "../clients/types";
 import { MessageProcessorFunction } from "../services/MessageProcessor";
 import { ToolsService } from "../services";
 import { Tool } from "../clients";
+import { ToolCall } from "../clients/types";
 
 interface VariableStorage {
   [name: string]: any;
@@ -219,21 +220,312 @@ export class CustomVariables {
 
   /**
    * Creates a message processor function that substitutes variables in messages
+   *
+   * CACHING NOTE: To preserve Anthropic prefix-cache stability, we only apply
+   * variable substitution to the *last* (most-recently-added) message in the
+   * modifiedMessages array.  Historical messages have already been processed on
+   * prior turns; mutating them would change their content mid-conversation and
+   * instantly bust the entire downstream cache window.
    */
   createProcessor(
     filterFn?: (msg: Message) => boolean
   ): MessageProcessorFunction {
     return async (originalMessages: Message[], modifiedMessages: Message[]) => {
-      // Process messages in place - substitute variables before tool calls are executed
-      for (let i = 0; i < modifiedMessages.length; i++) {
-        const message = modifiedMessages[i];
+      // Only process the last message (the newly added one).
+      // Processing historical messages would mutate already-committed content
+      // and destroy Anthropic's prefix-cache match from that point onwards.
+      const lastIndex = modifiedMessages.length - 1;
+      if (lastIndex < 0) return;
 
-        if (filterFn && !filterFn(message)) {
-          continue;
+      const message = modifiedMessages[lastIndex];
+      if (!filterFn || filterFn(message)) {
+        modifiedMessages[lastIndex] = this.processMessage(message);
+      }
+    };
+  }
+
+  /**
+   * Extracts all string values from a JSON-parsed object (recursively)
+   */
+  private extractStringValues(obj: any, results: string[] = []): string[] {
+    if (typeof obj === "string") {
+      results.push(obj);
+    } else if (Array.isArray(obj)) {
+      for (const item of obj) {
+        this.extractStringValues(item, results);
+      }
+    } else if (obj && typeof obj === "object") {
+      for (const val of Object.values(obj)) {
+        this.extractStringValues(val, results);
+      }
+    }
+    return results;
+  }
+
+  /**
+   * Collects all large string values from tool calls, keyed by tool name.
+   * Returns an array of {value, toolName} pairs.
+   */
+  private collectToolCallStrings(
+    messages: Message[],
+    minLength: number
+  ): Array<{ value: string; toolName: string }> {
+    const collected: Array<{ value: string; toolName: string }> = [];
+    for (const message of messages) {
+      if (!message.tool_calls) continue;
+      for (const toolCall of message.tool_calls) {
+        const strings = this.getToolCallStrings(toolCall);
+        for (const str of strings) {
+          if (str.length >= minLength) {
+            collected.push({ value: str, toolName: toolCall.function.name });
+          }
+        }
+      }
+    }
+    return collected;
+  }
+
+  /**
+   * Finds the longest common substring between two strings that is >= minLength.
+   * Returns the substring or null if none found.
+   *
+   * PERF NOTE: This is O(n*m) in the worst case on the sampled chunks.
+   * For large strings, we sample multiple fixed-size chunks (first quarter,
+   * second quarter, third quarter, last quarter) so we catch patterns that
+   * appear anywhere in the string — not just the prefix — while keeping cost bounded.
+   */
+  private longestCommonSubstring(
+    a: string,
+    b: string,
+    minLength: number
+  ): string | null {
+    // Fast path: exact full match
+    if (a === b) return a.length >= minLength ? a : null;
+
+    // For large strings, sample fixed-size chunks from multiple positions
+    // so we catch repeated patterns anywhere in the string without O(n*m) blowup.
+    // Chunk size: 200 chars each → at most 200*200=40k iterations per chunk pair.
+    const CHUNK_SIZE = 200;
+
+    const getChunks = (s: string): string[] => {
+      if (s.length <= CHUNK_SIZE) return [s];
+      const q = Math.floor(s.length / 4);
+      return [
+        s.slice(0, CHUNK_SIZE),                          // first quarter
+        s.slice(q - CHUNK_SIZE / 2, q + CHUNK_SIZE / 2), // around 1/4 mark
+        s.slice(2 * q - CHUNK_SIZE / 2, 2 * q + CHUNK_SIZE / 2), // around midpoint
+        s.slice(3 * q - CHUNK_SIZE / 2, 3 * q + CHUNK_SIZE / 2), // around 3/4 mark
+        s.slice(-CHUNK_SIZE),                            // last quarter
+      ];
+    };
+
+    const chunksA = getChunks(a);
+    const chunksB = getChunks(b);
+
+    // Run LCS on each chunk pair, return the best match found
+    let best = "";
+    for (const chunkA of chunksA) {
+      for (const chunkB of chunksB) {
+        for (let i = 0; i < chunkA.length - minLength + 1; i++) {
+          for (let j = chunkA.length; j > i + minLength - 1; j--) {
+            const sub = chunkA.slice(i, j);
+            if (sub.length <= best.length) break; // already found longer
+            if (chunkB.includes(sub)) {
+              best = sub;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    return best.length >= minLength ? best : null;
+  }
+
+  /**
+   * Extracts all string values from a tool call's arguments
+   */
+  private getToolCallStrings(toolCall: ToolCall): string[] {
+    try {
+      const parsed = JSON.parse(toolCall.function.arguments);
+      return this.extractStringValues(parsed);
+    } catch {
+      // If not JSON, treat the whole arguments string as a single value
+      return [toolCall.function.arguments];
+    }
+  }
+
+  /**
+   * Creates a processor that scans messages for repeated large string values
+   * in tool call arguments, and appends a hint suggesting variable storage.
+   *
+   * This helps the LLM discover that it can avoid re-outputting long strings
+   * (e.g. JWTs, file contents) by storing them once with setVariable or
+   * storeToolCallToVariable and then referencing them via {{varName}}.
+   *
+   * CACHING NOTE: To protect Anthropic prefix-cache stability this processor
+   * keeps at most ONE hint message in the array.  Before injecting a new hint
+   * it removes the previous one (identified by a stable sentinel prefix) so
+   * the total message count — and therefore every cache breakpoint — stays
+   * constant.  The hint content is also kept deterministic (no per-call
+   * volatile numbers) so that re-injecting the same hint is a cache no-op.
+   */
+  createRepetitionHintProcessor(options: {
+    minLength?: number;       // Minimum string length to consider (default: 50)
+    minRepetitions?: number;  // Minimum occurrences to trigger hint (default: 2)
+    minSubstringLength?: number; // Minimum repeated substring length (default: 50)
+    recentMessagesWindow?: number; // Only scan the last N messages (default: 10)
+    throttleMessages?: number; // Only emit hint once per N new messages (default: 5)
+    maxExamples?: number;     // Max number of example variables to show (default: 3)
+    hintMessageTokens?: number; // Estimated tokens in the hint message itself for net savings calc (default: 190)
+  } = {}): MessageProcessorFunction {
+    const minLength = options.minLength ?? 50;
+    const minRepetitions = options.minRepetitions ?? 2;
+    const minSubstringLength = options.minSubstringLength ?? 50;
+    const recentMessagesWindow = options.recentMessagesWindow ?? 10;
+    const throttleMessages = options.throttleMessages ?? 5;
+    const maxExamples = options.maxExamples ?? 3;
+
+    // ~100 base + 30 per example = ~190 tokens for the hint message itself
+    const hintMessageTokens = options.hintMessageTokens ?? (100 + maxExamples * 30);
+
+    // Stable sentinel that uniquely identifies hint messages injected by this processor.
+    // Must be a fixed string so the cache sees identical bytes on re-injection.
+    const HINT_SENTINEL = "⚠️ [knowhow:repetition-hint]";
+
+    // Throttle state: track the index of the message that was current when we
+    // last evaluated (ignoring the hint message itself in the count).
+    let lastHintAtMessageCount = -Infinity;
+
+    return async (originalMessages: Message[], modifiedMessages: Message[]) => {
+      // Remove any previously injected hint so we never accumulate duplicates
+      // and so the message array length stays predictable for cache breakpoints.
+      const existingHintIndex = modifiedMessages.findIndex(
+        (m) => typeof m.content === "string" && m.content.startsWith(HINT_SENTINEL)
+      );
+      if (existingHintIndex !== -1) {
+        modifiedMessages.splice(existingHintIndex, 1);
+      }
+
+      // Throttle: only re-evaluate if enough *real* messages have arrived since last hint.
+      // We exclude the hint message itself from the count (already removed above).
+      const currentMessageCount = modifiedMessages.length;
+      if (currentMessageCount - lastHintAtMessageCount < throttleMessages) {
+        return;
+      }
+
+      // Count occurrences of each string value across all tool call arguments
+      const stringCounts = new Map<string, { count: number; toolNames: Set<string> }>();
+
+      // Only scan the most recent N messages to keep cost bounded
+      const recentMessages = modifiedMessages.slice(-recentMessagesWindow);
+
+      // Step 1: exact full-string matches
+      const toolStrings = this.collectToolCallStrings(recentMessages, minLength);
+
+      for (const { value, toolName } of toolStrings) {
+        const existing = stringCounts.get(value);
+        if (existing) {
+          existing.count++;
+          existing.toolNames.add(toolName);
+        } else {
+          stringCounts.set(value, { count: 1, toolNames: new Set([toolName]) });
+        }
+      }
+
+      // Step 2: detect repeated substrings across different full strings
+      // e.g. the same JWT embedded in many different commands
+      const substringCounts = new Map<string, { count: number; toolNames: Set<string> }>();
+
+      for (let i = 0; i < toolStrings.length; i++) {
+        for (let j = i + 1; j < toolStrings.length; j++) {
+          const a = toolStrings[i];
+          const b = toolStrings[j];
+          // Skip if the full strings are identical (already counted above)
+          if (a.value === b.value) continue;
+
+          const common = this.longestCommonSubstring(a.value, b.value, minSubstringLength);
+          if (common) {
+            const existing = substringCounts.get(common);
+            if (existing) {
+              existing.count++;
+              existing.toolNames.add(a.toolName);
+              existing.toolNames.add(b.toolName);
+            } else {
+              substringCounts.set(common, {
+                count: 1,
+                toolNames: new Set([a.toolName, b.toolName]),
+              });
+            }
+          }
+        }
+      }
+
+      // Merge substring counts: count = number of unique pairs, so count+1 = occurrences
+      for (const [sub, info] of substringCounts.entries()) {
+        if (info.count + 1 >= minRepetitions) {
+          const existing = stringCounts.get(sub);
+          if (!existing) {
+            stringCounts.set(sub, { count: info.count + 1, toolNames: info.toolNames });
+          }
+        }
+      }
+
+      // Find entries that exceed the repetition threshold
+      const repeatedTools: string[] = [];
+      const repeatedEntries: Array<{ str: string; count: number; toolNames: Set<string> }> = [];
+
+      for (const [str, info] of stringCounts.entries()) {
+        if (info.count >= minRepetitions) {
+          repeatedEntries.push({ str, count: info.count, toolNames: info.toolNames });
+          for (const toolName of info.toolNames) {
+            if (!repeatedTools.includes(toolName)) {
+              repeatedTools.push(toolName);
+            }
+          }
+        }
+      }
+
+      if (repeatedTools.length > 0) {
+        lastHintAtMessageCount = currentMessageCount;
+
+        // Sort by (count * str.length) desc to surface highest-savings items first
+        repeatedEntries.sort((a, b) => b.count * b.str.length - a.count * a.str.length);
+
+        // Estimate token savings: chars_saved ÷ 4 (rough tokens-per-char estimate)
+        // Savings = (repetitions - 1) * str.length chars saved by using a short variable ref
+        let totalCharsSaved = 0;
+        for (const { str, count } of repeatedEntries) {
+          totalCharsSaved += (count - 1) * str.length;
+        }
+        const grossTokensSaved = Math.round(totalCharsSaved / 4);
+        const netTokensSaved = grossTokensSaved - hintMessageTokens;
+
+        // Skip the hint if the net savings are negative — the reminder costs more than it saves
+        if (netTokensSaved <= 0) {
+          return;
         }
 
-        // Apply variable substitution
-        modifiedMessages[i] = this.processMessage(message);
+        // Build example variable suggestions
+        // Use stable previews (fixed 80-char slices) to keep hint content
+        // deterministic across calls — volatile token counts are omitted so
+        // re-injecting the same hint does not bust the Anthropic prefix cache.
+        const examples = repeatedEntries.slice(0, maxExamples).map(({ str, toolNames }, i) => {
+          const preview = str.trim().slice(0, 80).replace(/\s+/g, " ");
+          const ellipsis = str.length > 80 ? "…" : "";
+          const varName = `var${i + 1}`;
+          return `  • \`${varName}\` (in ${[...toolNames].join(", ")}): "${preview}${ellipsis}"`;
+        });
+
+        modifiedMessages.push({
+          role: "user",
+          content:
+            `${HINT_SENTINEL} Tool inputs have large repetitions detected in: ${repeatedTools.join(", ")}. ` +
+            `Consider storing repeated values with \`setVariable\` or \`storeToolCallToVariable\`, ` +
+            `then reference them via {{variableName}} in future tool calls.\n` +
+            `Top repeated values to consider storing as variables:\n` +
+            examples.join("\n"),
+        });
       }
     };
   }

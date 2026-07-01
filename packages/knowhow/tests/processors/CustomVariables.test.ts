@@ -1,6 +1,7 @@
-import { Message } from "../../src/clients/types";
+import { Message } from "../../src/clients/types"; 
 import { CustomVariables } from "../../src/processors/CustomVariables";
 import { ToolsService } from "../../src/services";
+import * as fs from "fs";
 
 describe("CustomVariables", () => {
   let customVariables: CustomVariables;
@@ -552,5 +553,429 @@ describe("CustomVariables", () => {
       await processor(messages, modifiedMessages);
       expect(modifiedMessages[0].content).toBe("Empty: '' Spaces: '   '");
     });
+  });
+
+  describe("JWT token use case", () => {
+    let setVariableFunction: (name: string, contents: any) => string;
+
+    const LONG_JWT =
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
+      "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyLCJleHAiOjE3MTYyMzkwMjIsInJvbGVzIjpbImFkbWluIiwidXNlciJdLCJvcmciOiJhY21lLWNvcnAiLCJlbWFpbCI6ImpvaG5AYWNtZS5jb20ifQ." +
+      "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+
+    beforeEach(() => {
+      const addFunctionsCalls = mockToolsService.addFunctions.mock.calls;
+      const setVariableCall = addFunctionsCalls.find(
+        (call) => call[0].setVariable
+      );
+      setVariableFunction = setVariableCall[0].setVariable;
+    });
+
+    it("should store a long JWT and substitute it in a tool call argument", async () => {
+      // LLM stores the JWT once
+      setVariableFunction("jwt_token", LONG_JWT);
+
+      // LLM uses {{jwt_token}} in a tool call instead of repeating the full JWT
+      const messages: Message[] = [
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_abc",
+              type: "function",
+              function: {
+                name: "execCommand",
+                arguments: JSON.stringify({
+                  command: 'curl -H "Authorization: Bearer {{jwt_token}}" https://api.example.com/data',
+                }),
+              },
+            },
+          ],
+        },
+      ];
+
+      const processor = customVariables.createProcessor();
+      const modifiedMessages = [...messages];
+      await processor(messages, modifiedMessages);
+
+      // The tool call argument should have the full JWT substituted in
+      const args = JSON.parse(modifiedMessages[0].tool_calls![0].function.arguments);
+      expect(args.command).toBe(
+        `curl -H "Authorization: Bearer ${LONG_JWT}" https://api.example.com/data`
+      );
+      // And the original message should be unchanged
+      expect(messages[0].tool_calls![0].function.arguments).toContain("{{jwt_token}}");
+    });
+
+    it("should allow reusing the JWT variable across multiple tool calls without repeating it", async () => {
+      setVariableFunction("jwt_token", LONG_JWT);
+
+      // Simulate multiple tool calls all using {{jwt_token}} - LLM never outputs full JWT again
+      const toolCallMessages: Message[] = [
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_1",
+              type: "function",
+              function: {
+                name: "execCommand",
+                arguments: JSON.stringify({ command: 'curl -H "Authorization: Bearer {{jwt_token}}" https://api.example.com/users' }),
+              },
+            },
+          ],
+        },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_2",
+              type: "function",
+              function: {
+                name: "execCommand",
+                arguments: JSON.stringify({ command: 'curl -H "Authorization: Bearer {{jwt_token}}" https://api.example.com/posts' }),
+              },
+            },
+          ],
+        },
+      ];
+
+      const processor = customVariables.createProcessor();
+
+      // Simulate two agent turns: each turn calls processor with growing message array
+      // Turn 1: only message[0] is present
+      const modifiedMessages: Message[] = [{ ...toolCallMessages[0] }];
+      await processor(toolCallMessages.slice(0, 1), modifiedMessages);
+
+      // Turn 2: message[1] is added as the new latest message
+      modifiedMessages.push({ ...toolCallMessages[1] });
+      await processor(toolCallMessages.slice(0, 2), modifiedMessages);
+
+      // Both tool calls should have the full JWT after their respective turns
+      const args1 = JSON.parse(modifiedMessages[0].tool_calls![0].function.arguments);
+      const args2 = JSON.parse(modifiedMessages[1].tool_calls![0].function.arguments);
+      expect(args1.command).toContain(LONG_JWT);
+      expect(args2.command).toContain(LONG_JWT);
+
+      // Original messages should still have the placeholder
+      expect(toolCallMessages[0].tool_calls![0].function.arguments).toContain("{{jwt_token}}");
+      expect(toolCallMessages[1].tool_calls![0].function.arguments).toContain("{{jwt_token}}");
+    });
+
+  describe("storeToolCallToVariable privacy proof", () => {
+    /**
+     * This test proves that when an LLM uses storeToolCallToVariable to load
+     * a sensitive value (e.g. a JWT from a file), the LLM *never* sees the
+     * actual value in any message. The tool response only says
+     * "stored in variable X" - the raw secret stays server-side in the
+     * variable storage, and the LLM uses {{jwt_token}} as a placeholder.
+     */
+    let storeToolCallFunction: (
+      varName: string,
+      toolName: string,
+      toolArgs: string
+    ) => Promise<string>;
+    let setVariableFunction: (name: string, contents: any) => string;
+
+    beforeEach(() => {
+      const addFunctionsCalls = mockToolsService.addFunctions.mock.calls;
+      storeToolCallFunction = addFunctionsCalls.find(
+        (call) => call[0].storeToolCallToVariable
+      )![0].storeToolCallToVariable;
+      setVariableFunction = addFunctionsCalls.find(
+        (call) => call[0].setVariable
+      )![0].setVariable;
+    });
+
+    it("should store JWT from a file without the LLM ever seeing the value", async () => {
+      // Simulate a tool that reads the JWT file (like execCommand cat .knowhow/.jwt)
+      const jwtContent = fs.readFileSync(`${__dirname}/../fixtures/fake-secret.txt`, "utf-8").trim();
+
+      // The tool returns the file contents - but only to storeToolCallToVariable, not to the LLM
+      mockToolsService.callTool.mockResolvedValue(jwtContent as any);
+
+      // LLM calls: storeToolCallToVariable("jwt_token", "execCommand", '{"command":"cat .knowhow/.jwt"}')
+      const toolResponse = await storeToolCallFunction(
+        "jwt_token",
+        "execCommand",
+        JSON.stringify({ command: "cat tests/fixtures/fake-secret.txt" })
+      );
+
+      // The LLM only sees this confirmation message - NOT the JWT value itself
+      expect(toolResponse).toBe(
+        'Tool call result for "execCommand" has been stored in variable "jwt_token".'
+      );
+      expect(toolResponse).not.toContain(jwtContent);
+      expect(toolResponse).not.toContain("eyJ"); // No JWT content in the response
+
+      // The JWT IS stored internally and can be substituted into future tool calls
+      const processor = customVariables.createProcessor();
+
+      const messages: Message[] = [
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_curl",
+              type: "function",
+              function: {
+                name: "execCommand",
+                // LLM uses placeholder - never outputs the actual JWT
+                arguments: JSON.stringify({
+                  command: 'curl -H "Authorization: Bearer {{jwt_token}}" https://api.example.com',
+                }),
+              },
+            },
+          ],
+        },
+      ];
+
+      const modifiedMessages = [...messages];
+      await processor(messages, modifiedMessages);
+
+      // The actual JWT is injected at execution time
+      const args = JSON.parse(modifiedMessages[0].tool_calls![0].function.arguments);
+      expect(args.command).toContain(jwtContent);
+
+      // But the original message still has the placeholder (LLM never saw the JWT)
+      expect(messages[0].tool_calls![0].function.arguments).toContain("{{jwt_token}}");
+      expect(messages[0].tool_calls![0].function.arguments).not.toContain(jwtContent);
+    });
+
+    it("should prove the full storeToolCallToVariable flow with real JWT file", async () => {
+      // Use a fake secret file instead of a real JWT, to prove the secret is never exposed
+      const fakePath = `${__dirname}/../fixtures/fake-secret.txt`;
+      const fakeSecret = fs.readFileSync(fakePath, "utf-8").trim();
+
+      // Simulate the execCommand tool returning the JWT file contents
+      mockToolsService.callTool.mockResolvedValue(fakeSecret as any);
+
+      // Step 1: LLM stores JWT via storeToolCallToVariable - only gets a confirmation back
+      const storeResponse = await storeToolCallFunction(
+        "jwt_token",
+        "execCommand",
+        JSON.stringify({ command: `cat ${fakePath}` })
+      );
+
+      // LLM message history only contains this - not the JWT
+      expect(storeResponse).toContain('stored in variable "jwt_token"');
+      expect(storeResponse).not.toContain(fakeSecret);
+
+      // Step 2: LLM uses {{jwt_token}} in subsequent curl calls
+      const processor = customVariables.createProcessor();
+      const curlMessages: Message[] = [
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_api1",
+              type: "function",
+              function: {
+                name: "execCommand",
+                arguments: JSON.stringify({
+                  command: 'curl -H "Authorization: Bearer {{jwt_token}}" https://api.example.com/users',
+                }),
+              },
+            },
+          ],
+        },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [
+            {
+              id: "call_api2",
+              type: "function",
+              function: {
+                name: "execCommand",
+                arguments: JSON.stringify({
+                  command: 'curl -H "Authorization: Bearer {{jwt_token}}" https://api.example.com/posts',
+                }),
+              },
+            },
+          ],
+        },
+      ];
+
+      // Simulate two agent turns: each turn calls processor with growing message array
+      const modifiedMessages: Message[] = [{ ...curlMessages[0] }];
+      await processor(curlMessages.slice(0, 1), modifiedMessages);
+
+      modifiedMessages.push({ ...curlMessages[1] });
+      await processor(curlMessages.slice(0, 2), modifiedMessages);
+
+      // Both calls get the real JWT injected after their respective turns
+      const args1 = JSON.parse(modifiedMessages[0].tool_calls![0].function.arguments);
+      const args2 = JSON.parse(modifiedMessages[1].tool_calls![0].function.arguments);
+      expect(args1.command).toContain(fakeSecret);
+      expect(args2.command).toContain(fakeSecret);
+      // Original messages still have placeholder - JWT never appeared in LLM messages
+      expect(curlMessages[0].tool_calls![0].function.arguments).not.toContain(fakeSecret);
+      expect(curlMessages[1].tool_calls![0].function.arguments).not.toContain(fakeSecret);
+    });
+  });
+
+  describe("createRepetitionHintProcessor", () => {
+    it("should append a hint when a large string is repeated across multiple tool calls", async () => {
+      const longString = "x".repeat(100);
+      const messages: Message[] = [
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "c1", type: "function", function: { name: "toolA", arguments: JSON.stringify({ token: longString }) } }],
+        },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "c2", type: "function", function: { name: "toolA", arguments: JSON.stringify({ token: longString }) } }],
+        },
+      ];
+
+      const processor = customVariables.createRepetitionHintProcessor({ minLength: 50, minRepetitions: 2, hintMessageTokens: 0 });
+      const modified = JSON.parse(JSON.stringify(messages));
+      await processor(messages, modified);
+
+      // A hint message should be appended
+      const hint = modified[modified.length - 1];
+      expect(hint.role).toBe("user");
+      expect(hint.content).toContain("large repetitions");
+      expect(hint.content).toContain("toolA");
+      expect(hint.content).toContain("setVariable");
+      expect(hint.content).toContain("storeToolCallToVariable");
+    });
+
+    it("should not append a hint when strings are short", async () => {
+      const messages: Message[] = [
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "c1", type: "function", function: { name: "toolA", arguments: JSON.stringify({ token: "short" }) } }],
+        },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "c2", type: "function", function: { name: "toolA", arguments: JSON.stringify({ token: "short" }) } }],
+        },
+      ];
+
+      const processor = customVariables.createRepetitionHintProcessor({ minLength: 50, minRepetitions: 2 });
+      const modified = JSON.parse(JSON.stringify(messages));
+      await processor(messages, modified);
+
+      // No hint should be appended - length of messages unchanged
+      expect(modified.length).toBe(messages.length);
+    });
+
+    it("should not append a hint when a large string appears only once", async () => {
+      const longString = "y".repeat(100);
+      const messages: Message[] = [
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "c1", type: "function", function: { name: "toolB", arguments: JSON.stringify({ value: longString }) } }],
+        },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "c2", type: "function", function: { name: "toolB", arguments: JSON.stringify({ value: "something_different_entirely" }) } }],
+        },
+      ];
+
+      const processor = customVariables.createRepetitionHintProcessor({ minLength: 50, minRepetitions: 2 });
+      const modified = JSON.parse(JSON.stringify(messages));
+      await processor(messages, modified);
+      expect(modified.length).toBe(messages.length);
+    });
+
+    it("should list all tool names that use repeated values", async () => {
+      const longString = "z".repeat(100);
+      const messages: Message[] = [
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "c1", type: "function", function: { name: "toolX", arguments: JSON.stringify({ auth: longString }) } }],
+        },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "c2", type: "function", function: { name: "toolY", arguments: JSON.stringify({ auth: longString }) } }],
+        },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "c3", type: "function", function: { name: "toolZ", arguments: JSON.stringify({ auth: longString }) } }],
+        },
+      ];
+      const processor = customVariables.createRepetitionHintProcessor({ minLength: 50, minRepetitions: 2, hintMessageTokens: 0 });
+      const modified = JSON.parse(JSON.stringify(messages));
+      await processor(messages, modified);
+      const hint = modified[modified.length - 1];
+      expect(hint.content).toContain("toolX");
+      expect(hint.content).toContain("toolY");
+      expect(hint.content).toContain("toolZ");
+    });
+
+    it("should use default options when none provided", async () => {
+      const longString = "a".repeat(800); // long enough to produce net positive token savings with default hintMessageTokens
+      const messages: Message[] = [
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "c1", type: "function", function: { name: "myTool", arguments: JSON.stringify({ key: longString }) } }],
+        },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{ id: "c2", type: "function", function: { name: "myTool", arguments: JSON.stringify({ key: longString }) } }],
+        },
+      ];
+      const processor = customVariables.createRepetitionHintProcessor(); // default options
+      const modified = JSON.parse(JSON.stringify(messages));
+      await processor(messages, modified);
+      const hint = modified[modified.length - 1];
+      expect(hint.role).toBe("user");
+      expect(hint.content).toContain("myTool");
+    });
+
+    it("should detect repeated substrings embedded within different larger strings", async () => {
+      // Simulate the JWT-in-curl-command pattern:
+      // Each command is unique but all contain the same JWT substring
+      const jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJmYWtlLXVzZXItaWQifQ.FAKE_SIGNATURE_DO_NOT_USE";
+      const messages: Message[] = [
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{
+            id: "c1", type: "function",
+            function: { name: "execCommand", arguments: JSON.stringify({ command: `curl -H 'Authorization: Bearer ${jwt}' https://api.example.com/endpoint-one` }) }
+          }],
+        },
+        {
+          role: "assistant",
+          content: null,
+          tool_calls: [{
+            id: "c2", type: "function",
+            function: { name: "execCommand", arguments: JSON.stringify({ command: `curl -H 'Authorization: Bearer ${jwt}' https://api.example.com/endpoint-two --data '{"key":"value"}'` }) }
+          }],
+        },
+      ];
+
+      const processor = customVariables.createRepetitionHintProcessor({ minLength: 50, minRepetitions: 2, minSubstringLength: 50, hintMessageTokens: 0 });
+      const modified = JSON.parse(JSON.stringify(messages));
+      await processor(messages, modified);
+
+      // Should have detected the JWT appearing in both commands and added a hint
+      expect(modified.length).toBe(3);
+      const hint = modified[modified.length - 1];
+      expect(hint.role).toBe("user");
+      expect(hint.content).toContain("execCommand");
+      expect(hint.content).toContain("setVariable");
+    });
+  });
   });
 });

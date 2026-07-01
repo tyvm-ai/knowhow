@@ -32,6 +32,12 @@ export class TokenCompressor implements JsonCompressorStorage {
   private compressionThreshold: number = 4000;
   private characterLimit: number = this.compressionThreshold * 4;
 
+  // Minimum size (in characters) a standalone chunk should have. Leftover content
+  // smaller than this is merged into an adjacent chunk so we never emit tiny,
+  // low-value chunks that force the agent into extra round-trips to reassemble a
+  // file. Defaults to half of the per-chunk character limit.
+  private minChunkCharacters: number = Math.floor(this.characterLimit / 2);
+
   // Largest size retrievable without re-compressing
   public maxTokens: number = this.compressionThreshold * 2;
 
@@ -56,6 +62,7 @@ export class TokenCompressor implements JsonCompressorStorage {
   public setCompressionThreshold(threshold: number): void {
     this.compressionThreshold = threshold;
     this.characterLimit = threshold * 4; // Update character limit based on new threshold
+    this.minChunkCharacters = Math.floor(this.characterLimit / 2);
     this.jsonCompressor.updateSettings(threshold, this.maxTokens);
   }
 
@@ -88,7 +95,7 @@ export class TokenCompressor implements JsonCompressorStorage {
     const chunkKeys: string[] = [];
     let remaining = content;
 
-    // Split from the end, creating chunks that will be linked
+    // Split from the end, creating chunks that will be linked.
     while (remaining.length > this.characterLimit) {
       const chunkStart = remaining.length - this.characterLimit;
       const chunk = remaining.substring(chunkStart);
@@ -96,9 +103,19 @@ export class TokenCompressor implements JsonCompressorStorage {
       remaining = remaining.substring(0, chunkStart);
     }
 
-    // The remaining part becomes the first chunk
+    // The remaining part becomes the first chunk. To avoid producing a tiny,
+    // low-value leading chunk (which forces the agent into extra round-trips to
+    // reassemble a file), merge it into the next chunk when it falls below the
+    // minimum chunk size. Only split it out as its own chunk when it is large
+    // enough to stand on its own.
     if (remaining.length > 0) {
-      chunks.unshift(remaining);
+      if (chunks.length > 0 && remaining.length < this.minChunkCharacters) {
+        // Prepend the small leftover onto the first existing chunk so every
+        // emitted chunk carries a meaningful amount of content.
+        chunks[0] = remaining + chunks[0];
+      } else {
+        chunks.unshift(remaining);
+      }
     }
 
     // Store chunks and create chain of references
@@ -131,7 +148,7 @@ export class TokenCompressor implements JsonCompressorStorage {
       200
     )}...\n[Use ${
       this.toolName
-    } tool with key "${firstKey}" to retrieve content. Follow NEXT_CHUNK_KEY references for complete content]\n[TIP: try jqToolResponse,grepToolResponse,tailToolResponse to filter/search/map without repeated expandTokens calls]`;
+    } tool with key "${firstKey}" to retrieve the FULL content in one call (chunks are auto-stitched; pass fromLine/toLine for a ranged read)]\n[TIP: try jqToolResponse,grepToolResponse,tailToolResponse to filter/search/map with REAL line numbers without expanding at all]`;
   }
 
   /**
@@ -328,6 +345,38 @@ export class TokenCompressor implements JsonCompressorStorage {
     return this.storage[key] || null;
   }
 
+  /**
+   * Retrieves the fully reassembled content for a key, following any
+   * `NEXT_CHUNK_KEY` references and stripping the chunk-linking markers. This
+   * lets callers get the complete content in a single call instead of chasing a
+   * chain of nested keys.
+   */
+  retrieveFullString(key: string): string | null {
+    let currentKey: string | null = key;
+    let result = "";
+    let found = false;
+    const visited = new Set<string>();
+
+    while (currentKey && !visited.has(currentKey)) {
+      visited.add(currentKey);
+      const chunk = this.storage[currentKey];
+      if (chunk === undefined) {
+        break;
+      }
+      found = true;
+
+      const nextMatch = chunk.match(/\n\n\[NEXT_CHUNK_KEY:\s*([^\s\]]+)\]/);
+      const nextKey = nextMatch ? nextMatch[1] : null;
+
+      // Strip the trailing NEXT_CHUNK_KEY marker before stitching.
+      const cleaned = chunk.replace(/\n\n\[NEXT_CHUNK_KEY:\s*[^\s\]]+\]/, "");
+      result += cleaned;
+      currentKey = nextKey;
+    }
+
+    return found ? result : null;
+  }
+
   storeString(key: string, value: string): void {
     if (this.estimateTokens(value) > this.maxTokens) {
       // adjust max tokens so we can always retrieve this without re-compressing
@@ -353,15 +402,42 @@ export class TokenCompressor implements JsonCompressorStorage {
     if (toolsService) {
       toolsService.addTools([expandTokensDefinition]);
       toolsService.addFunctions({
-        [this.toolName]: (key: string) => {
-          const data = this.retrieveString(key);
+        [this.toolName]: (key: string, fromLine?: number, toLine?: number) => {
+          // Auto-stitch: follow any NEXT_CHUNK_KEY chain and return the full,
+          // reassembled content so the agent never has to chase nested keys.
+          const data = this.retrieveFullString(key);
 
-          if (!data) {
+          if (data === null) {
             return `Error: No data found for key "${key}". Available keys: ${this.getStorageKeys().join(
               ", "
             )}`;
           }
-          return data;
+
+          // Optional ranged read: return only the requested 1-based, inclusive
+          // line range, prefixed with real line numbers for easy mapping back.
+          const hasRange =
+            typeof fromLine === "number" || typeof toLine === "number";
+          if (!hasRange) {
+            return data;
+          }
+
+          const lines = data.split("\n");
+          const totalLines = lines.length;
+          const start = Math.max(1, typeof fromLine === "number" ? fromLine : 1);
+          const end = Math.min(
+            totalLines,
+            typeof toLine === "number" ? toLine : totalLines
+          );
+
+          if (start > end) {
+            return `Error: Invalid line range for key "${key}": fromLine (${start}) is greater than toLine (${end}). Content has ${totalLines} lines.`;
+          }
+
+          const numbered: string[] = [];
+          for (let i = start; i <= end; i++) {
+            numbered.push(`${i}: ${lines[i - 1]}`);
+          }
+          return numbered.join("\n");
         },
       });
     }
@@ -466,7 +542,7 @@ export const expandTokensDefinition: Tool = {
   function: {
     name: "expandTokens",
     description:
-      "Retrieve a chunk of compressed data that was stored during message processing. The returned content may contain a `NEXT_CHUNK_KEY` to retrieve subsequent chunks. NOTE: Can also use jqToolResponse, grepToolResponse, tailToolResponse to access/filter/search compressed content without needing to expand all tokens.",
+      "Retrieve compressed data that was stored during message processing. The full content is automatically reassembled (any chunk chain is followed for you, so you never need to chase NEXT_CHUNK_KEY references). Optionally pass fromLine/toLine (1-based, inclusive) to return just a range of lines, prefixed with real line numbers. NOTE: Can also use jqToolResponse, grepToolResponse, tailToolResponse to access/filter/search compressed content without needing to expand all tokens.",
     parameters: {
       type: "object",
       positional: true,
@@ -474,6 +550,16 @@ export const expandTokensDefinition: Tool = {
         key: {
           type: "string",
           description: "The key of the compressed data to retrieve",
+        },
+        fromLine: {
+          type: "number",
+          description:
+            "Optional 1-based start line (inclusive) for a ranged read of the reassembled content.",
+        },
+        toLine: {
+          type: "number",
+          description:
+            "Optional 1-based end line (inclusive). Defaults to the end of the content when omitted.",
         },
       },
       required: ["key"],

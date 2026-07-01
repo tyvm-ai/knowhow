@@ -53,6 +53,10 @@ export * as ai from "./ai";
 
 // Export module system types for external modules
 export * from "./services/modules/types";
+export { ModulesService } from "./services/modules";
+// Export conversion types for external modules (e.g. knowhow-module-pdf)
+export * from "./services/conversion/types";
+export { ConversionService } from "./services/conversion/ConversionService";
 // Export plugin types for external plugins
 export { PluginBase } from "./plugins/PluginBase";
 export { PluginMeta, Plugin, PluginContext } from "./plugins/types";
@@ -183,13 +187,15 @@ export async function upload() {
  *   - Standard glob patterns (e.g. "src/**\/*.ts")
  *   - Brace expansion (e.g. "{src/a.ts,src/b.ts}")
  *   - Comma-separated file paths (e.g. "src/a.ts,src/b.ts") — auto-converted to brace expansion
+ *   - Mixed comma-separated list with globs (e.g. "src/a.ts,src/commands/**\/*.ts")
  */
 function normalizeInputPattern(input: string): string {
-  // If it already has braces or glob chars other than comma, use as-is
-  if (input.includes("{") || input.includes("*") || input.includes("?")) {
+  // If it already has braces, use as-is (already brace-expanded)
+  if (input.includes("{")) {
     return input;
   }
   // If it contains commas, treat as comma-separated list and wrap in braces
+  // This also handles the mixed case: "src/a.ts,src/commands/**/*.ts"
   if (input.includes(",")) {
     const parts = input.split(",").map((p) => p.trim());
     return `{${parts.join(",")}}`;

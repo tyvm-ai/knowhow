@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "lib": ["es5", "es6", "es2021", "dom"],
+    "skipLibCheck": true,
+    "noImplicitAny": false,
+    "removeComments": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "target": "esnext",
+    "outDir": "ts_build",
+    "sourceMap": true
+  },
+  "include": ["./src/**/*.ts"],
+  "exclude": ["node_modules"]
+}

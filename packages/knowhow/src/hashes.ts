@@ -1,16 +1,35 @@
 import fs from "fs";
 import * as crypto from "crypto";
 import { Hashes } from "./types";
-import { readFile, writeFile } from "./utils";
+import { readFile } from "./utils";
 import { convertToText } from "./conversion";
 
 export async function getHashes() {
-  const hashes = JSON.parse(await readFile(".knowhow/.hashes.json", "utf8"));
-  return hashes as Hashes;
+  try {
+    const hashes = JSON.parse(await readFile(".knowhow/.hashes.json", "utf8"));
+    return hashes as Hashes;
+  } catch (err: any) {
+    if (err.code === "ENOENT") {
+      return {} as Hashes;
+    }
+    throw err;
+  }
 }
 
+/**
+ * Atomically save hashes to disk — writes to a temp file then renames,
+ * preventing concurrent writes from producing corrupted/truncated JSON.
+ */
 export async function saveHashes(hashes: any) {
-  await writeFile(".knowhow/.hashes.json", JSON.stringify(hashes, null, 2));
+  const target = ".knowhow/.hashes.json";
+  const tmp = `${target}.tmp.${process.pid}`;
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(hashes, null, 2));
+    fs.renameSync(tmp, target);
+  } catch (err) {
+    try { fs.unlinkSync(tmp); } catch (_) {}
+    throw err;
+  }
 }
 
 export async function md5Hash(str: string) {
@@ -35,18 +54,17 @@ export async function checkNoFilesChanged(
       return false;
     }
 
-    if (
+    // Check if this file has changed (either format)
+    const matchesLegacy =
       hashes[file].promptHash === promptHash &&
-      hashes[file].fileHash === fileHash
-    ) {
-      return true;
-    }
+      hashes[file].fileHash === fileHash;
+    const matchesCurrent = hashes[file][promptHash] === fileHash;
 
-    if (hashes[file][promptHash] === fileHash) {
-      return true;
+    if (!matchesLegacy && !matchesCurrent) {
+      // This file has changed — re-generation needed
+      return false;
     }
-
-    return false;
+    // This file is unchanged — continue checking the rest
   }
 
   return true;
@@ -90,17 +108,19 @@ export async function hasFileChangedSinceUpload(
 }
 
 /**
- * Saves the hash of the file at the time of a successful upload
+ * Mutates the provided hashes object with the upload hash for localPath.
+ * If no hashes object is provided, loads, mutates, and saves independently.
  */
-export async function saveUploadHash(localPath: string) {
-  const hashes = await getHashes();
+export async function saveUploadHash(localPath: string, hashes?: any) {
+  const standalone = !hashes;
+  if (standalone) hashes = await getHashes();
   const content = fs.readFileSync(localPath);
   const currentHash = crypto.createHash("md5").update(content).digest("hex");
   if (!hashes[localPath]) {
     hashes[localPath] = { fileHash: currentHash, promptHash: "" };
   }
   hashes[localPath][UPLOAD_KEY] = currentHash;
-  await saveHashes(hashes);
+  if (standalone) await saveHashes(hashes);
 }
 
 /**
@@ -120,18 +140,19 @@ export async function isLocalFileMatchingDownloadHash(
 }
 
 /**
- * Saves the SHA-256 hash of the file after a successful download so we can
- * skip unchanged files on the next sync.
+ * Mutates the provided hashes object with the download hash for localPath.
+ * If no hashes object is provided, loads, mutates, and saves independently.
  */
-export async function saveDownloadHash(localPath: string) {
-  const hashes = await getHashes();
+export async function saveDownloadHash(localPath: string, hashes?: any) {
+  const standalone = !hashes;
+  if (standalone) hashes = await getHashes();
   const content = fs.readFileSync(localPath);
   const currentHash = crypto.createHash("sha256").update(content).digest("base64");
   if (!hashes[localPath]) {
     hashes[localPath] = { fileHash: currentHash, promptHash: "" };
   }
   hashes[localPath][DOWNLOAD_KEY] = currentHash;
-  await saveHashes(hashes);
+  if (standalone) await saveHashes(hashes);
 }
 
 /**

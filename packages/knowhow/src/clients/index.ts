@@ -1,6 +1,7 @@
 import {
   CompletionOptions,
   CompletionResponse,
+  StreamChunk,
   EmbeddingOptions,
   EmbeddingResponse,
   GenericClient,
@@ -33,6 +34,8 @@ import { ContextLimits } from "./contextLimits";
 import { OpenAiTextPricing } from "./pricing/openai";
 import { AnthropicTextPricing } from "./pricing/anthropic";
 import { GeminiPricing } from "./pricing/google";
+import { withRetry } from "./withRetry";
+import { FireworksTextPricing } from "./pricing/fireworks";
 import {
   XaiTextPricing,
   XaiImagePricing,
@@ -396,9 +399,10 @@ export class AIClient {
     const hasModel = this.providerHasModel(provider, model);
 
     if (!hasModel) {
-      throw new Error(
-        `Model ${model} not registered for provider ${provider}.`
-      );
+      // Model not in local registry — pass it through anyway so the provider
+      // API can accept or reject it directly (e.g. newly-released models that
+      // haven't been fetched into our local model list yet).
+      console.warn(`⚠️  Model '${model}' not in local registry for provider '${provider}', attempting anyway.`);
     }
 
     return { client: this.clients[provider], provider, model };
@@ -577,11 +581,12 @@ export class AIClient {
    * @param modelQuery - the model name to search for (can be partial/normalized)
    * @param provider   - optional provider to restrict search to
    */
-  findModelFuzzy(modelQuery: string, provider?: string): { provider: string; model: string } | undefined {
+  findModelFuzzy(
+    modelQuery: string,
+    provider?: string
+  ): { provider: string; model: string } | undefined {
     const queryNorm = AIClient.normalizeModelId(modelQuery);
-    const providers = provider
-      ? [provider]
-      : Object.keys(this.clientModels);
+    const providers = provider ? [provider] : Object.keys(this.clientModels);
 
     for (const p of providers) {
       const models = (this.clientModels[p] as string[]) ?? [];
@@ -607,6 +612,11 @@ export class AIClient {
       return { provider, model };
     }
 
+    // If an explicit provider was given, don't fall through to fuzzy cross-provider
+    // search — that would silently pick a completely different provider (e.g. nvidia
+    // instead of fireworks). Just pass through and let the API accept/reject the model.
+    const hasExplicitProvider = !!provider;
+
     if (model?.includes("/")) {
       const split = model.split("/");
 
@@ -618,16 +628,21 @@ export class AIClient {
         return { provider: inferredProvider, model: inferredModel };
       }
 
-      // Starts with match
-      const foundBySplit = this.findModel(inferredModel);
-      if (foundBySplit) {
-        return foundBySplit;
+      // Starts with match — only if no explicit provider was given
+      if (!hasExplicitProvider) {
+        const foundBySplit = this.findModel(inferredModel);
+        if (foundBySplit) {
+          return foundBySplit;
+        }
       }
     }
 
-    const foundByModel = this.findModel(model);
-    if (foundByModel) {
-      return foundByModel;
+    // Fuzzy cross-provider search — only if no explicit provider was given
+    if (!hasExplicitProvider) {
+      const foundByModel = this.findModel(model);
+      if (foundByModel) {
+        return foundByModel;
+      }
     }
 
     const allModels = this.listAllModels();
@@ -664,7 +679,35 @@ export class AIClient {
         } model registered. Try using ${JSON.stringify(this.listAllModels())}`
       );
     }
-    return client.createChatCompletion({ ...options, model });
+    return withRetry(
+      (signal) => client.createChatCompletion({ ...options, model, signal }),
+      options
+    );
+  }
+
+  async *createCompletionStream(
+    provider: string,
+    options: CompletionOptions
+  ): AsyncGenerator<StreamChunk> {
+    const { client, model } = this.getClient(provider, options.model);
+    if (!model || !client) {
+      throw new Error(
+        `provider: ${provider} does not have ${
+          options.model
+        } model registered. Try using ${JSON.stringify(this.listAllModels())}`
+      );
+    }
+    if (client.createChatCompletionStream) {
+      yield* client.createChatCompletionStream({ ...options, model });
+    } else {
+      // Fallback: non-streaming clients — call normal completion and yield as single chunk
+      const result = await withRetry(
+        (signal) => client.createChatCompletion({ ...options, model, signal }),
+        options
+      );
+      yield { delta: result.choices[0]?.message?.content ?? "", done: false };
+      yield { done: true, usage: result.usage, usd_cost: result.usd_cost };
+    }
   }
 
   async createEmbedding(
@@ -679,7 +722,10 @@ export class AIClient {
         } model registered. Try using ${JSON.stringify(this.listAllModels())}`
       );
     }
-    return client.createEmbedding({ ...options, model });
+    return withRetry(
+      (signal) => client.createEmbedding({ ...options, model, signal }),
+      options
+    );
   }
 
   async createAudioTranscription(
@@ -692,7 +738,10 @@ export class AIClient {
         `Provider ${provider} does not support audio transcription.`
       );
     }
-    return client.createAudioTranscription(options);
+    return withRetry(
+      (signal) => client.createAudioTranscription({ ...options, signal }),
+      options
+    );
   }
 
   async createAudioGeneration(
@@ -710,7 +759,10 @@ export class AIClient {
         `Model ${options.model} not registered for provider ${provider}.`
       );
     }
-    return client.createAudioGeneration({ ...options, model });
+    return withRetry(
+      (signal) => client.createAudioGeneration({ ...options, model, signal }),
+      options
+    );
   }
 
   async createImageGeneration(
@@ -728,7 +780,10 @@ export class AIClient {
         `Model ${options.model} not registered for provider ${provider}.`
       );
     }
-    return client.createImageGeneration({ ...options, model });
+    return withRetry(
+      (signal) => client.createImageGeneration({ ...options, model, signal }),
+      options
+    );
   }
 
   async createVideoGeneration(
@@ -746,7 +801,10 @@ export class AIClient {
         `Model ${options.model} not registered for provider ${provider}.`
       );
     }
-    return client.createVideoGeneration({ ...options, model });
+    return withRetry(
+      (signal) => client.createVideoGeneration({ ...options, model, signal }),
+      options
+    );
   }
 
   async getVideoStatus(
@@ -801,12 +859,24 @@ export class AIClient {
     return this.clientModels;
   }
 
-  listAllModelsWithProvider() {
-    return Object.entries(this.listAllModels())
-      .map(([provider, models]) =>
-        models.map((m) => ({ id: `${provider}/${m}` }))
-      )
-      .flat();
+  /**
+   * Filters a provider→models map to only include models that have known pricing.
+   * For HttpClient-based providers with getPricing(), only priced models are kept.
+   * For other providers (no getPricing()), all models pass through unchanged.
+   */
+  private _filterByPricing(models: Record<string, string[]>): Record<string, string[]> {
+    const result: Record<string, string[]> = {};
+    for (const [provider, ids] of Object.entries(models)) {
+      const client = this.clients[provider];
+      if (client?.getPricing) {
+        const pricingMap = client.getPricing() as Record<string, ModelPricing>;
+        const priced = ids.filter((id) => !!pricingMap[id]);
+        if (priced.length > 0) result[provider] = priced;
+      } else {
+        result[provider] = ids;
+      }
+    }
+    return result;
   }
 
   /*
@@ -835,7 +905,7 @@ export class AIClient {
         const splitModel = m.id.split("/");
 
         if (splitModel.length < 2) {
-          console.error(`Cannot parse model format: ${m.id}`);
+          console.warn(`Cannot parse model format: ${m.id}`);
         }
 
         const provider = splitModel.length > 1 ? splitModel[0] : "";
@@ -859,11 +929,8 @@ export class AIClient {
     return providerModels;
   }
 
-  listAllEmbeddingModels() {
-    return this.embeddingModels;
-  }
-
-  listAllCompletionModels() {
+  listAllCompletionModels(options?: { pricing?: boolean }) {
+    if (options?.pricing) return this._filterByPricing(this.completionModels);
     return this.completionModels;
   }
 
@@ -871,16 +938,31 @@ export class AIClient {
     return Object.keys(this.clientModels);
   }
 
-  listAllImageModels() {
+  listAllEmbeddingModels(options?: { pricing?: boolean }) {
+    if (options?.pricing) return this._filterByPricing(this.embeddingModels);
+    return this.embeddingModels;
+  }
+
+  listAllImageModels(options?: { pricing?: boolean }) {
+    if (options?.pricing) return this._filterByPricing(this.imageModels);
     return this.imageModels;
   }
 
-  listAllAudioModels() {
+  listAllAudioModels(options?: { pricing?: boolean }) {
+    if (options?.pricing) return this._filterByPricing(this.audioModels);
     return this.audioModels;
   }
 
-  listAllVideoModels() {
+  listAllVideoModels(options?: { pricing?: boolean }) {
+    if (options?.pricing) return this._filterByPricing(this.videoModels);
     return this.videoModels;
+  }
+
+  listAllModelsWithProvider(options?: { pricing?: boolean }) {
+    const models = options?.pricing ? this._filterByPricing(this.clientModels) : this.clientModels;
+    return Object.entries(models)
+      .map(([provider, ids]) => ids.map((m) => ({ id: `${provider}/${m}` })))
+      .flat();
   }
 
   /**
@@ -938,6 +1020,7 @@ export class AIClient {
       ...AnthropicTextPricing,
       ...GeminiPricing,
       ...XaiTextPricing,
+      ...FireworksTextPricing,
     };
     const allImagePricing: Record<string, ModelPricing> = {
       ...XaiImagePricing,

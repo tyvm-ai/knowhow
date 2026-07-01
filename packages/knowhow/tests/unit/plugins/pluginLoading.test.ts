@@ -1,6 +1,5 @@
 import { PluginService } from "../../../src/plugins/plugins";
 import { PluginContext } from "../../../src/plugins/types";
-import { Config } from "../../../src/types";
 
 // Minimal mock context for PluginService construction
 // EmbeddingPlugin calls context.Events.on() in its constructor, so we must mock it.
@@ -63,89 +62,5 @@ describe("PluginService.loadPlugin", () => {
     const plugin = service.getPlugin(mockKey);
     expect(plugin).toBeDefined();
     expect(plugin!.meta.key).toBe(mockKey);
-  });
-});
-
-describe("PluginService.loadPluginsFromConfig", () => {
-  it("should load plugins listed in config.pluginPackages", async () => {
-    const service = new PluginService(makeContext());
-    const loadedSpecs: string[] = [];
-
-    service.loadPlugin = jest.fn().mockImplementation(async (spec: string) => {
-      loadedSpecs.push(spec);
-      const key = `plugin-from-${spec}`;
-      const instance = {
-        meta: { key, name: key },
-        isEnabled: () => true,
-        enable: () => {},
-        disable: () => {},
-        call: () => Promise.resolve(""),
-        callMany: () => Promise.resolve(""),
-        embed: () => Promise.resolve([]),
-      };
-      (service as any).pluginMap.set(key, instance);
-      return key;
-    });
-
-    const config = {
-      pluginPackages: {
-        asana: "@knowhow/plugin-asana",
-        linear: "@knowhow/plugin-linear",
-      },
-    } as unknown as Config;
-
-    await service.loadPluginsFromConfig(config);
-
-    expect(loadedSpecs).toContain("@knowhow/plugin-asana");
-    expect(loadedSpecs).toContain("@knowhow/plugin-linear");
-    expect(loadedSpecs.length).toBe(2);
-  });
-
-  it("should handle empty pluginPackages gracefully", async () => {
-    const service = new PluginService(makeContext());
-    service.loadPlugin = jest.fn();
-
-    const config = {} as Config;
-    await expect(service.loadPluginsFromConfig(config)).resolves.toBeUndefined();
-    expect(service.loadPlugin).not.toHaveBeenCalled();
-  });
-
-  it("should log a warning and not crash when a plugin fails to load", async () => {
-    const context = makeContext();
-    const service = new PluginService(context);
-
-    service.loadPlugin = jest.fn().mockRejectedValue(new Error("Module not found"));
-
-    const config = {
-      pluginPackages: {
-        broken: "non-existent-package",
-      },
-    } as unknown as Config;
-
-    await expect(service.loadPluginsFromConfig(config)).resolves.toBeUndefined();
-    expect(context.Events.log).toHaveBeenCalledWith(
-      "PluginService",
-      expect.stringContaining("broken"),
-      "warn"
-    );
-  });
-
-  it("should load each plugin with the correct spec string", async () => {
-    const service = new PluginService(makeContext());
-    const loadedSpecs: string[] = [];
-
-    service.loadPlugin = jest.fn().mockImplementation(async (spec: string) => {
-      loadedSpecs.push(spec);
-      return spec;
-    });
-
-    const config = {
-      pluginPackages: {
-        valid: "@knowhow/valid-plugin",
-      },
-    } as unknown as Config;
-
-    await service.loadPluginsFromConfig(config);
-    expect(loadedSpecs).toEqual(["@knowhow/valid-plugin"]);
   });
 });

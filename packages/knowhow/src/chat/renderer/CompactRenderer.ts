@@ -72,6 +72,8 @@ function colorFor(n: string) {
 export class CompactRenderer implements AgentRenderer {
   private activeTaskId: string | undefined;
   private emitter = new EventEmitter();
+  private paused = false;
+  private bufferedEvents: RenderEvent[] = [];
 
   setActiveTaskId(id: string | undefined): void {
     this.activeTaskId = id;
@@ -110,8 +112,26 @@ export class CompactRenderer implements AgentRenderer {
     this.emitter.on("agentDone", handler);
   }
 
+  pause(): void {
+    this.paused = true;
+  }
+
+  resume(): void {
+    this.paused = false;
+    const buffered = this.bufferedEvents.splice(0);
+    for (const event of buffered) {
+      this.render(event);
+    }
+  }
+
   render(event: RenderEvent): void {
     if (!this.isActiveTask(event.taskId)) return;
+
+    if (this.paused) {
+      this.bufferedEvents.push(event);
+      return;
+    }
+
     this.emitter.emit(event.type, event);
     switch (event.type) {
       case "log":

@@ -2,6 +2,17 @@
  * Auth message types for the worker WebSocket authentication protocol.
  */
 
+// Client → Worker: request a challenge
+export interface AuthGetChallengeMessage {
+  type: "auth:getChallenge";
+}
+
+// Worker → Client: sent when a non-auth message is received while locked
+export interface AuthLockedMessage {
+  type: "auth:locked";
+  message: string;
+}
+
 // Worker → Client: challenge
 export interface AuthChallengeMessage {
   type: "auth:challenge";
@@ -31,12 +42,13 @@ export interface AuthFailureMessage {
   type: "auth:failure";
   reason: "invalid_signature" | "expired" | "unknown_credential";
 }
-
 export type AuthMessage =
+  | AuthGetChallengeMessage
   | AuthChallengeMessage
   | AuthResponseMessage
   | AuthSuccessMessage
-  | AuthFailureMessage;
+  | AuthFailureMessage
+  | AuthLockedMessage;
 
 // Passkey credential stored in config
 export interface PasskeyCredential {

@@ -9,6 +9,21 @@ import {
   TunnelPtyClose,
 } from "@tyvm/knowhow-tunnel";
 import * as pty from "node-pty";
+import { execSync } from "child_process";
+import * as path from "path";
+
+// Fix spawn-helper permissions at module load time.
+// node-pty's spawn-helper binary must be executable or posix_spawnp fails.
+// npm sometimes strips execute permissions when unpacking tarballs.
+try {
+  const ptyDir = path.dirname(require.resolve("node-pty/package.json"));
+  execSync(
+    `find ${JSON.stringify(path.join(ptyDir, "prebuilds"))} -name spawn-helper -exec chmod +x {} ;`,
+    { stdio: "ignore" }
+  );
+} catch {
+  // best-effort — don't crash the module if this fails
+}
 
 interface PtySession {
   pty: pty.IPty;
@@ -74,20 +89,45 @@ export class TunnelTerminalAddon implements TunnelAddon {
       return;
     }
 
-    console.log(`[terminal] Spawning PTY streamId=${streamId} cmd=${command} ${args.join(" ")}`);
+    // Resolve short command names (e.g. "sh", "bash") to full absolute paths
+    // so that node-pty's posix_spawnp can find them regardless of PATH.
+    const resolvedCommand = resolveCommand(command);
+    if (!resolvedCommand) {
+      console.error(`[terminal] Cannot spawn PTY: command not found: ${command}`);
+      ctx.send({
+        type: TunnelMessageType.PTY_EXIT,
+        streamId,
+        exitCode: 127,
+      });
+      return;
+    }
 
-    const shell = pty.spawn(command, args, {
-      name: "xterm-256color",
-      cols,
-      rows,
-      cwd: process.env.HOME || process.cwd(),
-      env: {
-        ...process.env,
-        ...env,
-        TERM: "xterm-256color",
-        COLORTERM: "truecolor",
-      } as Record<string, string>,
-    });
+    console.log(`[terminal] Spawning PTY streamId=${streamId} cmd=${resolvedCommand} ${args.join(" ")}`);
+
+    let shell: pty.IPty;
+    try {
+      shell = pty.spawn(resolvedCommand, args, {
+        name: "xterm-256color",
+        cols,
+        rows,
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          ...env,
+          TERM: "xterm-256color",
+          COLORTERM: "truecolor",
+        } as Record<string, string>,
+      });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[terminal] pty.spawn failed for cmd=${resolvedCommand}: ${message}`);
+      ctx.send({
+        type: TunnelMessageType.PTY_EXIT,
+        streamId,
+        exitCode: 127,
+      });
+      return;
+    }
 
     const session: PtySession = { pty: shell, streamId };
     this.sessions.set(streamId, session);
@@ -140,4 +180,55 @@ export class TunnelTerminalAddon implements TunnelAddon {
       exitCode: 0,
     });
   }
+}
+
+/**
+ * Resolve a command name to its full absolute path.
+ * If the command is already an absolute path and exists, return it directly.
+ * Otherwise try `which <command>` first, then check common shell locations as fallbacks.
+ * Returns null if the command cannot be found.
+ */
+function resolveCommand(command: string): string | null {
+  // Already absolute — check it exists and is executable
+  if (path.isAbsolute(command)) {
+    try {
+      execSync(`test -x ${JSON.stringify(command)}`, { stdio: "ignore" });
+      return command;
+    } catch {
+      return null;
+    }
+  }
+
+  // Try `which` to find it on PATH
+  try {
+    const result = execSync(`which ${JSON.stringify(command)}`, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const resolved = result.trim();
+    if (resolved) return resolved;
+  } catch {
+    // which failed — fall through to well-known paths
+  }
+
+  // Last-resort: try common absolute paths for well-known shells
+  const fallbacks: Record<string, string[]> = {
+    sh:   ["/bin/sh", "/usr/bin/sh"],
+    bash: ["/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash"],
+    zsh:  ["/bin/zsh", "/usr/bin/zsh", "/usr/local/bin/zsh"],
+    fish: ["/usr/bin/fish", "/usr/local/bin/fish"],
+    dash: ["/bin/dash", "/usr/bin/dash"],
+  };
+
+  const candidates = fallbacks[command] ?? [];
+  for (const candidate of candidates) {
+    try {
+      execSync(`test -x ${JSON.stringify(candidate)}`, { stdio: "ignore" });
+      return candidate;
+    } catch {
+      // not found at this path
+    }
+  }
+
+  return null;
 }
