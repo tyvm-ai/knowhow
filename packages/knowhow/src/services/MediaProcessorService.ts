@@ -27,6 +27,26 @@ export interface KeyframeInfo {
 }
 
 /**
+ * Options for processing a full video (transcription + keyframes).
+ * Prefer passing this object over positional args so new options can be
+ * added without changing call sites.
+ */
+export interface ProcessVideoOptions {
+  /** Reuse a previously cached transcript/keyframes if present. Default true. */
+  reusePreviousTranscript?: boolean;
+  /** Audio transcription chunk length in seconds. Default 30. */
+  chunkTime?: number;
+  /** Progress callback (0..1) fired during ffmpeg audio chunking. */
+  onChunkingProgress?: (fraction: number) => void;
+  /**
+   * Seconds between sampled keyframes. When omitted, an adaptive interval is
+   * computed from the video duration (clamped 0.5s..30s), so short videos get
+   * a much denser set of frames (down to 500ms).
+   */
+  keyframeInterval?: number;
+}
+
+/**
  * MediaProcessorService handles audio/video processing using:
  * - ffmpeg (system tool) for chunking audio/video
  * - OpenAI Whisper API for transcription
@@ -377,6 +397,100 @@ export class MediaProcessorService {
   }
 
   /**
+   * Extract (and optionally describe) keyframes for a specific time slice of a
+   * video, e.g. "just the first minute". This is useful for focusing a denser
+   * frame sample on a short region without reprocessing the whole video.
+   *
+   * @param filePath   Path to the input video file.
+   * @param startSec   Start of the slice in seconds (inclusive).
+   * @param endSec     End of the slice in seconds (exclusive).
+   * @param options.interval  Seconds between sampled frames within the slice.
+   *                          Defaults to 1s. Clamped to a minimum of 0.5s.
+   * @param options.describe  Whether to run the vision model on each frame.
+   *                          Defaults to true. Set false to get frames only.
+   * @param options.outputDir Directory to write extracted frames into.
+   *                          Defaults to <dir>/<name>/slices/<start>-<end>.
+   */
+  public async *streamKeyFrameExtractionForRange(
+    filePath: string,
+    startSec: number,
+    endSec: number,
+    options: {
+      interval?: number;
+      describe?: boolean;
+      outputDir?: string;
+    } = {}
+  ): AsyncGenerator<KeyframeInfo> {
+    const interval = Math.max(0.5, options.interval ?? 1);
+    const describe = options.describe ?? true;
+    const parsed = path.parse(filePath);
+    const outputDir =
+      options.outputDir ??
+      path.join(parsed.dir, parsed.name, "slices", `${startSec}-${endSec}`);
+    await fs.promises.mkdir(outputDir, { recursive: true });
+
+    const duration = Math.max(0, endSec - startSec);
+    // -ss before -i seeks quickly; -t limits to the slice length.
+    const command =
+      `ffmpeg -y -ss ${startSec} -t ${duration} -i "${filePath}" ` +
+      `-vf "fps=1/${interval},scale=640:-1" "${outputDir}/frame%04d.jpg"`;
+    await execAsync(command);
+
+    const frames = (await fs.promises.readdir(outputDir))
+      .filter((f) => f.endsWith(".jpg"))
+      .sort();
+
+    for (const frame of frames) {
+      const framePath = path.join(outputDir, frame);
+      const frameNumber = parseInt(frame.match(/\d+/)?.[0] ?? "0", 10);
+      // ffmpeg names frames starting at 1; map back to absolute video time.
+      const timestamp = startSec + (frameNumber - 1) * interval;
+
+      if (!describe) {
+        yield { path: framePath, description: "", timestamp, usd_cost: 0 };
+        continue;
+      }
+
+      const description = await this.describeKeyframe(framePath);
+      yield {
+        path: framePath,
+        description: description.choices[0].message.content,
+        timestamp,
+        usd_cost: description.usd_cost,
+      };
+    }
+  }
+
+  /**
+   * Extract an audio slice [startSec, endSec) from a media file into an mp3.
+   * Returns the path to the produced mp3, suitable for transcription or download.
+   */
+  public async extractAudioSlice(
+    filePath: string,
+    startSec: number,
+    endSec: number,
+    outputPath?: string
+  ): Promise<string> {
+    const parsed = path.parse(filePath);
+    const outPath =
+      outputPath ??
+      path.join(
+        parsed.dir,
+        parsed.name,
+        "slices",
+        `audio-${startSec}-${endSec}.mp3`
+      );
+    await fs.promises.mkdir(path.dirname(outPath), { recursive: true });
+
+    const duration = Math.max(0, endSec - startSec);
+    const command =
+      `ffmpeg -y -ss ${startSec} -t ${duration} -i "${filePath}" ` +
+      `-vn -acodec libmp3lame -ac 1 -b:a 32k "${outPath}"`;
+    await execAsync(command);
+    return outPath;
+  }
+
+  /**
    * Get the duration of a media file in seconds using ffprobe.
    */
   public async getMediaDuration(filePath: string): Promise<number> {
@@ -411,40 +525,98 @@ export class MediaProcessorService {
 
   async *streamProcessVideo(
     filePath: string,
-    reusePreviousTranscript = true,
+    reusePreviousTranscriptOrOptions: boolean | ProcessVideoOptions = true,
     chunkTime = 30,
-    onChunkingProgress?: (fraction: number) => void
+    onChunkingProgress?: (fraction: number) => void,
+    keyframeInterval?: number
   ) {
+    // Support both the legacy positional signature and a new options object
+    // passed as the second argument. Prefer the options object going forward.
+    const opts: Required<Pick<ProcessVideoOptions, "reusePreviousTranscript" | "chunkTime">> &
+      ProcessVideoOptions =
+      typeof reusePreviousTranscriptOrOptions === "object"
+        ? {
+            reusePreviousTranscript:
+              reusePreviousTranscriptOrOptions.reusePreviousTranscript ?? true,
+            chunkTime: reusePreviousTranscriptOrOptions.chunkTime ?? 30,
+            onChunkingProgress:
+              reusePreviousTranscriptOrOptions.onChunkingProgress,
+            keyframeInterval:
+              reusePreviousTranscriptOrOptions.keyframeInterval,
+          }
+        : {
+            reusePreviousTranscript: reusePreviousTranscriptOrOptions,
+            chunkTime,
+            onChunkingProgress,
+            keyframeInterval,
+          };
+
     const parsed = path.parse(filePath);
     const videoJson = `${parsed.dir}/${parsed.name}/video.json`;
 
     console.log("Processing audio...");
     const transcriptions = this.streamProcessAudio(
       filePath,
-      reusePreviousTranscript,
-      chunkTime,
-      onChunkingProgress
+      opts.reusePreviousTranscript,
+      opts.chunkTime,
+      opts.onChunkingProgress
     );
 
     console.log("Extracting keyframes...");
+    // When keyframeInterval is undefined, streamKeyFrameExtraction computes an
+    // adaptive interval based on video duration, clamped between 0.5s and 30s.
+    // This gives short videos a much denser set of frames (down to 500ms) while
+    // keeping long videos at a reasonable frame count. Previously this passed
+    // chunkTime (30s), which meant every video only got 1 frame per 30s.
     const videoAnalysis = this.streamKeyFrameExtraction(
       filePath,
       videoJson,
-      reusePreviousTranscript,
-      chunkTime
+      opts.reusePreviousTranscript,
+      opts.keyframeInterval
     );
 
+    // Frames and transcript chunks can arrive at different cadences: with an
+    // adaptive keyframe interval a short video may have many more frames than
+    // 30s transcript chunks. Rather than a 1:1 positional zip (which would
+    // strand most frames with "[missing transcript]" and drop transcripts),
+    // we map each frame to the transcript chunk that covers its timestamp.
+    // Transcript chunk N covers [N*chunkTime, (N+1)*chunkTime).
+    const transcriptBuffer: TranscriptChunk[] = [];
+    const missingTranscript: TranscriptChunk = {
+      chunkPath: "",
+      text: "[missing transcript]",
+      usd_cost: 0,
+    };
+
     for await (const frame of videoAnalysis) {
-      const transcription = (await transcriptions.next())
-        ?.value as TranscriptChunk;
+      const chunkIndex = Math.floor((frame.timestamp || 0) / opts.chunkTime);
+
+      // Pull transcript chunks until we have one that covers this frame's window.
+      while (transcriptBuffer.length <= chunkIndex) {
+        const next = await transcriptions.next();
+        if (next.done) break;
+        transcriptBuffer.push(next.value as TranscriptChunk);
+      }
+
+      const transcription = transcriptBuffer[chunkIndex] || missingTranscript;
+      yield { frame, transcription };
+    }
+
+    // Drain any remaining transcript chunks (e.g. audio longer than the last
+    // frame's window) so their content/cost isn't silently dropped.
+    let remaining = await transcriptions.next();
+    while (!remaining.done) {
       yield {
-        frame,
-        transcription: transcription || {
-          chunkPath: "",
-          text: "[missing transcript]",
+        frame: {
+          path: "",
+          description: "",
+          timestamp: transcriptBuffer.length * opts.chunkTime,
           usd_cost: 0,
         },
+        transcription: remaining.value as TranscriptChunk,
       };
+      transcriptBuffer.push(remaining.value as TranscriptChunk);
+      remaining = await transcriptions.next();
     }
   }
 
