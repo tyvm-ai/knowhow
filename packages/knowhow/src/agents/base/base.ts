@@ -1001,7 +1001,8 @@ export abstract class BaseAgent implements IAgent {
         this.logStatus();
 
         const continuation = `<Workflow>
-        workflow continues until you call one of ${JSON.stringify(this.requiredToolNames)}.\n
+        Task terminates after you call on of these tools: ${JSON.stringify(this.requiredToolNames)}.\n
+        User likely only sees output from the required tool call.
         ${statusMessage}
         </Workflow>`;
 
@@ -1060,7 +1061,7 @@ export abstract class BaseAgent implements IAgent {
   }
 
   getStatusMessage() {
-    const baseMessage = `$${this.getTotalCostUsd().toPrecision(
+    const baseMessage = `Task spend: $${this.getTotalCostUsd().toPrecision(
       3
     )}\nElapsed: ${Math.floor(this.runTime() / 1000)}s\n`;
 
