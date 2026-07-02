@@ -272,13 +272,25 @@ export class MediaProcessorService {
 
   /**
    * Extract keyframes from a video file using ffmpeg, then describe each with vision AI.
+   *
+   * @param filePath - Path to the input video file.
+   * @param videoJsonPath - Path where the resulting keyframe JSON data will be saved/cached.
+   * @param reusePreviousKeyframes - Whether to reuse previously extracted keyframes (default: true).
+   * @param interval - How often (in seconds) to sample a frame from the video (default: 10).
+   *                   Lower values produce more frames; higher values produce fewer.
    */
   public async *streamKeyFrameExtraction(
     filePath: string,
     videoJsonPath: string,
     reusePreviousKeyframes = true,
-    interval = 10
+    interval?: number
   ): AsyncGenerator<KeyframeInfo> {
+    if (interval === undefined) {
+      const duration = await this.getMediaDuration(filePath);
+      const rawInterval = (duration / 3600) * 30;
+      interval = Math.min(30, Math.max(0.5, rawInterval));
+    }
+
     if (reusePreviousKeyframes && fs.existsSync(videoJsonPath)) {
       const contents = await readFile(videoJsonPath);
       const data = JSON.parse(contents.toString()) as KeyframeInfo[];
@@ -335,11 +347,21 @@ export class MediaProcessorService {
     );
   }
 
+  /**
+   * Extract keyframes from a video file and return them as an array.
+   *
+   * @param filePath - Path to the input video file.
+   * @param outputPath - Path where the resulting keyframe JSON data will be saved/cached.
+   * @param reusePreviousKeyframes - Whether to reuse previously extracted keyframes (default: true).
+   * @param interval - How often (in seconds) to sample a frame from the video (default: 10).
+   *                   Lower values produce more frames; higher values produce fewer.
+   */
+
   public async extractKeyframes(
     filePath: string,
     outputPath: string,
     reusePreviousKeyframes = true,
-    interval = 10
+    interval?: number
   ): Promise<KeyframeInfo[]> {
     const keyframes: KeyframeInfo[] = [];
     for await (const keyframe of this.streamKeyFrameExtraction(
@@ -352,6 +374,16 @@ export class MediaProcessorService {
     }
     await fs.promises.writeFile(outputPath, JSON.stringify(keyframes, null, 2));
     return keyframes;
+  }
+
+  /**
+   * Get the duration of a media file in seconds using ffprobe.
+   */
+  public async getMediaDuration(filePath: string): Promise<number> {
+    const output = await execAsync(
+      `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`
+    );
+    return parseFloat(output.trim());
   }
 
   private async describeKeyframe(keyframePath: string) {
