@@ -1003,7 +1003,7 @@ export abstract class BaseAgent implements IAgent {
         const continuation = `<Workflow>
         Task terminates after you call on of these tools: ${JSON.stringify(this.requiredToolNames)}.\n
         User likely only sees output from the required tool call.
-        ${statusMessage}
+        <TaskStatus>${statusMessage}</TaskStatus>
         </Workflow>`;
 
         messages.push({
