@@ -271,6 +271,20 @@ export async function execCommand(
   const toolService = (
     this instanceof ToolsService ? this : services().Tools
   ) as ToolsService;
+
+  // Detect suspiciously small timeout values — agents often pass seconds instead of ms.
+  // Any value < 100 is almost certainly a mistake (100ms is still very fast for a shell cmd).
+  // We auto-correct to seconds and include a warning in the output so the agent learns.
+  let correctedTimeout = timeout;
+  let timeoutWarning = "";
+  if (timeout !== undefined && timeout !== -1 && timeout < 100) {
+    correctedTimeout = timeout * 1000;
+    timeoutWarning =
+      `⚠️  Warning: timeout was ${timeout}ms which is extremely small and likely a mistake. ` +
+      `The timeout unit is milliseconds, not seconds. ` +
+      `Auto-corrected to ${correctedTimeout}ms (${timeout}s).\n\n`;
+  }
+
   const context = toolService.getContext();
 
   // Emit pre-run blocking event — handlers can throw to block the command
@@ -285,7 +299,7 @@ export async function execCommand(
 
   const { stdout, stderr, timedOut, killed, pid, logPath } =
     await execWithTimeout(command, {
-      timeout,
+      timeout: correctedTimeout,
       continueInBackground,
       logFileName,
     });
@@ -302,8 +316,8 @@ export async function execCommand(
         })`
     : "";
 
-  const lines = output.split("\n");
   /*
+   *const lines = output.split("\n");
    *const maxLines = 1000;
    *const maxChars = 40000;
    *const trimmed = (lines.length > maxLines ? lines.slice(0, maxLines) : lines)
@@ -342,5 +356,5 @@ export async function execCommand(
       "\n\nAdditional Information:\n" + JSON.stringify(eventResults, null, 2);
   }
 
-  return result + eventResultsText;
+  return timeoutWarning + result + eventResultsText;
 };
