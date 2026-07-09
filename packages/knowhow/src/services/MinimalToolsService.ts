@@ -90,11 +90,24 @@ export class MinimalToolsService extends ToolsService {
   /**
    * Calls a tool by its resolved name, bypassing the enabled-tools check that
    * the base class applies. Used internally by the callTool dispatch function.
+   * Returns the raw functionResp (unwrapped), used by the callTool meta-tool.
    */
   async callToolByName(
     toolCall: ToolCall,
     resolvedName: string
   ): Promise<any> {
+    const result = await this.dispatchToTool(toolCall, resolvedName);
+    return result.functionResp;
+  }
+
+  /**
+   * Shared dispatch logic: temporarily surfaces the target tool (if it's not
+   * already visible) so the base ToolsService.callTool can find its
+   * definition and implementation, then restores the visible set.
+   * Used both by direct calls (agent calls the tool by its real name) and by
+   * the callTool meta-tool (agent calls callTool({ name, args })).
+   */
+  private async dispatchToTool(toolCall: ToolCall, resolvedName: string) {
     // Temporarily surface the target tool in the visible list so base
     // ToolsService.callTool can find its definition, then restore state.
     const alreadyVisible = super
@@ -117,7 +130,7 @@ export class MinimalToolsService extends ToolsService {
       this.tools = this.tools.filter((t) => t.function.name !== resolvedName);
     }
 
-    return result.functionResp;
+    return result;
   }
 
   /**
@@ -135,7 +148,20 @@ export class MinimalToolsService extends ToolsService {
       return super.callTool(toolCall, this.getToolNames());
     }
 
-    // Extended tools dispatched via catalog
+    // Extended tools: called directly by name (not via the callTool meta-tool).
+    // These live only in allToolsCatalog, not in the frozen visible `tools`
+    // array, so we must temporarily surface them the same way callToolByName
+    // does, otherwise base ToolsService.getTool() won't find the definition
+    // and will throw "Tool ... not found" even though it's a registered tool.
+    const existsInCatalog = this.allToolsCatalog.some(
+      (t) => t.function.name === functionName
+    );
+
+    if (existsInCatalog) {
+      return this.dispatchToTool(toolCall, functionName);
+    }
+
+    // Not found anywhere - let the base class produce the standard error.
     return super.callTool(toolCall, [functionName]);
   }
 }

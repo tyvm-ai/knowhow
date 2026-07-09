@@ -181,6 +181,47 @@ describe("MinimalToolsService", () => {
     expect(mockFn).toHaveBeenCalled();
     expect(result).toBe("file contents");
   });
+
+  test("callTool() dispatches an extended tool called directly by its real name (not via the callTool meta-tool wrapper)", async () => {
+    // This covers the case where an agent calls a registered tool directly
+    // (toolCall.function.name === "execCommand") instead of routing through
+    // the callTool({name, args}) meta-tool. Previously this threw
+    // "Tool execCommand not found" because extended tools only live in
+    // allToolsCatalog, not in the frozen visible `tools` array that the base
+    // ToolsService.getTool() searches.
+    const mockFn = jest.fn().mockResolvedValue("command output");
+    service.addTools([makeTool("execCommand")]);
+    service.addFunctions({ execCommand: mockFn });
+
+    const result = await service.callTool({
+      id: "tc_direct_exec",
+      type: "function",
+      function: {
+        name: "execCommand",
+        arguments: JSON.stringify({ input: "ls" }),
+      },
+    });
+
+    expect(mockFn).toHaveBeenCalled();
+    expect(result.functionResp).toBe("command output");
+    expect(result.toolMessages[0].content).toBe("command output");
+
+    // Visible tools array must remain stable (cache-stable guarantee) after
+    // dispatching a direct call to an extended tool.
+    const visibleNames = service.getTools().map((t) => t.function.name);
+    expect(visibleNames).not.toContain("execCommand");
+  });
+
+  test("callTool() returns a standard error for an unknown tool name", async () => {
+    const result = await service.callTool({
+      id: "tc_unknown",
+      type: "function",
+      function: { name: "totallyUnknownTool", arguments: JSON.stringify({}) },
+    });
+
+    expect(result.toolMessages[0].name).toBe("error");
+    expect(result.toolMessages[0].content).toMatch(/not found|not enabled/);
+  });
 });
 
 // ── MinimalToolsMessageProcessor ─────────────────────────────────────────────

@@ -28,6 +28,7 @@ import {
   XmlToolCallProcessor,
   HarmonyToolProcessor,
   Base64ImageProcessor,
+  MinimalToolsMessageProcessor,
 } from "../../processors/index";
 import { TaskInfo } from "../types";
 import { createAgent, agentConstructors, AgentName } from "../../agents";
@@ -124,13 +125,16 @@ export class AgentModule extends BaseChatModule {
       },
       {
         name: "poke",
-        description: "Interrupt the agent's current tool call or AI completion, so it can continue with the next step",
+        description:
+          "Interrupt the agent's current tool call or AI completion, so it can continue with the next step",
         modes: ["agent:attached"],
         handler: async (args: string[]): Promise<void> => {
           if (this.attachedAgent) {
             const message = args.length > 0 ? args.join(" ") : undefined;
             this.attachedAgent.interrupt(message);
-            console.log("Agent interrupted — it will continue with the next step.");
+            console.log(
+              "Agent interrupted — it will continue with the next step."
+            );
           }
         },
       },
@@ -531,10 +535,14 @@ export class AgentModule extends BaseChatModule {
       const threads = session.threads || [];
       // Guard against sessions saved with a flat Message[] instead of Message[][]
       // (a bug where threadUpdate emitted a single thread instead of all threads)
-      const normalizedThreads: Message[][] = threads.length > 0 && !Array.isArray(threads[0])
-        ? [threads as unknown as Message[]]
-        : threads as Message[][];
-      const lastThread = normalizedThreads.length > 0 ? normalizedThreads[normalizedThreads.length - 1] : [];
+      const normalizedThreads: Message[][] =
+        threads.length > 0 && !Array.isArray(threads[0])
+          ? [threads as unknown as Message[]]
+          : (threads as Message[][]);
+      const lastThread =
+        normalizedThreads.length > 0
+          ? normalizedThreads[normalizedThreads.length - 1]
+          : [];
       const resumeMessages = [...lastThread];
 
       // Append the resume prompt to the last user message (or add a new one)
@@ -548,7 +556,9 @@ export class AgentModule extends BaseChatModule {
         const actualIndex = lastThread.length - 1 - reversedIndex;
         resumeMessages[actualIndex] = {
           ...resumeMessages[actualIndex],
-          content: resumeMessages[actualIndex].content + `\n\n<Workflow>[RESUME CONTEXT]: ${resumePrompt}</Workflow>`,
+          content:
+            resumeMessages[actualIndex].content +
+            `\n\n<Workflow>[RESUME CONTEXT]: ${resumePrompt}</Workflow>`,
         };
       }
 
@@ -584,7 +594,12 @@ export class AgentModule extends BaseChatModule {
         }
       });
 
-      await this.attachedAgentChatLoop(taskId, agent, resumePrompt, resumeMessages);
+      await this.attachedAgentChatLoop(
+        taskId,
+        agent,
+        resumePrompt,
+        resumeMessages
+      );
     } catch (error) {
       console.error(
         `Failed to resume session ${sessionId}:`,
@@ -779,6 +794,10 @@ export class AgentModule extends BaseChatModule {
       agent.messageProcessor.setProcessors("post_call", [
         new XmlToolCallProcessor().createProcessor(),
         new HarmonyToolProcessor().createProcessor(),
+      ]);
+
+      agent.messageProcessor.setProcessors("pre_tools", [
+        new MinimalToolsMessageProcessor().createProcessor(),
       ]);
 
       agent.messageProcessor.setProcessors("post_tools", [

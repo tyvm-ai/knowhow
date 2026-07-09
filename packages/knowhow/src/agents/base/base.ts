@@ -899,7 +899,6 @@ export abstract class BaseAgent implements IAgent {
 
         this.logMessages([lastMessage]);
 
-        const toolCalls = lastMessage.tool_calls;
         if (lastMessage.tool_calls) {
           // About to call a tool, process the messages
           // We could add all the tool calls, and do this once
@@ -907,6 +906,11 @@ export abstract class BaseAgent implements IAgent {
             messages,
             "pre_tools"
           );
+
+          // Re-derive toolCalls from the freshly processed messages, since
+          // pre_tools processors (e.g. MinimalToolsMessageProcessor) may have
+          // rewritten the tool_calls on a deep-copied message array.
+          const toolCalls = messages[messages.length - 1].tool_calls;
 
           this.updateCurrentThread(messages);
 

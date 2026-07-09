@@ -24,6 +24,7 @@ export * from "./EmbeddingsService";
 export * from "./S3";
 export * from "./Tools";
 export * from "./LazyToolsService";
+export * from "./MinimalToolsService";
 export * as MCP from "./Mcp";
 export * from "./EmbeddingService";
 export * from "./DockerService";

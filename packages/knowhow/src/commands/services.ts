@@ -1,6 +1,6 @@
 import { includedTools } from "../agents/tools/list";
 import * as allTools from "../agents/tools";
-import { LazyToolsService, services } from "../services";
+import { LazyToolsService, services, MinimalToolsService } from "../services";
 import { agents } from "../agents";
 import { ModulesService } from "../services/modules";
 
