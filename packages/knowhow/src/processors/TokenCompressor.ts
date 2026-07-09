@@ -155,14 +155,26 @@ export class TokenCompressor implements JsonCompressorStorage {
    * Check if content is already compressed
    */
   private isAlreadyCompressed(content: string): boolean {
-    // Check for compressed string markers
-    if (content.includes("[COMPRESSED_STRING")) {
+    // Check for a compressed-string marker, but ONLY when the content *starts*
+    // with it. Compressor output always begins with "[COMPRESSED_STRING ...".
+    // A naive `.includes()` produced false positives for large payloads (e.g. a
+    // usage.json / message-history dump) that merely CONTAIN that substring deep
+    // inside their nested data — those files were left completely uncompressed
+    // because this guard incorrectly reported them as already compressed.
+    if (content.trimStart().startsWith("[COMPRESSED_STRING")) {
       return true;
     }
 
     // Check for compressed JSON structure with schema key
+    // Only treat this as compressed when `_schema_key` is an actual TOP-LEVEL
+    // key of the parsed object — not merely present somewhere in the string.
     const parsed = this.tryParseJson(content);
-    if (parsed && parsed._schema_key && typeof parsed._schema_key === "string") {
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed) &&
+      typeof parsed._schema_key === "string"
+    ) {
       return true;
     }
 
@@ -296,7 +308,12 @@ export class TokenCompressor implements JsonCompressorStorage {
     return async (originalMessages: Message[], modifiedMessages: Message[]) => {
       // Find the index of the last assistant message so we only compress
       // the most recent batch of tool responses (after the last agent output).
-      // This prevents re-compressing already-cached historical messages.
+      // This prevents re-compressing already-cached historical messages, which
+      // would break prompt caching. Newly-added tool responses (the "current
+      // batch") are the ones that need compressing before they reach the model,
+      // and they appear after the last assistant message at the moment this
+      // processor runs (post_tools / pre_call), when the fresh tool response is
+      // still the tail of the message list.
       let lastAssistantIndex = -1;
       for (let i = modifiedMessages.length - 1; i >= 0; i--) {
         if (modifiedMessages[i].role === "assistant") {

@@ -259,7 +259,7 @@ const execWithTimeout = async (
 // Public tool
 export async function execCommand(
   command: string,
-  timeout?: number,
+  timeout?: number | string,
   continueInBackground?: boolean,
   logFileName?: string
 ): Promise<string> {
@@ -272,17 +272,37 @@ export async function execCommand(
     this instanceof ToolsService ? this : services().Tools
   ) as ToolsService;
 
+  // Coerce timeout to a number. Agents (and some tool-call serializers) often
+  // pass numeric arguments as strings (e.g. "120000"). Node's exec()/setTimeout
+  // reject non-integer values with "The value of \"timeout\" is out of range.
+  // It must be an unsigned integer", so normalize here before any use.
+  let normalizedTimeout: number | undefined;
+  const rawTimeout = typeof timeout === "string" ? Number(timeout.trim()) : timeout;
+  if (typeof rawTimeout !== "number" || !Number.isFinite(rawTimeout)) {
+    normalizedTimeout = undefined;
+  } else if (rawTimeout === -1) {
+    // -1 is the sentinel for "wait indefinitely" — leave as-is.
+    normalizedTimeout = -1;
+  } else {
+    // Clamp to a non-negative integer so the underlying APIs never throw.
+    normalizedTimeout = Math.max(0, Math.floor(rawTimeout));
+  }
+
   // Detect suspiciously small timeout values — agents often pass seconds instead of ms.
   // Any value < 100 is almost certainly a mistake (100ms is still very fast for a shell cmd).
   // We auto-correct to seconds and include a warning in the output so the agent learns.
-  let correctedTimeout = timeout;
+  let correctedTimeout = normalizedTimeout;
   let timeoutWarning = "";
-  if (timeout !== undefined && timeout !== -1 && timeout < 100) {
-    correctedTimeout = timeout * 1000;
+  if (
+    normalizedTimeout !== undefined &&
+    normalizedTimeout !== -1 &&
+    normalizedTimeout < 100
+  ) {
+    correctedTimeout = normalizedTimeout * 1000;
     timeoutWarning =
-      `⚠️  Warning: timeout was ${timeout}ms which is extremely small and likely a mistake. ` +
+      `⚠️  Warning: timeout was ${normalizedTimeout}ms which is extremely small and likely a mistake. ` +
       `The timeout unit is milliseconds, not seconds. ` +
-      `Auto-corrected to ${correctedTimeout}ms (${timeout}s).\n\n`;
+      `Auto-corrected to ${correctedTimeout}ms (${normalizedTimeout}s).\n\n`;
   }
 
   const context = toolService.getContext();

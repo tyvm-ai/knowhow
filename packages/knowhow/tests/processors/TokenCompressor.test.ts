@@ -83,6 +83,51 @@ describe("TokenCompressor", () => {
       expect(parsed.smallProp).toBe("small"); // Should remain unchanged
       expect(parsed.largeProp).toContain("[COMPRESSED_JSON_PROPERTY"); // Should be compressed
     });
+
+    it("should compress large content that merely CONTAINS a compression marker deep inside (regression)", () => {
+      // Regression for the false-positive in isAlreadyCompressed(): a large
+      // payload (e.g. a usage.json / message-history dump) whose body contains
+      // the substring "[COMPRESSED_STRING" deep inside its nested data was
+      // incorrectly treated as already-compressed and returned uncompressed,
+      // letting 1MB+ raw tool responses flow into createCompletion untouched.
+      const nestedMarker =
+        '[COMPRESSED_STRING - 10155 tokens in 3 chunks]\\nKey: compressed_abc123';
+      // Build a big JSON array whose entries embed the marker far from the start.
+      const entry = JSON.stringify({
+        role: "tool",
+        name: "readFile",
+        content: nestedMarker,
+        filler: "z".repeat(500),
+      });
+      const bigContent = "[" + new Array(200).fill(entry).join(",") + "]";
+
+      // Sanity: the raw content contains the marker but is NOT at the start.
+      expect(bigContent.includes("[COMPRESSED_STRING")).toBe(true);
+      expect(bigContent.trimStart().startsWith("[COMPRESSED_STRING")).toBe(false);
+
+      const result = tokenCompressor.compressContent(bigContent);
+
+      // It MUST actually get compressed, not returned untouched.
+      expect(result.length).toBeLessThan(bigContent.length);
+    });
+
+    it("should NOT recompress content that genuinely starts with a compression marker", () => {
+      // Idempotency: real compressor output begins with "[COMPRESSED_STRING".
+      const alreadyCompressed =
+        "[COMPRESSED_STRING - 999 tokens in 2 chunks]\nKey: compressed_xyz\nPath: \nPreview: ...";
+      const result = tokenCompressor.compressContent(alreadyCompressed);
+      expect(result).toBe(alreadyCompressed);
+    });
+
+    it("should NOT recompress JSON whose top-level _schema_key marks it compressed", () => {
+      // Idempotency: JSON-compressed output carries a top-level _schema_key.
+      const compressedJson = JSON.stringify({
+        _schema_key: "compressed_schema_1",
+        data: "x".repeat(40000),
+      });
+      const result = tokenCompressor.compressContent(compressedJson);
+      expect(result).toBe(compressedJson);
+    });
   });
 
   describe("compressStringInChunks", () => {
