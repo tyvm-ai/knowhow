@@ -305,14 +305,16 @@ export abstract class BaseAgent implements IAgent {
     // Short response (≤ 3 words) that matches a termination word/phrase exactly
     const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
     if (wordCount <= 3) {
-      const terminationPattern = /^(done|complete|completed|finished|final\s*answer|task\s*complete|all\s*done|that'?s\s*(all|it)|ok(ay)?|yes)[.!]*$/i;
+      const terminationPattern =
+        /^(done|complete|completed|finished|final\s*answer|task\s*complete|all\s*done|that'?s\s*(all|it)|ok(ay)?|yes)[.!]*$/i;
       if (terminationPattern.test(trimmed)) return true;
     }
 
     // Check if the first 1-3 words indicate task completion (for longer responses)
     // e.g. "Task complete: ...", "All done.", "No further changes needed.", "Confirmed complete."
     const firstWords = trimmed.split(/\s+/).slice(0, 3).join(" ");
-    const firstWordPattern = /^(task\s*(complete|completed|done|finished)|all\s*done|no\s*(further|more|additional|changes|action)|confirmed?\s*(complete|done|finished|one\s*last)|nothing\s*(more|further|else)|standing\s*by|everything\s*is|still\s*confirmed|acknowledged|done\s*and|complete\s*(and|\.)|completed\s*successfully|no\s*additional|verified\s*and)/i;
+    const firstWordPattern =
+      /^(task\s*(complete|completed|done|finished)|all\s*done|no\s*(further|more|additional|changes|action)|confirmed?\s*(complete|done|finished|one\s*last)|nothing\s*(more|further|else)|standing\s*by|everything\s*is|still\s*confirmed|acknowledged|done\s*and|complete\s*(and|\.)|completed\s*successfully|no\s*additional|verified\s*and)/i;
     if (firstWordPattern.test(firstWords)) return true;
 
     // If easyFinalAnswer mode is on, also match response starting with "✅" or numbered confirmation lists
@@ -418,15 +420,17 @@ export abstract class BaseAgent implements IAgent {
     return this.totalCostUsd;
   }
 
-  adjustTokenUsage(usage: any) {
+  adjustTokenUsage(usage: any, messages?: Message[]) {
     if (!usage) return;
     // Support both OpenAI-style (prompt_tokens/completion_tokens) and Anthropic-style (input_tokens/output_tokens)
     const inputTokens = usage.input_tokens ?? usage.prompt_tokens ?? 0;
     const outputTokens = usage.output_tokens ?? usage.completion_tokens ?? 0;
 
     const cacheReadTokens =
-      usage.cache_read_input_tokens ?? usage.cache_read_tokens ??
-      usage.prompt_tokens_details?.cached_tokens ?? 0;
+      usage.cache_read_input_tokens ??
+      usage.cache_read_tokens ??
+      usage.prompt_tokens_details?.cached_tokens ??
+      0;
     const cacheWriteTokens =
       usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? 0;
 
@@ -436,6 +440,7 @@ export abstract class BaseAgent implements IAgent {
     this.totalCacheWriteTokens += cacheWriteTokens;
 
     this.agentEvents.emit(this.eventTypes.tokenUsage, {
+      timestamp: new Date().toISOString(),
       inputTokens,
       outputTokens,
       cacheReadTokens,
@@ -444,6 +449,7 @@ export abstract class BaseAgent implements IAgent {
       totalOutputTokens: this.totalOutputTokens,
       totalCacheReadTokens: this.totalCacheReadTokens,
       totalCacheWriteTokens: this.totalCacheWriteTokens,
+      messages,
     });
   }
 
@@ -454,6 +460,37 @@ export abstract class BaseAgent implements IAgent {
       totalCacheReadTokens: this.totalCacheReadTokens,
       totalCacheWriteTokens: this.totalCacheWriteTokens,
     };
+  }
+
+  /**
+   * Centralized helper for making an AI completion call while ensuring
+   * cost (totalCostUsd) and token usage (input/output/cache) are always
+   * updated consistently, regardless of which part of the agent triggers
+   * the completion (main call loop, task breakdown, compression, etc).
+   *
+   * Optionally supports being interrupted via makeInterruptible by passing
+   * an `interruptValue` in options - if the operation is interrupted, the
+   * interrupt value is returned and used for cost/usage tracking (which,
+   * for a typical interrupt stub with no usage/cost, is effectively a
+   * no-op).
+   */
+  protected async createAgentCompletion(
+    params: Parameters<GenericClient["createChatCompletion"]>[0],
+    options: {
+      interruptValue?: CompletionResponse;
+    } = {}
+  ): Promise<CompletionResponse> {
+    const { interruptValue } = options;
+
+    const callPromise = this.getClient().createChatCompletion(params);
+    const response = interruptValue
+      ? await this.makeInterruptible(callPromise, interruptValue)
+      : await callPromise;
+
+    this.adjustTotalCostUsd(response?.usd_cost);
+    this.adjustTokenUsage(response?.usage, params.messages);
+
+    return response;
   }
 
   startNewThread(messages: Message[]) {
@@ -488,7 +525,14 @@ export abstract class BaseAgent implements IAgent {
       toolCallId: toolCall.id,
       functionName: toolCall.function?.name,
       functionArgs: {},
-      toolMessages: [{ role: "tool", tool_call_id: toolCall.id, name: toolCall.function?.name, content: interruptMsg }],
+      toolMessages: [
+        {
+          role: "tool",
+          tool_call_id: toolCall.id,
+          name: toolCall.function?.name,
+          content: interruptMsg,
+        },
+      ],
     };
 
     const { functionResp, toolMessages } = await this.makeInterruptible(
@@ -677,23 +721,25 @@ export abstract class BaseAgent implements IAgent {
         resolve(value);
       };
 
-      promise.then((result) => {
-        if (this._interruptResolve) {
-          this._interruptResolve = null;
-          resolve(result);
-        }
-      }).catch((err) => {
-        if (this._interruptResolve) {
-          this._interruptResolve = null;
-        }
-        // Only swallow the error if interrupt() was explicitly called.
-        // Otherwise re-throw so callers see the real error.
-        if (interrupted) {
-          resolve(interruptValue);
-        } else {
-          reject(err);
-        }
-      });
+      promise
+        .then((result) => {
+          if (this._interruptResolve) {
+            this._interruptResolve = null;
+            resolve(result);
+          }
+        })
+        .catch((err) => {
+          if (this._interruptResolve) {
+            this._interruptResolve = null;
+          }
+          // Only swallow the error if interrupt() was explicitly called.
+          // Otherwise re-throw so callers see the real error.
+          if (interrupted) {
+            resolve(interruptValue);
+          } else {
+            reject(err);
+          }
+        });
     });
   }
 
@@ -782,20 +828,28 @@ export abstract class BaseAgent implements IAgent {
       );
 
       const interruptResponse: CompletionResponse = {
-        choices: [{ message: { role: "assistant", content: "User interrupted this AI completion. Please continue." } }],
+        choices: [
+          {
+            message: {
+              role: "assistant",
+              content: "User interrupted this AI completion. Please continue.",
+            },
+          },
+        ],
         model,
         usage: undefined,
         usd_cost: 0,
       };
-      const response = await this.makeInterruptible(
-        this.getClient().createChatCompletion({
+
+      const response = await this.createAgentCompletion(
+        {
           model,
           messages,
           tools: this.getEnabledTools(),
           tool_choice: "auto",
           long_ttl_cache: this.runTime() > 300_000,
-        }),
-        interruptResponse
+        },
+        { interruptValue: interruptResponse }
       );
 
       // If the agent was paused while the completion was in-flight, wait here
@@ -829,8 +883,6 @@ export abstract class BaseAgent implements IAgent {
         }
       }
 
-      this.adjustTotalCostUsd(response?.usd_cost);
-      this.adjustTokenUsage(response?.usage);
       this.log("agent response cost: " + response?.usd_cost);
 
       // Typically, there's only one choice in the array, but you could have many
@@ -942,7 +994,9 @@ export abstract class BaseAgent implements IAgent {
         firstMessage.content &&
         this.isTerminationResponse(firstMessage.content)
       ) {
-        this.log(`Termination word detected: "${firstMessage.content.trim()}", treating as finalAnswer`);
+        this.log(
+          `Termination word detected: "${firstMessage.content.trim()}", treating as finalAnswer`
+        );
         this.status = this.eventTypes.done;
         this.agentEvents.emit(this.eventTypes.done, firstMessage.content);
         return firstMessage.content;
@@ -1001,7 +1055,9 @@ export abstract class BaseAgent implements IAgent {
         this.logStatus();
 
         const continuation = `<Workflow>
-        Task terminates after you call on of these tools: ${JSON.stringify(this.requiredToolNames)}.\n
+        Task terminates after you call on of these tools: ${JSON.stringify(
+          this.requiredToolNames
+        )}.\n
         User likely only sees output from the required tool call.
         <TaskStatus>${statusMessage}</TaskStatus>
         </Workflow>`;
@@ -1048,7 +1104,12 @@ export abstract class BaseAgent implements IAgent {
 
       this.log(`Agent failed: ${e}`, "error");
 
-      if (e != null && typeof e === "object" && "response" in e && "data" in (e as any).response) {
+      if (
+        e != null &&
+        typeof e === "object" &&
+        "response" in e &&
+        "data" in (e as any).response
+      ) {
         this.log(
           `Error response data: ${JSON.stringify(e.response.data, null, 2)}`,
           "error"
@@ -1223,19 +1284,19 @@ export abstract class BaseAgent implements IAgent {
 
     const model = this.getModel();
 
-    const response = await this.getClient().createChatCompletion({
+    const taskBreakdownMessages = [
+      ...messages,
+      {
+        role: "user",
+        content: taskPrompt,
+      },
+    ] as Message[];
+
+    const response = await this.createAgentCompletion({
       model,
-      messages: [
-        ...messages,
-        {
-          role: "user",
-          content: taskPrompt,
-        },
-      ],
+      messages: taskBreakdownMessages,
       max_tokens: 2000,
     });
-
-    this.adjustTotalCostUsd(response.usd_cost);
 
     this.taskBreakdown = response.choices[0].message.content;
     this.log(`task breakdown cost: ${response.usd_cost}`);
@@ -1268,18 +1329,18 @@ export abstract class BaseAgent implements IAgent {
 
     const model = this.getModel();
 
-    const response = await this.getClient().createChatCompletion({
-      model,
-      messages: [
-        ...messages,
-        {
-          role: "user",
-          content: toCompressPrompt,
-        },
-      ],
-    });
+    const compressMessagesPayload = [
+      ...messages,
+      {
+        role: "user",
+        content: toCompressPrompt,
+      },
+    ] as Message[];
 
-    this.adjustTotalCostUsd(response.usd_cost);
+    const response = await this.createAgentCompletion({
+      model,
+      messages: compressMessagesPayload,
+    });
 
     const summaries = response.choices.map((c) => c.message.content);
     this.summaries.push(...summaries);

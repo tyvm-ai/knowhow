@@ -33,6 +33,7 @@ export class AgentSyncFs {
   private agent: BaseAgent | undefined;
   private threadUpdateHandler: ((...args: any[]) => void) | undefined;
   private doneHandler: ((...args: any[]) => void) | undefined;
+  private tokenUsageHandler: ((...args: any[]) => void) | undefined;
   /**
    * Tracks the most recent in-flight filesystem metadata update.
    * The done handler awaits this before finalizing, preventing a race where
@@ -115,6 +116,33 @@ export class AgentSyncFs {
       await fs.writeFile(metadataPath, JSON.stringify(data, null, 2), "utf8");
     } catch (error) {
       console.error(`❌ Failed to write metadata:`, error);
+    }
+  }
+
+  /**
+   * Append a token usage entry (including the full message chain sent for
+   * that call) to usage.json. This is intended for debugging cache-hit
+   * issues, where comparing the message chains and usage values between
+   * consecutive calls can reveal when a cache prefix was invalidated.
+   */
+  private async appendUsageEntry(entry: any): Promise<void> {
+    if (!this.taskPath) return;
+
+    try {
+      const usagePath = path.join(this.taskPath, "usage.json");
+      let entries: any[] = [];
+
+      try {
+        const existingData = await fs.readFile(usagePath, "utf8");
+        entries = JSON.parse(existingData);
+      } catch {
+        // File doesn't exist or is invalid, start fresh
+      }
+
+      entries.push(entry);
+      await fs.writeFile(usagePath, JSON.stringify(entries, null, 2), "utf8");
+    } catch (error) {
+      console.error(`❌ Failed to append usage entry:`, error);
     }
   }
 
@@ -352,6 +380,20 @@ export class AgentSyncFs {
       this.threadUpdateHandler
     );
 
+    // Listen to token usage events to record per-call usage + message chain
+    // (store reference for cleanup). This is written to usage.json so that
+    // cache-hit/cache-miss issues can be debugged by comparing the message
+    // chain and usage values sent/received on consecutive AI calls.
+    this.tokenUsageHandler = (usage: any) => {
+      this.appendUsageEntry(usage).catch((error) => {
+        console.error(`❌ Error recording token usage:`, error);
+      });
+    };
+    agent.agentEvents.on(
+      agent.eventTypes.tokenUsage,
+      this.tokenUsageHandler
+    );
+
     // Listen to completion event to finalize task (store reference for cleanup)
     this.doneHandler = (result: string) => {
       if (!this.taskId) {
@@ -494,6 +536,13 @@ export class AgentSyncFs {
           this.threadUpdateHandler
         );
         this.threadUpdateHandler = undefined;
+      }
+      if (this.tokenUsageHandler) {
+        this.agent.agentEvents.removeListener(
+          this.agent.eventTypes.tokenUsage,
+          this.tokenUsageHandler
+        );
+        this.tokenUsageHandler = undefined;
       }
       if (this.doneHandler) {
         this.agent.agentEvents.removeListener(

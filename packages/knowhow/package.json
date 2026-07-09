@@ -22,6 +22,7 @@
     "lint:deps": "depcheck --config=.depcheckrc",
     "lint:all": "npm run lint && npm run lint:deps",
     "check:model-pricing": "ts-node scripts/check-model-pricing.ts",
+    "debug:cache-miss": "ts-node scripts/cache-miss-debug.ts",
     "version:nightly": "bash scripts/publish.sh version:nightly",
     "version:dev": "bash scripts/publish.sh version:dev",
     "publish:nightly": "bash scripts/publish.sh nightly",

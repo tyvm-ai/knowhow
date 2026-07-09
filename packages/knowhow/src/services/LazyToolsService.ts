@@ -9,6 +9,18 @@ import {
 } from "../agents/tools/lazy";
 import { definitions } from "../agents/tools/lazy/definitions";
 
+/*
+ *
+ * This ToolService design allows an agent to start with a few enabled tools,
+ * search and enable additional tools
+ *
+ * One drawback: enabling a tool will bust the cache, causing you to have to pay extra after enabling new tools
+ * Benefit: for providers with limits on how many tools you can support, this tool service allows you to have the minimal set of tools you need to use in the tools array. Smaller context usage
+ *
+ * In a longer running session, where the agent's tools accumulate over multiple interactions, the cache busting is minimized
+ * In web sessions where you get a new ToolService each interaction, then the cache busting is going to happen with each enable
+ *
+ */
 export class LazyToolsService extends ToolsService {
   private allTools: Tool[] = [];
   // Start with lazy tools enabled by default

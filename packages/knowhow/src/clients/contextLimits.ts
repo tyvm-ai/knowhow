@@ -83,6 +83,11 @@ export const ContextLimits: Record<string, number> = {
   // ─── Anthropic ────────────────────────────────────────────────────────────
   [Models.anthropic.Opus4_8Fast]: 1_000_000,
   [Models.anthropic.Opus4_8]: 1_000_000,
+  // Claude 5 generation (launched 2026-06-09, 1M context window)
+  [Models.anthropic.Fable5]: 1_000_000,
+  [Models.anthropic.Sonnet5]: 1_000_000,
+  [Models.anthropic.Mythos5]: 1_000_000,
+  [Models.anthropic.MythosPreview]: 1_000_000,
   [Models.anthropic.Opus4_7]: 1_000_000,
   [Models.anthropic.Opus4_6]: 1_000_000,
   [Models.anthropic.Opus4_6Fast]: 1_000_000,

@@ -25,6 +25,15 @@ export interface ToolContext {
   metadata?: { [key: string]: any };
 }
 
+/*
+ *
+ * This ToolService design allows an agent to start with every tool
+ *
+ * Drawbacks:
+ * some providers have limits on how many tools you can use
+ * larger context bloat from having every tool defined in system prompt
+ *
+ */
 export class ToolsService {
   private context: ToolContext = {};
 
