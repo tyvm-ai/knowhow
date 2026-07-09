@@ -41,6 +41,7 @@ import {
   XaiImagePricing,
   XaiVideoPricing,
 } from "./pricing/xai";
+import { MetaTextPricing } from "./pricing/meta";
 import type {
   ModelPricing,
   ModelType,
@@ -56,6 +57,7 @@ import { GenericMistralClient } from "./mistral";
 import { GitHubCopilotClient } from "./copilot";
 import { GenericLlamaClient } from "./llama";
 import { GenericFireworksClient } from "./fireworks";
+import { GenericMetaClient } from "./meta";
 export {
   OpenAiTextPricing,
   AnthropicTextPricing,
@@ -100,6 +102,7 @@ const BUILT_IN_PROVIDER_REGISTRY: Record<string, ProviderRegistryEntry> = {
   "github-copilot": { clientClass: GitHubCopilotClient },
   llama: { clientClass: GenericLlamaClient },
   fireworks: { clientClass: GenericFireworksClient },
+  meta: { clientClass: GenericMetaClient },
   knowhow: {
     createClient: (entry: ModelProvider) => {
       const jwt = loadKnowhowJwt();
@@ -130,6 +133,7 @@ const DEFAULT_PROVIDERS: ModelProvider[] = [
   { provider: "github-copilot", envKey: "GITHUB_COPILOT_TOKEN" },
   { provider: "llama", envKey: "LLAMA_API_KEY" },
   { provider: "fireworks", envKey: "FIREWORKS_API_KEY" },
+  { provider: "meta", envKey: "META_API_KEY" },
 ];
 
 export class AIClient {
@@ -1021,6 +1025,7 @@ export class AIClient {
       ...GeminiPricing,
       ...XaiTextPricing,
       ...FireworksTextPricing,
+      ...MetaTextPricing,
     };
     const allImagePricing: Record<string, ModelPricing> = {
       ...XaiImagePricing,
@@ -1066,3 +1071,4 @@ export * from "./mistral";
 export * from "./llama";
 export * from "./copilot";
 export * from "./fireworks";
+export * from "./meta";

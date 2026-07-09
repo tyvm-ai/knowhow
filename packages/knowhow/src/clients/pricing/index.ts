@@ -36,6 +36,7 @@ export { OpenRouterTextPricing } from "./openrouter";
 export { LlamaTextPricing } from "./llama";
 export { CopilotTextPricing, CopilotModelMultipliers } from "./copilot";
 export { FireworksTextPricing } from "./fireworks";
+export { MetaTextPricing, MetaWebSearchPricingPer1000Queries } from "./meta";
 
 // ─── Combined catalog ─────────────────────────────────────────────────────────
 export { ALL_MODEL_CATALOG, USAGE_MARKUP_PERCENT } from "./models";
