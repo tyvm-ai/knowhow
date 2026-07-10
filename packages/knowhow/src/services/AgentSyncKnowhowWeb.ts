@@ -89,7 +89,7 @@ export class AgentSyncKnowhowWeb {
     try {
       await this.client.updateChatTask(knowhowTaskId, {
         threads: agent.getThreads(),
-        totalCostUsd: agent.getTotalCostUsd(),
+        totalUsdCost: agent.getTotalCostUsd(),
         inProgress,
         ...(result ? { result } : {}),
       });

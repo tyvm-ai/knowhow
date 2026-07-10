@@ -61,7 +61,7 @@ export interface CreateMessageTaskResponse {
 
 export interface UpdateOrgTaskRequest {
   threads: Message[][];
-  totalCostUsd: number;
+  totalUsdCost: number;
   inProgress: boolean;
   result?: string;
 }

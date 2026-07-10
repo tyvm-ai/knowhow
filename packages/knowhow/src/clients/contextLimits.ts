@@ -10,6 +10,9 @@ import { Models, EmbeddingModels } from "../types";
  */
 export const ContextLimits: Record<string, number> = {
   // ─── OpenAI ───────────────────────────────────────────────────────────────
+  [Models.openai.GPT_56_Sol]: 1_000_000,
+  [Models.openai.GPT_56_Terra]: 1_000_000,
+  [Models.openai.GPT_56_Luna]: 1_000_000,
   [Models.openai.GPT_55]: 1_000_000,
   [Models.openai.GPT_54]: 1_000_000,
   [Models.openai.GPT_54_Mini]: 400_000,

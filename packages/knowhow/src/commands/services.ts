@@ -21,7 +21,7 @@ export async function setupServices() {
 
 
   // cli uses LazyTools to keep context slim
-  const Tools = new MinimalToolsService();
+  const Tools = new LazyToolsService();
 
   Tools.setContext({
     ...AllTools.getContext(),
