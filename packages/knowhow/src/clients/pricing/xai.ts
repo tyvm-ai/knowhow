@@ -10,6 +10,7 @@ export const XaiModels = {
   Grok_4_20_Reasoning: "grok-4.20-0309-reasoning",
   Grok_4_20_NonReasoning: "grok-4.20-0309-non-reasoning",
   Grok_4_20_MultiAgent: "grok-4.20-multi-agent-0309",
+  Grok4_5: "grok-4.5",
   Grok4_1_Fast_Reasoning: "grok-4-1-fast-reasoning",
   Grok4_1_Fast_NonReasoning: "grok-4-1-fast-non-reasoning",
   GrokCodeFast: "grok-code-fast-1",
@@ -44,6 +45,7 @@ export const XaiTextModels: string[] = [
   XaiModels.Grok_4_20_Reasoning, XaiModels.Grok_4_20_NonReasoning,
   XaiModels.Grok_4_20_MultiAgent,
   XaiModels.Grok4_1_Fast_Reasoning, XaiModels.Grok4_1_Fast_NonReasoning,
+  XaiModels.Grok4_5,
   XaiModels.GrokCodeFast, XaiModels.Grok4,
   XaiModels.Grok3Beta, XaiModels.Grok3MiniBeta, XaiModels.Grok3FastBeta, XaiModels.Grok3MiniFastBeta,
 ];
@@ -87,6 +89,7 @@ export const XaiTextPricing: Record<string, ModelPricing> = {
   [XaiModels.Grok_4_20_MultiAgent]:      { input: 2.0, cache_hit: 0.20, output: 6.0, reasoningLevels: ["low", "medium", "high", "xhigh"], useResponsesApi: true },
   [XaiModels.Grok4_1_Fast_Reasoning]:    { input: 0.2, cache_hit: 0.05, output: 0.5, useResponsesApi: true },
   [XaiModels.Grok4_1_Fast_NonReasoning]: { input: 0.2, cache_hit: 0.05, output: 0.5, useResponsesApi: true },
+  [XaiModels.Grok4_5]:                   { input: 2.0, cache_hit: 0.50, output: 6.0 },
   [XaiModels.GrokCodeFast]:              { input: 0.2, cache_hit: 0.02, output: 1.5 },
   [XaiModels.Grok4]:                     { input: 3.0, output: 15.0 },
   [XaiModels.Grok3Beta]:                 { input: 3.0, output: 15.0 },
