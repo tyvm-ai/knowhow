@@ -174,6 +174,7 @@ export const ContextLimits: Record<string, number> = {
   [Models.xai.GrokBeta]: 131_072,
   [Models.xai.GrokVisionBeta]: 131_072,
   [Models.xai.Grok4_1_Fast]: 2_000_000,
+  [Models.xai.Grok4_5]: 500_000,
   [Models.xai.Grok4Fast]: 2_000_000,
   [Models.xai.Grok4FastNonReasoning]: 2_000_000,
   // xAI image/video models — no text context window
