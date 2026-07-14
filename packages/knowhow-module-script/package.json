@@ -31,6 +31,8 @@
     "node": ">=22"
   },
   "dependencies": {
+  },
+  "optionalDependencies": {
     "isolated-vm": "^6.0.0"
   },
   "devDependencies": {
