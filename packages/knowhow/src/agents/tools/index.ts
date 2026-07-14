@@ -23,3 +23,4 @@ export * from "./stringReplace";
 export * from "./startAgentTask";
 export * from "./ycmd";
 export * from "./mcp";
+export * from "./skills";

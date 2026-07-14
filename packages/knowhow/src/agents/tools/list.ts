@@ -7,6 +7,7 @@ import * as language from "./language/definitions";
 import * as mcp from "./mcp/definitions";
 import { googleSearchDefinition } from "./googleSearch";
 import { startAgentTaskDefinition } from "./startAgentTask";
+import { skillsToolDefinitions } from "./skills";
 
 function getPluginNames(): string {
   try {
@@ -681,4 +682,5 @@ export const includedTools = [
   ...ycmd.definitions,
   ...language.definitions,
   ...mcp.definitions,
+  ...skillsToolDefinitions,
 ] as Tool[];

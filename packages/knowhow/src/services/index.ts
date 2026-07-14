@@ -38,6 +38,7 @@ export * from "./SyncerService";
 export * from "./watchers";
 export { Clients } from "../clients";
 export * from "./conversion";
+export { BehaviorsService, Behaviors } from "./BehaviorsService";
 
 let Singletons = {} as {
   Tools: ToolsService;

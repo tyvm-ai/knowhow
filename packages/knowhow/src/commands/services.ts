@@ -3,6 +3,8 @@ import * as allTools from "../agents/tools";
 import { LazyToolsService, services, MinimalToolsService } from "../services";
 import { agents } from "../agents";
 import { ModulesService } from "../services/modules";
+import { Behaviors } from "../services/BehaviorsService";
+import { getConfig } from "../config";
 
 /**
  * Shared service setup used by commands that need full services (chat, agent, worker, etc.)
@@ -45,6 +47,11 @@ export async function setupServices() {
   Tools.defineTools(includedTools, allTools);
 
   Tools.addContext("Mcp", Mcp);
+
+  // Load skills/behaviors from disk into memory (respects config.skills file list if set)
+  let config: { skills?: string[] } = {};
+  try { config = await getConfig(); } catch { /* no config file */ }
+  Behaviors.initFromDisk(config.skills);
 
   Agents.setAgentContext(agentContext);
 

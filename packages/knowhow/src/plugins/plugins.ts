@@ -17,21 +17,23 @@ export class PluginService {
   private pluginMap = new Map<string, Plugin>();
   private events?: EventService;
 
-  constructor(context: PluginContext) {
+  constructor(context: PluginContext, opts: { skipDefaults?: boolean } = {}) {
     this.events = context.Events;
     context.Plugins = this;
 
-    // Register migrated PluginBase plugins
-    this.pluginMap.set("embeddings", new EmbeddingPlugin(context));
-    this.pluginMap.set("vim", new VimPlugin(context));
-    this.pluginMap.set("linter", new LinterPlugin(context));
-    this.pluginMap.set("language", new LanguagePlugin(context));
-    this.pluginMap.set("url", new UrlPlugin(context));
-    this.pluginMap.set("git", new GitPlugin(context));
-    this.pluginMap.set("tmux", new TmuxPlugin(context));
-    this.pluginMap.set("agents-md", new AgentsMdPlugin(context));
-    this.pluginMap.set("exec", new ExecPlugin(context));
-    this.pluginMap.set("skills", new SkillsPlugin(context));
+    if (!opts.skipDefaults) {
+      // Register migrated PluginBase plugins
+      this.pluginMap.set("embeddings", new EmbeddingPlugin(context));
+      this.pluginMap.set("vim", new VimPlugin(context));
+      this.pluginMap.set("linter", new LinterPlugin(context));
+      this.pluginMap.set("language", new LanguagePlugin(context));
+      this.pluginMap.set("url", new UrlPlugin(context));
+      this.pluginMap.set("git", new GitPlugin(context));
+      this.pluginMap.set("tmux", new TmuxPlugin(context));
+      this.pluginMap.set("agents-md", new AgentsMdPlugin(context));
+      this.pluginMap.set("exec", new ExecPlugin(context));
+      this.pluginMap.set("skills", new SkillsPlugin(context));
+    }
   }
 
   /* -------- lifecycle helpers ------------------------------------ */
