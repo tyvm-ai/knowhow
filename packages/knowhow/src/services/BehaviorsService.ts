@@ -1,9 +1,13 @@
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 import { KnowhowSimpleClient } from "./KnowhowClient";
 import { createHash } from "crypto";
+import { getConfig } from "../config";
 
 const BEHAVIORS_DIR = ".knowhow/behaviors";
+const LOCAL_SKILLS_DIRS = [".agents/skills", ".knowhow/skills"];
+const GLOBAL_SKILLS_DIR = path.join(os.homedir(), ".knowhow", "skills");
 
 export interface Behavior {
   id?: string;
@@ -57,6 +61,18 @@ export class BehaviorsService {
     this.skills = this.behaviors.filter((b) => b.isSkill === true);
   }
 
+  async initFromConfig() {
+    // Load skills/behaviors from disk into memory (respects config.skills file list if set)
+    let config: { skills?: string[] } = {};
+    try {
+      config = await getConfig();
+    } catch {
+      /* no config file */
+    }
+    const skills = config.skills || [];
+    this.initFromDisk(skills);
+  }
+
   /** Initialize only skills subset into memory. */
   initSkills(skills: Behavior[]): void {
     this.skills = skills;
@@ -94,28 +110,58 @@ export class BehaviorsService {
   /**
    * Load all behaviors from local disk (.knowhow/behaviors/).
    * Supports both .json and .md files.
+   * Also scans .agents/skills/ and .knowhow/skills/ for SKILL.md files,
+   * treating them as skills (isSkill: true) regardless of frontmatter.
    */
   loadLocal(opts: { skillsOnly?: boolean } = {}): Behavior[] {
-    if (!fs.existsSync(BEHAVIORS_DIR)) return [];
-
-    const files = fs
-      .readdirSync(BEHAVIORS_DIR)
-      .filter((f) => f.endsWith(".json") || f.endsWith(".md"));
-
     const results: Behavior[] = [];
-    for (const file of files) {
-      try {
-        const filePath = path.join(BEHAVIORS_DIR, file);
-        const raw = fs.readFileSync(filePath, "utf-8");
-        const behavior = file.endsWith(".md")
-          ? this.parseMdBehavior(raw)
-          : (JSON.parse(raw) as Behavior);
-        if (opts.skillsOnly && !behavior.isSkill) continue;
-        results.push(behavior);
-      } catch {
-        // skip malformed files
+
+    // Load from .knowhow/behaviors/ (existing behaviors/skills with explicit isSkill flag)
+    if (fs.existsSync(BEHAVIORS_DIR)) {
+      const files = fs
+        .readdirSync(BEHAVIORS_DIR)
+        .filter((f) => f.endsWith(".json") || f.endsWith(".md"));
+
+      for (const file of files) {
+        try {
+          const filePath = path.join(BEHAVIORS_DIR, file);
+          const raw = fs.readFileSync(filePath, "utf-8");
+          const behavior = file.endsWith(".md")
+            ? this.parseMdBehavior(raw)
+            : (JSON.parse(raw) as Behavior);
+          if (opts.skillsOnly && !behavior.isSkill) continue;
+          results.push(behavior);
+        } catch {
+          // skip malformed files
+        }
       }
     }
+
+    // Load from .agents/skills/<name>/SKILL.md and .knowhow/skills/<name>/SKILL.md
+    // Also load from global ~/.knowhow/skills/<name>/SKILL.md
+    // Files here are always treated as skills (isSkill: true)
+    const allSkillsDirs = [
+      ...LOCAL_SKILLS_DIRS,
+      GLOBAL_SKILLS_DIR,
+    ];
+    for (const skillsDir of allSkillsDirs) {
+      if (!fs.existsSync(skillsDir)) continue;
+
+      const entries = fs.readdirSync(skillsDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const skillFile = path.join(skillsDir, entry.name, "SKILL.md");
+        if (!fs.existsSync(skillFile)) continue;
+        try {
+          const raw = fs.readFileSync(skillFile, "utf-8");
+          const behavior = this.parseMdBehavior(raw, { isSkill: true });
+          results.push(behavior);
+        } catch {
+          // skip malformed files
+        }
+      }
+    }
+
     return results;
   }
 
@@ -282,7 +328,7 @@ export class BehaviorsService {
     return "unchanged";
   }
 
-  parseMdBehavior(content: string): Behavior {
+  parseMdBehavior(content: string, defaults: Partial<Behavior> = {}): Behavior {
     const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
     if (!match)
       throw new Error("Invalid behavior markdown: missing frontmatter");
@@ -308,7 +354,7 @@ export class BehaviorsService {
       mcpServers: meta.mcpServers || undefined,
       tools: meta.tools || undefined,
       embeddings: meta.embeddings || undefined,
-      isSkill: meta.isSkill === "true",
+      isSkill: meta.isSkill === "true" || defaults.isSkill === true,
       isPublic: meta.isPublic === "true",
     };
   }
@@ -384,5 +430,3 @@ export class BehaviorsService {
     return null;
   }
 }
-
-export const Behaviors = new BehaviorsService();

@@ -1,5 +1,10 @@
 import { Embeddable, MinimalEmbedding } from "../types";
-import { AgentService, EventService, ToolsService } from "../services";
+import {
+  AgentService,
+  BehaviorsService,
+  EventService,
+  ToolsService,
+} from "../services";
 import { AIClient } from "../clients";
 import { PluginService } from "./plugins";
 
@@ -27,4 +32,5 @@ export interface PluginContext {
   Clients?: AIClient;
   Tools?: ToolsService;
   Plugins?: PluginService;
+  Behaviors?: BehaviorsService;
 }

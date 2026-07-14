@@ -13,6 +13,7 @@ import { MediaProcessorService } from "../MediaProcessorService";
 import { TunnelHandler } from "@tyvm/knowhow-tunnel";
 import { EventService } from "../EventService";
 import { ConversionService } from "../conversion/ConversionService";
+import { BehaviorsService } from "../BehaviorsService";
 
 /*
  *
@@ -61,6 +62,7 @@ export interface ModuleContext {
   Conversion?: ConversionService;
   Tunnel?: TunnelHandler;
   Program?: Command;
+  Behaviors?: BehaviorsService
 }
 
 export interface KnowhowModule {

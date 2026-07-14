@@ -39,6 +39,7 @@ import {
 import { addConvertCommand } from "./commands/convert";
 import { addReplayCommand } from "./commands/replay";
 import { addBehaviorsCommand } from "./commands/behaviors";
+import { addSkillsCommand } from "./commands/skills";
 
 // Handle unhandled promise rejections gracefully — particularly from MCP SDK
 // which fires errors via event emitters that can bypass Promise.allSettled.
@@ -104,6 +105,7 @@ async function main() {
   addConvertCommand(program);
   addReplayCommand(program);
   addBehaviorsCommand(program);
+  addSkillsCommand(program);
 
   // Load global modules early (before parse) so they can register CLI subcommands.
   // We pass only the Program in context — no services are spun up at this stage.

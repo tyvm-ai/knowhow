@@ -3,7 +3,6 @@ import * as allTools from "../agents/tools";
 import { LazyToolsService, services, MinimalToolsService } from "../services";
 import { agents } from "../agents";
 import { ModulesService } from "../services/modules";
-import { Behaviors } from "../services/BehaviorsService";
 import { getConfig } from "../config";
 
 /**
@@ -19,12 +18,14 @@ export async function setupServices() {
     Plugins,
     Events,
     MediaProcessor,
+    Behaviors,
   } = services();
-
 
   // cli uses LazyTools to keep context slim
   const Tools = new LazyToolsService();
+  await Behaviors.initFromConfig();
 
+  // Give LazyToolsService the same context that ToolService had
   Tools.setContext({
     ...AllTools.getContext(),
   });
@@ -47,11 +48,6 @@ export async function setupServices() {
   Tools.defineTools(includedTools, allTools);
 
   Tools.addContext("Mcp", Mcp);
-
-  // Load skills/behaviors from disk into memory (respects config.skills file list if set)
-  let config: { skills?: string[] } = {};
-  try { config = await getConfig(); } catch { /* no config file */ }
-  Behaviors.initFromDisk(config.skills);
 
   Agents.setAgentContext(agentContext);
 
@@ -77,7 +73,8 @@ export async function setupServices() {
     Clients,
     Tools,
     MediaProcessor,
-    Events
+    Behaviors,
+    Events,
   });
 
   return { Tools, Clients };

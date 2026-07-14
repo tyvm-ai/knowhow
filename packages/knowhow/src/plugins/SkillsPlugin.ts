@@ -1,13 +1,11 @@
 import { PluginBase, PluginMeta } from "./PluginBase";
 import { Plugin, PluginContext } from "./types";
-import { Behaviors } from "../services/BehaviorsService";
 
 export class SkillsPlugin extends PluginBase implements Plugin {
   static readonly meta: PluginMeta = {
     key: "skills",
     name: "Skills Plugin",
-    description:
-      "Lists available skills downloaded to .knowhow/behaviors/. Run `knowhow behaviors download --skills-only` to fetch skills.",
+    description: "Lists available skills",
     requires: [],
   };
 
@@ -23,10 +21,11 @@ export class SkillsPlugin extends PluginBase implements Plugin {
    * Skills must be loaded into memory first via Behaviors.initFromDisk() at startup.
    */
   async call(_input?: string): Promise<string> {
+    const { Behaviors } = this.context;
     const skills = Behaviors.listSkills();
 
     if (skills.length === 0) {
-      return "No skills available locally. Run `knowhow behaviors download --skills-only` to fetch skills.";
+      return "No skills available";
     }
 
     const lines = ["Available skills:"];

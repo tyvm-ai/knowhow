@@ -60,6 +60,8 @@ export { ConversionService } from "./services/conversion/ConversionService";
 // Export plugin types for external plugins
 export { PluginBase } from "./plugins/PluginBase";
 export { PluginMeta, Plugin, PluginContext } from "./plugins/types";
+export { PluginService } from "./plugins/plugins";
+export { SkillsPlugin } from "./plugins/SkillsPlugin";
 // Export embedding types
 export { MinimalEmbedding, Embeddable } from "./types";
 

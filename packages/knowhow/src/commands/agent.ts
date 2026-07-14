@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { readPromptFile } from "../ai";
 import { AgentModule } from "../chat/modules/AgentModule";
-import { BehaviorsService } from "../services/BehaviorsService";
+import { BehaviorsService, Behavior } from "../services/BehaviorsService";
 import { AskModule } from "../chat/modules/AskModule";
 import { SearchModule } from "../chat/modules/SearchModule";
 import { SessionsModule } from "../chat/modules/SessionsModule";
