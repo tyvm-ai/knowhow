@@ -7,13 +7,14 @@ import { KnowhowSimpleClient } from "./KnowhowClient";
 import { McpService } from "./Mcp";
 import { S3Service } from "./S3";
 import { ToolsService } from "./Tools";
-import { PluginService } from "../plugins/plugins";
+import { CliPluginService, PluginService } from "../plugins/plugins";
 import { DockerService } from "./DockerService";
 import { AgentSyncKnowhowWeb } from "./AgentSyncKnowhowWeb";
 import { AgentSyncFs } from "./AgentSyncFs";
 import { SessionManager } from "./SessionManager";
 import { TaskRegistry } from "./TaskRegistry";
 import { MediaProcessorService } from "./MediaProcessorService";
+import { BehaviorsService } from "./BehaviorsService";
 
 import { ConversionService } from "./conversion/ConversionService";
 
@@ -38,6 +39,7 @@ export * from "./SyncerService";
 export * from "./watchers";
 export { Clients } from "../clients";
 export * from "./conversion";
+export { BehaviorsService } from "./BehaviorsService";
 
 let Singletons = {} as {
   Tools: ToolsService;
@@ -53,6 +55,7 @@ let Singletons = {} as {
   Clients: AIClient;
   MediaProcessor: MediaProcessorService;
   Conversion: ConversionService;
+  Behaviors: BehaviorsService;
 };
 
 export const services = (): typeof Singletons => {
@@ -61,8 +64,9 @@ export const services = (): typeof Singletons => {
     const Events = new EventService();
     const Agents = new AgentService(Tools, Events);
     const MediaProcessor = new MediaProcessorService(Clients);
+    const Behaviors = new BehaviorsService();
     const Conversion = new ConversionService(Clients, MediaProcessor);
-    const Plugins = new PluginService({
+    const Plugins = new CliPluginService({
       Agents,
       Events,
       Tools,
@@ -83,6 +87,7 @@ export const services = (): typeof Singletons => {
       Plugins,
       Tools,
       knowhowApiClient: new KnowhowSimpleClient(),
+      Behaviors,
     };
 
     Singletons.Tools.setContext({
@@ -90,6 +95,7 @@ export const services = (): typeof Singletons => {
       Events,
       Plugins,
       Clients,
+      Behaviors,
     });
   }
 

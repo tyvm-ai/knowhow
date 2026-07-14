@@ -14,6 +14,7 @@ import {
 } from "./types";
 import { PluginService } from "../plugins/plugins";
 import { McpService } from "./Mcp";
+import { BehaviorsService } from "./BehaviorsService";
 
 export interface ToolContext {
   Agents?: AgentService;
@@ -22,6 +23,7 @@ export interface ToolContext {
   Tools?: ToolsService;
   Plugins?: PluginService;
   Mcp?: McpService;
+  Behaviors?: BehaviorsService;
   metadata?: { [key: string]: any };
 }
 

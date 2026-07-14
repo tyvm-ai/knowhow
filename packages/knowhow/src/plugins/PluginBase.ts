@@ -1,4 +1,3 @@
-import { MinimalEmbedding } from "../types";
 import { Plugin, PluginContext, PluginMeta } from "./types";
 
 export abstract class PluginBase implements Plugin {
@@ -66,7 +65,6 @@ export abstract class PluginBase implements Plugin {
   /** Mandatory plugin actions ---------------------------------------- */
   /* ------------------------------------------------------------------ */
   abstract call(input?: string): Promise<string>;
-  abstract embed(input: string): Promise<MinimalEmbedding[]>;
 }
 
 export { PluginMeta, Plugin } from "./types";

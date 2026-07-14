@@ -799,4 +799,65 @@ export class KnowhowSimpleClient {
     );
     return response.data;
   }
+
+  // ============================================
+  // Org Behaviors Methods
+  // ============================================
+
+  /**
+   * List all behaviors for the current org
+   */
+  async getOrgBehaviors() {
+    await this.checkJwt();
+    return http.get<Record<string, unknown>[]>(
+      `${this.baseUrl}/api/org-behaviors`,
+      { headers: this.headers }
+    );
+  }
+
+  /**
+   * List all skills (isSkill=true) for the current org
+   */
+  async getOrgSkills(includeInternal = true) {
+    await this.checkJwt();
+    return http.get<Record<string, unknown>[]>(
+      `${this.baseUrl}/api/org-behaviors/skills?includeInternal=${includeInternal}`,
+      { headers: this.headers }
+    );
+  }
+
+  /**
+   * Create a new org behavior
+   */
+  async createOrgBehavior(data: Record<string, unknown>) {
+    await this.checkJwt();
+    return http.post<Record<string, unknown>>(
+      `${this.baseUrl}/api/org-behaviors`,
+      data,
+      { headers: this.headers }
+    );
+  }
+
+  /**
+   * Update an existing org behavior by ID
+   */
+  async updateOrgBehavior(id: string, data: Record<string, unknown>) {
+    await this.checkJwt();
+    return http.put<Record<string, unknown>>(
+      `${this.baseUrl}/api/org-behaviors/${id}`,
+      data,
+      { headers: this.headers }
+    );
+  }
+
+  /**
+   * Get triggered behaviors for a given user input string
+   */
+  async getTriggeredBehaviors(userInput: string) {
+    await this.checkJwt();
+    return http.get<{ triggered: Record<string, unknown>[]; trigger_type: string }>(
+      `${this.baseUrl}/api/org-behaviors/triggered?userInput=${encodeURIComponent(userInput)}`,
+      { headers: this.headers }
+    );
+  }
 }

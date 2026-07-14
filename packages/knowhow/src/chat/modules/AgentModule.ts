@@ -18,7 +18,7 @@ import { BaseChatModule } from "./BaseChatModule";
 import { services } from "../../services/index";
 import { BaseAgent } from "../../agents/index";
 import { ChatCommand, ChatMode, ChatContext, ChatService } from "../types";
-import { Message } from "../../clients/types";
+import { Message, CompletionOptions } from "../../clients/types";
 import { ChatInteraction } from "../../types";
 import { Marked } from "../../utils/index";
 import { TokenCompressor } from "../../processors/TokenCompressor";
@@ -51,6 +51,11 @@ export class AgentModule extends BaseChatModule {
   private activeAgentTaskId: string | undefined;
   /** Currently active synced agent watcher (for FS or Web agents) */
   private activeSyncedWatcher: SyncedAgentWatcher | undefined;
+
+  /** Reasoning effort to apply to agents started from this module */
+  private reasoningEffort: CompletionOptions["reasoning_effort"] | undefined = undefined;
+  /** Whether to request a reasoning summary from supporting models */
+  private summarizeReasoning: boolean = true;
 
   /** Stored wire params for rewireAgentRendering */
   private _wireAgentEvents: EventService | undefined;
@@ -136,6 +141,78 @@ export class AgentModule extends BaseChatModule {
               "Agent interrupted — it will continue with the next step."
             );
           }
+        },
+      },
+      {
+        name: "reasoning_effort",
+        description:
+          "Set the reasoning effort for the agent (none, low, medium, high). Use 'none' to disable thinking on models that support it.",
+        handler: async (args: string[]): Promise<void> => {
+          const validEfforts: CompletionOptions["reasoning_effort"][] = [
+            "none",
+            "low",
+            "medium",
+            "high",
+          ];
+          const effort = args[0] as CompletionOptions["reasoning_effort"];
+          if (!effort || !validEfforts.includes(effort)) {
+            console.log(
+              `Current reasoning effort: ${this.reasoningEffort ?? "(not set — model default)"}`
+            );
+            console.log(
+              `Usage: /reasoning_effort <${validEfforts.join("|")}>`
+            );
+            return;
+          }
+          this.reasoningEffort = effort;
+          const agent = (this.chatService?.getContext()?.selectedAgent as BaseAgent);
+          if (agent) agent.setReasoningEffort(effort);
+          console.log(`Reasoning effort set to: ${effort}`);
+        },
+      },
+      {
+        name: "effort",
+        description: "Alias for /reasoning_effort",
+        handler: async (args: string[]): Promise<void> => {
+          const validEfforts: CompletionOptions["reasoning_effort"][] = [
+            "none",
+            "low",
+            "medium",
+            "high",
+          ];
+          const effort = args[0] as CompletionOptions["reasoning_effort"];
+          if (!effort || !validEfforts.includes(effort)) {
+            console.log(
+              `Current reasoning effort: ${this.reasoningEffort ?? "(not set — model default)"}`
+            );
+            console.log(
+              `Usage: /effort <${validEfforts.join("|")}>`
+            );
+            return;
+          }
+          this.reasoningEffort = effort;
+          const agent = (this.chatService?.getContext()?.selectedAgent as BaseAgent);
+          if (agent) agent.setReasoningEffort(effort);
+          console.log(`Reasoning effort set to: ${effort}`);
+        },
+      },
+      {
+        name: "reasoning_summary",
+        description:
+          "Toggle whether the agent displays a reasoning summary (true/false). Supported by reasoning models only.",
+        handler: async (args: string[]): Promise<void> => {
+          const val = args[0];
+          if (val !== "true" && val !== "false") {
+            console.log(
+              `Current reasoning summary: ${this.summarizeReasoning}`
+            );
+            console.log(`Usage: /reasoning_summary <true|false>`);
+            return;
+          }
+          this.summarizeReasoning = val === "true";
+          const agent = (this.chatService?.getContext()?.selectedAgent as BaseAgent);
+          if (agent) agent.setSummarizeReasoning(this.summarizeReasoning);
+          console.log(`Reasoning summary set to: ${this.summarizeReasoning}`);
         },
       },
       {
@@ -753,6 +830,12 @@ export class AgentModule extends BaseChatModule {
           { model: options.model, provider: options.provider as any },
         ]);
       }
+
+      // Apply module-level reasoning settings to the agent
+      if (this.reasoningEffort !== undefined) {
+        agent.setReasoningEffort(this.reasoningEffort);
+      }
+      agent.setSummarizeReasoning(this.summarizeReasoning);
 
       // Set up message processors like in original startAgent
 

@@ -14,24 +14,12 @@ import { SkillsPlugin } from "./SkillsPlugin";
 import { EventService } from "../services/EventService";
 
 export class PluginService {
-  private pluginMap = new Map<string, Plugin>();
+  protected pluginMap = new Map<string, Plugin>();
   private events?: EventService;
 
   constructor(context: PluginContext) {
     this.events = context.Events;
     context.Plugins = this;
-
-    // Register migrated PluginBase plugins
-    this.pluginMap.set("embeddings", new EmbeddingPlugin(context));
-    this.pluginMap.set("vim", new VimPlugin(context));
-    this.pluginMap.set("linter", new LinterPlugin(context));
-    this.pluginMap.set("language", new LanguagePlugin(context));
-    this.pluginMap.set("url", new UrlPlugin(context));
-    this.pluginMap.set("git", new GitPlugin(context));
-    this.pluginMap.set("tmux", new TmuxPlugin(context));
-    this.pluginMap.set("agents-md", new AgentsMdPlugin(context));
-    this.pluginMap.set("exec", new ExecPlugin(context));
-    this.pluginMap.set("skills", new SkillsPlugin(context));
   }
 
   /* -------- lifecycle helpers ------------------------------------ */
@@ -144,5 +132,28 @@ export class PluginService {
       return [];
     }
     return newPlugin.embed ? newPlugin.embed(userInput) : [];
+  }
+}
+
+/**
+ * CliPluginService extends PluginService with the full set of default plugins
+ * used by the Knowhow CLI. Use this class when setting up agents for CLI usage.
+ * Use the base PluginService when you want a clean slate to register your own plugins.
+ */
+export class CliPluginService extends PluginService {
+  constructor(context: PluginContext) {
+    super(context);
+
+    // Register CLI default plugins
+    this.pluginMap.set("embeddings", new EmbeddingPlugin(context));
+    this.pluginMap.set("vim", new VimPlugin(context));
+    this.pluginMap.set("linter", new LinterPlugin(context));
+    this.pluginMap.set("language", new LanguagePlugin(context));
+    this.pluginMap.set("url", new UrlPlugin(context));
+    this.pluginMap.set("git", new GitPlugin(context));
+    this.pluginMap.set("tmux", new TmuxPlugin(context));
+    this.pluginMap.set("agents-md", new AgentsMdPlugin(context));
+    this.pluginMap.set("exec", new ExecPlugin(context));
+    this.pluginMap.set("skills", new SkillsPlugin(context));
   }
 }

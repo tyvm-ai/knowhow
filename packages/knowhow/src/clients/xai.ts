@@ -76,9 +76,9 @@ export class GenericXAIClient implements GenericClient {
       model: options.model,
       messages: xaiMessages,
       max_tokens: options.max_tokens,
-      ...(XaiReasoningModels.includes(options.model) && options.reasoning_effort && {
+      ...(XaiReasoningModels.includes(options.model) && options.reasoning_effort && options.reasoning_effort !== "none" && {
         // grok-3-mini models support reasoning_effort: "low" | "medium" | "high"
-        reasoning_effort: options.reasoning_effort,
+        reasoning_effort: options.reasoning_effort as "low" | "medium" | "high",
       }),
       ...(options.tools && {
         tools: options.tools,

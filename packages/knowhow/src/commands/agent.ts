@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { readPromptFile } from "../ai";
 import { AgentModule } from "../chat/modules/AgentModule";
+import { BehaviorsService, Behavior } from "../services/BehaviorsService";
 import { AskModule } from "../chat/modules/AskModule";
 import { SearchModule } from "../chat/modules/SearchModule";
 import { SessionsModule } from "../chat/modules/SessionsModule";
@@ -131,11 +132,29 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
         }
 
         await agentModule.initialize(chatService);
+
+        // Match a behavior from local disk (.knowhow/behaviors/)
+        let behaviorSystemPrompt: string | undefined;
+        let behaviorModel: string | undefined;
+        const behaviorsSvc = new BehaviorsService();
+        const matchedBehavior = behaviorsSvc.matchBehaviorLocal(input);
+        if (matchedBehavior) {
+          console.log(`🎯 Matched behavior: ${matchedBehavior.name}`);
+          if (matchedBehavior.instructions) {
+            behaviorSystemPrompt = matchedBehavior.instructions;
+          }
+          if (matchedBehavior.model) {
+            behaviorModel = matchedBehavior.model;
+          }
+        }
+
         const { taskCompleted } = await agentModule.setupAgent({
           ...options,
           input,
           maxTimeLimit: parseInt(options.maxTimeLimit, 10),
           maxSpendLimit: parseFloat(options.maxSpendLimit),
+          ...(behaviorSystemPrompt ? { systemPrompt: behaviorSystemPrompt } : {}),
+          ...(behaviorModel ? { model: behaviorModel } : {}),
           run: true,
         });
         await taskCompleted;

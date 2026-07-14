@@ -185,3 +185,36 @@ jobs:
         run: npm audit --audit-level=high
         working-directory: packages/knowhow
         continue-on-error: true  # Remove this once Phase 1 cleanup lands and audit is clean
+
+  build-knowhow-module-script:
+    name: Build (@tyvm/knowhow-module-script)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build knowhow-tunnel (workspace dependency)
+        run: npm run build
+        working-directory: packages/knowhow-tunnel
+
+      - name: Build knowhow (peer dependency)
+        run: npm run compile
+        working-directory: packages/knowhow
+
+      - name: TypeScript compile check
+        run: npx tsc --noEmit
+        working-directory: packages/knowhow-module-script
+
+      - name: Verify isolated-vm loads correctly
+        run: node --no-node-snapshot -e "const ivm = require('isolated-vm'); console.log('isolated-vm loaded OK, version check passed');"
+        working-directory: packages/knowhow-module-script

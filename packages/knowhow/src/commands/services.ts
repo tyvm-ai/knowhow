@@ -3,6 +3,7 @@ import * as allTools from "../agents/tools";
 import { LazyToolsService, services, MinimalToolsService } from "../services";
 import { agents } from "../agents";
 import { ModulesService } from "../services/modules";
+import { getConfig } from "../config";
 
 /**
  * Shared service setup used by commands that need full services (chat, agent, worker, etc.)
@@ -17,12 +18,14 @@ export async function setupServices() {
     Plugins,
     Events,
     MediaProcessor,
+    Behaviors,
   } = services();
-
 
   // cli uses LazyTools to keep context slim
   const Tools = new LazyToolsService();
+  await Behaviors.initFromConfig();
 
+  // Give LazyToolsService the same context that ToolService had
   Tools.setContext({
     ...AllTools.getContext(),
   });
@@ -70,7 +73,8 @@ export async function setupServices() {
     Clients,
     Tools,
     MediaProcessor,
-    Events
+    Behaviors,
+    Events,
   });
 
   return { Tools, Clients };

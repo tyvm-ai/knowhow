@@ -6,7 +6,6 @@ import { getConfig, getLanguageConfig } from "../config";
 import { getEnabledPlugins } from "../types";
 import { PluginBase, PluginMeta } from "./PluginBase";
 import { Plugin, PluginContext } from "./types";
-import { PluginService } from "./plugins";
 
 /**
  * Language Plugin with event-driven context loading

@@ -1,5 +1,10 @@
 import { Embeddable, MinimalEmbedding } from "../types";
-import { AgentService, EventService, ToolsService } from "../services";
+import {
+  AgentService,
+  BehaviorsService,
+  EventService,
+  ToolsService,
+} from "../services";
 import { AIClient } from "../clients";
 import { PluginService } from "./plugins";
 
@@ -13,7 +18,7 @@ export interface PluginMeta {
 export interface Plugin {
   callMany(userInput?: string): Promise<string>;
   call(userInput?: string): Promise<string>;
-  embed(userInput?: string): Promise<MinimalEmbedding[]>;
+  embed?(userInput?: string): Promise<MinimalEmbedding[]>;
   enable(): void;
   disable(): void;
   isEnabled(): boolean;
@@ -27,4 +32,5 @@ export interface PluginContext {
   Clients?: AIClient;
   Tools?: ToolsService;
   Plugins?: PluginService;
+  Behaviors?: BehaviorsService;
 }

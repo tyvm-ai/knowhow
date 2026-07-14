@@ -86,10 +86,26 @@ export interface CompletionOptions extends RetryOptions {
   tools?: Tool[];
   tool_choice?: "auto" | "none";
   max_tokens?: number;
-  /** Reasoning effort level for models that support it.
-   *  Maps to: OpenAI reasoning_effort, xAI reasoning.effort, Gemini thinkingLevel/thinkingBudget, Anthropic thinking budget.
-   *  "low" = minimal thinking, "medium" = balanced, "high" = maximum reasoning */
-  reasoning_effort?: "low" | "medium" | "high";
+  /**
+   * Reasoning effort level for models that support it.
+   * Maps to: OpenAI reasoning_effort/reasoning.effort, xAI reasoning.effort,
+   *          Gemini thinkingLevel/thinkingBudget, Anthropic thinking mode.
+   *
+   * "none"   = disable thinking entirely (Anthropic: thinking.type="disabled",
+   *            OpenAI: reasoning.effort="none").  Only supported by models that
+   *            allow disabling thinking (e.g. claude-sonnet-5).
+   * "low"    = minimal thinking
+   * "medium" = balanced (default for most models)
+   * "high"   = maximum reasoning
+   */
+  reasoning_effort?: "none" | "low" | "medium" | "high";
+  /**
+   * When true, request a summarized view of the model's thinking process.
+   * - Anthropic: thinking.display = "summarized"
+   * - OpenAI:    reasoning.summary = "auto"
+   * Defaults to false (no summary displayed).
+   */
+  reasoning_summary?: boolean;
   /**
    * When true, hints to the client that this task is long-running and it should
    * use a long-TTL cache where available.
@@ -115,6 +131,13 @@ export interface TokenUsage {
   output_tokens?: number;
   /** Convenience total (prompt + completion) */
   total_tokens?: number;
+  /** Breakdown of output tokens — thinking/reasoning tokens are billed as output
+   *  but should NOT be counted toward the visible-content heuristics. */
+  output_tokens_details?: {
+    /** Anthropic: thinking_tokens, OpenAI: reasoning_tokens */
+    thinking_tokens?: number;
+    reasoning_tokens?: number;
+  };
   /** Cache details */
   prompt_tokens_details?: {
     /** Tokens served from the prompt cache (reduces cost) */
