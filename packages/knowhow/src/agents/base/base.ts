@@ -1,6 +1,7 @@
 import { EventEmitter } from "events"; // kept for reference; agentEvents now uses EventService
 import {
   CompletionResponse,
+  CompletionOptions,
   GenericClient,
   Message,
   MessageContent,
@@ -26,6 +27,8 @@ export { Message, Tool, ToolCall };
 export interface ModelPreference {
   model: string;
   provider: keyof typeof Clients.clients;
+  reasoning_effort?: CompletionOptions["reasoning_effort"];
+  reasoning_summary?: boolean;
 }
 
 export interface AgentContext {
@@ -60,6 +63,8 @@ export abstract class BaseAgent implements IAgent {
   protected turnCount = 0;
   protected totalCostUsd = 0;
   protected currentThread = 0;
+  protected reasoningEffort: CompletionOptions["reasoning_effort"] | undefined = undefined;
+  protected summarizeReasoning: boolean | undefined = undefined;
   protected totalInputTokens = 0;
   protected totalOutputTokens = 0;
   protected totalCacheReadTokens = 0;
@@ -69,7 +74,7 @@ export abstract class BaseAgent implements IAgent {
   protected compressMinMessages = 30;
 
   // Interrupt support: resolves the currently awaited tool call or completion
-  private _interruptResolve: ((value: any) => void) | null = null;
+  private _interruptResolve: (() => void) | null = null;
 
   protected threads = [] as Message[][];
 
@@ -233,6 +238,12 @@ export abstract class BaseAgent implements IAgent {
   updatePreferences(value: ModelPreference) {
     this.setModel(value.model);
     this.setProvider(value.provider);
+    if (value.reasoning_effort !== undefined) {
+      this.reasoningEffort = value.reasoning_effort;
+    }
+    if (value.reasoning_summary !== undefined) {
+      this.summarizeReasoning = value.reasoning_summary;
+    }
   }
 
   nextModel() {
@@ -260,6 +271,22 @@ export abstract class BaseAgent implements IAgent {
   setProvider(value: keyof typeof Clients.clients) {
     this.provider = value;
     this.client = null; // Reset client to force re-fetch
+  }
+
+  setReasoningEffort(effort: CompletionOptions["reasoning_effort"]) {
+    this.reasoningEffort = effort;
+  }
+
+  getReasoningEffort(): CompletionOptions["reasoning_effort"] {
+    return this.reasoningEffort;
+  }
+
+  setSummarizeReasoning(value: boolean) {
+    this.summarizeReasoning = value;
+  }
+
+  getSummarizeReasoning(): boolean | undefined {
+    return this.summarizeReasoning;
   }
 
   getClient() {
@@ -715,10 +742,10 @@ export abstract class BaseAgent implements IAgent {
     return new Promise<T>((resolve, reject) => {
       let interrupted = false;
 
-      this._interruptResolve = (value: any) => {
+      this._interruptResolve = () => {
         interrupted = true;
         this._interruptResolve = null;
-        resolve(value);
+        resolve(interruptValue);
       };
 
       promise
@@ -751,7 +778,7 @@ export abstract class BaseAgent implements IAgent {
   interrupt(message = "User interrupted this action you were waiting on") {
     this.log(`Interrupting current operation: ${message}`);
     if (this._interruptResolve) {
-      this._interruptResolve(message);
+      this._interruptResolve();
     } else {
       this.log("No active interruptible operation to interrupt", "warn");
     }
@@ -848,6 +875,8 @@ export abstract class BaseAgent implements IAgent {
           tools: this.getEnabledTools(),
           tool_choice: "auto",
           long_ttl_cache: this.runTime() > 300_000,
+          ...(this.reasoningEffort !== undefined && { reasoning_effort: this.reasoningEffort }),
+          ...(this.summarizeReasoning !== undefined && { reasoning_summary: this.summarizeReasoning }),
         },
         { interruptValue: interruptResponse }
       );
@@ -1230,7 +1259,13 @@ export abstract class BaseAgent implements IAgent {
     toolCalls: ToolCall[],
     response: CompletionResponse
   ): { role: string; content: string } | null {
-    const outputTokens: number = response?.usage?.completion_tokens || 0;
+    // Subtract thinking/reasoning tokens — they're billed as output tokens but
+    // don't produce visible argument content, so including them inflates the heuristic.
+    const rawOutputTokens: number = response?.usage?.completion_tokens || 0;
+    const thinkingTokens: number =
+      (response?.usage?.output_tokens_details?.thinking_tokens ?? 0) +
+      (response?.usage?.output_tokens_details?.reasoning_tokens ?? 0);
+    const outputTokens = Math.max(0, rawOutputTokens - thinkingTokens);
     const totalArgLength = toolCalls.reduce(
       (sum, tc) => sum + (tc.function?.arguments?.length || 0),
       0

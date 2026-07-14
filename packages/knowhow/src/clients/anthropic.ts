@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { wait } from "../utils";
-import { AnthropicTextPricing } from "./pricing";
+import { AnthropicTextPricing, AnthropicModels } from "./pricing";
 import { ContextLimits } from "./contextLimits";
 import { ModelModality } from "./types";
 import { Models } from "../types";
@@ -24,6 +24,16 @@ import {
 
 type MessageParam = Anthropic.MessageParam;
 type Usage = Anthropic.Usage;
+type ThinkingParam = Anthropic.Messages.ThinkingConfigParam;
+
+const alwaysOnModels: readonly string[] = [
+  AnthropicModels.Sonnet5, AnthropicModels.Fable5,
+  AnthropicModels.Mythos5, AnthropicModels.MythosPreview,
+];
+const optInModels: readonly string[] = [
+  AnthropicModels.Opus4_8, AnthropicModels.Opus4_7,
+  AnthropicModels.Opus4_6, AnthropicModels.Sonnet4_6,
+];
 
 export class GenericAnthropicClient implements GenericClient {
   private client: Anthropic;
@@ -46,6 +56,36 @@ export class GenericAnthropicClient implements GenericClient {
     if (lastTool) {
       lastTool.cache_control = longTtl ? { type: "ephemeral", ttl: "1h" } as any : { type: "ephemeral" };
     }
+  }
+
+  /**
+   * Determine the Anthropic `thinking` param from CompletionOptions.
+   * Returns undefined if the model does not support thinking.
+   */
+  getThinkingParam(
+    model: string,
+    reasoning_effort?: CompletionOptions["reasoning_effort"],
+    reasoning_summary?: boolean,
+  ): ThinkingParam | undefined {
+    const effortIsNone = reasoning_effort === "none";
+    const withSummary = reasoning_summary ? ({ display: "summarized" } as const) : {};
+
+    if (alwaysOnModels.includes(model)) {
+      return effortIsNone
+        ? { type: "disabled" }
+        : { type: "adaptive", ...withSummary };
+    }
+
+    if (optInModels.includes(model)) {
+      // Only enable when explicitly requested (not "none" and not undefined).
+      if (!effortIsNone && reasoning_effort !== undefined) {
+        return { type: "adaptive", ...withSummary };
+      }
+      return undefined;
+    }
+
+    // Model does not support thinking.
+    return undefined;
   }
 
   /**
@@ -360,6 +400,13 @@ export class GenericAnthropicClient implements GenericClient {
     options: CompletionOptions
   ): Promise<CompletionResponse> {
     const longTtl = !!options.long_ttl_cache;
+
+    const thinkingParam = this.getThinkingParam(
+      options.model,
+      options.reasoning_effort,
+      options.reasoning_summary,
+    );
+
     const systemMessage = options.messages
       .filter((msg) => msg.role === "system")
       .map((msg) => msg.content || "")
@@ -382,6 +429,7 @@ export class GenericAnthropicClient implements GenericClient {
             ]
           : undefined,
         max_tokens: options.max_tokens || 8000,
+        ...(thinkingParam && { thinking: thinkingParam }),
         ...(tools.length && {
           tool_choice: { type: "auto" },
           tools,
@@ -431,6 +479,16 @@ export class GenericAnthropicClient implements GenericClient {
           total_tokens: (response.usage.input_tokens ?? 0) + (response.usage.output_tokens ?? 0),
           cache_creation_input_tokens: response.usage.cache_creation_input_tokens ?? 0,
           cache_read_input_tokens: response.usage.cache_read_input_tokens ?? 0,
+          ...((response.usage as any).thinking_input_tokens != null ||
+              (response.usage as any).output_tokens_details?.thinking_tokens != null
+            ? {
+                output_tokens_details: {
+                  thinking_tokens:
+                    (response.usage as any).thinking_input_tokens ??
+                    (response.usage as any).output_tokens_details?.thinking_tokens ?? 0,
+                },
+              }
+            : {}),
         } : undefined,
         usd_cost: this.calculateCost(options.model, response.usage),
       };

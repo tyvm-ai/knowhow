@@ -107,7 +107,11 @@ export class GenericOpenAiClient implements GenericClient {
   }
 
   resolveReasoningEffort(options: CompletionOptions): "low" | "medium" | "high" {
-    return options.reasoning_effort ?? this.detectReasoningEffort(options.messages);
+    const effort = options.reasoning_effort ?? this.detectReasoningEffort(options.messages);
+    // "none" is not a valid SDK ReasoningEffort — callers that need "none" should
+    // check isReasoningDisabled() separately and skip the reasoning params.
+    if (effort === "none") return "low";
+    return effort;
   }
 
   /**
@@ -116,7 +120,8 @@ export class GenericOpenAiClient implements GenericClient {
    * If the requested level is not supported, picks the lowest supported level.
    */
   resolveReasoningEffortForModel(options: CompletionOptions): string {
-    const requested = options.reasoning_effort ?? this.detectReasoningEffort(options.messages);
+    const raw = options.reasoning_effort ?? this.detectReasoningEffort(options.messages);
+    const requested = raw === "none" ? "none" : raw;
     const pricing = OpenAiTextPricing[options.model];
     const supportedLevels = pricing?.reasoningLevels;
     if (!supportedLevels || supportedLevels.length === 0) {
@@ -128,6 +133,11 @@ export class GenericOpenAiClient implements GenericClient {
     }
     // Otherwise use the first (lowest) supported level
     return supportedLevels[0];
+  }
+
+  /** Returns true when the caller explicitly requested thinking/reasoning to be disabled. */
+  isReasoningDisabled(options: CompletionOptions): boolean {
+    return options.reasoning_effort === "none";
   }
 
   async createChatCompletion(
@@ -154,7 +164,7 @@ export class GenericOpenAiClient implements GenericClient {
       model: options.model,
       messages: openaiMessages,
       max_tokens: options.max_tokens,
-      ...(OpenAiReasoningModels.includes(options.model) && {
+      ...(OpenAiReasoningModels.includes(options.model) && !this.isReasoningDisabled(options) && {
         max_tokens: undefined,
         max_completion_tokens: Math.max(options.max_tokens ?? 0, 16_000),
         reasoning_effort: this.resolveReasoningEffort(options),
@@ -186,6 +196,11 @@ export class GenericOpenAiClient implements GenericClient {
         prompt_tokens_details: {
           cached_tokens: response.usage.prompt_tokens_details?.cached_tokens ?? 0,
         },
+        ...(response.usage.completion_tokens_details?.reasoning_tokens != null && {
+          output_tokens_details: {
+            reasoning_tokens: response.usage.completion_tokens_details.reasoning_tokens,
+          },
+        }),
       } : undefined,
       usd_cost: usdCost,
     };
@@ -350,9 +365,12 @@ export class GenericOpenAiClient implements GenericClient {
       input,
       ...(instructions && { instructions }),
       // Don't limit max_output_tokens for Responses API - codex truncates tool call arguments when limited
-      ...(OpenAiReasoningModels.includes(options.model) && {
+      ...(OpenAiReasoningModels.includes(options.model) && !this.isReasoningDisabled(options) && {
         max_output_tokens: Math.max(options.max_tokens || 0, 16000),
-        reasoning: { effort: this.resolveReasoningEffortForModel(options) },
+        reasoning: {
+          effort: this.resolveReasoningEffortForModel(options),
+          ...(options.reasoning_summary && { summary: "auto" }),
+        },
       }),
       ...(tools?.length && {
         tools,
@@ -372,6 +390,11 @@ export class GenericOpenAiClient implements GenericClient {
             cached_tokens:
               response.usage.input_tokens_details?.cached_tokens ?? 0,
           },
+          ...((response.usage as any).output_tokens_details?.reasoning_tokens != null && {
+            output_tokens_details: {
+              reasoning_tokens: (response.usage as any).output_tokens_details.reasoning_tokens,
+            },
+          }),
         }
       : undefined;
 
