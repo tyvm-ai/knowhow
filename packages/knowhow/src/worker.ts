@@ -225,9 +225,16 @@ export async function worker(options?: {
     console.log(
       "Worker tools configured! Update knowhow.json to adjust which tools are allowed by the worker."
     );
+    console.log(
+      "Tunnel is disabled by default. Set worker.tunnel.enabled = true in knowhow.json to enable it."
+    );
     config.worker = {
       ...config.worker,
       allowedTools: Tools.getToolNames(),
+      tunnel: {
+        enabled: false,
+        ...config.worker?.tunnel,
+      },
     };
     await updateConfig(config);
     return;
