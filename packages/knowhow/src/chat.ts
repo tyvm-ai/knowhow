@@ -21,7 +21,7 @@ import { getConfig } from "./config.js";
 import { loadRenderer, loadRootModule, loadChatModule } from "./chat/renderer/loadRenderer.js";
 import { AgentModule } from "./chat/modules/AgentModule.js";
 
-async function main() {
+async function main(initialCommand?: string) {
   try {
     // Load configuration and plugins
     let config;
@@ -108,7 +108,7 @@ async function main() {
     }
 
     // Start the chat loop
-    await chatService.startChatLoop();
+    await chatService.startChatLoop(initialCommand);
   } catch (error) {
     console.error("Error starting chat:", error);
     process.exit(1);

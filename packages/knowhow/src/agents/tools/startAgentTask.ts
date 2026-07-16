@@ -3,7 +3,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { spawn } from "child_process";
 
-interface StartAgentTaskParams {
+export interface StartAgentTaskParams {
   messageId?: string;
   syncFs?: boolean;
   taskId?: string;
@@ -14,6 +14,8 @@ interface StartAgentTaskParams {
   agentName?: string;
   maxTimeLimit?: number;
   maxSpendLimit?: number;
+  /** When true, wait for the agent subprocess to exit before resolving (for generate pipelines). */
+  waitForCompletion?: boolean;
 }
 
 const PROCESSES_DIR = path.join(process.cwd(), ".knowhow", "processes");
@@ -63,6 +65,7 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
     agentName,
     maxTimeLimit,
     maxSpendLimit,
+    waitForCompletion,
   } = params;
   if (!prompt) {
     throw new Error("prompt is required to create a chat task");
@@ -156,24 +159,25 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
         `To check status, read: ${agentTaskDir}/status.txt\n`
       : "";
 
-    // Give the agent 5 seconds to finish before detaching
-    const detachTime = 5 * 1000;
-    const tid = setTimeout(() => {
-      try { child.unref(); } catch {}
-      done(
-        `Agent started (pid=${pid}), running in background.\n` +
-        `Logs: ${logPath}\n` +
-        syncFsNote
-      );
-    }, detachTime);
-
     child.once("exit", (code) => {
-      clearTimeout(tid);
       done(
         `Agent finished with exit code ${code}.\nLogs: ${logPath}\n` +
         syncFsNote
       );
     });
+
+    if (!waitForCompletion) {
+      // Give the agent 5 seconds to finish before detaching (fire-and-forget mode)
+      const detachTime = 5 * 1000;
+      setTimeout(() => {
+        try { child.unref(); } catch {}
+        done(
+          `Agent started (pid=${pid}), running in background.\n` +
+          `Logs: ${logPath}\n` +
+          syncFsNote
+        );
+      }, detachTime);
+    }
   });
 }
 

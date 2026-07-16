@@ -519,7 +519,15 @@ export class GenericAnthropicClient implements GenericClient {
     const rawP = this.pricesPerMillion()[model];
     // Fall back to pricing file for unknown/newer models
     const fallback = AnthropicTextPricing[model as keyof typeof AnthropicTextPricing];
-    const p: any = rawP || fallback || undefined;
+    // Second fallback: short aliases like "claude-sonnet-4-5" don't have their
+    // own entry but map to a dated version like "claude-sonnet-4-5-20250929".
+    // Find the first pricing entry whose key starts with the short model name.
+    const aliasFallback = !rawP && !fallback
+      ? Object.entries(AnthropicTextPricing).find(([key]) =>
+          key.startsWith(model + "-")
+        )?.[1]
+      : undefined;
+    const p: any = rawP || fallback || aliasFallback || undefined;
     if (!p) return undefined;
 
     const inputTokens = usage.input_tokens ?? 0;

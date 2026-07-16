@@ -190,6 +190,38 @@ export class BehaviorsService {
     return null;
   }
 
+  /**
+   * Find a behavior from local disk by its ID field.
+   */
+  findBehaviorById(id: string): Behavior | null {
+    const behaviors = this.loadLocal();
+    return behaviors.find((b) => b.id === id) ?? null;
+  }
+
+  /**
+   * Load a behavior directly from a file path (.json or .md).
+   */
+  loadBehaviorFromFile(filePath: string): Behavior | null {
+    const resolved = path.isAbsolute(filePath)
+      ? filePath
+      : path.resolve(process.cwd(), filePath);
+
+    if (!fs.existsSync(resolved)) {
+      return null;
+    }
+
+    try {
+      const raw = fs.readFileSync(resolved, "utf-8");
+      if (resolved.endsWith(".md")) {
+        return this.parseMdBehavior(raw);
+      } else {
+        return JSON.parse(raw) as Behavior;
+      }
+    } catch {
+      return null;
+    }
+  }
+
   async list(opts: { skillsOnly?: boolean; includeInternal?: boolean } = {}) {
     const behaviors = opts.skillsOnly
       ? await this.client.getOrgSkills(opts.includeInternal ?? true)

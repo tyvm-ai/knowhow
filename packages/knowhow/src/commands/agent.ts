@@ -1,13 +1,30 @@
 import { Command } from "commander";
 import { readPromptFile } from "../ai";
+import { BehaviorsService } from "../services/BehaviorsService";
 import { AgentModule } from "../chat/modules/AgentModule";
-import { BehaviorsService, Behavior } from "../services/BehaviorsService";
 import { AskModule } from "../chat/modules/AskModule";
 import { SearchModule } from "../chat/modules/SearchModule";
 import { SessionsModule } from "../chat/modules/SessionsModule";
 import { SetupModule } from "../chat/modules/SetupModule";
+import { PlainRenderer } from "../chat/renderer/PlainRenderer";
 import { loadRenderer } from "../chat/renderer/loadRenderer";
 import { getConfig } from "../config";
+
+async function setupRenderer(chatService: any, rendererSpecifier: string): Promise<void> {
+  const resolved =
+    rendererSpecifier === "basic" && !process.stdout.isTTY ? "plain" : rendererSpecifier;
+  try {
+    const renderer = await loadRenderer(resolved);
+    chatService.setContext({ renderer });
+  } catch (err: any) {
+    console.warn(`⚠ Could not load renderer "${resolved}": ${err.message}`);
+    console.warn("  Falling back to basic renderer.");
+    try {
+      const fallback = !process.stdout.isTTY ? new PlainRenderer() : await loadRenderer("basic");
+      chatService.setContext({ renderer: fallback });
+    } catch (_) {}
+  }
+}
 
 async function readStdin(): Promise<string> {
   return new Promise((resolve) => {
@@ -26,24 +43,6 @@ async function readStdin(): Promise<string> {
 
     process.stdin.on("end", () => resolve(data.trim()));
   });
-}
-
-/**
- * Set up the renderer on the chat service context.
- * Priority: CLI --renderer flag > config.chat.renderer > "basic" (ConsoleRenderer)
- */
-async function setupRenderer(chatService: any, rendererSpecifier: string): Promise<void> {
-  try {
-    const renderer = await loadRenderer(rendererSpecifier);
-    chatService.setContext({ renderer });
-  } catch (err: any) {
-    console.warn(`⚠ Could not load renderer "${rendererSpecifier}": ${err.message}`);
-    console.warn("  Falling back to basic renderer.");
-    try {
-      const fallback = await loadRenderer("basic");
-      chatService.setContext({ renderer: fallback });
-    } catch (_) {}
-  }
 }
 
 export function addAgentCommand(program: Command, getChatService: () => any): void {
@@ -69,6 +68,14 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
     .option("--message-id <messageId>", "Knowhow message ID for task tracking")
     .option("--sync-fs", "Enable filesystem-based synchronization")
     .option(
+      "--behavior-id <id>",
+      "Force a specific behavior by its ID (skips trigger matching)"
+    )
+    .option(
+      "--behavior-file <path>",
+      "Force a specific behavior by its file path (skips trigger matching)"
+    )
+    .option(
       "--task-id <taskId>",
       "Pre-generated task ID (used with --sync-fs for predictable agent directory path)"
     )
@@ -93,6 +100,7 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
         try { config = await getConfig(); } catch (_) {}
         const rendererSpecifier = options.renderer ?? config.chat?.renderer ?? "basic";
         await setupRenderer(chatService, rendererSpecifier);
+
         const agentModule = new AgentModule();
 
         if (options.resume) {
@@ -137,7 +145,32 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
         let behaviorSystemPrompt: string | undefined;
         let behaviorModel: string | undefined;
         const behaviorsSvc = new BehaviorsService();
-        const matchedBehavior = behaviorsSvc.matchBehaviorLocal(input);
+
+        let matchedBehavior = null;
+
+        if (options.behaviorFile) {
+          // Load behavior directly from a file path
+          matchedBehavior = behaviorsSvc.loadBehaviorFromFile(options.behaviorFile);
+          if (matchedBehavior) {
+            console.log(`🎯 Using behavior from file: ${options.behaviorFile}`);
+          } else {
+            console.error(`❌ Could not load behavior from file: ${options.behaviorFile}`);
+            process.exit(1);
+          }
+        } else if (options.behaviorId) {
+          // Load behavior by ID (searches local disk behaviors)
+          matchedBehavior = behaviorsSvc.findBehaviorById(options.behaviorId);
+          if (matchedBehavior) {
+            console.log(`🎯 Using behavior by ID: ${options.behaviorId} (${matchedBehavior.name})`);
+          } else {
+            console.error(`❌ No behavior found with ID: ${options.behaviorId}`);
+            process.exit(1);
+          }
+        } else {
+          // Default: match by trigger text
+          matchedBehavior = behaviorsSvc.matchBehaviorLocal(input);
+        }
+
         if (matchedBehavior) {
           console.log(`🎯 Matched behavior: ${matchedBehavior.name}`);
           if (matchedBehavior.instructions) {

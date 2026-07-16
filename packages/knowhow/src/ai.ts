@@ -1,6 +1,13 @@
 import * as fs from "fs";
 import { readFile } from "./utils";
 
+/** Options forwarded to startAgentTask when a generation source has an `agent` field */
+export type AgentOptions = {
+  syncFs?: boolean;
+  taskId?: string;
+  maxTimeLimit?: number;
+  maxSpendLimit?: number;
+};
 import OpenAI from "openai";
 import { Assistant } from "./types";
 import { convertToText } from "./conversion";
@@ -46,17 +53,24 @@ export function readPromptFile(promptFile: string, input: string) {
   return input;
 }
 
-export async function singlePrompt(userPrompt: string, model = "", agent = "") {
-  const { Agents } = services();
+export async function singlePrompt(
+  userPrompt: string,
+  model = "",
+  agent = "",
+  agentOptions?: AgentOptions
+) {
   if (agent) {
-    const agentConfig = await Agents.getAgent(agent);
-    if (!agentConfig) {
-      throw new Error(`Agent ${agent} not found`);
-    }
-    if (model) {
-      agentConfig.setModel(model);
-    }
-    return agentConfig.call(userPrompt);
+    // Route through the full AgentModule pipeline (renderer, sync-fs, limits).
+    // This ensures generate agent runs produce readable output and are observable
+    // via `knowhow agents list/tail/status`, matching `knowhow agent --input` behaviour.
+    const { startAgentTask } = await import("./agents/tools/startAgentTask");
+    return startAgentTask({
+      agentName: agent,
+      prompt: userPrompt,
+      model: model || undefined,
+      waitForCompletion: true,
+      ...(agentOptions ?? {}),
+    });
   }
 
   if (!model) {
@@ -100,6 +114,11 @@ function isContextLengthError(err: any): boolean {
  * Recursively summarize an array of texts using a split-and-summarize approach.
  * When the combined texts exceed the context window (either by estimate or actual API error),
  * split the array in half, summarize each half recursively, then combine.
+ *
+ * NOTE: when an `agent` is provided the recursive split path is skipped — agents
+ * can handle large inputs themselves (they can read files). Splitting would create
+ * multiple isolated agent runs each writing partial output. Instead the combined
+ * content is passed directly to the agent.
  */
 async function summarizeTextsRecursive(
   texts: string[],
@@ -107,7 +126,8 @@ async function summarizeTextsRecursive(
   model: string,
   agent: string,
   contextLimit: number,
-  depth = 0
+  depth = 0,
+  agentOptions?: AgentOptions
 ): Promise<string> {
   const indent = "  ".repeat(depth);
 
@@ -115,7 +135,7 @@ async function summarizeTextsRecursive(
   if (texts.length === 1) {
     const content = template.replaceAll("{text}", texts[0]);
     console.log(`${indent}summarizeTexts[depth=${depth}]: single text, ~${estimateTokens(content)} tokens`);
-    return singlePrompt(content, model, agent);
+    return singlePrompt(content, model, agent, agentOptions);
   }
 
   // Check if combined fits in context window by estimate
@@ -127,7 +147,7 @@ async function summarizeTextsRecursive(
     // Try single combined prompt — if context error, fall through to split
     console.log(`${indent}summarizeTexts[depth=${depth}]: ${texts.length} texts, ~${estimatedTokens} tokens, trying combined`);
     try {
-      return await singlePrompt(combinedContent, model, agent);
+      return await singlePrompt(combinedContent, model, agent, agentOptions);
     } catch (err: any) {
       if (!isContextLengthError(err)) throw err;
       console.log(`${indent}summarizeTexts[depth=${depth}]: API rejected (context too long), splitting in half`);
@@ -136,14 +156,22 @@ async function summarizeTextsRecursive(
     console.log(`${indent}summarizeTexts[depth=${depth}]: ${texts.length} texts, ~${estimatedTokens} tokens exceeds limit, splitting in half`);
   }
 
+  // When an agent is assigned, don't split — agents can handle large inputs and
+  // splitting would create multiple isolated agent runs that each write partial output.
+  // Instead, pass the combined content as-is even if it may exceed context limit.
+  if (agent) {
+    console.log(`${indent}summarizeTexts[depth=${depth}]: agent mode — skipping split, passing combined content to agent`);
+    return singlePrompt(combinedContent, model, agent, agentOptions);
+  }
+
   // Split texts in half and recurse
   const mid = Math.ceil(texts.length / 2);
   const left = texts.slice(0, mid);
   const right = texts.slice(mid);
 
   const [leftSummary, rightSummary] = await Promise.all([
-    summarizeTextsRecursive(left, template, model, agent, contextLimit, depth + 1),
-    summarizeTextsRecursive(right, template, model, agent, contextLimit, depth + 1),
+    summarizeTextsRecursive(left, template, model, agent, contextLimit, depth + 1, agentOptions),
+    summarizeTextsRecursive(right, template, model, agent, contextLimit, depth + 1, agentOptions),
   ]);
 
   // Combine the two halves with a final summary prompt
@@ -153,18 +181,19 @@ async function summarizeTextsRecursive(
   console.log(`${indent}summarizeTexts[depth=${depth}]: combining halves, ~${finalEstimate} tokens`);
 
   if (finalEstimate < contextLimit) {
-    return singlePrompt(finalContent, model, agent);
+    return singlePrompt(finalContent, model, agent, agentOptions);
   }
 
   // If even the combined summaries are too long, recurse one more level
-  return summarizeTextsRecursive([leftSummary, rightSummary], template, model, agent, contextLimit, depth + 1);
+  return summarizeTextsRecursive([leftSummary, rightSummary], template, model, agent, contextLimit, depth + 1, agentOptions);
 }
 
 export async function summarizeTexts(
   texts: string[],
   template: string,
   model = "",
-  agent = ""
+  agent = "",
+  agentOptions?: AgentOptions
 ) {
   const effectiveModel = model || Models.openai.GPT_54_Nano;
   const contextLimit = getModelContextLimit(effectiveModel);
@@ -173,7 +202,7 @@ export async function summarizeTexts(
     `summarizeTexts: ${texts.length} text(s), context limit: ${contextLimit}, model: ${effectiveModel}`
   );
 
-  return summarizeTextsRecursive(texts, template, model, agent, contextLimit).catch((err) => {
+  return summarizeTextsRecursive(texts, template, model, agent, contextLimit, 0, agentOptions).catch((err) => {
     return `Texts of combined length ${texts.reduce((a, t) => a + t.length, 0)} could not be summarized due to error: ${err.message}`;
   });
 }
@@ -193,23 +222,25 @@ export async function summarizeFiles(
   files: string[],
   template: string,
   model = "",
-  agent = ""
+  agent = "",
+  agentOptions?: AgentOptions
 ) {
   const texts = [];
   for (const file of files) {
     const text = `file: ${file}\n` + (await convertToText(file));
     texts.push(text);
   }
-  return summarizeTexts(texts, template, model, agent);
+  return summarizeTexts(texts, template, model, agent, agentOptions);
 }
 
 export async function summarizeFile(
   file: string,
   template: string,
   model = "",
-  agent = ""
+  agent = "",
+  agentOptions?: AgentOptions
 ) {
-  return await summarizeFiles([file], template, model, agent);
+  return await summarizeFiles([file], template, model, agent, agentOptions);
 }
 
 /*

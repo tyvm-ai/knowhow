@@ -9,15 +9,41 @@ export type Hashes = {
   };
 };
 
+/**
+ * A reference to an external JSON file containing an array of GenerationSource
+ * or EmbedSource entries. Used in knowhow.json `sources` / `embedSources` arrays
+ * to split a large config across multiple files:
+ *   { "from": "./generate/autodoc.json" }
+ */
+export type SourceRef = { from: string };
+
 export type GenerationSource = {
   model?: string;
   agent?: string;
+  name?: string;
   input: string;
   output: string;
   prompt: string;
   kind?: string;
   outputExt?: string;
   outputName?: string;
+  /** Pass to runAgentTask: enable .knowhow/processes/agents/<taskId> directory */
+  syncFs?: boolean;
+  /**
+   * Deterministic task ID for this source (used with syncFs).
+   * Defaults to "generate:<sanitized-output>" when syncFs is enabled.
+   */
+  taskId?: string;
+  /** Time limit in minutes for the agent (optional) */
+  maxTimeLimit?: number;
+  /** Cost limit in dollars for the agent (optional) */
+  maxSpendLimit?: number;
+  /**
+   * Names of other GenerationSource entries (by `name` field) that must
+   * complete before this source runs. Used for explicit dependency ordering
+   * when automatic I/O overlap detection is insufficient.
+   */
+  dependsOn?: string[];
 };
 
 export type EmbedSource = {

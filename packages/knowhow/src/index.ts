@@ -1,14 +1,8 @@
 import { summarizeFiles, summarizeFile } from "./ai";
-import {
-  saveAllFileHashes,
-  saveHashes,
-  getHashes,
-  checkNoFilesChanged,
-} from "./hashes";
+import type { AgentOptions } from "./ai";
 import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
-import { promisify } from "util";
 import { globSync } from "glob";
 
 import { Prompts } from "./prompts";
@@ -37,11 +31,24 @@ import {
   getConfiguredEmbeddingMap,
 } from "./embeddings";
 
-import { abort } from "process";
 import { convertToText } from "./conversion";
 import { knowhowMcpClient } from "./services/Mcp";
 import { services } from "./services/";
 import { Models } from "./types";
+
+// ---------------------------------------------------------------------------
+// Re-export generate pipeline (moved to src/generate.ts)
+// ---------------------------------------------------------------------------
+export {
+  generate,
+  GenerateOptions,
+  buildWaves,
+  normalizeInputPattern,
+  withOutputTarget,
+  writeAgentOrSummaryOutput,
+  handleMultiOutputGeneration,
+  handleSingleOutputGeneration,
+} from "./generate";
 
 export * as clients from "./clients";
 export * as agents from "./agents";
@@ -65,8 +72,11 @@ export { SkillsPlugin } from "./plugins/SkillsPlugin";
 // Export embedding types
 export { MinimalEmbedding, Embeddable } from "./types";
 
+// ---------------------------------------------------------------------------
+// Embed
+// ---------------------------------------------------------------------------
+
 export async function embed() {
-  // load config
   const config = await getConfig();
   const ignorePattern = await getIgnorePattern();
 
@@ -74,7 +84,6 @@ export async function embed() {
     config.embeddingModel || EmbeddingModels.openai.EmbeddingAda2;
 
   if (!config.embedSources) {
-    // No embeddings configured
     return;
   }
 
@@ -82,6 +91,10 @@ export async function embed() {
     await embedSource(defaultModel, source, ignorePattern);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Purge
+// ---------------------------------------------------------------------------
 
 export async function purge(globPath: string) {
   const files = globSync(globPath);
@@ -109,6 +122,10 @@ export async function purge(globPath: string) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Upload
+// ---------------------------------------------------------------------------
+
 export async function upload() {
   const config = await getConfig();
   const { AwsS3, Embeddings, knowhowApiClient } = services();
@@ -126,10 +143,6 @@ export async function upload() {
     }
     const items = JSON.parse(await readFile(source.output, "utf8"));
     const { name: embeddingName } = path.parse(source.output);
-    const data = {
-      embeddingName,
-      items,
-    };
 
     if (Embeddings.hasResolver(source.remoteType) && source.remoteType !== "knowhow") {
       console.log(
@@ -144,7 +157,6 @@ export async function upload() {
       if (!source.remoteId) {
         throw new Error("remoteId is required for knowhow uploads");
       }
-      // Warn if the local embeddingModel differs from the one stored on the backend
       try {
         const remoteEmbedding = await knowhowApiClient.getOrgEmbedding(source.remoteId);
         const localModel = config.embeddingModel || EmbeddingModels.openai.EmbeddingAda2;
@@ -159,12 +171,11 @@ export async function upload() {
           );
         }
       } catch (e) {
-        // Non-fatal — don't block upload if metadata fetch fails
+        // Non-fatal
       }
       const url = await knowhowApiClient.getPresignedUploadUrl(source);
       console.log("Uploading to", url);
       await AwsS3.uploadToPresignedUrl(url, source.output);
-      // Sync config metadata back to the backend DB
       await knowhowApiClient.updateEmbeddingMetadata(source.remoteId, {
         inputGlob: source.input,
         outputPath: source.output,
@@ -183,201 +194,9 @@ export async function upload() {
   }
 }
 
-/**
- * Normalizes an input pattern to a valid glob pattern.
- * Supports:
- *   - Standard glob patterns (e.g. "src/**\/*.ts")
- *   - Brace expansion (e.g. "{src/a.ts,src/b.ts}")
- *   - Comma-separated file paths (e.g. "src/a.ts,src/b.ts") — auto-converted to brace expansion
- *   - Mixed comma-separated list with globs (e.g. "src/a.ts,src/commands/**\/*.ts")
- */
-function normalizeInputPattern(input: string): string {
-  // If it already has braces, use as-is (already brace-expanded)
-  if (input.includes("{")) {
-    return input;
-  }
-  // If it contains commas, treat as comma-separated list and wrap in braces
-  // This also handles the mixed case: "src/a.ts,src/commands/**/*.ts"
-  if (input.includes(",")) {
-    const parts = input.split(",").map((p) => p.trim());
-    return `{${parts.join(",")}}`;
-  }
-  return input;
-}
-
-export async function generate(): Promise<void> {
-  const config = await getConfig();
-  for (const source of config.sources) {
-    console.log("Generating", source.input, "to", source.output);
-    if (source.kind === "file" || !source.kind) {
-      const files = globSync(normalizeInputPattern(source.input));
-      const prompt = await loadPrompt(source.prompt);
-
-      if (source.output.endsWith("/")) {
-        await handleMultiOutputGeneration(
-          source.model,
-          source.input,
-          files,
-          prompt,
-          source.output,
-          source.outputExt,
-          source.outputName,
-          source.kind,
-          source.agent
-        );
-      } else {
-        await handleSingleOutputGeneration(
-          source.model,
-          files,
-          prompt,
-          source.output,
-          source.kind,
-          source.agent
-        );
-      }
-    } else {
-      await handleAllKindsGeneration(source);
-    }
-  }
-}
-
-async function handleAllKindsGeneration(source: GenerationSource) {
-  const { Plugins } = services();
-  const { kind, input } = source;
-  if (Plugins.isPlugin(kind)) {
-    const data = await Plugins.call(kind, input);
-    if (source.output.endsWith("/")) {
-      throw new Error(`Plugin ${kind} can only output to a single file`);
-    }
-    await writeFile(source.output, data);
-  }
-  return handleFileKindGeneration(source);
-}
-
-async function handleFileKindGeneration(source: GenerationSource) {
-  const prompt = await loadPrompt(source.prompt);
-  const files = globSync(normalizeInputPattern(source.input));
-  console.log("Analyzing files: ", files);
-
-  if (source.output.endsWith("/")) {
-    await handleMultiOutputGeneration(
-      source.model,
-      source.input,
-      files,
-      prompt,
-      source.output,
-      source.outputExt,
-      source.outputName,
-      source.kind,
-      source.agent
-    );
-  } else {
-    await handleSingleOutputGeneration(
-      source.model,
-      files,
-      prompt,
-      source.output,
-      source.kind,
-      source.agent
-    );
-  }
-}
-export async function handleMultiOutputGeneration(
-  model: string,
-  inputPattern: string,
-  files: string[],
-  prompt: string,
-  output: string,
-  outputExt = "mdx",
-  outputName?: string,
-  kind?: string,
-  agent?: string
-) {
-  // get the hash of the prompt
-  const promptHash = crypto.createHash("md5").update(prompt).digest("hex");
-
-  // get the files matching the input pattern
-  const hashes = await getHashes();
-
-  const inputPath = inputPattern.includes("**")
-    ? inputPattern.split("**")[0]
-    : "";
-
-  for (const file of files) {
-    // get the hash of the file
-    const fileContent = await convertToText(file);
-    const fileHash = crypto.createHash("md5").update(fileContent).digest("hex");
-
-    if (!hashes[file]) {
-      hashes[file] = { promptHash: "", fileHash: "" };
-    }
-
-    // write the summary to the output file
-    const { name, ext, dir } = path.parse(file);
-    const nestedFolder = inputPath ? (dir + "/").replace(inputPath, "") : "";
-    const outputFolder = path.join(output, nestedFolder);
-
-    if (!fs.existsSync(outputFolder)) {
-      fs.mkdirSync(outputFolder, { recursive: true });
-    }
-
-    const outputFileName = outputName || name;
-    const outputFile = path.join(
-      outputFolder,
-      outputFileName + "." + outputExt
-    );
-    console.log({ dir, inputPath, nestedFolder, outputFile });
-
-    const toCheck = [file, outputFile];
-    const noChanges = await checkNoFilesChanged(toCheck, promptHash, hashes);
-    if (noChanges) {
-      console.log("Skipping file", file, "because it hasn't changed");
-      continue;
-    }
-
-    // summarize the file
-    console.log("Summarizing", file);
-    const summary = prompt
-      ? await summarizeFile(file, prompt, model, agent)
-      : fileContent;
-
-    console.log("Writing summary to", outputFile);
-    await writeFile(outputFile, summary);
-
-    await saveAllFileHashes(toCheck, promptHash);
-  }
-}
-
-export async function handleSingleOutputGeneration(
-  model: string,
-  files: string[],
-  prompt: string,
-  outputFile: string,
-  kind?: string,
-  agent?: string
-) {
-  const hashes = await getHashes();
-  const promptHash = crypto.createHash("md5").update(prompt).digest("hex");
-
-  const filesToCheck = [outputFile, ...files];
-  const noChanges = await checkNoFilesChanged(filesToCheck, promptHash, hashes);
-  if (noChanges) {
-    console.log(`Skipping ${files.length} files because they haven't changed`);
-    return;
-  }
-
-  console.log("Summarizing", files.length, "files");
-  const summary = prompt
-    ? await summarizeFiles(files, prompt, model, agent)
-    : (await Promise.all(files.map(convertToText))).join("\n\n");
-
-  const fileHash = crypto.createHash("md5").update(summary).digest("hex");
-
-  console.log("Writing summary to", outputFile);
-  await writeFile(outputFile, summary);
-
-  await saveAllFileHashes(filesToCheck, promptHash);
-}
+// ---------------------------------------------------------------------------
+// Download
+// ---------------------------------------------------------------------------
 
 export async function download() {
   const config = await getConfig();
@@ -421,10 +240,7 @@ export async function download() {
         "to",
         destinationPath
       );
-      const preSignedUrl = await knowhowApiClient.getPresignedDownloadUrl(
-        source
-      );
-      // Ensure output directory exists
+      const preSignedUrl = await knowhowApiClient.getPresignedDownloadUrl(source);
       const outputDir = path.dirname(destinationPath);
       if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
       await AwsS3.downloadFromPresignedUrl(preSignedUrl, destinationPath);

@@ -336,11 +336,17 @@ export class CliChatService implements ChatService {
     return fullPrompt;
   }
 
-  async startChatLoop(): Promise<void> {
+  async startChatLoop(initialCommand?: string): Promise<void> {
     // Display available commands like the original
     const availableCommands = this.getCommandsForActiveModes();
     const commandNames = availableCommands.map((cmd) => `/${cmd.name}`);
     console.log("Commands:", commandNames.join(", "));
+
+    // If an initial command was provided (e.g. from CLI), process it before
+    // entering the interactive loop so the user lands in the right state.
+    if (initialCommand) {
+      await this.processInput(initialCommand.trim());
+    }
 
     while (true) {
       // Recompute available commands each iteration so mode changes are reflected in autocomplete

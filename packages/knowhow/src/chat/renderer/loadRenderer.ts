@@ -12,6 +12,7 @@ import path from "path";
 import fs from "fs";
 import { AgentRenderer } from "./types";
 import { ConsoleRenderer } from "./ConsoleRenderer";
+import { PlainRenderer } from "./PlainRenderer";
 import { FancyRenderer } from "./FancyRenderer";
 import { CompactRenderer } from "./CompactRenderer";
 
@@ -19,6 +20,7 @@ import { CompactRenderer } from "./CompactRenderer";
 const BUILTIN_RENDERERS: Record<string, () => AgentRenderer> = {
   basic: () => new ConsoleRenderer(),
   fancy: () => new FancyRenderer(),
+  plain: () => new PlainRenderer(),
   compact: () => new CompactRenderer(),
 };
 

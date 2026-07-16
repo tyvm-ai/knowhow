@@ -10,6 +10,13 @@ import { completions, ModelCatalogEntry, ModelPricing } from "./types";
 export const AnthropicModels = {
   // Active models
   Fable5:    "claude-fable-5",
+  // Short aliases (without date suffix) — Anthropic resolves these to the latest
+  // dated version. Pricing entries for the short aliases are added to the pricing
+  // table below so cost tracking works regardless of whether the user specifies
+  // the full dated name or the short alias.
+  Sonnet4_5Short: "claude-sonnet-4-5",
+  Haiku4_5Short:  "claude-haiku-4-5",
+  Opus4_5Short:   "claude-opus-4-5",
   Sonnet5:   "claude-sonnet-5",
   Mythos5:   "claude-mythos-5",
   MythosPreview: "claude-mythos-preview",
@@ -101,6 +108,10 @@ export const AnthropicTextPricing: Record<string, ModelPricing> = {
   [AnthropicModels.Opus4_1]:   { input: 15.0, cache_write: 18.75,  cache_hit: 1.5,  output: 75.0 },
   [AnthropicModels.Sonnet4_5]: { input: 3.0,  input_gt_200k: 6.0,  cache_write: 3.75, cache_hit: 0.3, output: 15.0, output_gt_200k: 22.5 },
   [AnthropicModels.Haiku4_5]:  { input: 1.0,  cache_write: 1.25,   cache_hit: 0.1,  output: 5.0 },
+  // Short aliases — same pricing as their dated counterparts
+  [AnthropicModels.Sonnet4_5Short]: { input: 3.0, input_gt_200k: 6.0, cache_write: 3.75, cache_hit: 0.3, output: 15.0, output_gt_200k: 22.5 },
+  [AnthropicModels.Haiku4_5Short]:  { input: 1.0, cache_write: 1.25, cache_hit: 0.1, output: 5.0 },
+  [AnthropicModels.Opus4_5Short]:   { input: 5.0, cache_write: 6.25, cache_hit: 0.5, output: 25.0 },
   // Deprecated — pricing retained for cost tracking
   [AnthropicModels.Opus4]:     { input: 15.0, cache_write: 18.75,  cache_hit: 1.5,  output: 75.0,  deprecated: true, deprecationDate: "2026-06-15" },
   [AnthropicModels.Sonnet4]:   { input: 3.0,  input_gt_200k: 6.0,  cache_write: 3.75, cache_hit: 0.3, output: 15.0, output_gt_200k: 22.5, deprecated: true, deprecationDate: "2026-06-15" },

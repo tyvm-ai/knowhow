@@ -7,6 +7,9 @@ import { promisify } from "util";
 import { KNOWHOW_API_URL } from "./services/KnowhowClient";
 import {
   Config,
+  SourceRef,
+  GenerationSource,
+  EmbedSource,
   Language,
   AssistantConfig,
   Models,
@@ -270,6 +273,51 @@ export function getConfigSync() {
 }
 
 let loggedWarning = false;
+/**
+ * Checks whether an item in a sources/embedSources array is a SourceRef
+ * (i.e. `{ from: "..." }`) rather than a real source entry.
+ */
+function isSourceRef(item: unknown): item is SourceRef {
+  return (
+    typeof item === "object" &&
+    item !== null &&
+    "from" in item &&
+    typeof (item as any).from === "string"
+  );
+}
+
+/**
+ * Resolves `{ from: "./path/to/file.json" }` entries in `sources` and
+ * `embedSources` arrays. Each referenced file must contain a JSON array of
+ * source entries. Paths are resolved relative to `.knowhow/`.
+ */
+function resolveSourceRefs<T>(
+  items: (T | SourceRef)[] | undefined,
+  label: string
+): T[] {
+  if (!items) return [];
+  const resolved: T[] = [];
+  for (const item of items) {
+    if (isSourceRef(item)) {
+      const refPath = path.resolve(".knowhow", item.from);
+      try {
+        const raw = fs.readFileSync(refPath, "utf8");
+        const arr = JSON.parse(raw);
+        if (!Array.isArray(arr)) {
+          console.warn(`⚠️  ${label} ref "${item.from}" did not contain a JSON array — skipping.`);
+          continue;
+        }
+        resolved.push(...(arr as T[]));
+      } catch (e) {
+        console.warn(`⚠️  Could not load ${label} ref "${item.from}": ${(e as Error).message}`);
+      }
+    } else {
+      resolved.push(item as T);
+    }
+  }
+  return resolved;
+}
+
 export async function getConfig() {
   if (!fs.existsSync(".knowhow/knowhow.json")) {
     if (!loggedWarning) {
@@ -285,7 +333,9 @@ export async function getConfig() {
   try {
     const config = await readFile(".knowhow/knowhow.json", "utf8");
     const parsedConfig = JSON.parse(config);
-
+    // Resolve any { from: "..." } SourceRef entries in sources / embedSources
+    parsedConfig.sources = resolveSourceRefs<GenerationSource>(parsedConfig.sources, "sources");
+    parsedConfig.embedSources = resolveSourceRefs<EmbedSource>(parsedConfig.embedSources, "embedSources");
     return parsedConfig as Config;
   } catch (error) {
     console.error("Error reading .knowhow/knowhow.json:", error);

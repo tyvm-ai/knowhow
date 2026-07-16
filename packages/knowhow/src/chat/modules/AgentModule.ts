@@ -733,22 +733,24 @@ export class AgentModule extends BaseChatModule {
     run?: boolean; // whether to run immediately
     taskId?: string; // optional pre-generated taskId
   }) {
-    if (!agentConstructors[options.agentName as AgentName]) {
-      throw new Error(
-        `Agent "${
-          options.agentName
-        }" not found. Available agents: ${Object.keys(agentConstructors).join(
-          ", "
-        )}`
-      );
-    }
-
     const { input, chatHistory = [], agentName } = options;
     const agentContext = services().Agents.getAgentContext();
-    const agent = createAgent(
-      options.agentName as AgentName,
-      agentContext
-    ) as BaseAgent;
+
+    // Resolve agent: built-in agents first, then fall back to ConfigAgents from knowhow.json
+    let agent: BaseAgent;
+    if (agentConstructors[options.agentName as AgentName]) {
+      agent = createAgent(options.agentName as AgentName, agentContext) as BaseAgent;
+    } else {
+      // Try to find a ConfigAgent registered via loadAgentsFromConfig (from knowhow.json agents[])
+      try {
+        const configAgent = services().Agents.getAgent(options.agentName);
+        agent = configAgent as unknown as BaseAgent;
+      } catch {
+        throw new Error(
+          `Agent "${options.agentName}" not found. Available agents: ${Object.keys(agentConstructors).join(", ")} (plus any agents defined in knowhow.json)`
+        );
+      }
+    }
 
     let done = false;
     let output = "Done";
@@ -915,7 +917,63 @@ export class AgentModule extends BaseChatModule {
       agent.agentEvents.on(agent.eventTypes.agentLog, agentLogHandler);
       agent.agentEvents.on(agent.eventTypes.agentStatus, agentStatusHandler);
 
+      // Wire tool call / tool result / agent message rendering so that all
+      // renderer types (including PlainRenderer for non-TTY) receive events
+      // even when running via the CLI `knowhow agent` command (which uses
+      // run:true and does NOT go through attachedAgentChatLoop / wireAgentRendering).
+      const toolCallHandler = (data: any) => {
+        this.renderer.render({
+          type: "toolCall",
+          taskId,
+          agentName: agent.name,
+          toolCall: data.toolCall,
+        });
+      };
+      const toolResultHandler = (data: any) => {
+        this.renderer.render({
+          type: "toolResult",
+          taskId,
+          agentName: agent.name,
+          toolCall: data.toolCall,
+          result: data.functionResp,
+        });
+      };
+      const agentSayHandler = (data: any) => {
+        this.renderer.render({
+          type: "agentMessage",
+          taskId,
+          agentName: agent.name,
+          message: data.message,
+          role: "assistant",
+        });
+      };
+      if (agent.eventTypes.toolCall) {
+        agent.agentEvents.on(agent.eventTypes.toolCall, toolCallHandler);
+      }
+      if (agent.eventTypes.toolUsed) {
+        agent.agentEvents.on(agent.eventTypes.toolUsed, toolResultHandler);
+      }
+      if (agent.eventTypes.agentSay) {
+        agent.agentEvents.on(agent.eventTypes.agentSay, agentSayHandler);
+      }
+      // Track the active task on the renderer so it doesn't filter out events
+      this.renderer.setActiveTaskId(taskId);
+      this.activeAgentTaskId = taskId;
+
       const taskCompleted = new Promise<string>((resolve) => {
+          // Remove tool rendering listeners
+          if (agent.eventTypes.toolCall) {
+            agent.agentEvents.removeListener(agent.eventTypes.toolCall, toolCallHandler);
+          }
+          if (agent.eventTypes.toolUsed) {
+            agent.agentEvents.removeListener(agent.eventTypes.toolUsed, toolResultHandler);
+          }
+          if (agent.eventTypes.agentSay) {
+            agent.agentEvents.removeListener(agent.eventTypes.agentSay, agentSayHandler);
+          }
+          // Clear active task on renderer
+          this.renderer.setActiveTaskId(undefined);
+          this.activeAgentTaskId = undefined;
         agent.agentEvents.once(agent.eventTypes.done, async (doneMsg) => {
           console.log("🎯 [AgentModule] Task Completed");
           done = true;
