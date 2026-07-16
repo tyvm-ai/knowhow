@@ -199,7 +199,7 @@ export async function summarizeTexts(
   const contextLimit = getModelContextLimit(effectiveModel);
 
   console.log(
-    `summarizeTexts: ${texts.length} text(s), context limit: ${contextLimit}, model: ${effectiveModel}`
+    `summarizeTexts: ${texts.length} text(s), context limit: ${contextLimit}, model: ${effectiveModel}${agent ? `, agent: ${agent}` : ""}`
   );
 
   return summarizeTextsRecursive(texts, template, model, agent, contextLimit, 0, agentOptions).catch((err) => {
