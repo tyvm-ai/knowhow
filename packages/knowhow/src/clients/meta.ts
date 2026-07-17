@@ -1,5 +1,6 @@
 import { HttpClient } from "./http";
 import { MetaTextPricing } from "./pricing/meta";
+import { ModelModality } from "./types";
 
 /**
  * Meta Model API client — OpenAI-compatible API
@@ -14,5 +15,13 @@ export class GenericMetaClient extends HttpClient {
     super("https://api.meta.ai");
     if (apiKey) this.setJwt(apiKey);
     this.setPrices(MetaTextPricing);
+  }
+
+  /**
+   * Meta Model API only provides chat completion models — no embeddings, images, audio, or video.
+   */
+  async getModels(type: ModelModality | "all" = "all") {
+    if (type === "embedding") return [];
+    return super.getModels(type as string);
   }
 }

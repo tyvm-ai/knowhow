@@ -40,3 +40,15 @@ export const FireworksTextPricing: Record<string, ModelPricing> = {
   // OpenAI OSS
   "accounts/fireworks/models/gpt-oss-120b": { input: 0.15, cache_hit: 0.01, output: 0.60 },
 };
+
+/**
+ * Fireworks AI embedding/reranker model pricing (USD per 1M tokens)
+ * Source: https://fireworks.ai/pricing
+ */
+export const FireworksEmbeddingPricing: Record<string, ModelPricing> = {
+  // Qwen3 Embedding 8B — $0.10/M tokens, context 40k
+  "accounts/fireworks/models/qwen3-embedding-8b": { input: 0.10, output: 0.10 },
+
+  // Qwen3 Reranker 8B — $0.20/M tokens, context 40k
+  "accounts/fireworks/models/qwen3-reranker-8b": { input: 0.20, output: 0.20 },
+};

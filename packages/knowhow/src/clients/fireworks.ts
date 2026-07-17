@@ -1,5 +1,5 @@
 import { HttpClient } from "./http";
-import { FireworksTextPricing } from "./pricing/fireworks";
+import { FireworksTextPricing, FireworksEmbeddingPricing } from "./pricing/fireworks";
 import { CompletionOptions, CompletionResponse } from "./types";
 
 type ModelInfo = { id: string; object: string; owned_by: string };
@@ -22,6 +22,15 @@ export class GenericFireworksClient extends HttpClient {
    * Our pricing map is the authoritative source of truth for available models.
    */
   async getModels(_type = "all"): Promise<ModelInfo[]> {
+    // Return embedding/reranker models when requested
+    if (_type === "embedding") {
+      return Object.keys(FireworksEmbeddingPricing).map((id) => ({
+        id,
+        object: "model",
+        owned_by: "fireworks",
+      }));
+    }
+
     return Object.keys(FireworksTextPricing).map((id) => ({
       id,
       object: "model",
