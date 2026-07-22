@@ -1,4 +1,6 @@
 #!/usr/bin/env node --no-node-snapshot
+// Mark this process as running the Knowhow CLI (not just the SDK)
+process.env.KNOWHOW_CLI = "1";
 import { Command } from "commander";
 import { version } from "../package.json";
 import { logger } from "./logger";
@@ -41,6 +43,7 @@ import { addReplayCommand } from "./commands/replay";
 import { addBehaviorsCommand } from "./commands/behaviors";
 import { addSkillsCommand } from "./commands/skills";
 import { addAgentsCommand } from "./commands/agents";
+import { addHashCommand } from "./commands/hash";
 
 // Handle unhandled promise rejections gracefully — particularly from MCP SDK
 // which fires errors via event emitters that can bypass Promise.allSettled.
@@ -108,6 +111,7 @@ async function main() {
   addBehaviorsCommand(program);
   addSkillsCommand(program);
   addAgentsCommand(program);
+  addHashCommand(program);
 
   // Load global modules early (before parse) so they can register CLI subcommands.
   // We pass only the Program in context — no services are spun up at this stage.

@@ -68,4 +68,40 @@ export function addSkillsCommand(program: Command): void {
       const svc = new SkillsService({ global: opts.global });
       await svc.update(skillNames);
     });
+
+  skills
+    .command("upload")
+    .description(
+      "Upload locally installed skills from .knowhow/skills/ to the backend as behaviors (isSkill: true)"
+    )
+    .option("--global", "Upload from global ~/.knowhow/skills/")
+    .option(
+      "--install-dir <dir>",
+      "Custom install directory to upload from (overrides default and --global)"
+    )
+    .action(async (opts: { global?: boolean; installDir?: string }) => {
+      const svc = new SkillsService({
+        global: opts.global,
+        installDir: opts.installDir,
+      });
+      await svc.upload();
+    });
+
+  skills
+    .command("download")
+    .description(
+      "Download skill behaviors from the backend and write them as SKILL.md files into .knowhow/skills/<name>/SKILL.md"
+    )
+    .option("--global", "Download into global ~/.knowhow/skills/")
+    .option(
+      "--install-dir <dir>",
+      "Custom install directory (overrides default and --global)"
+    )
+    .action(async (opts: { global?: boolean; installDir?: string }) => {
+      const svc = new SkillsService({
+        global: opts.global,
+        installDir: opts.installDir,
+      });
+      await svc.download();
+    });
 }

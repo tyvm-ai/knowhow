@@ -310,9 +310,11 @@ export class AIClient {
 
       if (!client) {
         if (entry.provider === "knowhow") {
-          console.warn(
-            `⚠️  Knowhow provider is not logged in. Run 'knowhow login' to enable Knowhow models.`
-          );
+          if (process.env.KNOWHOW_CLI) {
+            console.warn(
+              `⚠️  Knowhow provider is not logged in. Run 'knowhow login' to enable Knowhow models.`
+            );
+          }
         }
         continue;
       }

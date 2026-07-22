@@ -1,11 +1,17 @@
 import { AssistantTool } from "openai/resources/beta";
 import { WebSocket } from "ws";
 
+/**
+ * Flexible hash store. Each key is either:
+ *   - a file path (legacy): { fileHash, promptHash, [promptHash]: fileHash }
+ *   - a named build slot (new): { [inputKey: string]: hashValue }
+ *
+ * Both formats use the same shape: an object of string→string pairs.
+ * `fileHash` and `promptHash` are just conventional keys in the legacy format.
+ */
 export type Hashes = {
-  [file: string]: {
-    [promptHash: string]: string;
-    promptHash: string;
-    fileHash: string;
+  [key: string]: {
+    [inputKey: string]: string;
   };
 };
 

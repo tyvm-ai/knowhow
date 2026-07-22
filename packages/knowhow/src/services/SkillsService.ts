@@ -3,6 +3,7 @@ import * as path from "path";
 import * as os from "os";
 import { createHash } from "crypto";
 import * as https from "https";
+import { KnowhowSimpleClient } from "./KnowhowClient";
 
 // Default local install dir (relative to cwd)
 const LOCAL_SKILLS_DIR = ".knowhow/skills";
@@ -236,6 +237,7 @@ export class SkillsService {
   private cwd: string;
   private isGlobal: boolean;
   private customInstallDir?: string;
+  public client = new KnowhowSimpleClient();
 
   constructor(opts: SkillsServiceOptions = {}) {
     this.cwd = opts.cwd ?? process.cwd();
@@ -618,5 +620,201 @@ export class SkillsService {
     console.log(
       `\nDone: ${updated} updated, ${unchanged} unchanged, ${failed} failed.`
     );
+  }
+
+  /**
+   * Upload locally installed skills (from .knowhow/skills/<name>/SKILL.md) to the backend as behaviors.
+   * Each skill is upserted: created if it has no id in frontmatter, updated if it does.
+   */
+  async upload(): Promise<void> {
+    const installDir = this.getInstallDir();
+
+    if (!fs.existsSync(installDir)) {
+      console.error(
+        `No skills directory found at ${installDir}. Run 'knowhow skills add <ref>' first.`
+      );
+      return;
+    }
+
+    const entries = fs.readdirSync(installDir, { withFileTypes: true });
+    const skillDirs = entries.filter((e) => e.isDirectory());
+
+    if (skillDirs.length === 0) {
+      console.log("No skill directories found. Nothing to upload.");
+      return;
+    }
+
+    let uploaded = 0;
+    let failed = 0;
+
+    for (const dir of skillDirs) {
+      const skillFile = path.join(installDir, dir.name, "SKILL.md");
+      if (!fs.existsSync(skillFile)) {
+        console.warn(`  ⚠ ${dir.name}: no SKILL.md found, skipping.`);
+        continue;
+      }
+
+      try {
+        const raw = fs.readFileSync(skillFile, "utf-8");
+        const behavior = this.parseSkillMd(raw, dir.name);
+
+        // Always mark as a skill
+        const payload: Record<string, unknown> = {
+          ...behavior,
+          isSkill: true,
+        };
+
+        if (behavior.id) {
+          await this.client.updateOrgBehavior(behavior.id as string, payload);
+          console.log(`  📝 Updated: ${behavior.name} (${behavior.id as string})`);
+        } else {
+          const result = await this.client.createOrgBehavior(payload);
+          const created = result.data as Record<string, unknown>;
+          if (created.id) {
+            // Write the assigned id back into the SKILL.md frontmatter so future uploads update instead of create
+            const withId = this.injectIdIntoSkillMd(raw, created.id as string);
+            fs.writeFileSync(skillFile, withId, "utf-8");
+            console.log(`  ✨ Created: ${behavior.name} (id: ${created.id})`);
+          } else {
+            console.log(`  ✨ Created: ${behavior.name}`);
+          }
+        }
+        uploaded++;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error(`  ❌ ${dir.name}: ${msg}`);
+        failed++;
+      }
+    }
+
+    console.log(`\nUploaded ${uploaded} skill(s). Failed: ${failed}.`);
+  }
+
+  /**
+   * Download skill behaviors from the backend and write them as SKILL.md files
+   * into the skills install directory (.knowhow/skills/<name>/SKILL.md).
+   */
+  async download(): Promise<void> {
+    const installDir = this.getInstallDir();
+    const result = await this.client.getOrgSkills(false); // false = exclude platform/internal skills
+    const skills = result.data as Record<string, unknown>[];
+
+    if (skills.length === 0) {
+      console.log("No skills found on backend.");
+      return;
+    }
+
+    let created = 0;
+    let updated = 0;
+    let unchanged = 0;
+
+    for (const skill of skills) {
+      const name = ((skill.name as string) || "unnamed")
+        .toLowerCase()
+        .replace(/[^a-z0-9-]+/g, "-");
+      const skillDir = path.join(installDir, name);
+      fs.mkdirSync(skillDir, { recursive: true });
+
+      const skillFile = path.join(skillDir, "SKILL.md");
+      const content = this.serializeSkillMd(skill);
+
+      const hash = (s: string) => createHash("sha256").update(s).digest("hex");
+      if (!fs.existsSync(skillFile)) {
+        fs.writeFileSync(skillFile, content, "utf-8");
+        console.log(`  ✨ Created: ${skillFile}`);
+        created++;
+      } else {
+        const existing = fs.readFileSync(skillFile, "utf-8");
+        if (hash(existing) !== hash(content)) {
+          fs.writeFileSync(skillFile, content, "utf-8");
+          console.log(`  📝 Updated: ${skillFile}`);
+          updated++;
+        } else {
+          unchanged++;
+        }
+      }
+    }
+
+    console.log(
+      `\nSync complete: ${created} created, ${updated} updated, ${unchanged} unchanged → ${installDir}/`
+    );
+  }
+
+  /**
+   * Parse a SKILL.md file into a behavior object.
+   * Falls back to using the directory name if name is missing from frontmatter.
+   */
+  private parseSkillMd(content: string, fallbackName: string): Record<string, unknown> {
+    const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+    if (!match) {
+      return { name: fallbackName, description: "", instructions: content.trim(), isSkill: true };
+    }
+
+    const meta: Record<string, string> = {};
+    for (const line of match[1].split("\n")) {
+      const colonIdx = line.indexOf(":");
+      if (colonIdx > 0) {
+        const key = line.slice(0, colonIdx).trim();
+        const val = line.slice(colonIdx + 1).trim();
+        meta[key] = val;
+      }
+    }
+
+    return {
+      id: meta.id || undefined,
+      name: meta.name || fallbackName,
+      description: meta.description || "",
+      instructions: match[2].trim(),
+      textTrigger: meta.textTrigger || undefined,
+      semanticTriggerText: meta.semanticTriggerText || undefined,
+      model: meta.model || undefined,
+      mcpServers: meta.mcpServers || undefined,
+      tools: meta.tools || undefined,
+      embeddings: meta.embeddings || undefined,
+      isSkill: true,
+      isPublic: meta.isPublic === "true",
+    };
+  }
+
+  /**
+   * Serialize a backend behavior record as a SKILL.md string.
+   */
+  private serializeSkillMd(skill: Record<string, unknown>): string {
+    const lines: string[] = ["---"];
+    lines.push(`name: ${skill.name || ""}`);
+    lines.push(`description: ${skill.description || ""}`);
+    if (skill.model) lines.push(`model: ${skill.model}`);
+    if (skill.textTrigger) lines.push(`textTrigger: ${skill.textTrigger}`);
+    if (skill.semanticTriggerText) lines.push(`semanticTriggerText: ${skill.semanticTriggerText}`);
+    if (skill.mcpServers) lines.push(`mcpServers: ${skill.mcpServers}`);
+    if (skill.tools) lines.push(`tools: ${skill.tools}`);
+    if (skill.embeddings) lines.push(`embeddings: ${skill.embeddings}`);
+    if (skill.isPublic !== undefined) lines.push(`isPublic: ${skill.isPublic}`);
+    if (skill.id) lines.push(`id: ${skill.id}`);
+    lines.push("---");
+    lines.push("");
+    lines.push(((skill.instructions as string) || "").trim());
+    lines.push("");
+    return lines.join("\n");
+  }
+
+  /**
+   * Inject or replace the `id:` field in a SKILL.md frontmatter.
+   */
+  private injectIdIntoSkillMd(content: string, id: string): string {
+    const match = content.match(/^(---\n[\s\S]*?\n---\n?)([\s\S]*)$/);
+    if (!match) return content;
+
+    let frontmatter = match[1];
+    const body = match[2];
+
+    if (/^id:/m.test(frontmatter)) {
+      frontmatter = frontmatter.replace(/^id:.*$/m, `id: ${id}`);
+    } else {
+      // Insert before closing ---
+      frontmatter = frontmatter.replace(/\n---\n?$/, `\nid: ${id}\n---\n`);
+    }
+
+    return frontmatter + body;
   }
 }
