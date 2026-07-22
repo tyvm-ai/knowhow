@@ -322,7 +322,9 @@ export async function getConfig() {
   if (!fs.existsSync(".knowhow/knowhow.json")) {
     if (!loggedWarning) {
       loggedWarning = true;
-      if (!process.argv.includes("init")) {
+      const warnNeeds = process.env.KNOWHOW_WARN_NEEDS ?? "";
+      const shouldWarn = warnNeeds.split(",").includes("config");
+      if (shouldWarn && !process.argv.includes("init")) {
         console.warn(
           "KnowHow config file not found. Please run `knowhow init` to create it."
         );

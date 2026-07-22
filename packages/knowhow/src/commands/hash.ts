@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import * as crypto from "crypto";
 import * as fs from "fs";
+import { execSync } from "child_process";
 import { globSync } from "glob";
 import { getHashes, saveHashes } from "../hashes";
 
@@ -44,6 +45,12 @@ export function addHashCommand(program: Command): void {
       "--save",
       "Save the current hash after a successful build step."
     )
+    .option(
+      "--run <command>",
+      "Self-contained mode: if inputs are unchanged, skip and exit 0. " +
+        "If changed (or first run), run this shell command and — only if it " +
+        "succeeds — save the new hash. Replaces the '(hash) || (build && hash --save)' pattern."
+    )
     .option("--verbose", "Print what files were found and the computed hash")
     .action(
       async (opts: {
@@ -51,6 +58,7 @@ export function addHashCommand(program: Command): void {
         input: string;
         output?: string;
         save?: boolean;
+        run?: string;
         verbose?: boolean;
       }) => {
         const hashes = await getHashes();
@@ -90,13 +98,16 @@ export function addHashCommand(program: Command): void {
           process.exit(0);
         }
 
-        // Check mode: if any output file is missing, always report changed
+        // Determine whether inputs (or missing outputs) indicate a rebuild is needed.
+        let changed = false;
+
+        // If any output file is missing, always report changed
         for (const outPath of outputPaths) {
           if (!fs.existsSync(outPath)) {
             if (opts.verbose) {
               console.error(`[knowhow hash] output file missing: ${outPath} → changed`);
             }
-            process.exit(1);
+            changed = true;
           }
         }
 
@@ -108,7 +119,42 @@ export function addHashCommand(program: Command): void {
           );
         }
 
-        if (storedHash && storedHash === currentHash) {
+        if (!(storedHash && storedHash === currentHash)) {
+          changed = true;
+        }
+
+        // --run mode: self-contained. Skip when unchanged; otherwise run the
+        // command and only save the new hash if it succeeds.
+        if (opts.run) {
+          if (!changed) {
+            if (opts.verbose) {
+              console.error(`[knowhow hash] ✓ unchanged — skipping "${opts.run}"`);
+            }
+            process.exit(0);
+          }
+
+          if (opts.verbose) {
+            console.error(`[knowhow hash] ✗ changed — running "${opts.run}"`);
+          }
+          try {
+            execSync(opts.run, { stdio: "inherit", shell: "/bin/sh" });
+          } catch (err: any) {
+            // Command failed — do NOT save the hash so it retries next time.
+            process.exit(typeof err?.status === "number" ? err.status : 1);
+          }
+
+          // Command succeeded — record the hash of the inputs that produced it.
+          if (!hashes[opts.name]) hashes[opts.name] = {};
+          hashes[opts.name][opts.input] = currentHash;
+          await saveHashes(hashes);
+          if (opts.verbose) {
+            console.error(`[knowhow hash] saved hash ${currentHash} for "${opts.name}"`);
+          }
+          process.exit(0);
+        }
+
+        // Legacy check mode: exit 0 (unchanged) or 1 (changed).
+        if (!changed) {
           if (opts.verbose) {
             console.error(`[knowhow hash] ✓ unchanged — skipping`);
           }

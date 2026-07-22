@@ -311,7 +311,8 @@ export class AIClient {
       if (!client) {
         if (entry.provider === "knowhow") {
           if (process.env.KNOWHOW_CLI) {
-            console.warn(
+            const warnNeeds = (process.env.KNOWHOW_WARN_NEEDS ?? "").split(",");
+            if (warnNeeds.includes("models")) console.warn(
               `⚠️  Knowhow provider is not logged in. Run 'knowhow login' to enable Knowhow models.`
             );
           }

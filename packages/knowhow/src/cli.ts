@@ -1,6 +1,23 @@
 #!/usr/bin/env node --no-node-snapshot
 // Mark this process as running the Knowhow CLI (not just the SDK)
 process.env.KNOWHOW_CLI = "1";
+
+// Determine which warnings to show based on the command being run.
+// Commands that don't need AI models or a config file should not spam warnings.
+// Individual commands can override by setting KNOWHOW_WARN_NEEDS before parsing.
+// Format: comma-separated list of "models" | "config" (or empty string to suppress all).
+const _rawArgs = process.argv.slice(2);
+const _firstArg = _rawArgs.find((a) => !a.startsWith("-"));
+const COMMANDS_NEEDING_MODELS = new Set(["chat", "agent", "ask", "generate", "embed", "replay"]);
+const COMMANDS_NEEDING_CONFIG = new Set([
+  "chat", "agent", "ask", "generate", "embed", "upload", "download",
+  "worker", "workers", "replay", "behaviors", "skills",
+]);
+const _needsModels = _firstArg && COMMANDS_NEEDING_MODELS.has(_firstArg) ? "models" : "";
+const _needsConfig = _firstArg && COMMANDS_NEEDING_CONFIG.has(_firstArg) ? "config" : "";
+const _needs = [_needsModels, _needsConfig].filter(Boolean).join(",");
+process.env.KNOWHOW_WARN_NEEDS = process.env.KNOWHOW_WARN_NEEDS ?? _needs;
+
 import { Command } from "commander";
 import { version } from "../package.json";
 import { logger } from "./logger";
