@@ -306,6 +306,26 @@ export async function worker(options?: {
   let lastJwt: string | null = null;
   let unauthorizedJwt: string | null = null;
 
+  // ---------------------------------------------------------------------------
+  // Liveness watchdog state
+  // ---------------------------------------------------------------------------
+  // After a full snapshot (mem + disk) the VM is paused and later resumed,
+  // potentially on a different host. The guest kernel resumes believing its
+  // TCP socket to the backend is still ESTABLISHED, but the server tore that
+  // connection down long ago. This produces a "zombie" half-open socket:
+  //   - ws.on("close") never fires (guest never saw a FIN/RST)
+  //   - ws.ping() does NOT throw (kernel still thinks the socket is open)
+  // so `connected` would stay true forever and we'd never reconnect.
+  //
+  // The fix is an active heartbeat with a pong DEADLINE: we send a ping every
+  // loop tick and require a pong before the next tick. If the pong never
+  // arrives, we treat the socket as dead, terminate() it (frees the zombie
+  // immediately and fires "close"), and let the reconnect loop take over.
+  const PONG_TIMEOUT_MS = 15000;
+  let awaitingPong = false;
+  let lastPongAt = Date.now();
+  let tunnelAwaitingPong = false;
+  let tunnelLastPongAt = Date.now();
   // Check if tunnel is enabled.
   // When allowedTools is passed as an override (e.g. from `knowhow tunnel`),
   // the tunnel is always forced on — that's the whole point of tunnel mode.
@@ -446,6 +466,13 @@ export async function worker(options?: {
         authService,
         onOpen: (handler) => {
           tunnelHandler = handler;
+          // Reset tunnel heartbeat state for the fresh connection
+          tunnelAwaitingPong = false;
+          tunnelLastPongAt = Date.now();
+        },
+        onPong: () => {
+          tunnelAwaitingPong = false;
+          tunnelLastPongAt = Date.now();
         },
         onClose: (code, _reason) => {
           if (code === 1008) {
@@ -478,6 +505,16 @@ export async function worker(options?: {
     ws.on("open", () => {
       console.log("Worker WebSocket connected");
       connected = true;
+      // Reset heartbeat state for the fresh connection
+      awaitingPong = false;
+      lastPongAt = Date.now();
+    });
+
+    // Pong watchdog: the server responds to our ws.ping() with a pong frame.
+    // Receiving it proves the socket is genuinely alive (not a snapshot zombie).
+    ws.on("pong", () => {
+      awaitingPong = false;
+      lastPongAt = Date.now();
     });
 
     ws.on("close", async (code, reason) => {
@@ -517,13 +554,17 @@ export async function worker(options?: {
     return { ws, mcpServer, tunnelWs };
   }
 
-  while (true) {
-    let connection: {
-      ws: WebSocket;
-      mcpServer: McpServerService;
-      tunnelWs: WebSocket | null;
-    } | null = null;
+  // Keep the active connection reference OUTSIDE the loop so it persists across
+  // heartbeat ticks. (Previously this was declared inside the loop and reset to
+  // null every iteration, so the heartbeat only ever ran on the tick right after
+  // a (re)connect — meaning a live connection was never actively pinged.)
+  let connection: {
+    ws: WebSocket;
+    mcpServer: McpServerService;
+    tunnelWs: WebSocket | null;
+  } | null = null;
 
+  while (true) {
     if (!connected) {
       // If we got an Unauthorized error, check if the JWT has changed before retrying
       if (unauthorizedJwt !== null) {
@@ -541,12 +582,63 @@ export async function worker(options?: {
       console.log("Attempting to connect...");
       connection = await connectWebSocket();
     }
+
     if (connection && connected) {
-      try {
-        await connection.ws.ping();
-      } catch (error) {
-        console.error("WebSocket ping failed:", error);
+      // -----------------------------------------------------------------------
+      // Worker socket liveness: active ping + pong DEADLINE.
+      //
+      // On the previous tick we sent a ping and set awaitingPong=true. If the
+      // "pong" handler fired, it cleared awaitingPong. If it's still set here
+      // AND the deadline has elapsed, the socket is a zombie (e.g. after a full
+      // snapshot resume where the guest's TCP connection is dead but the kernel
+      // still thinks it's open, so ws.ping() won't throw and "close" won't fire).
+      // Terminate it to free the socket immediately and drive a reconnect.
+      // -----------------------------------------------------------------------
+      if (awaitingPong && Date.now() - lastPongAt > PONG_TIMEOUT_MS) {
+        console.error(
+          `WebSocket pong timeout (${PONG_TIMEOUT_MS}ms) — connection is dead (likely a snapshot-resume zombie). Forcing reconnect...`
+        );
+        try {
+          connection.ws.terminate();
+        } catch {
+          // ignore
+        }
         connected = false;
+      } else {
+        try {
+          awaitingPong = true;
+          connection.ws.ping();
+        } catch (error) {
+          console.error("WebSocket ping failed:", error);
+          connected = false;
+        }
+      }
+
+      // -----------------------------------------------------------------------
+      // Tunnel socket liveness: same pong-deadline watchdog on the separate
+      // tunnel WebSocket, which has the identical zombie problem after resume.
+      // -----------------------------------------------------------------------
+      if (connected && tunnelWs && tunnelWs.readyState === WebSocket.OPEN) {
+        if (tunnelAwaitingPong && Date.now() - tunnelLastPongAt > PONG_TIMEOUT_MS) {
+          console.error(
+            `Tunnel WebSocket pong timeout (${PONG_TIMEOUT_MS}ms) — tunnel connection is dead. Forcing reconnect...`
+          );
+          try {
+            tunnelWs.terminate();
+          } catch {
+            // ignore
+          }
+          // Dropping the tunnel forces the whole connection cycle to re-establish.
+          connected = false;
+        } else {
+          try {
+            tunnelAwaitingPong = true;
+            tunnelWs.ping();
+          } catch (error) {
+            console.error("Tunnel WebSocket ping failed:", error);
+            connected = false;
+          }
+        }
       }
     }
     await wait(5000);

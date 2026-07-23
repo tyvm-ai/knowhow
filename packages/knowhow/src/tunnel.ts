@@ -114,6 +114,8 @@ export interface TunnelWebSocketOptions {
   onClose?: (code: number, reason: string) => void;
   /** Called on error */
   onError?: (error: Error) => void;
+  /** Called when a pong frame is received (liveness heartbeat) */
+  onPong?: () => void;
   /** Optional passkey auth service — if provided, applies WS middleware to gate tunnel traffic */
   authService?: WorkerPasskeyAuthService | null;
 }
@@ -138,6 +140,7 @@ export function connectTunnelWebSocket(
     onOpen,
     onClose,
     onError,
+    onPong,
     authService,
   } = options;
 
@@ -197,6 +200,14 @@ export function connectTunnelWebSocket(
     console.error("Tunnel WebSocket error:", error);
     onError?.(error);
   });
+
+  // Pong watchdog: proves the tunnel socket is genuinely alive (not a
+  // snapshot-resume zombie). The caller sends ws.ping() and requires a pong.
+  if (onPong) {
+    tunnelConnection.on("pong", () => {
+      onPong();
+    });
+  }
 
   return tunnelConnection;
 }
