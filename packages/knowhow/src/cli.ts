@@ -61,6 +61,7 @@ import { addBehaviorsCommand } from "./commands/behaviors";
 import { addSkillsCommand } from "./commands/skills";
 import { addAgentsCommand } from "./commands/agents";
 import { addHashCommand } from "./commands/hash";
+import { addSandboxCommand } from "./commands/sandbox";
 
 // Handle unhandled promise rejections gracefully — particularly from MCP SDK
 // which fires errors via event emitters that can bypass Promise.allSettled.
@@ -129,6 +130,7 @@ async function main() {
   addSkillsCommand(program);
   addAgentsCommand(program);
   addHashCommand(program);
+  addSandboxCommand(program);
 
   // Load global modules early (before parse) so they can register CLI subcommands.
   // We pass only the Program in context — no services are spun up at this stage.

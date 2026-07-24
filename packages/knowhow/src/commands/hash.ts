@@ -43,7 +43,10 @@ export function addHashCommand(program: Command): void {
     )
     .option(
       "--save",
-      "Save the current hash after a successful build step."
+      "Save the current hash. In standalone mode, records the hash immediately (no command run). " +
+        "In --run mode, records the hash only if the command succeeds. " +
+        "Without --save in --run mode, the hash is never recorded — useful when --run is a " +
+        "side-effect trigger rather than the step that produces the tracked artifacts."
     )
     .option(
       "--run <command>",
@@ -143,12 +146,17 @@ export function addHashCommand(program: Command): void {
             process.exit(typeof err?.status === "number" ? err.status : 1);
           }
 
-          // Command succeeded — record the hash of the inputs that produced it.
-          if (!hashes[opts.name]) hashes[opts.name] = {};
-          hashes[opts.name][opts.input] = currentHash;
-          await saveHashes(hashes);
-          if (opts.verbose) {
-            console.error(`[knowhow hash] saved hash ${currentHash} for "${opts.name}"`);
+          // Command succeeded — only save the hash if --save was also passed.
+          // Without --save, the hash is NOT recorded so the command will re-run next time.
+          // Use --save when --run produces the artifacts that the hash tracks.
+          // Omit --save when --run is a side-effect trigger (e.g. snapshot regeneration).
+          if (opts.save) {
+            if (!hashes[opts.name]) hashes[opts.name] = {};
+            hashes[opts.name][opts.input] = currentHash;
+            await saveHashes(hashes);
+            if (opts.verbose) {
+              console.error(`[knowhow hash] saved hash ${currentHash} for "${opts.name}"`);
+            }
           }
           process.exit(0);
         }

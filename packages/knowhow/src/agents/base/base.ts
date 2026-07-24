@@ -75,6 +75,13 @@ export abstract class BaseAgent implements IAgent {
 
   // Interrupt support: resolves the currently awaited tool call or completion
   private _interruptResolve: (() => void) | null = null;
+  // A monotonically-increasing token identifying the active interruptible window.
+  // Used to ensure a stale (slow) operation completing in the background cannot
+  // clobber a newer interruptible window's resolver.
+  private _interruptToken = 0;
+  // Set when interrupt() is called with no active window, so the next
+  // makeInterruptible fires immediately instead of dropping the interrupt.
+  private _pendingInterrupt = false;
 
   protected threads = [] as Message[][];
 
@@ -216,6 +223,11 @@ export abstract class BaseAgent implements IAgent {
     this.turnCount = 0;
     this.startTimeMs = Date.now();
     this.currentTaskId = taskId || this.startTimeMs.toString();
+
+    // Reset interrupt state so a queued/stale interrupt from a prior task
+    // can't fire against the new task.
+    this._interruptResolve = null;
+    this._pendingInterrupt = false;
 
     // Emit event for plugin integration
     const id = taskId || this.startTimeMs.toString();
@@ -740,32 +752,43 @@ export abstract class BaseAgent implements IAgent {
     interruptValue: T
   ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      let interrupted = false;
+      // Each interruptible window gets a unique token. `settled` guards this
+      // specific window so it can only ever resolve/reject once, and the token
+      // ensures a stale (slow) background operation that finishes AFTER this
+      // window was interrupted cannot clobber a NEWER window's resolver.
+      const myToken = ++this._interruptToken;
+      let settled = false;
 
-      this._interruptResolve = () => {
-        interrupted = true;
-        this._interruptResolve = null;
-        resolve(interruptValue);
+      const finish = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        // Only clear the shared resolver if it still belongs to this window.
+        if (this._interruptToken === myToken) {
+          this._interruptResolve = null;
+        }
+        fn();
       };
+
+      this._interruptResolve = () => finish(() => resolve(interruptValue));
+
+      // If an interrupt arrived while there was no active window, honor it now.
+      if (this._pendingInterrupt) {
+        this._pendingInterrupt = false;
+        finish(() => resolve(interruptValue));
+        return;
+      }
 
       promise
         .then((result) => {
-          if (this._interruptResolve) {
-            this._interruptResolve = null;
-            resolve(result);
-          }
+          // If this window was already interrupted/settled, drop the stale
+          // result — do NOT touch _interruptResolve (it may belong to a newer
+          // window now).
+          finish(() => resolve(result));
         })
         .catch((err) => {
-          if (this._interruptResolve) {
-            this._interruptResolve = null;
-          }
-          // Only swallow the error if interrupt() was explicitly called.
-          // Otherwise re-throw so callers see the real error.
-          if (interrupted) {
-            resolve(interruptValue);
-          } else {
-            reject(err);
-          }
+          // If the window was already interrupted, swallow the late error.
+          if (settled) return;
+          finish(() => reject(err));
         });
     });
   }
@@ -777,10 +800,29 @@ export abstract class BaseAgent implements IAgent {
    */
   interrupt(message = "User interrupted this action you were waiting on") {
     this.log(`Interrupting current operation: ${message}`);
+
+    // If the user supplied a real message with the poke (not the default
+    // interrupt reason), queue it as a pending user message so the agent
+    // actually sees what they said on its next step.
+    if (
+      message &&
+      message !== "User interrupted this action you were waiting on"
+    ) {
+      this.addPendingUserMessage({ role: "user", content: message });
+    }
+
     if (this._interruptResolve) {
       this._interruptResolve();
     } else {
-      this.log("No active interruptible operation to interrupt", "warn");
+      // No active interruptible window right now (we're between the AI
+      // completion and the tool call, or in message processing). Queue the
+      // interrupt so the next makeInterruptible window fires immediately
+      // instead of silently dropping it.
+      this._pendingInterrupt = true;
+      this.log(
+        "No active interruptible operation — queued interrupt for next step",
+        "warn"
+      );
     }
   }
 
