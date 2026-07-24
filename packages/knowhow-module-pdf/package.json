@@ -1,6 +1,6 @@
 {
   "name": "@tyvm/knowhow-module-pdf",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "PDF converter module for @tyvm/knowhow — registers a pdf->text converter via pdf-parse",
   "main": "ts_build/index.js",
   "types": "ts_build/index.d.ts",
