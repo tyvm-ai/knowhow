@@ -90,8 +90,9 @@ export function addHashCommand(program: Command): void {
 
         const currentHash = hashFiles(inputFiles);
 
-        // --save mode: record into .hashes.json under hashes[name][inputGlob] = hash
-        if (opts.save) {
+        // Standalone --save mode (no --run): record hash immediately and exit.
+        // When --run is also present, --save is handled inside the --run branch below.
+        if (opts.save && !opts.run) {
           if (!hashes[opts.name]) hashes[opts.name] = {};
           hashes[opts.name][opts.input] = currentHash;
           await saveHashes(hashes);
