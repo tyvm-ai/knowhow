@@ -398,7 +398,9 @@ export class GenericGeminiClient implements GenericClient {
    *
    * Maps CompletionOptions.reasoning_effort to provider-specific values.
    */
-  buildThinkingConfig(options: CompletionOptions): Record<string, unknown> | undefined {
+  buildThinkingConfig(
+    options: CompletionOptions
+  ): Record<string, unknown> | undefined {
     const model = options.model;
     const effort = options.reasoning_effort ?? "low";
 
@@ -526,12 +528,12 @@ export class GenericGeminiClient implements GenericClient {
 
       // Map cachedContentTokenCount → prompt_tokens_details.cached_tokens so that
       // base.ts can read cache hit tokens via usage.prompt_tokens_details?.cached_tokens
-      const cachedTokens = (usage as any)?.cachedContentTokenCount ?? 0;
+      const cachedTokens = usage?.cachedContentTokenCount ?? 0;
       const usageWithCache: TokenUsage | undefined = usage
         ? ({
-            prompt_tokens: (usage as any).promptTokenCount ?? 0,
-            completion_tokens: (usage as any).candidatesTokenCount ?? 0,
-            total_tokens: (usage as any).totalTokenCount,
+            prompt_tokens: usage.promptTokenCount ?? 0,
+            completion_tokens: usage.candidatesTokenCount ?? 0,
+            total_tokens: usage.totalTokenCount,
             prompt_tokens_details: { cached_tokens: cachedTokens },
           } as TokenUsage)
         : undefined;
@@ -555,11 +557,21 @@ export class GenericGeminiClient implements GenericClient {
     return GeminiTextPricing;
   }
 
-  getPricing(model?: string): import("./pricing/types").ModelPricing | Record<string, import("./pricing/types").ModelPricing> | undefined {
+  getPricing(
+    model?: string
+  ):
+    | import("./pricing/types").ModelPricing
+    | Record<string, import("./pricing/types").ModelPricing>
+    | undefined {
     if (model !== undefined) {
-      return GeminiTextPricing[model as keyof typeof GeminiTextPricing] as import("./pricing/types").ModelPricing | undefined;
+      return GeminiTextPricing[model as keyof typeof GeminiTextPricing] as
+        | import("./pricing/types").ModelPricing
+        | undefined;
     }
-    return GeminiTextPricing as unknown as Record<string, import("./pricing/types").ModelPricing>;
+    return GeminiTextPricing as unknown as Record<
+      string,
+      import("./pricing/types").ModelPricing
+    >;
   }
 
   calculateCost(model: string, usage: UsageMetadata): number | undefined {
@@ -907,7 +919,7 @@ export class GenericGeminiClient implements GenericClient {
   ): Promise<VideoStatusResponse> {
     try {
       const operation = await this.client.operations.getVideosOperation({
-        operation: { name: options.jobId },
+        operation: { name: options.jobId } as any,
       });
 
       if (operation.error) {
@@ -963,7 +975,9 @@ export class GenericGeminiClient implements GenericClient {
    */
   async uploadFile(options: FileUploadOptions): Promise<FileUploadResponse> {
     try {
-      const blob = new Blob([new Uint8Array(options.data)], { type: options.mimeType });
+      const blob = new Blob([new Uint8Array(options.data)], {
+        type: options.mimeType,
+      });
       const uploadedFile = await this.client.files.upload({
         file: blob,
         config: {

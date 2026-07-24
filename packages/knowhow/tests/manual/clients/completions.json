@@ -1062,5 +1062,90 @@
     "durationMs": 14929,
     "usd_cost": 0.06908,
     "testedAt": "2026-04-25T20:02:50.839Z"
+  },
+  "google::gemini-3.6-flash": {
+    "provider": "google",
+    "model": "gemini-3.6-flash",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, nice to meet you!",
+    "usage": {
+      "prompt_tokens": 8,
+      "completion_tokens": 7,
+      "total_tokens": 283,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "durationMs": 4029,
+    "usd_cost": 0.000012,
+    "testedAt": "2026-07-24T02:06:02.809Z"
+  },
+  "google::gemini-3.5-flash": {
+    "provider": "google",
+    "model": "gemini-3.5-flash",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, how are you doing?",
+    "usage": {
+      "prompt_tokens": 8,
+      "completion_tokens": 7,
+      "total_tokens": 179,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "durationMs": 3338,
+    "usd_cost": 0.000012,
+    "testedAt": "2026-07-24T02:06:06.169Z"
+  },
+  "google::gemini-3.5-flash-lite": {
+    "provider": "google",
+    "model": "gemini-3.5-flash-lite",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, nice to meet.",
+    "usage": {
+      "prompt_tokens": 8,
+      "completion_tokens": 7,
+      "total_tokens": 15,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "durationMs": 2557,
+    "usd_cost": 0.0000024,
+    "testedAt": "2026-07-24T02:06:08.728Z"
+  },
+  "google::gemini-3.1-flash-lite": {
+    "provider": "google",
+    "model": "gemini-3.1-flash-lite",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, how are you today?",
+    "usage": {
+      "prompt_tokens": 8,
+      "completion_tokens": 7,
+      "total_tokens": 149,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "durationMs": 3103,
+    "usd_cost": 0.000002,
+    "testedAt": "2026-07-24T02:06:11.841Z"
+  },
+  "google::gemini-robotics-er-1.6-preview": {
+    "provider": "google",
+    "model": "gemini-robotics-er-1.6-preview",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello, have a great day.",
+    "usage": {
+      "prompt_tokens": 8,
+      "completion_tokens": 7,
+      "total_tokens": 267,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "durationMs": 3988,
+    "usd_cost": 0.000008,
+    "testedAt": "2026-07-24T02:06:22.609Z"
   }
 }

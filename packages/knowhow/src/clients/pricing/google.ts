@@ -7,13 +7,25 @@ import { completions, embeddings, images, videos, audios, liveApi, ModelCatalogE
 // ─── Model IDs ────────────────────────────────────────────────────────────────
 
 export const GoogleModels = {
+  // Gemini 3.6 / 3.5
+  Gemini_36_Flash: "gemini-3.6-flash",
+  Gemini_35_Flash: "gemini-3.5-flash",
+  Gemini_35_Flash_Lite: "gemini-3.5-flash-lite",
+  Gemini_35_Live_Translate_Preview: "gemini-3.5-live-translate-preview",
   // Gemini 3.x
   Gemini_31_Pro_Preview: "gemini-3.1-pro-preview",
+  Gemini_31_Flash_Lite: "gemini-3.1-flash-lite",
+  Gemini_31_Flash_Image: "gemini-3.1-flash-image",
   Gemini_31_Flash_Image_Preview: "gemini-3.1-flash-image-preview",
+  Gemini_31_Flash_Lite_Image: "gemini-3.1-flash-lite-image",
   Gemini_31_Flash_Lite_Preview: "gemini-3.1-flash-lite-preview",
   Gemini_31_Flash_Live_Preview: "gemini-3.1-flash-live-preview",
+  Gemini_31_Flash_TTS_Preview: "gemini-3.1-flash-tts-preview",
+  Gemini_3_Pro_Preview: "gemini-3-pro-preview",
   Gemini_3_Flash_Preview: "gemini-3-flash-preview",
+  Gemini_3_Pro_Image: "gemini-3-pro-image",
   Gemini_3_Pro_Image_Preview: "gemini-3-pro-image-preview",
+  Gemini_Omni_Flash_Preview: "gemini-omni-flash-preview",
   // Gemini 2.5
   Gemini_25_Pro: "gemini-2.5-pro",
   Gemini_25_Flash: "gemini-2.5-flash",
@@ -26,10 +38,15 @@ export const GoogleModels = {
   Gemini_25_Flash_Live: "gemini-2.5-flash-live-preview",
   Gemini_25_Flash_Native_Audio: "gemini-2.5-flash-native-audio-preview-12-2025",
   Gemini_25_Pro_TTS: "gemini-2.5-pro-preview-tts",
+  Gemini_25_Computer_Use_Preview: "gemini-2.5-computer-use-preview-10-2025",
   // Gemini 2.0
   Gemini_20_Flash: "gemini-2.0-flash",
   Gemini_20_Flash_Preview_Image_Generation: "gemini-2.0-flash-exp-image-generation",
+  Gemini_20_Flash_Lite: "gemini-2.0-flash-lite",
   Gemini_20_Flash_Live: "gemini-2.0-flash-live-001",
+  // Robotics
+  Gemini_Robotics_ER_16_Preview: "gemini-robotics-er-1.6-preview",
+  Gemini_Robotics_ER_15_Preview: "gemini-robotics-er-1.5-preview",
   // Gemini 1.5 (legacy)
   Gemini_15_Flash: "gemini-1.5-flash",
   Gemini_15_Flash_8B: "gemini-1.5-flash-8b",
@@ -43,6 +60,7 @@ export const GoogleModels = {
   Veo_3_Fast: "veo-3.0-fast-generate-001",
   Veo_3_1: "veo-3.1-generate-preview",
   Veo_3_1_Fast: "veo-3.1-fast-generate-preview",
+  Veo_3_1_Lite: "veo-3.1-lite-generate-preview",
   // Audio / TTS
   Gemini_25_Flash_TTS: "gemini-2.5-flash-preview-tts",
   Gemini_20_Flash_TTS: "gemini-2.0-flash-preview-tts",
@@ -62,13 +80,19 @@ export const GemmaModels = {
 export const GoogleEmbeddingModels: Record<string, string> = {
   Gemini_Embedding: "gemini-embedding-exp",
   Gemini_Embedding_001: "gemini-embedding-001",
+  Gemini_Embedding_2: "gemini-embedding-2",
 };
 
 // ─── Modality arrays ──────────────────────────────────────────────────────────
 
 export const GoogleTextModels: string[] = [
+  GoogleModels.Gemini_36_Flash,
+  GoogleModels.Gemini_35_Flash,
+  GoogleModels.Gemini_35_Flash_Lite,
   GoogleModels.Gemini_31_Pro_Preview,
+  GoogleModels.Gemini_31_Flash_Lite,
   GoogleModels.Gemini_31_Flash_Lite_Preview,
+  GoogleModels.Gemini_Robotics_ER_16_Preview,
   GoogleModels.Gemini_25_Pro,
   GoogleModels.Gemini_25_Flash,
   GoogleModels.Gemini_25_Flash_Lite,
@@ -77,7 +101,11 @@ export const GoogleTextModels: string[] = [
 
 // Models that support thinkingLevel (Gemini 3.x series)
 export const GoogleThinkingLevelModels: string[] = [
+  GoogleModels.Gemini_36_Flash,
+  GoogleModels.Gemini_35_Flash,
+  GoogleModels.Gemini_35_Flash_Lite,
   GoogleModels.Gemini_31_Pro_Preview,
+  GoogleModels.Gemini_31_Flash_Lite,
   GoogleModels.Gemini_31_Flash_Lite_Preview,
   GoogleModels.Gemini_3_Flash_Preview,
 ];
@@ -95,6 +123,7 @@ export const GoogleThinkingBudgetModels: string[] = [
 // Live API only — not compatible with generateContent (text completions)
 export const GoogleLiveApiModels: string[] = [
   GoogleModels.Gemini_31_Flash_Live_Preview,
+  GoogleModels.Gemini_35_Live_Translate_Preview,
   GoogleModels.Gemini_25_Flash_Live,
   GoogleModels.Gemini_25_Flash_Native_Audio,
   GoogleModels.Gemini_20_Flash_Live,
@@ -103,6 +132,10 @@ export const GoogleLiveApiModels: string[] = [
 // Limited availability — exist in catalog but return empty or restricted responses
 export const GoogleLimitedModels: string[] = [
   GoogleModels.Gemini_3_Flash_Preview,
+  // Only usable via the Interactions API — not compatible with generateContent
+  GoogleModels.Gemini_Omni_Flash_Preview,
+  // Requires the Computer Use tool to be attached — not a plain text model
+  GoogleModels.Gemini_25_Computer_Use_Preview,
 ];
 
 // All deprecated/legacy models — metadata is embedded in GeminiPricing entries
@@ -111,10 +144,14 @@ const GoogleAllDeprecatedModels: string[] = [
   GoogleModels.Gemini_25_Flash_Preview,
   GoogleModels.Gemini_25_Flash_Preview_0417,
   GoogleModels.Gemini_25_Pro_Preview,
+  // Deprecated/removed previews (returning 404 — replaced by newer models)
+  GoogleModels.Gemini_3_Pro_Preview,
+  GoogleModels.Gemini_Robotics_ER_15_Preview,
   // Legacy (Gemini 1.5 — returning 404)
   GoogleModels.Gemini_15_Flash,
   GoogleModels.Gemini_15_Flash_8B,
   GoogleModels.Gemini_15_Pro,
+  GoogleModels.Gemini_20_Flash_Lite,
 ];
 
 export const GemmaTextModels: string[] = [
@@ -128,7 +165,10 @@ export const GemmaTextModels: string[] = [
 ];
 
 export const GoogleImageModels: string[] = [
+  GoogleModels.Gemini_31_Flash_Image,
   GoogleModels.Gemini_31_Flash_Image_Preview,
+  GoogleModels.Gemini_31_Flash_Lite_Image,
+  GoogleModels.Gemini_3_Pro_Image,
   GoogleModels.Gemini_3_Pro_Image_Preview,
   GoogleModels.Gemini_25_Flash_Image,
   GoogleModels.Gemini_25_Flash_Image_Preview,
@@ -144,9 +184,11 @@ export const GoogleVideoModels: string[] = [
   GoogleModels.Veo_3_Fast,
   GoogleModels.Veo_3_1,
   GoogleModels.Veo_3_1_Fast,
+  GoogleModels.Veo_3_1_Lite,
 ];
 
 export const GoogleTTSModels: string[] = [
+  GoogleModels.Gemini_31_Flash_TTS_Preview,
   GoogleModels.Gemini_25_Flash_TTS,
   GoogleModels.Gemini_25_Pro_TTS,
   GoogleModels.Gemini_20_Flash_TTS,
@@ -155,6 +197,7 @@ export const GoogleTTSModels: string[] = [
 export const GoogleEmbeddingModelsList: string[] = [
   GoogleEmbeddingModels.Gemini_Embedding,
   GoogleEmbeddingModels.Gemini_Embedding_001,
+  GoogleEmbeddingModels.Gemini_Embedding_2,
 ];
 
 // ─── Pricing ──────────────────────────────────────────────────────────────────
@@ -171,6 +214,57 @@ export interface GeminiModelPricing extends ModelPricing {
 }
 
 export const GeminiPricing: Record<string, GeminiModelPricing> = {
+  // ── Gemini 3.6 / 3.5 ──────────────────────────────────────────────────────
+  [GoogleModels.Gemini_36_Flash]: {
+    input: 1.5, output: 7.5,
+    context_caching: 0.15, context_caching_storage: 1.0,
+  },
+  [GoogleModels.Gemini_35_Flash]: {
+    input: 1.5, output: 9.0,
+    context_caching: 0.15, context_caching_storage: 1.0,
+  },
+  [GoogleModels.Gemini_35_Flash_Lite]: {
+    input: 0.3, output: 2.5,
+    context_caching: 0.03, context_caching_storage: 1.0,
+  },
+  [GoogleModels.Gemini_35_Live_Translate_Preview]: {
+    input: 0, input_audio: 3.5, output: 0, output_audio: 21.0,
+  },
+  // ── Gemini 3.1 (GA + variants) ────────────────────────────────────────────
+  [GoogleModels.Gemini_31_Flash_Lite]: {
+    input: 0.25, input_audio: 0.5, output: 1.5,
+    context_caching: 0.025, context_caching_audio: 0.05, context_caching_storage: 1.0,
+  },
+  [GoogleModels.Gemini_31_Flash_Image]: {
+    input: 0.5, output: 60.0, image_generation: 0.067, image_generation_per_1m_tokens: 60.0,
+  },
+  [GoogleModels.Gemini_31_Flash_Lite_Image]: {
+    input: 0.25, output: 30.0, image_generation: 0.0336, image_generation_per_1m_tokens: 30.0,
+  },
+  [GoogleModels.Gemini_31_Flash_TTS_Preview]: {
+    input: 1.0, output_audio: 20.0, output: 20.0,
+  },
+  // ── Gemini 3 (Pro / Pro Image / Omni) ─────────────────────────────────────
+  [GoogleModels.Gemini_3_Pro_Preview]: {
+    input: 2, input_gt_200k: 4, output: 12, output_gt_200k: 18,
+    context_caching: 0.2, context_caching_gt_200k: 0.4, context_caching_storage: 4.5,
+    deprecated: true, replacedBy: GoogleModels.Gemini_31_Pro_Preview,
+  },
+  [GoogleModels.Gemini_3_Pro_Image]: {
+    input: 2, output: 12, image_generation: 0.134, image_generation_per_1m_tokens: 120.0,
+  },
+  [GoogleModels.Gemini_Omni_Flash_Preview]: {
+    input: 1.5, output: 9.0,
+    limitedAvailability: true,
+  },
+  // ── Robotics-ER ───────────────────────────────────────────────────────────
+  [GoogleModels.Gemini_Robotics_ER_16_Preview]: {
+    input: 1.0, input_audio: 2.0, output: 5.0,
+  },
+  [GoogleModels.Gemini_Robotics_ER_15_Preview]: {
+    input: 1.0, input_audio: 2.0, output: 5.0,
+    deprecated: true, replacedBy: GoogleModels.Gemini_Robotics_ER_16_Preview,
+  },
   [GoogleModels.Gemini_31_Pro_Preview]: {
     input: 2, input_gt_200k: 4, output: 12, output_gt_200k: 18,
     context_caching: 0.2, context_caching_gt_200k: 0.4, context_caching_storage: 4.5,
@@ -229,8 +323,13 @@ export const GeminiPricing: Record<string, GeminiModelPricing> = {
     input: 0.1, input_audio: 0.7, output: 0.4,
     context_caching: 0.025, context_caching_audio: 0.175, context_caching_storage: 1.0,
   },
+  [GoogleModels.Gemini_25_Computer_Use_Preview]: {
+    input: 1.25, input_gt_200k: 2.5, output: 10.0, output_gt_200k: 15.0,
+    limitedAvailability: true,
+  },
   [GoogleModels.Gemini_20_Flash_Preview_Image_Generation]: { input: 0.1, output: 0.4, image_generation: 0.039 },
   [GoogleModels.Gemini_20_Flash_Live]: { input: 0.1, output: 0.4 },
+  [GoogleModels.Gemini_20_Flash_Lite]: { input: 0.075, output: 0.3, deprecated: true, deprecationDate: "2026-06-01" },
   [GoogleModels.Gemini_15_Flash]:   { input: 0.075, output: 0.3,  context_caching: 0.01875, deprecated: true },
   [GoogleModels.Gemini_15_Flash_8B]:{ input: 0.0375, output: 0.15, context_caching: 0.01,   deprecated: true },
   [GoogleModels.Gemini_15_Pro]:     { input: 1.25, output: 5.0,   context_caching: 0.3125,  deprecated: true },
@@ -242,8 +341,10 @@ export const GeminiPricing: Record<string, GeminiModelPricing> = {
   [GoogleModels.Veo_3_Fast]: { video_generation: 0.1 },
   [GoogleModels.Veo_3_1]: { video_generation: 0.4 },
   [GoogleModels.Veo_3_1_Fast]: { video_generation: 0.1 },
+  [GoogleModels.Veo_3_1_Lite]: { video_generation: 0.05 },
   [GoogleEmbeddingModels.Gemini_Embedding]: { input: 0 },
   [GoogleEmbeddingModels.Gemini_Embedding_001]: { input: 0.15 },
+  [GoogleEmbeddingModels.Gemini_Embedding_2]: { input: 0.2 },
 };
 
 // ─── Gemma pricing (free via Google AI) ──────────────────────────────────────

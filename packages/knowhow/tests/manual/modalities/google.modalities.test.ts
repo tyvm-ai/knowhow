@@ -88,7 +88,7 @@ describe("Google (Gemini) Modalities", () => {
       "with reflections of pine trees in the calm water";
 
     const response = await client.createImageGeneration("google", {
-      model: Models.google.Gemini_20_Flash_Preview_Image_Generation,
+      model: Models.google.Gemini_25_Flash_Image,
       prompt,
       n: 1,
     });
@@ -190,7 +190,7 @@ describe("Google (Gemini) Modalities", () => {
     const dataUrl = `data:image/png;base64,${base64Image}`;
 
     const response = await client.createCompletion("google", {
-      model: Models.google.Gemini_20_Flash,
+      model: Models.google.Gemini_25_Flash,
       messages: [
         {
           role: "user",
