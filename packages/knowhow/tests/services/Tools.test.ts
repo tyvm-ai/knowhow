@@ -1,4 +1,4 @@
-import { ToolsService, ToolContext } from "../../src/services/Tools";
+import { ToolsService, ToolContext, ToolCallContext } from "../../src/services/Tools";
 import { Tool, ToolCall } from "../../src/clients/types";
 import { createPatternMatcher } from "../../src/services/types";
 import { AgentService } from "../../src/services/AgentService";
@@ -268,7 +268,11 @@ describe("ToolsService", () => {
 
       const result = await toolsService.callTool(mockToolCall);
 
-      expect(mockFunction).toHaveBeenCalledWith({ input: "test value" });
+      // Non-positional tools receive `_ctx` merged onto the args object.
+      expect(mockFunction).toHaveBeenCalledWith(
+        expect.objectContaining({ input: "test value" })
+      );
+      expect(mockFunction.mock.calls[0][0]._ctx).toBeDefined();
       expect(result.toolMessages).toHaveLength(1);
       expect(result.toolMessages[0]).toEqual({
         tool_call_id: "call_123",
@@ -312,7 +316,12 @@ describe("ToolsService", () => {
 
       await toolsService.callTool(positionalCall);
 
-      expect(mockFunction).toHaveBeenCalledWith("hello", 42);
+      // Positional tools receive `_ctx` as the LAST positional argument.
+      expect(mockFunction).toHaveBeenCalledWith(
+        "hello",
+        42,
+        expect.objectContaining({ Tools: expect.anything() })
+      );
     });
 
     it("should handle tool not enabled error", async () => {
@@ -433,7 +442,10 @@ describe("ToolsService", () => {
 
       await toolsService.callTool(toolCallWithStringArgs);
 
-      expect(mockFunction).toHaveBeenCalledWith({ input: "escaped\nstring" });
+      expect(mockFunction).toHaveBeenCalledWith(
+        expect.objectContaining({ input: "escaped\nstring" })
+      );
+      expect(mockFunction.mock.calls[0][0]._ctx).toBeDefined();
     });
   });
   describe("Tool Override System", () => {
@@ -492,8 +504,9 @@ describe("ToolsService", () => {
 
       const result = await toolsService.callTool(toolCall);
 
+      // Non-positional args now include `_ctx`; the override receives them in an array.
       expect(overrideFunction).toHaveBeenCalledWith(
-        [{ input: "test" }],
+        [expect.objectContaining({ input: "test" })],
         expect.any(Object)
       );
       expect(originalFunction).not.toHaveBeenCalled();
@@ -627,7 +640,9 @@ describe("ToolsService", () => {
       const result = await toolsService.callTool(toolCall);
 
       expect(wrapperFunction).toHaveBeenCalled();
-      expect(originalFunction).toHaveBeenCalledWith({ input: "test" });
+      expect(originalFunction).toHaveBeenCalledWith(
+        expect.objectContaining({ input: "test" })
+      );
       expect(result.functionResp).toBe("wrapped: original result");
     });
 
@@ -841,7 +856,8 @@ describe("ToolsService", () => {
 
       const result = await toolsService.callTool(noParamCall);
 
-      expect(mockFunction).toHaveBeenCalledWith({});
+      expect(mockFunction).toHaveBeenCalledWith(expect.any(Object));
+      expect(mockFunction.mock.calls[0][0]._ctx).toBeDefined();
       expect(result.functionResp).toBe("no param result");
     });
 
@@ -897,14 +913,16 @@ describe("ToolsService", () => {
 
       const result = await toolsService.callTool(complexCall);
 
-      expect(mockFunction).toHaveBeenCalledWith({
+      expect(mockFunction).toHaveBeenCalledWith(
+        expect.objectContaining({
         config: {
           settings: [
             { key: "timeout", value: 5000 },
             { key: "retries", value: 3 },
           ],
         },
-      });
+        })
+      );
       expect(result.functionResp).toBe("complex result");
     });
 
@@ -1568,6 +1586,151 @@ describe("ToolsService", () => {
       expect(foundTools).toHaveLength(2);
       expect(foundTools.map(t => t.function.name)).toContain("tool1");
       expect(foundTools.map(t => t.function.name)).toContain("tool2");
+    });
+  });
+
+  describe("_ctx per-call context threading", () => {
+    const positionalTool: Tool = {
+      type: "function",
+      function: {
+        name: "posCtxTool",
+        parameters: {
+          type: "object",
+          positional: true,
+          properties: {
+            arg1: { type: "string" },
+          },
+          required: ["arg1"],
+        },
+      },
+    };
+
+    const nonPositionalTool: Tool = {
+      type: "function",
+      function: {
+        name: "nonPosCtxTool",
+        parameters: {
+          type: "object",
+          properties: {
+            input: { type: "string" },
+          },
+          required: ["input"],
+        },
+      },
+    };
+
+    it("passes _ctx as the last positional argument for positional tools", async () => {
+      const fn = jest.fn().mockResolvedValue("ok");
+      toolsService.addTool(positionalTool);
+      toolsService.setFunction("posCtxTool", fn);
+
+      const caller = { name: "TestAgent" };
+      await toolsService.callTool(
+        {
+          id: "c1",
+          type: "function",
+          function: {
+            name: "posCtxTool",
+            arguments: JSON.stringify({ arg1: "hello" }),
+          },
+        },
+        undefined,
+        { caller, taskId: "task-123" }
+      );
+
+      const callArgs = fn.mock.calls[0];
+      expect(callArgs[0]).toBe("hello");
+      const ctx = callArgs[1] as ToolCallContext;
+      expect(ctx).toBeDefined();
+      expect(ctx.caller).toBe(caller);
+      expect(ctx.taskId).toBe("task-123");
+      expect(ctx.Tools).toBe(toolsService);
+    });
+
+    it("merges _ctx onto the args object for non-positional tools", async () => {
+      const fn = jest.fn().mockResolvedValue("ok");
+      toolsService.addTool(nonPositionalTool);
+      toolsService.setFunction("nonPosCtxTool", fn);
+
+      const caller = { name: "TestAgent" };
+      await toolsService.callTool(
+        {
+          id: "c2",
+          type: "function",
+          function: {
+            name: "nonPosCtxTool",
+            arguments: JSON.stringify({ input: "value" }),
+          },
+        },
+        undefined,
+        { caller, taskId: "task-456" }
+      );
+
+      const argObj = fn.mock.calls[0][0];
+      expect(argObj.input).toBe("value");
+      expect(argObj._ctx).toBeDefined();
+      expect(argObj._ctx.caller).toBe(caller);
+      expect(argObj._ctx.taskId).toBe("task-456");
+      expect(argObj._ctx.Tools).toBe(toolsService);
+    });
+
+    it("still provides a _ctx (with Tools) when no callContext is passed", async () => {
+      const fn = jest.fn().mockResolvedValue("ok");
+      toolsService.addTool(nonPositionalTool);
+      toolsService.setFunction("nonPosCtxTool", fn);
+
+      await toolsService.callTool({
+        id: "c3",
+        type: "function",
+        function: {
+          name: "nonPosCtxTool",
+          arguments: JSON.stringify({ input: "value" }),
+        },
+      });
+
+      const argObj = fn.mock.calls[0][0];
+      expect(argObj._ctx).toBeDefined();
+      expect(argObj._ctx.Tools).toBe(toolsService);
+      expect(argObj._ctx.caller).toBeUndefined();
+    });
+
+    it("does not leak _ctx into the multi_tool_use.parallel extraction", async () => {
+      // The parallel path should extract calls from the ORIGINAL args, not the
+      // _ctx-augmented ones.
+      const parallelTool: Tool = {
+        type: "function",
+        function: {
+          name: "multi_tool_use.parallel",
+          parameters: { type: "object", properties: {} },
+        },
+      };
+      const inner = jest
+        .fn()
+        .mockResolvedValue(["r1", "r2"]);
+      toolsService.addTool(parallelTool);
+      toolsService.setFunction("multi_tool_use.parallel", inner);
+
+      const result = await toolsService.callTool(
+        {
+          id: "c4",
+          type: "function",
+          function: {
+            name: "multi_tool_use.parallel",
+            arguments: JSON.stringify([
+              { recipient_name: "functions.a", parameters: {} },
+              { recipient_name: "functions.b", parameters: {} },
+            ]),
+          },
+        },
+        undefined,
+        { caller: {}, taskId: "t" }
+      );
+
+      // Two tool messages, one per parallel call — proves extraction used the
+      // original array shape rather than an _ctx-wrapped object.
+      expect(result.toolMessages).toHaveLength(2);
+      expect(result.toolMessages[0].name).toBe("a");
+      expect(result.toolMessages[1].name).toBe("b");
     });
   });
 });

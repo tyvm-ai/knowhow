@@ -79,6 +79,10 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
       "--task-id <taskId>",
       "Pre-generated task ID (used with --sync-fs for predictable agent directory path)"
     )
+    .option(
+      "--parent-task-id <taskId>",
+      "The taskId of the parent agent that spawned this task (for reporting back)"
+    )
     .option("--prompt-file <path>", "Custom prompt template file with {text}")
     .option("--input <text>", "Task input (fallback to stdin if not provided)")
     .option(

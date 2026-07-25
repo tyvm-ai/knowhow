@@ -17,6 +17,8 @@ export interface SyncerOptions {
   existingKnowhowTaskId?: string;
   /** Agent name to persist in metadata.json */
   agentName?: string;
+  /** The taskId of the parent agent that spawned this task, if any. */
+  parentTaskId?: string;
 }
 
 export interface AgentSyncer {
@@ -73,6 +75,7 @@ export class SyncerService implements AgentSyncer {
       taskId: options.taskId,
       prompt: options.prompt,
       agentName: options.agentName,
+      parentTaskId: options.parentTaskId,
     });
 
     // Optionally create web sync task

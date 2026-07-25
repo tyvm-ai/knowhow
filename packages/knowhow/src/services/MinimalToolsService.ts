@@ -1,4 +1,4 @@
-import { ToolsService, ToolContext } from "./Tools";
+import { ToolsService, ToolContext, ToolCallContext } from "./Tools";
 import { Tool, ToolCall } from "../clients/types";
 import { callTool } from "../agents/tools/minimal/callTool";
 import { inspectTools } from "../agents/tools/minimal/inspectTools";
@@ -107,7 +107,11 @@ export class MinimalToolsService extends ToolsService {
    * Used both by direct calls (agent calls the tool by its real name) and by
    * the callTool meta-tool (agent calls callTool({ name, args })).
    */
-  private async dispatchToTool(toolCall: ToolCall, resolvedName: string) {
+  private async dispatchToTool(
+    toolCall: ToolCall,
+    resolvedName: string,
+    callContext?: ToolCallContext
+  ) {
     // Temporarily surface the target tool in the visible list so base
     // ToolsService.callTool can find its definition, then restore state.
     const alreadyVisible = super
@@ -123,7 +127,7 @@ export class MinimalToolsService extends ToolsService {
       }
     }
 
-    const result = await super.callTool(toolCall, [resolvedName]);
+    const result = await super.callTool(toolCall, [resolvedName], callContext);
 
     // Remove the temporarily-added tool to keep the visible set stable
     if (!alreadyVisible) {
@@ -136,7 +140,11 @@ export class MinimalToolsService extends ToolsService {
   /**
    * Delegates to the full catalog for resolution, then runs via callToolByName.
    */
-  async callTool(toolCall: ToolCall, enabledTools?: string[]): Promise<any> {
+  async callTool(
+    toolCall: ToolCall,
+    enabledTools?: string[],
+    callContext?: ToolCallContext
+  ): Promise<any> {
     const functionName = toolCall.function.name;
 
     // Base tools (callTool, inspectTools, finalAnswer) → standard dispatch
@@ -145,7 +153,7 @@ export class MinimalToolsService extends ToolsService {
       .some((t) => t.function.name === functionName);
 
     if (isBaseTool) {
-      return super.callTool(toolCall, this.getToolNames());
+      return super.callTool(toolCall, this.getToolNames(), callContext);
     }
 
     // Extended tools: called directly by name (not via the callTool meta-tool).
@@ -158,10 +166,10 @@ export class MinimalToolsService extends ToolsService {
     );
 
     if (existsInCatalog) {
-      return this.dispatchToTool(toolCall, functionName);
+      return this.dispatchToTool(toolCall, functionName, callContext);
     }
 
     // Not found anywhere - let the base class produce the standard error.
-    return super.callTool(toolCall, [functionName]);
+    return super.callTool(toolCall, [functionName], callContext);
   }
 }

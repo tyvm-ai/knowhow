@@ -16,6 +16,28 @@ import { PluginService } from "../plugins/plugins";
 import { McpService } from "./Mcp";
 import { BehaviorsService } from "./BehaviorsService";
 
+/**
+ * Per-invocation context passed into a tool call as `_ctx`.
+ *
+ * This is threaded through `callTool` and delivered to the tool implementation
+ * as the LAST positional argument (for positional tools) or merged onto the
+ * args object under the `_ctx` key (for non-positional tools).
+ *
+ * It enables self-referential tools: the calling agent can pass itself in via
+ * `caller`, so tools can read `caller.getCurrentTaskId()`, call
+ * `caller.addPendingUserMessage(...)`, subscribe to its events, etc. — without
+ * relying on shared mutable state on the ToolsService (which would break under
+ * concurrent tool usage).
+ */
+export interface ToolCallContext {
+  /** The agent (or other entity) that initiated this tool call. */
+  caller?: any;
+  /** The task id of the calling agent, if known. */
+  taskId?: string;
+  /** Arbitrary additional per-call context. */
+  [key: string]: any;
+}
+
 export interface ToolContext {
   Agents?: AgentService;
   Events?: EventService;
@@ -174,7 +196,11 @@ export class ToolsService {
     this.addFunctions(functions);
   }
 
-  async callTool(toolCall: ToolCall, enabledTools = this.getToolNames()) {
+  async callTool(
+    toolCall: ToolCall,
+    enabledTools = this.getToolNames(),
+    callContext?: ToolCallContext
+  ) {
     const functionName = toolCall.function.name;
     let functionArgs: any;
 
@@ -219,9 +245,20 @@ export class ToolsService {
       const properties = toolDefinition?.function?.parameters?.properties || {};
       const isPositional =
         toolDefinition?.function?.parameters?.positional || false;
-      const fnArgs = isPositional
+
+      // Thread the per-call context (`_ctx`) into the invocation so tools can be
+      // self-referential (e.g. read the calling agent off `_ctx.caller`).
+      // - positional tools receive `_ctx` as the LAST positional argument
+      // - non-positional tools receive it merged onto the args object as `_ctx`
+      const ctx: ToolCallContext = { ...(callContext || {}), Tools: this };
+
+      const positionalArgs = isPositional
         ? Object.keys(properties).map((p) => functionArgs[p])
         : functionArgs;
+
+      const fnArgs = isPositional
+        ? [...positionalArgs, ctx]
+        : { ...functionArgs, _ctx: ctx };
 
       // Execute the function
       const rawResponse = isPositional
@@ -250,7 +287,10 @@ export class ToolsService {
       // Handle special case for parallel tool use
       if (functionName === "multi_tool_use.parallel") {
         // Extract tool_calls array from arguments
-        const toolCallsArg = Array.isArray(fnArgs) ? fnArgs : [fnArgs];
+        // Use the original (un-`_ctx`-augmented) args for extraction.
+        const toolCallsArg = Array.isArray(functionArgs)
+          ? functionArgs
+          : [functionArgs];
         const toolCalls = Array.isArray(toolCallsArg) ? toolCallsArg : [];
 
         const calls = toolCalls as {

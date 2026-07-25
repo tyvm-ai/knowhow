@@ -21,6 +21,7 @@ export * from "./aiClient";
 export * from "./googleSearch";
 export * from "./stringReplace";
 export * from "./startAgentTask";
+export * from "./replyToParent";
 export * from "./ycmd";
 export * from "./mcp";
 export * from "./skills";

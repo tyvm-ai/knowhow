@@ -16,6 +16,15 @@ export interface StartAgentTaskParams {
   maxSpendLimit?: number;
   /** When true, wait for the agent subprocess to exit before resolving (for generate pipelines). */
   waitForCompletion?: boolean;
+  /**
+   * The taskId of the parent agent that is spawning this task. Passed to the
+   * child via --parent-task-id so the child knows who to report back to. When
+   * omitted, it is auto-populated from the per-call context (`_ctx.taskId`) of
+   * the spawning agent.
+   */
+  parentTaskId?: string;
+  /** Per-call context injected by ToolsService.callTool (contains caller + taskId). */
+  _ctx?: { caller?: any; taskId?: string; [key: string]: any };
 }
 
 const PROCESSES_DIR = path.join(process.cwd(), ".knowhow", "processes");
@@ -66,6 +75,8 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
     maxTimeLimit,
     maxSpendLimit,
     waitForCompletion,
+    parentTaskId: explicitParentTaskId,
+    _ctx,
   } = params;
   if (!prompt) {
     throw new Error("prompt is required to create a chat task");
@@ -74,6 +85,11 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
   // Use provided taskId if given, otherwise generate one from the prompt
   const taskId = providedTaskId ?? generateTaskId(prompt);
   const agentTaskDir = path.join(AGENTS_DIR, taskId);
+
+  // Determine the parent taskId: explicit param wins, otherwise fall back to
+  // the spawning agent's taskId carried in the per-call context (`_ctx`).
+  const parentTaskId =
+    explicitParentTaskId ?? _ctx?.taskId ?? (_ctx?.caller as any)?.currentTaskId;
 
   // Build args array (no shell escaping needed - args are passed directly)
   const args: string[] = ["agent"];
@@ -107,6 +123,10 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
 
   if (maxSpendLimit !== undefined) {
     args.push("--max-spend-limit", String(maxSpendLimit));
+  }
+  if (parentTaskId) {
+    // Tell the child who spawned it so it can report back to the parent.
+    args.push("--parent-task-id", parentTaskId);
   }
   if (resume) {
     // --resume is a boolean flag; task ID is already passed via --task-id above
@@ -237,6 +257,12 @@ export const startAgentTaskDefinition: Tool = {
           type: "boolean",
           description:
             "Resume a previously started task from where it left off. Must be used together with taskId which identifies the task to resume.",
+        },
+        parentTaskId: {
+          type: "string",
+          description:
+            "The taskId of the parent that should be notified by this child (e.g. via replyToParent). " +
+            "If omitted, it is auto-populated from the spawning agent's own taskId.",
         },
       },
       required: ["prompt"],

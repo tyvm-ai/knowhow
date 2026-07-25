@@ -575,7 +575,14 @@ export abstract class BaseAgent implements IAgent {
     };
 
     const { functionResp, toolMessages } = await this.makeInterruptible(
-      this.tools.callTool(toolCall, this.getEnabledToolNames()),
+      // Pass this agent in as the per-call context (`_ctx`) so tools can be
+      // self-referential: they can read `_ctx.caller` (this agent) and
+      // `_ctx.taskId` to, e.g., look up the current task, send pending
+      // messages, or subscribe to the caller's events.
+      this.tools.callTool(toolCall, this.getEnabledToolNames(), {
+        caller: this,
+        taskId: this.currentTaskId,
+      }),
       interruptResult
     );
 

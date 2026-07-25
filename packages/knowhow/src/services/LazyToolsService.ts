@@ -1,5 +1,5 @@
 import { minimatch } from "minimatch";
-import { ToolsService, ToolContext } from "./Tools";
+import { ToolsService, ToolContext, ToolCallContext } from "./Tools";
 import { Tool } from "../clients/types";
 import { ToolCall } from "../clients/types";
 import {
@@ -140,7 +140,11 @@ export class LazyToolsService extends ToolsService {
   }
 
   // Override callTool to auto-enable tools that are in allTools but not yet enabled
-  async callTool(toolCall: ToolCall, enabledTools?: string[]) {
+  async callTool(
+    toolCall: ToolCall,
+    enabledTools?: string[],
+    callContext?: ToolCallContext
+  ) {
     const functionName = toolCall.function.name;
 
     // If the tool isn't currently visible but exists in allTools, auto-enable it.
@@ -160,7 +164,7 @@ export class LazyToolsService extends ToolsService {
 
     // Always use the current enabled tool names after any auto-enable above,
     // so the base class check sees the freshly-enabled tool in the allowed list.
-    return super.callTool(toolCall, this.getToolNames());
+    return super.callTool(toolCall, this.getToolNames(), callContext);
   }
 
   // Internal: Update visible tools based on patterns

@@ -732,6 +732,7 @@ export class AgentModule extends BaseChatModule {
     chatHistory?: ChatInteraction[];
     run?: boolean; // whether to run immediately
     taskId?: string; // optional pre-generated taskId
+    parentTaskId?: string; // taskId of the parent agent that spawned this task
   }) {
     const { input, chatHistory = [], agentName } = options;
     const agentContext = services().Agents.getAgentContext();
@@ -801,6 +802,7 @@ export class AgentModule extends BaseChatModule {
         syncFs: options.syncFs,
         existingKnowhowTaskId: options.existingKnowhowTaskId,
         agentName,
+        parentTaskId: options.parentTaskId,
       });
 
       const webTaskId = syncer.getCreatedWebTaskId();

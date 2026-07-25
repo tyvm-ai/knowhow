@@ -11,6 +11,8 @@ export interface FsSyncOptions {
   taskId: string;
   prompt: string;
   agentName?: string;
+  /** The taskId of the parent agent that spawned this task, if any. */
+  parentTaskId?: string;
 }
 
 /**
@@ -64,6 +66,7 @@ export class AgentSyncFs {
         taskId: this.taskId,
         prompt: options.prompt,
         agentName: options.agentName || "unknown",
+        ...(options.parentTaskId ? { parentTaskId: options.parentTaskId } : {}),
         startTime: new Date().toISOString(),
         status: "running",
       });
