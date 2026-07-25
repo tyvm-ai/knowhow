@@ -79,6 +79,7 @@ The following commands are available from the CLI modules shown in the code. (Ad
 | `/pause` | Pause the attached agent | `agent:attached` |
 | `/unpause` | Unpause the attached agent | `agent:attached` |
 | `/kill` | Terminate the attached agent | `agent:attached` |
+| `/compact` | Force the attached agent to summarize/compact its conversation now, dropping back to a much cheaper context size | `agent:attached` |
 | `/detach` | Detach from the attached agent task (leaves agent running) | `agent:attached` |
 | `/done` | Exit the current agent interaction (detaches) | `agent:attached` |
 

@@ -395,6 +395,7 @@ export class SessionsModule extends BaseChatModule {
             taskId: id,
             threads: normalizedThreads,
             input: additionalContext?.trim() || initialInput || "",
+            interactive: true,
           });
           return;
         } catch (e: any) {

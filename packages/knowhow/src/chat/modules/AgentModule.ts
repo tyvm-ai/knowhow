@@ -144,6 +144,32 @@ export class AgentModule extends BaseChatModule {
         },
       },
       {
+        name: "compact",
+        description:
+          "Force the attached agent to compact (summarize) its conversation now, dropping back to a much cheaper context size",
+        modes: ["agent:attached"],
+        handler: async (_args: string[]): Promise<void> => {
+          if (!this.attachedAgent) {
+            console.log("No attached agent to compact.");
+            return;
+          }
+          if (typeof this.attachedAgent.requestCompact !== "function") {
+            console.log(
+              "This agent does not support manual compaction (remote/watcher-backed agents compact automatically)."
+            );
+            return;
+          }
+          this.attachedAgent.requestCompact();
+          // Do NOT interrupt — compaction should not cancel the in-progress
+          // tool call / AI completion. The _forceCompact flag is picked up at
+          // the compression check on the next loop iteration, once the current
+          // step finishes naturally.
+          console.log(
+            "🗜  Compaction requested — the agent will summarize and shrink its context on the next step."
+          );
+        },
+      },
+      {
         name: "reasoning_effort",
         description:
           "Set the reasoning effort for the agent (none, low, medium, high). Use 'none' to disable thinking on models that support it.",
@@ -949,33 +975,27 @@ export class AgentModule extends BaseChatModule {
           role: "assistant",
         });
       };
-      if (agent.eventTypes.toolCall) {
-        agent.agentEvents.on(agent.eventTypes.toolCall, toolCallHandler);
-      }
-      if (agent.eventTypes.toolUsed) {
-        agent.agentEvents.on(agent.eventTypes.toolUsed, toolResultHandler);
-      }
-      if (agent.eventTypes.agentSay) {
-        agent.agentEvents.on(agent.eventTypes.agentSay, agentSayHandler);
+      // Only register these inline render listeners for the direct CLI path
+      // (options.run === true). The interactive chat / resume / attach paths
+      // call attachedAgentChatLoop -> wireAgentRendering, which registers its
+      // own keyed render listeners. Registering both would render every
+      // toolCall / toolResult / agentMessage twice.
+      if (options.run) {
+        if (agent.eventTypes.toolCall) {
+          agent.agentEvents.on(agent.eventTypes.toolCall, toolCallHandler);
+        }
+        if (agent.eventTypes.toolUsed) {
+          agent.agentEvents.on(agent.eventTypes.toolUsed, toolResultHandler);
+        }
+        if (agent.eventTypes.agentSay) {
+          agent.agentEvents.on(agent.eventTypes.agentSay, agentSayHandler);
+        }
       }
       // Track the active task on the renderer so it doesn't filter out events
       this.renderer.setActiveTaskId(taskId);
       this.activeAgentTaskId = taskId;
 
       const taskCompleted = new Promise<string>((resolve) => {
-          // Remove tool rendering listeners
-          if (agent.eventTypes.toolCall) {
-            agent.agentEvents.removeListener(agent.eventTypes.toolCall, toolCallHandler);
-          }
-          if (agent.eventTypes.toolUsed) {
-            agent.agentEvents.removeListener(agent.eventTypes.toolUsed, toolResultHandler);
-          }
-          if (agent.eventTypes.agentSay) {
-            agent.agentEvents.removeListener(agent.eventTypes.agentSay, agentSayHandler);
-          }
-          // Clear active task on renderer
-          this.renderer.setActiveTaskId(undefined);
-          this.activeAgentTaskId = undefined;
         agent.agentEvents.once(agent.eventTypes.done, async (doneMsg) => {
           console.log("🎯 [AgentModule] Task Completed");
           done = true;
@@ -996,6 +1016,19 @@ export class AgentModule extends BaseChatModule {
           );
           // Update task info
           taskInfo = this.taskRegistry.get(taskId);
+          // Remove tool rendering listeners
+          if (agent.eventTypes.toolCall) {
+            agent.agentEvents.removeListener(agent.eventTypes.toolCall, toolCallHandler);
+          }
+          if (agent.eventTypes.toolUsed) {
+            agent.agentEvents.removeListener(agent.eventTypes.toolUsed, toolResultHandler);
+          }
+          if (agent.eventTypes.agentSay) {
+            agent.agentEvents.removeListener(agent.eventTypes.agentSay, agentSayHandler);
+          }
+          // Clear active task on renderer
+          this.renderer.setActiveTaskId(undefined);
+          this.activeAgentTaskId = undefined;
 
           // Wait for AgentSync to finish before resolving
           await syncer.waitForFinalization();
@@ -1094,6 +1127,7 @@ export class AgentModule extends BaseChatModule {
     threads: Message[][];
     messageId?: string;
     taskId?: string;
+    interactive?: boolean;
   }): Promise<{ taskCompleted: Promise<string> }> {
     const { agentName, input, threads, messageId, taskId } = options;
 
@@ -1153,7 +1187,29 @@ export class AgentModule extends BaseChatModule {
       run: false,
     });
 
-    // Start agent with prior messages as context
+    // Interactive (chat REPL) resume: route through the attached chat loop so the
+    // renderer is wired the same way as a normal chat interaction / /attach, and
+    // the user gets agent:attached mode commands (/poke, /detach, /kill, /logs).
+    if (options.interactive) {
+      await this.attachedAgentChatLoop(
+        result.taskId,
+        result.agent,
+        resumePrompt,
+        resumeMessages
+      );
+      return { taskCompleted: result.taskCompleted };
+    }
+
+    // Non-interactive (headless CLI `knowhow agent --resume`) path: setupAgent was
+    // called with run:false, so no inline render listeners were registered. Wire
+    // rendering here (same keyed listeners as attachedAgentChatLoop) so the CLI
+    // still shows the agent's messages / tool calls, then start the agent.
+    this.wireAgentRendering(
+      result.taskId,
+      result.agent.agentEvents,
+      result.agent.eventTypes,
+      result.agent.name
+    );
     result.agent.call(resumePrompt, resumeMessages);
 
     return { taskCompleted: result.taskCompleted };

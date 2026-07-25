@@ -58,6 +58,8 @@ export interface AttachableAgent {
   unpause(): void | Promise<void>;
   kill(): void | Promise<void>;
   interrupt(message?: string): void | Promise<void>;
+  /** Force conversation compaction at the next loop iteration (local agents only). */
+  requestCompact?(): void;
   addPendingUserMessage(message: Message): void;
 }
 

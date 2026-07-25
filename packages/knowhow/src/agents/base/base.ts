@@ -63,15 +63,28 @@ export abstract class BaseAgent implements IAgent {
   protected turnCount = 0;
   protected totalCostUsd = 0;
   protected currentThread = 0;
-  protected reasoningEffort: CompletionOptions["reasoning_effort"] | undefined = undefined;
+  protected reasoningEffort: CompletionOptions["reasoning_effort"] | undefined =
+    undefined;
   protected summarizeReasoning: boolean | undefined = undefined;
   protected totalInputTokens = 0;
   protected totalOutputTokens = 0;
   protected totalCacheReadTokens = 0;
   protected totalCacheWriteTokens = 0;
 
+  // The real prompt/input token count reported by the most recent completion
+  // response (input + cache read + cache write). This reflects exactly how many
+  // tokens the model consumed for the last request and is far more accurate than
+  // the whitespace-based estimate in getMessagesLength(). Used to decide when to
+  // compact. 0 means "no real usage seen yet" (fall back to the estimate).
+  protected lastPromptTokens = 0;
+
   protected compressThreshold = 30000;
   protected compressMinMessages = 30;
+
+  // Set when the user manually requests compaction (e.g. via /compact while
+  // attached). Forces the next loop iteration to compress the conversation
+  // regardless of whether the token threshold has been reached.
+  protected _forceCompact = false;
 
   // Interrupt support: resolves the currently awaited tool call or completion
   private _interruptResolve: (() => void) | null = null;
@@ -179,10 +192,23 @@ export abstract class BaseAgent implements IAgent {
   }
 
   /**
+   * Request that the conversation be compacted at the next loop iteration,
+   * regardless of whether the token threshold has been reached. Combined with
+   * an interrupt(), this lets a user force compaction on an attached agent
+   * mid-task (e.g. via the `/compact` chat command) to drop back to a much
+   * cheaper per-interaction context size.
+   */
+  requestCompact() {
+    this._forceCompact = true;
+  }
+
+  /**
    * Returns the effective compress threshold for the current model.
    * If the user has manually set a custom threshold (different from the default 30k),
    * that value is used as-is. Otherwise, the threshold is dynamically computed as
-   * 85% of the model's context window limit, falling back to DEFAULT_CONTEXT_LIMIT.
+   * 70% of the model's context window limit (or tiered-pricing threshold), falling
+   * back to DEFAULT_CONTEXT_LIMIT. The 70% factor leaves headroom so token-count
+   * lag doesn't push a request past the model/tier limit before compression fires.
    */
   getCompressThreshold(): number {
     if (this.compressThreshold !== DEFAULT_CONTEXT_LIMIT) {
@@ -194,7 +220,7 @@ export abstract class BaseAgent implements IAgent {
     );
     const contextLimit = result?.contextLimit ?? DEFAULT_CONTEXT_LIMIT;
     const threshold = result?.threshold ?? contextLimit;
-    return Math.floor(threshold * 0.85);
+    return Math.floor(threshold * 0.7);
   }
 
   setMaxTurns(maxTurns: number | null) {
@@ -219,6 +245,7 @@ export abstract class BaseAgent implements IAgent {
     this.totalOutputTokens = 0;
     this.totalCacheReadTokens = 0;
     this.totalCacheWriteTokens = 0;
+    this.lastPromptTokens = 0;
     this.status = this.eventTypes.inProgress;
     this.turnCount = 0;
     this.startTimeMs = Date.now();
@@ -228,6 +255,7 @@ export abstract class BaseAgent implements IAgent {
     // can't fire against the new task.
     this._interruptResolve = null;
     this._pendingInterrupt = false;
+    this._forceCompact = false;
 
     // Emit event for plugin integration
     const id = taskId || this.startTimeMs.toString();
@@ -472,6 +500,18 @@ export abstract class BaseAgent implements IAgent {
       0;
     const cacheWriteTokens =
       usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? 0;
+
+    // Record the real prompt token count for this single completion (not the
+    // running total). This represents the full context the model processed for
+    // the request: fresh input + cache-read + cache-write tokens. It is used by
+    // the compaction check as an accurate replacement for the whitespace-based
+    // getMessagesLength() estimate. Only track it for "prompt-shaped" usage
+    // (i.e. when there are input tokens) so a usage-less interrupt stub doesn't
+    // reset it to 0.
+    const promptTokens = inputTokens + cacheReadTokens + cacheWriteTokens;
+    if (promptTokens > 0) {
+      this.lastPromptTokens = promptTokens;
+    }
 
     this.totalInputTokens += inputTokens;
     this.totalOutputTokens += outputTokens;
@@ -924,8 +964,12 @@ export abstract class BaseAgent implements IAgent {
           tools: this.getEnabledTools(),
           tool_choice: "auto",
           long_ttl_cache: this.runTime() > 300_000,
-          ...(this.reasoningEffort !== undefined && { reasoning_effort: this.reasoningEffort }),
-          ...(this.summarizeReasoning !== undefined && { reasoning_summary: this.summarizeReasoning }),
+          ...(this.reasoningEffort !== undefined && {
+            reasoning_effort: this.reasoningEffort,
+          }),
+          ...(this.summarizeReasoning !== undefined && {
+            reasoning_summary: this.summarizeReasoning,
+          }),
         },
         { interruptValue: interruptResponse }
       );
@@ -1116,18 +1160,37 @@ export abstract class BaseAgent implements IAgent {
         return firstMessage.content;
       }
 
-      if (
-        this.getMessagesLength(messages) > this.getCompressThreshold() &&
-        messages.length > this.compressMinMessages
-      ) {
+      // Compress when either the token threshold is exceeded OR the user has
+      // manually requested compaction (e.g. via /compact on an attached agent).
+      // A manual request bypasses the token threshold but still respects the
+      // minimum-message guard so we never try to compress a tiny conversation.
+      //
+      // The size check uses getContextTokenCount(), which prefers the REAL
+      // prompt token count from the last completion response over the
+      // whitespace-based estimate — so it compares real tokens against the
+      // real (token-based) compress threshold.
+      const contextTokens = this.getContextTokenCount(messages);
+      const overThreshold =
+        contextTokens > this.getCompressThreshold() &&
+        messages.length > this.compressMinMessages;
+
+      if (overThreshold || this._forceCompact) {
         const taskBreakdown = await this.getTaskBreakdown(messages);
         this.log(
-          `Compressing messages: ${this.getMessagesLength(
-            messages
-          )} exceeds ${this.getCompressThreshold()}`
+          this._forceCompact
+            ? `Compacting messages (manual /compact request): ${contextTokens} tokens`
+            : `Compressing messages: ${contextTokens} tokens exceeds ${this.getCompressThreshold()}`
         );
+        this._forceCompact = false;
         messages = await this.compressMessages(messages, startIndex, endIndex);
         this.startNewThread(messages);
+        // Reset the real-token tracker. compressMessages() ran a completion over
+        // the FULL (pre-compression) thread, so lastPromptTokens now reflects
+        // that large context — not the small compressed thread. Zeroing it makes
+        // getContextTokenCount() fall back to the whitespace estimate of the new
+        // (small) thread until the next real completion reports fresh usage,
+        // preventing an immediate false re-compaction on the following iteration.
+        this.lastPromptTokens = 0;
       }
 
       if (["assistant", "tool"].includes(messages[messages.length - 1].role)) {
@@ -1293,6 +1356,33 @@ export abstract class BaseAgent implements IAgent {
 
   getMessagesLength(messages: Message[]) {
     return JSON.stringify(messages).split(" ").length;
+  }
+
+  /**
+   * Returns the best available estimate of how many tokens the current
+   * conversation occupies in the model's context window, for the purpose of
+   * deciding when to compact.
+   *
+   * Prefers the REAL prompt token count reported by the most recent completion
+   * response (lastPromptTokens) — this is exactly how many tokens the model
+   * consumed for the last request (fresh input + cache read + cache write), so
+   * it is far more accurate than the whitespace-based getMessagesLength()
+   * heuristic (which counts space-separated chunks of the JSON-stringified
+   * messages and can be off by a large factor).
+   *
+   * Falls back to the whitespace estimate when no real usage has been observed
+   * yet (e.g. before the first completion, or when a provider omits usage).
+   *
+   * Note: lastPromptTokens reflects the context size at the START of the last
+   * request, so it lags by whatever the model generated + tool results appended
+   * since then. That lag is intentionally covered by the 70% headroom baked
+   * into getCompressThreshold().
+   */
+  getContextTokenCount(messages: Message[]): number {
+    if (this.lastPromptTokens > 0) {
+      return this.lastPromptTokens;
+    }
+    return this.getMessagesLength(messages);
   }
 
   /**
