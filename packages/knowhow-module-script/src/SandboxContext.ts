@@ -65,6 +65,24 @@ export class SandboxContext {
   };
 
   /**
+  /**
+   * List the names of all tools available to this script (respecting the
+   * ToolsService's enabled set). Used by the generic function resolver to know
+   * which bare identifiers should route to callTool.
+   */
+  listToolNames(): string[] {
+    try {
+      const names =
+        typeof (this.toolsService as any).getToolNames === "function"
+          ? (this.toolsService as any).getToolNames()
+          : [];
+      return Array.isArray(names) ? names : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Call a tool through the tools service
    */
   async callTool(toolName: string, parameters: any): Promise<any> {
@@ -117,6 +135,69 @@ export class SandboxContext {
   }
 
   /**
+   * Run another registered agent as a graph node. Unlike `llm()` (a single
+   * stateless completion), the target agent can use tools, loop, and maintain
+   * its own context. Returns the agent's final answer as a plain string, so it
+   * composes cleanly inside a graph (fan-out with Promise.all, gates on the
+   * result, feedback loops, etc.).
+   *
+   * This is a thin, ergonomic wrapper over `callTool('agentCall', ...)` that
+   * unwraps `{ functionResp }` for you and normalizes the result to a string.
+   */
+  async agent(agentName: string, query: string): Promise<string> {
+    if (typeof agentName !== "string" || !agentName) {
+      throw new Error("agent(agentName, query): agentName must be a non-empty string");
+    }
+    if (typeof query !== "string") {
+      query = String(query);
+    }
+
+    this.tracer.emitEvent("agent_call_start", { agentName });
+
+    const result = await this.callTool("agentCall", { agentName, query });
+    // callTool returns the raw tool result; agentCall's answer is in functionResp.
+    // As of the cost-tracking change, agentCall resolves { answer, costUsd }.
+    const resp =
+      result && typeof result === "object" && "functionResp" in result
+        ? (result as any).functionResp
+        : result;
+
+    let answer: unknown = resp;
+    let costUsd = 0;
+    if (resp && typeof resp === "object" && "answer" in resp) {
+      answer = (resp as any).answer;
+      costUsd = Number((resp as any).costUsd) || 0;
+    }
+
+    const text =
+      answer === null || answer === undefined
+        ? ""
+        : typeof answer === "string"
+        ? answer
+        : JSON.stringify(answer);
+
+    // Account the subagent's spend against the script's cost budget.
+    if (costUsd > 0) {
+      if (!this.policyEnforcer.checkCost(costUsd)) {
+        this.tracer.recordCost(costUsd);
+        this.policyEnforcer.recordCost(costUsd);
+        throw new Error(
+          `Cost quota exceeded after agent '${agentName}' spent $${costUsd.toFixed(4)}`
+        );
+      }
+      this.tracer.recordCost(costUsd);
+      this.policyEnforcer.recordCost(costUsd);
+    }
+
+    this.tracer.emitEvent("agent_call_success", {
+      agentName,
+      answerLength: text.length,
+      costUsd,
+    });
+    return text;
+  }
+
+  /**
    * Call LLM through the clients service
    */
   async llm(
@@ -157,6 +238,20 @@ export class SandboxContext {
         "",
         completionOptions
       );
+
+      // Account model spend against the cost budget.
+      const cost = Number((response as any)?.usd_cost) || 0;
+      if (cost > 0) {
+        if (!this.policyEnforcer.checkCost(cost)) {
+          this.tracer.recordCost(cost);
+          this.policyEnforcer.recordCost(cost);
+          throw new Error(
+            `Cost quota would be exceeded by llm() call ($${cost.toFixed(4)})`
+          );
+        }
+        this.tracer.recordCost(cost);
+        this.policyEnforcer.recordCost(cost);
+      }
 
       this.tracer.emitEvent("llm_call_success", {
         model: response.model,

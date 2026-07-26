@@ -316,12 +316,59 @@ export class ScriptExecutor {
     await exposeAsync("llm", (messages, options) =>
       sandboxContext.llm(messages, options || {})
     );
+    await exposeAsync("agent", (agentName, query) =>
+      sandboxContext.agent(agentName as string, query as string)
+    );
     await exposeAsync("sleep", (ms) => sandboxContext.sleep(ms));
 
     await exposeSync("createArtifact", (name, content, type) =>
       sandboxContext.createArtifact(name as string, content, type)
     );
     await exposeSync("getQuotaUsage", () => sandboxContext.getQuotaUsage());
+
+    // Generic function resolver: for every available tool that isn't already a
+    // reserved global, expose a top-level function of the same name that routes
+    // to callTool(<name>, params). This lets scripts write `textSearch({...})`
+    // instead of `callTool('textSearch', {...})`. Reserved globals (callTool,
+    // llm, agent, sleep, console, etc.) are never shadowed.
+    const reserved = new Set([
+      "callTool",
+      "llm",
+      "agent",
+      "sleep",
+      "createArtifact",
+      "getQuotaUsage",
+      "console",
+      "globalThis",
+      "executeScript",
+    ]);
+    let toolNames: string[] = [];
+    try {
+      toolNames = sandboxContext
+        .listToolNames()
+        .filter(
+          (n) =>
+            typeof n === "string" &&
+            /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(n) &&
+            !reserved.has(n)
+        );
+    } catch {
+      toolNames = [];
+    }
+    if (toolNames.length) {
+      await globalRef.set(
+        "__tool_names",
+        new ivm.ExternalCopy(toolNames).copyInto()
+      );
+      await vmContext.eval(`
+        for (const __name of globalThis.__tool_names) {
+          if (typeof globalThis[__name] === "undefined") {
+            globalThis[__name] = ((__n) => (params) => callTool(__n, params || {}))(__name);
+          }
+        }
+      `);
+      tracer.emitEvent("tool_globals_registered", { count: toolNames.length });
+    }
 
     for (const level of ["log", "info", "warn", "error"] as const) {
       await globalRef.set(

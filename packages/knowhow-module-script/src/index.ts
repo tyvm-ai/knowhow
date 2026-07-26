@@ -7,11 +7,15 @@ import {
 import { executeScript } from "./handler";
 import { executeScriptDefinition } from "./definition";
 import { ScriptExecutor } from "./ScriptExecutor";
+import { checkScript, formatDiagnostics } from "./checkScript";
+import { generateScriptTypeDefs } from "./typeDefs";
 
 export { ScriptExecutor } from "./ScriptExecutor";
 export { SandboxContext } from "./SandboxContext";
 export { ScriptPolicyEnforcer } from "./ScriptPolicy";
 export { ScriptTracer } from "./ScriptTracer";
+export { checkScript, formatDiagnostics } from "./checkScript";
+export { generateScriptTypeDefs } from "./typeDefs";
 export * from "./types";
 
 const scriptModule: KnowhowModule = {
@@ -33,6 +37,14 @@ const scriptModule: KnowhowModule = {
         "--allow-network",
         "Allow fetch() calls in the script (disabled by default for security)"
       )
+       .option(
+         "--check",
+         "Type-check the script against the available tools and exit (do not run)"
+       )
+       .option(
+         "--emit-types <path>",
+         "Write the generated TypeScript declarations (.d.ts) for the sandbox globals to a file and exit"
+       )
       .action(async (options) => {
         try {
           if (!options.inputFile) {
@@ -49,56 +61,47 @@ const scriptModule: KnowhowModule = {
           }
           const scriptContent = fs.readFileSync(scriptPath, "utf-8");
 
-          // Lazy-load services so we only spin them up when the command is actually run
-          const { LazyToolsService, services } = await import(
-            "@tyvm/knowhow/ts_build/src/services"
+          // Lazy-load the shared CLI service setup so the script command gets
+          // the EXACT same wiring as `knowhow agent`/`knowhow chat`: MCP,
+          // models, modules, AND registered agents (so tools like agentCall /
+          // startAgentTask work inside scripts). Previously this command
+          // duplicated setup and never registered agents.
+          const { setupServices } = await import(
+            "@tyvm/knowhow/ts_build/src/commands/services"
           );
-          const { ModulesService } = await import(
-            "@tyvm/knowhow/ts_build/src/services/modules"
-          );
-
-          const { Clients, Tools: AllTools, Mcp } = services();
-
-          const Tools = new LazyToolsService();
-          Tools.setContext({ ...AllTools.getContext() });
-
-          // Register all agent tools (including MCP management tools like
-          // listAvailableMcpServers, connectMcpServer, disconnectMcpServer)
-          const { includedTools } = await import(
-            "@tyvm/knowhow/ts_build/src/agents/tools/list"
-          );
-          const allTools = await import(
-            "@tyvm/knowhow/ts_build/src/agents/tools"
-          );
-          Tools.defineTools(includedTools, allTools);
-
-          Tools.addContext("Mcp", Mcp);
-
-          console.log("🔌 Connecting to MCP...");
-          try {
-            await Mcp.connectToConfigured(Tools);
-          } catch (mcpError) {
-            const msg =
-              mcpError instanceof Error ? mcpError.message : String(mcpError);
-            console.warn(
-              `⚠ Some MCP servers failed to connect (continuing): ${msg}`
-            );
-          }
-
-          console.log("Connecting to clients...");
-          await Clients.registerConfiguredModels();
-
-          // Load modules (tools, plugins, etc.) from config
-          const modulesService = new ModulesService();
-          const modulesContext = await modulesService.overrideDefaultContext({
-            Tools,
-            Clients,
-          });
-          await modulesService.loadModulesFromConfig(modulesContext);
+          const { Tools, Clients } = await setupServices();
 
           // Enable all tools so scripts can access MCP tools
           Tools.enableTools(["*"]);
 
+           // Collect the available tool definitions for typing/checking.
+           const toolDefs =
+             typeof (Tools as any).getTools === "function"
+               ? (Tools as any).getTools()
+               : [];
+ 
+           // --emit-types: write the .d.ts and exit.
+           if (options.emitTypes) {
+             const defs = generateScriptTypeDefs(toolDefs);
+             const outPath = path.resolve(options.emitTypes);
+             fs.writeFileSync(outPath, defs, "utf-8");
+             console.log(`Wrote sandbox type declarations to ${outPath}`);
+             process.exit(0);
+           }
+ 
+           // Always run a fast compile check first (fail fast on obvious errors).
+           const checkResult = checkScript(scriptContent, toolDefs);
+           if (options.check || !checkResult.ok) {
+             console.log(formatDiagnostics(checkResult));
+           }
+           if (options.check) {
+             process.exit(checkResult.ok ? 0 : 1);
+           }
+           if (!checkResult.ok) {
+             console.error("\nAborting run due to type-check errors above. Use --check to see details, or fix and retry.");
+             process.exit(1);
+           }
+ 
           const executor = new ScriptExecutor(Tools, Clients);
           const result = await executor.execute({
             script: scriptContent,

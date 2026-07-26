@@ -14,10 +14,13 @@ export const executeScriptDefinition: Tool = {
   The script has access to:
   - callTool(toolName, parameters): Call any available tool
   - llm(messages, options): Make LLM calls
+  - agent(agentName, query): Run another registered agent as a node (it can use tools/loop/keep context) and get its final answer string back. Great for graph-based agents. Compose with Promise.all for concurrent agent nodes.
   - createArtifact(name, content, type): Create downloadable artifacts
   - console: Standard console logging
   - getQuotaUsage(): Check resource usage
   - sleep(ms): Pause execution for a specified time, max 2000ms
+  - Generic tool functions: any available tool can also be called directly by its name as a top-level function, e.g. \`textSearch({ searchTerm: 'x' })\` is shorthand for \`callTool('textSearch', { searchTerm: 'x' })\`. Reserved globals (callTool, llm, agent, sleep, console, etc.) are never shadowed.
+  - Multi-agent orchestration tools (via callTool or as generic functions): startAgentTask (spawn a subagent, returns a taskId), waitForAgentCompleted (join a subagent -> { status, costUsd, finalAnswer }), sendAgentMessage (send a message/poke to a running agent), connectAgent (wire agents together with an ARRAY of { listener, speaker } connections for bidirectional/pipeline/star/mesh topologies), stopConnections, replyToParent, observe/stopObserving.
 
   The script cannot:
     - import or require
