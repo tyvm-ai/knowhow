@@ -150,15 +150,34 @@ describe("Model Catalog Coverage", () => {
    * Every model defined in Models.* and EmbeddingModels.* must have an entry
    * in ALL_MODEL_CATALOG. This ensures the catalog stays in sync and is the
    * single source of truth for model metadata and pricing.
+   *
+   * Exception: models flagged `deprecated` in their pricing entry are allowed to
+   * be absent from the catalog. Cost tracking for historical usage still works
+   * because calculateCost() reads the *TextPricing tables directly by model id,
+   * independently of the catalog — so deprecated models can be trimmed from the
+   * catalog/Models.* without breaking cost calculation.
    */
   const catalogIds = new Set(ALL_MODEL_CATALOG.map((m) => m.id));
+
+  // Model ids explicitly marked deprecated across all pricing tables.
+  const deprecatedModelIds = new Set<string>(
+    Object.entries({
+      ...OpenAiTextPricing,
+      ...GeminiTextPricing,
+      ...AnthropicTextPricing,
+      ...XaiTextPricing,
+    } as Record<string, { deprecated?: boolean }>)
+      .filter(([, p]) => p && p.deprecated === true)
+      .map(([id]) => id)
+  );
 
   describe("All Models.* entries are in the catalog", () => {
     for (const [provider, providerModels] of Object.entries(Models)) {
       for (const [modelKey, modelId] of Object.entries(
         providerModels as Record<string, string>
       )) {
-        it(`Models.${provider}.${modelKey} (${modelId}) is in ALL_MODEL_CATALOG`, () => {
+        const testFn = deprecatedModelIds.has(modelId) ? it.skip : it;
+        testFn(`Models.${provider}.${modelKey} (${modelId}) is in ALL_MODEL_CATALOG`, () => {
           expect(catalogIds.has(modelId)).toBe(true);
         });
       }

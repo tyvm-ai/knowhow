@@ -78,6 +78,11 @@ export const AnthropicLimitedAvailabilityModels: string[] = [
 const AnthropicAllModels: string[] = [
   ...AnthropicTextModels,
   ...AnthropicLimitedAvailabilityModels,
+  // Short aliases (resolve to their latest dated version) — kept in the catalog
+  // so cost tracking works whether the user passes the alias or the dated id.
+  AnthropicModels.Sonnet4_5Short,
+  AnthropicModels.Haiku4_5Short,
+  AnthropicModels.Opus4_5Short,
   // Deprecated (retirement 2026-06-15)
   AnthropicModels.Opus4,
   AnthropicModels.Sonnet4,

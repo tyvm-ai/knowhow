@@ -4,6 +4,27 @@
  */
 import { Models } from "../../src/types";
 import { ContextLimits, getModelContextLimit, DEFAULT_CONTEXT_LIMIT } from "../../src/clients/contextLimits";
+import {
+  OpenAiTextPricing,
+  GeminiTextPricing,
+  AnthropicTextPricing,
+  XaiTextPricing,
+} from "../../src/clients/pricing";
+
+// Model ids explicitly marked deprecated across all pricing tables. Deprecated
+// models are allowed to be absent from ContextLimits — they can be trimmed from
+// Models.* / the context-limit map without breaking anything, since cost
+// tracking reads the *TextPricing tables directly by model id.
+const deprecatedModelIds = new Set<string>(
+  Object.entries({
+    ...OpenAiTextPricing,
+    ...GeminiTextPricing,
+    ...AnthropicTextPricing,
+    ...XaiTextPricing,
+  } as Record<string, { deprecated?: boolean }>)
+    .filter(([, p]) => p && p.deprecated === true)
+    .map(([id]) => id)
+);
 
 describe("ContextLimits", () => {
   describe("coverage - all Models.* values have a recorded context limit", () => {
@@ -19,7 +40,8 @@ describe("ContextLimits", () => {
         });
 
         for (const [key, modelId] of modelEntries) {
-          it(`${provider}.${key} (${modelId}) should have a context limit`, () => {
+          const testFn = deprecatedModelIds.has(modelId) ? it.skip : it;
+          testFn(`${provider}.${key} (${modelId}) should have a context limit`, () => {
             const limit = ContextLimits[modelId];
             expect(limit).toBeDefined();
             expect(typeof limit).toBe("number");

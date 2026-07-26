@@ -104,6 +104,10 @@ export const ContextLimits: Record<string, number> = {
   [Models.anthropic.Sonnet4]: 200_000,
   [Models.anthropic.Sonnet4_5]: 200_000,
   [Models.anthropic.Haiku4_5]: 200_000,
+  // Short aliases (resolve to their latest dated version)
+  [Models.anthropic.Sonnet4_5Short]: 200_000,
+  [Models.anthropic.Haiku4_5Short]: 200_000,
+  [Models.anthropic.Opus4_5Short]: 1_000_000,
   [Models.anthropic.Sonnet3_7]: 200_000,
   [Models.anthropic.Sonnet3_5]: 200_000,
   [Models.anthropic.Opus3]: 200_000,
@@ -118,6 +122,20 @@ export const ContextLimits: Record<string, number> = {
   [Models.anthropic.Sonnet4_0]: 200_000,
 
   // ─── Google ───────────────────────────────────────────────────────────────
+  // Gemini 3.6 / 3.5 (text)
+  [Models.google.Gemini_36_Flash]: 1_000_000,
+  [Models.google.Gemini_35_Flash]: 1_000_000,
+  [Models.google.Gemini_35_Flash_Lite]: 1_000_000,
+  [Models.google.Gemini_35_Live_Translate_Preview]: 1_000_000,
+  // Gemini 3.x (text / multimodal reasoning)
+  [Models.google.Gemini_31_Flash_Lite]: 1_000_000,
+  [Models.google.Gemini_31_Flash_TTS_Preview]: 1_000_000,
+  [Models.google.Gemini_3_Pro_Preview]: 1_000_000,
+  [Models.google.Gemini_Omni_Flash_Preview]: 1_000_000,
+  [Models.google.Gemini_25_Computer_Use_Preview]: 1_000_000,
+  [Models.google.Gemini_20_Flash_Lite]: 1_000_000,
+  [Models.google.Gemini_Robotics_ER_16_Preview]: 1_000_000,
+  [Models.google.Gemini_Robotics_ER_15_Preview]: 1_000_000,
   [Models.google.Gemini_31_Pro_Preview]: 1_000_000,
   [Models.google.Gemini_31_Flash_Image_Preview]: 1_000_000,
   [Models.google.Gemini_31_Flash_Lite_Preview]: 1_000_000,
@@ -145,6 +163,11 @@ export const ContextLimits: Record<string, number> = {
   [Models.google.Veo_3_Fast]: 0,
   [Models.google.Veo_3_1]: 0,
   [Models.google.Veo_3_1_Fast]: 0,
+  [Models.google.Veo_3_1_Lite]: 0,
+  // Google image generation models — no text context window; use 0
+  [Models.google.Gemini_31_Flash_Image]: 0,
+  [Models.google.Gemini_31_Flash_Lite_Image]: 0,
+  [Models.google.Gemini_3_Pro_Image]: 0,
   [Models.google.Gemini_20_Flash]: 1_000_000,
   [Models.google.Gemini_20_Flash_Preview_Image_Generation]: 1_000_000,
   [Models.google.Gemini_20_Flash_Live]: 1_000_000,
