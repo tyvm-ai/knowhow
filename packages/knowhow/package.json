@@ -6,6 +6,9 @@
   "bin": {
     "knowhow": "bin/knowhow.js"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "test": "jest --testTimeout 300000",
     "test:debug": "node --inspect-brk ../../node_modules/jest/bin/jest.js --detectOpenHandles --forceExit --testTimeout 300000",
