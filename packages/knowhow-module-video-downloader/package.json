@@ -8,7 +8,7 @@
   "peerDependencies": { "@tyvm/knowhow": "*" },
   "dependencies": { "youtube-dl-exec": "^2.5.5" },
   "devDependencies": {
-    "@types/node": "^20.6.3",
+    "@types/node": "^24.0.0",
     "typescript": "^5.0.0"
   }
 }

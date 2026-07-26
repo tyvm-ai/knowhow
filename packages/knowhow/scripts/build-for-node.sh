@@ -5,7 +5,7 @@
 # Example: npm run node:build 24
 #
 # This script:
-#   1. Compiles TypeScript with Node 20 (required for workspace deps)
+#   1. Compiles TypeScript with Node 24 (falls back to current node if unavailable)
 #   2. Creates /tmp/knowhow-node-<major> with the compiled output
 #   3. Symlinks the package globally for ALL installed nvm versions matching the target
 #
@@ -31,9 +31,9 @@ PACKAGE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo "📦 Package dir: $PACKAGE_DIR"
 
-# --- Find Node 20 for compiling TypeScript ---
+# --- Find Node 24 for compiling TypeScript ---
 NODE20_BIN=""
-for dir in "$HOME/.nvm/versions/node"/v20.*/bin; do
+for dir in "$HOME/.nvm/versions/node"/v24.*/bin; do
   if [ -f "$dir/node" ]; then
     NODE20_BIN="$dir/node"
     break
@@ -41,7 +41,7 @@ for dir in "$HOME/.nvm/versions/node"/v20.*/bin; do
 done
 
 if [ -z "$NODE20_BIN" ]; then
-  echo "⚠️  Node 20 not found via nvm, falling back to current node for TS compile"
+  echo "⚠️  Node 24 not found via nvm, falling back to current node for TS compile"
   NODE20_BIN="$(which node)"
 fi
 

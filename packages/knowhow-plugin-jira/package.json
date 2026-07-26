@@ -9,7 +9,7 @@
   "dependencies": { "jira-client": "^8.2.2" },
   "devDependencies": {
     "@types/jira-client": "^7.1.9",
-    "@types/node": "^20.6.3",
+    "@types/node": "^24.0.0",
     "typescript": "^5.0.0"
   }
 }

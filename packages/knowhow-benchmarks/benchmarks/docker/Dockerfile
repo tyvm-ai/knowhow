@@ -1,5 +1,5 @@
-# Use Node.js 18 as base image
-FROM node:18-bullseye
+# Use Node.js 24 as base image
+FROM node:24-bullseye
 
 # Install system dependencies (cached layer - rarely changes)
 RUN apt-get update && apt-get install -y \

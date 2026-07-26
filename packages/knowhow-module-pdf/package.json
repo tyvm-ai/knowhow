@@ -17,7 +17,7 @@
     "pdf-to-img": "^5.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.6.3",
+    "@types/node": "^24.0.0",
     "@types/pdf-parse": "^1.1.4",
     "typescript": "^5.0.0"
   }
