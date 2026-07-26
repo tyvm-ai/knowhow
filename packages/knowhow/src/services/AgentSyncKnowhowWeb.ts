@@ -13,7 +13,7 @@ import { wait } from "../utils";
 
 export interface SyncOptions {
   messageId?: string;
-  existingKnowhowTaskId?: string;
+  syncRemote?: boolean;
   prompt: string;
 }
 

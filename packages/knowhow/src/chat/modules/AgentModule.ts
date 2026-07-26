@@ -680,7 +680,6 @@ export class AgentModule extends BaseChatModule {
         agentName,
         input: resumePrompt,
         messageId: session.knowhowMessageId,
-        existingKnowhowTaskId: session.knowhowTaskId,
         chatHistory: [],
         run: false, // Don't run yet, we need to set up event listeners first
       });
@@ -750,7 +749,7 @@ export class AgentModule extends BaseChatModule {
     input: string;
     messageId?: string;
     syncFs?: boolean;
-    existingKnowhowTaskId?: string;
+    syncRemote?: boolean;
     provider?: string;
     model?: string;
     maxTimeLimit?: number; // in minutes
@@ -800,7 +799,9 @@ export class AgentModule extends BaseChatModule {
       let taskInfo: TaskInfo = {
         taskId,
         knowhowMessageId: options.messageId,
-        knowhowTaskId: options.existingKnowhowTaskId, // Use existing or will be set after creating chat task
+        // When pushing to a remote task via --sync-remote, the taskId IS the
+        // remote task ID. Otherwise it will be set after creating a chat task.
+        knowhowTaskId: options.syncRemote ? taskId : undefined,
         agentName,
         agent,
         initialInput: input,
@@ -826,7 +827,7 @@ export class AgentModule extends BaseChatModule {
         prompt: input,
         messageId: options.messageId,
         syncFs: options.syncFs,
-        existingKnowhowTaskId: options.existingKnowhowTaskId,
+        syncRemote: options.syncRemote,
         agentName,
         parentTaskId: options.parentTaskId,
       });
@@ -1183,7 +1184,10 @@ export class AgentModule extends BaseChatModule {
       agentName,
       input: resumePrompt,
       messageId,
-      existingKnowhowTaskId: taskId,
+      taskId,
+      // When resuming a remote task (no messageId), keep pushing work to the
+      // remote task identified by taskId.
+      syncRemote: !messageId && !!taskId,
       run: false,
     });
 

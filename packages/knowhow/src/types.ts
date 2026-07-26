@@ -36,6 +36,11 @@ export type GenerationSource = {
   /** Pass to runAgentTask: enable .knowhow/processes/agents/<taskId> directory */
   syncFs?: boolean;
   /**
+   * Pass to runAgentTask: push the agent's work to a remote Knowhow task
+   * (identified by this source's taskId).
+   */
+  syncRemote?: boolean;
+  /**
    * Deterministic task ID for this source (used with syncFs).
    * Defaults to "generate:<sanitized-output>" when syncFs is enabled.
    */

@@ -104,11 +104,29 @@ export class AgentService {
     }
   }
 
-  public async callAgent(name: string, query: string): Promise<string> {
+  /**
+   * Run a registered agent and return both its final answer and the cost it
+   * incurred. Returning cost (from the agent's own `getTotalCostUsd()`) lets
+   * callers — notably the script sandbox — account subagent spend against a
+   * budget. The `answer` string preserves the previous plain-string behavior
+   * for consumers that only care about the response.
+   */
+  public async callAgent(
+    name: string,
+    query: string
+  ): Promise<{ answer: string; costUsd: number }> {
     const agent = this.agents.get(name);
     if (!agent) {
-      return `Agent ${name} not found. Options are: ${this.listAgents()}`;
+      return {
+        answer: `Agent ${name} not found. Options are: ${this.listAgents()}`,
+        costUsd: 0,
+      };
     }
-    return agent.call(query);
+    const answer = await agent.call(query);
+    const costUsd =
+      typeof (agent as any).getTotalCostUsd === "function"
+        ? (agent as any).getTotalCostUsd()
+        : 0;
+    return { answer, costUsd };
   }
 }

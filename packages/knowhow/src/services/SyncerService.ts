@@ -13,8 +13,12 @@ export interface SyncerOptions {
   messageId?: string;
   /** Force fs sync even if messageId is provided */
   syncFs?: boolean;
-  /** Use an existing Knowhow task ID instead of creating a new one */
-  existingKnowhowTaskId?: string;
+  /**
+   * Push the agent's work to a remote Knowhow task. When set (and there is no
+   * messageId), the `taskId` is treated as the remote task ID to attach to and
+   * push updates to, rather than creating a new remote task.
+   */
+  syncRemote?: boolean;
   /** Agent name to persist in metadata.json */
   agentName?: string;
   /** The taskId of the parent agent that spawned this task, if any. */
@@ -39,7 +43,8 @@ export interface AgentSyncer {
  *
  * Decision logic:
  *   - Always sets up AgentSyncFs (primary local syncer)
- *   - If messageId is present AND syncFs is not forced AND no existingKnowhowTaskId → also sets up AgentSyncKnowhowWeb
+ *   - If messageId is present AND syncFs is not forced → creates a new remote task via AgentSyncKnowhowWeb
+ *   - If syncRemote is set (and no messageId) → attaches to the remote task identified by taskId
  */
 export class SyncerService implements AgentSyncer {
   private fsSync: AgentSyncFs;
@@ -61,11 +66,23 @@ export class SyncerService implements AgentSyncer {
     this.active = true;
     this.useWebSync = false;
 
-    // Determine whether to use web sync
+    // Determine whether to CREATE a new remote (web) task: only when we have a
+    // messageId and aren't forcing fs-only. A messageId means "definitely
+    // remote" — create a fresh remote task from that message.
     const shouldUseWebSync =
       !!options.messageId &&
-      !options.syncFs &&
-      !options.existingKnowhowTaskId;
+      !options.syncFs;
+
+    // Determine whether to ATTACH to an already-existing remote task and push
+    // local work to it (no creation needed). This is the "--sync-remote" path:
+    // the caller wants to push work to the remote task identified by taskId.
+    // We only auto-attach when there is NO messageId (messageId always creates
+    // a fresh remote task above).
+    //
+    // This is orthogonal to fs sync: we can push to the remote task AND keep
+    // the local .knowhow/processes/agents/<id>/ files in sync at the same time.
+    const shouldAttachExisting =
+      !!options.syncRemote && !options.messageId && !!options.taskId;
 
     // Always create fs sync task first
     console.log(
@@ -90,6 +107,15 @@ export class SyncerService implements AgentSyncer {
         this.createdTaskId = knowhowTaskId;
         console.log(`🌐 Web sync task created: ${knowhowTaskId}`);
       }
+    }
+
+    // Attach live web sync to an existing remote task (push updates to it).
+    if (!shouldUseWebSync && shouldAttachExisting) {
+      this.useWebSync = true;
+      this.createdTaskId = options.taskId;
+      console.log(
+        `🌐 Attaching web sync to existing remote task: ${options.taskId}`
+      );
     }
 
     return fsTaskId;

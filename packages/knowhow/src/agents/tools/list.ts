@@ -8,6 +8,17 @@ import * as mcp from "./mcp/definitions";
 import { googleSearchDefinition } from "./googleSearch";
 import { startAgentTaskDefinition } from "./startAgentTask";
 import { replyToParentDefinition } from "./replyToParent";
+import { runGenerateDefinition } from "./runGenerate";
+import { sendAgentMessageDefinition } from "./sendAgentMessage";
+import {
+  connectAgentDefinition,
+  stopConnectionsDefinition,
+} from "./connectAgent";
+import { waitForAgentCompletedDefinition } from "./waitForAgentCompleted";
+import {
+  observeDefinition,
+  stopObservingDefinition,
+} from "./observe";
 import { skillsToolDefinitions } from "./skills";
 
 function getPluginNames(): string {
@@ -20,6 +31,34 @@ function getPluginNames(): string {
 }
 
 export const includedTools = [
+  {
+    type: "function",
+    function: {
+      name: "agentCall",
+      description:
+        "Run another registered agent in-process as a blocking call and get its final answer back as a string. Unlike a plain llm() call, the target agent can use tools, loop, and maintain its own context. Useful as a graph node that delegates to a specialized agent (e.g. Researcher, Patcher). For long-running / parallel / detached work prefer startAgentTask.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          agentName: {
+            type: "string",
+            description:
+              "The name of the agent to call (e.g. Researcher, Developer, Patcher).",
+          },
+          query: {
+            type: "string",
+            description: "The query / task to send to the agent.",
+          },
+        },
+        required: ["agentName", "query"],
+      },
+      returns: {
+        type: "string",
+        description: "The agent's final answer text.",
+      },
+    },
+  },
   {
     type: "function",
     function: {
@@ -681,6 +720,13 @@ export const includedTools = [
   googleSearchDefinition,
   startAgentTaskDefinition,
   replyToParentDefinition,
+  runGenerateDefinition,
+  sendAgentMessageDefinition,
+  connectAgentDefinition,
+  stopConnectionsDefinition,
+  waitForAgentCompletedDefinition,
+  observeDefinition,
+  stopObservingDefinition,
   ...ycmd.definitions,
   ...language.definitions,
   ...mcp.definitions,

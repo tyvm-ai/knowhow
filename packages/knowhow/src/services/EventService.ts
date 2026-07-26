@@ -255,7 +255,10 @@ export class EventService extends EventEmitter {
     this.emit(this.eventTypes.agentsRegister, { name: agent.name, agent });
   }
 
-  callAgent(name: string, query: string): Promise<string> {
+  callAgent(
+    name: string,
+    query: string
+  ): Promise<{ answer: string; costUsd: number }> {
     return new Promise((resolve, reject) => {
       this.emit(this.eventTypes.agentsCall, { name, query, resolve, reject });
     });

@@ -4,6 +4,7 @@ import { readFile } from "./utils";
 /** Options forwarded to startAgentTask when a generation source has an `agent` field */
 export type AgentOptions = {
   syncFs?: boolean;
+  syncRemote?: boolean;
   taskId?: string;
   maxTimeLimit?: number;
   maxSpendLimit?: number;

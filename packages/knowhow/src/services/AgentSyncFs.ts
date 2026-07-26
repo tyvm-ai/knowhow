@@ -64,6 +64,12 @@ export class AgentSyncFs {
       await this.writeInput("");
       await this.writeMetadata({
         taskId: this.taskId,
+        // Record the OS process id of this agent subprocess so orchestrating
+        // tools (e.g. waitForAgentCompleted) can detect a crashed-but-not-
+        // finalized task via process-liveness. This is the child's own pid,
+        // so it needs no coordination with the spawner and never touches
+        // execCommand's child processes.
+        pid: process.pid,
         prompt: options.prompt,
         agentName: options.agentName || "unknown",
         ...(options.parentTaskId ? { parentTaskId: options.parentTaskId } : {}),
@@ -495,8 +501,55 @@ export class AgentSyncFs {
           console.error(`❌ Error cleaning up ${entry.name}:`, error);
         }
       }
+
+      // Also clean up old execCommand background log files in .knowhow/processes/*.txt
+      await AgentSyncFs.cleanupOldProcessLogs(threeDaysMs);
     } catch (error) {
       console.error(`❌ Error during cleanup:`, error);
+    }
+  }
+
+  /**
+   * Clean up old execCommand background log files (.knowhow/processes/*.txt).
+   * These are created by the execCommand tool when running background/long-lived
+   * commands, and are never cleaned up otherwise.
+   */
+  private static async cleanupOldProcessLogs(maxAgeMs: number): Promise<void> {
+    try {
+      // execCommand writes logs to the parent of the agents dir: .knowhow/processes
+      const processesPath = path.dirname(AgentSyncFs.sharedBasePath);
+
+      try {
+        await fs.access(processesPath);
+      } catch {
+        return;
+      }
+
+      const entries = await fs.readdir(processesPath, { withFileTypes: true });
+      const now = Date.now();
+
+      for (const entry of entries) {
+        // Only target the .txt log files that execCommand creates; leave the
+        // agents/ directory (and any other subdirectories) alone.
+        if (!entry.isFile() || !entry.name.endsWith(".txt")) continue;
+
+        const logPath = path.join(processesPath, entry.name);
+
+        try {
+          const stats = await fs.stat(logPath);
+          const age = now - stats.mtimeMs;
+
+          if (age > maxAgeMs) {
+            console.log(`🧹 Cleaning up old process log file: ${entry.name}`);
+            await fs.rm(logPath, { force: true });
+          }
+        } catch (error) {
+          // Skip if we can't stat or delete
+          console.error(`❌ Error cleaning up log ${entry.name}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error(`❌ Error during process log cleanup:`, error);
     }
   }
 

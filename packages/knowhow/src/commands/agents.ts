@@ -493,6 +493,76 @@ async function cmdAttach(taskIdOrIndex: string | undefined, opts: { index?: stri
   await startChat(`/attach ${resolvedId}`);
 }
 
+/**
+ * Print the final answer (the result of the agent's finalAnswer tool call) for
+ * a completed task. Reads `metadata.result`, falling back to the last assistant
+ * message in the thread if `result` isn't present. This lets a human read what
+ * a finished agent concluded with, even if they never attached before it ended.
+ */
+async function cmdAnswer(
+  taskIdOrIndex: string | undefined,
+  opts: { index?: string; raw: boolean }
+): Promise<void> {
+  const value = opts.index ?? taskIdOrIndex;
+  if (!value) {
+    console.error("Provide a task ID or use -i <number> to select by index.");
+    process.exit(1);
+  }
+
+  const resolvedId = resolveTaskId(value, true);
+  if (!resolvedId) {
+    console.error(`Task not found: ${value}`);
+    const rows = buildRows(true);
+    if (rows.length > 0) {
+      console.error("\nAvailable tasks:");
+      rows.forEach((r, i) => console.error(`  ${i + 1}. ${r.displayId}`));
+    }
+    process.exit(1);
+    return;
+  }
+
+  const meta = loadMeta(resolvedId);
+  if (!meta) {
+    console.error(`No metadata found for task: ${resolvedId}`);
+    process.exit(1);
+    return;
+  }
+
+  // Prefer the stored finalAnswer result; fall back to the last assistant message.
+  let answer: string | undefined =
+    typeof meta.result === "string" && meta.result.trim()
+      ? meta.result
+      : undefined;
+
+  if (!answer) {
+    const threads: any[][] = meta.threads ?? [];
+    if (threads.length > 0) {
+      answer = lastAssistantMessage(threads[threads.length - 1]);
+    }
+  }
+
+  if (opts.raw) {
+    console.log(answer ?? "");
+    return;
+  }
+
+  const status = getStatus(resolvedId, meta);
+  if (!answer) {
+    console.log(`\n📭 No final answer available for task: ${resolvedId}`);
+    console.log(`   Status: ${status}`);
+    if (status !== "completed") {
+      console.log(`   The agent hasn't finished yet — attach with 'knowhow agents attach' to follow it.`);
+    }
+    return;
+  }
+
+  console.log(`\n💬 Final answer for task: ${resolvedId}`);
+  console.log(`   Agent: ${meta.agentName ?? "?"}  |  Status: ${status}  |  Cost: ${meta.totalCostUsd != null ? "$" + (meta.totalCostUsd as number).toFixed(4) : "?"}`);
+  console.log("─".repeat(80));
+  console.log(answer);
+  console.log("─".repeat(80) + "\n");
+}
+
 
 
 // ---------------------------------------------------------------------------
@@ -552,5 +622,18 @@ export function addAgentsCommand(program: Command): void {
     .option("-i, --index <number>", "Select task by row number from 'agents list'")
     .action(async (taskId: string | undefined, opts: { index?: string }) => {
       await cmdAttach(taskId, opts);
+    });
+
+  agents
+    .command("answer [taskId]")
+    .description(
+      "Print the final answer (finalAnswer result) of a completed agent task, formatted for reading. " +
+        "Reads metadata.result, falling back to the last assistant message. " +
+        "Accepts a full task ID, partial substring, or -i <number> for row index from 'agents list'."
+    )
+    .option("-i, --index <number>", "Select task by row number from 'agents list'")
+    .option("--raw", "Print only the raw answer text (no header/formatting)", false)
+    .action(async (taskId: string | undefined, opts: { index?: string; raw: boolean }) => {
+      await cmdAnswer(taskId, opts);
     });
 }

@@ -68,6 +68,10 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
     .option("--message-id <messageId>", "Knowhow message ID for task tracking")
     .option("--sync-fs", "Enable filesystem-based synchronization")
     .option(
+      "--sync-remote",
+      "Push this agent's work to a remote Knowhow task identified by --task-id (creates one if --message-id is given)"
+    )
+    .option(
       "--behavior-id <id>",
       "Force a specific behavior by its ID (skips trigger matching)"
     )
@@ -141,6 +145,20 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
             "Error: No input provided. Use --input flag, pipe input via stdin, or provide --prompt-file."
           );
           process.exit(1);
+        }
+
+        // If this agent was spawned by a parent agent, inject a note into its
+        // prompt so it knows it has a parent it can communicate with — regardless
+        // of how it was launched. This is idempotent: startAgentTask no longer
+        // adds the parent line itself, so this is the single source of truth.
+        if (options.parentTaskId) {
+          input =
+            input +
+            `\n\n---\n` +
+            `PARENT AGENT: You were spawned by a parent agent (task "${options.parentTaskId}"). ` +
+            `Use the \`replyToParent\` tool to report progress, ask questions, or send your final result back to it. ` +
+            `The parent may also send you follow-up messages via your input.txt.\n` +
+            `---\n`;
         }
 
         await agentModule.initialize(chatService);

@@ -67,6 +67,10 @@ export function addGenerateCommand(program: Command): void {
       "Enable filesystem sync for agent-driven sources (creates .knowhow/processes/agents/<taskId>/ so tasks appear in `knowhow agents list`)"
     )
     .option(
+      "--sync-remote",
+      "Push agent-driven sources' work to a remote Knowhow task (identified by the source's taskId)"
+    )
+    .option(
       "--force",
       "Skip hash checks and regenerate all matching sources regardless of whether inputs/outputs have changed"
     )
@@ -83,6 +87,7 @@ export function addGenerateCommand(program: Command): void {
       name?: string;
       filter?: string;
       syncFs?: boolean;
+      syncRemote?: boolean;
       force?: boolean;
       concurrency?: number;
       plan?: boolean;
@@ -99,6 +104,7 @@ export function addGenerateCommand(program: Command): void {
         name: options.name,
         filter: options.filter,
         syncFs: options.syncFs,
+        syncRemote: options.syncRemote,
         force: options.force,
         concurrency: options.concurrency,
       });

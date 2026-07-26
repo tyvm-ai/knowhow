@@ -49,6 +49,20 @@ export async function setupServices() {
 
   Tools.addContext("Mcp", Mcp);
 
+  // The `agentCall` tool + function are registered by AgentService on the
+  // global ToolsService (AllTools), not on the LazyToolsService we build here.
+  // Copy it across so agents/scripts using this Tools instance can delegate to
+  // other agents via agentCall (matching startAgentTask availability).
+  try {
+    const agentCallDef = AllTools.getTool?.("agentCall");
+    const agentCallFn = AllTools.getFunction?.("agentCall");
+    if (agentCallDef) Tools.addTool(agentCallDef);
+    if (agentCallFn) Tools.setFunction("agentCall", agentCallFn);
+  } catch (_) {
+    // Non-fatal: if agentCall isn't registered yet, agents can still use
+    // startAgentTask for delegation.
+  }
+
   Agents.setAgentContext(agentContext);
 
   console.log("🔌 Connecting to MCP...");

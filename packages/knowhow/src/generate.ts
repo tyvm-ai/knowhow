@@ -51,6 +51,12 @@ export interface GenerateOptions {
    * so they appear in `knowhow agents list`. Overrides the per-source syncFs flag.
    */
   syncFs?: boolean;
+  /**
+   * When true, agent-driven sources push their work to a remote Knowhow task
+   * (identified by the source's taskId). Overrides the per-source syncRemote
+   * flag. Requires the sources to run as agents with a known taskId.
+   */
+  syncRemote?: boolean;
   /** When true, skip hash checks and regenerate all matching sources regardless of changes */
   force?: boolean;
   /**
@@ -58,6 +64,14 @@ export interface GenerateOptions {
    * dependency wave. Defaults to 3. Set to 1 for fully sequential execution.
    */
   concurrency?: number;
+  /**
+   * In-memory generation sources. When provided, these are used INSTEAD of the
+   * sources defined in `.knowhow/knowhow.json`. This enables callers (e.g. an
+   * agent using the `runGenerate` tool) to define arbitrary pipelines at
+   * runtime without persisting them to config — supporting complex task
+   * orchestration with `dependsOn`, per-source `agent`, analysis, etc.
+   */
+  sources?: GenerationSource[];
 }
 
 // ---------------------------------------------------------------------------
@@ -416,12 +430,14 @@ async function runSource(
   console.log("Generating", source.input, "to", source.output);
 
   const effectiveSyncFs = options.syncFs ?? source.syncFs;
+  const effectiveSyncRemote = options.syncRemote ?? source.syncRemote;
   const agentOpts: AgentOptions | undefined = source.agent
     ? {
         syncFs: effectiveSyncFs,
+        syncRemote: effectiveSyncRemote,
         taskId:
           source.taskId ??
-          (effectiveSyncFs
+          (effectiveSyncFs || effectiveSyncRemote
             ? `generate:${source.output.replace(/[^a-zA-Z0-9_.-]/g, "_")}`
             : undefined),
         maxTimeLimit: source.maxTimeLimit,
@@ -469,8 +485,14 @@ async function runSource(
 // ---------------------------------------------------------------------------
 
 export async function generate(options: GenerateOptions = {}): Promise<void> {
-  const config = await getConfig();
-  const allSources = config.sources ?? [];
+  let allSources: GenerationSource[];
+  if (options.sources && options.sources.length > 0) {
+    // In-memory pipeline definition — bypass config entirely.
+    allSources = options.sources;
+  } else {
+    const config = await getConfig();
+    allSources = config.sources ?? [];
+  }
   const sources = allSources.filter((s) => sourceMatchesFilter(s, options));
 
   if ((options.name || options.filter) && sources.length === 0) {

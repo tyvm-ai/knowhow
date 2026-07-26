@@ -4,8 +4,10 @@
  * These verify the fix for the "agent gets stuck after /poke" bug:
  *  1. A stale (slow) operation that finishes AFTER its window was interrupted
  *     must NOT clobber a newer interruptible window's resolver.
- *  2. An interrupt() arriving with no active window must be queued and fire on
- *     the next makeInterruptible window (not silently dropped).
+ *  2. An interrupt() arriving with no active window is a no-op — there is
+ *     nothing to interrupt, so it must NOT be queued (a queued interrupt would
+ *     pre-empt the next tool call and drop its result). Any message supplied
+ *     with the poke is still added as a pending user message.
  *  3. Normal (non-interrupted) resolution still works.
  *  4. Errors propagate when not interrupted, and are swallowed when interrupted.
  */
@@ -20,7 +22,6 @@
 class InterruptHarness {
   private _interruptResolve: (() => void) | null = null;
   private _interruptToken = 0;
-  private _pendingInterrupt = false;
   public pendingUserMessages: any[] = [];
 
   addPendingUserMessage(m: any) {
@@ -43,12 +44,6 @@ class InterruptHarness {
 
       this._interruptResolve = () => finish(() => resolve(interruptValue));
 
-      if (this._pendingInterrupt) {
-        this._pendingInterrupt = false;
-        finish(() => resolve(interruptValue));
-        return;
-      }
-
       promise
         .then((result) => {
           finish(() => resolve(result));
@@ -69,9 +64,8 @@ class InterruptHarness {
     }
     if (this._interruptResolve) {
       this._interruptResolve();
-    } else {
-      this._pendingInterrupt = true;
     }
+    // No active window -> nothing to interrupt. Do NOT queue it.
   }
 
   get hasActiveResolver() {
@@ -157,19 +151,18 @@ describe("BaseAgent interrupt / makeInterruptible", () => {
     await expect(w2).resolves.toBe("fresh-result");
   });
 
-  test("interrupt() with no active window is queued and fires next window", async () => {
+  test("interrupt() with no active window is a no-op (NOT queued)", async () => {
     const h = new InterruptHarness();
     // No active window yet.
     expect(h.hasActiveResolver).toBe(false);
-    h.interrupt(); // queued, not dropped
+    h.interrupt(); // nothing to interrupt -> no-op
 
-    // Next window should fire immediately with the interrupt value.
+    // The next window must NOT be pre-empted — it should run its real op and
+    // resolve with the real result, not the interrupt value.
     const op = deferred<string>();
     const w = h.makeInterruptible(op.promise, "INT");
-    await expect(w).resolves.toBe("INT");
-    // Underlying op finishing later must be harmless.
-    op.resolve("later");
-    await op.promise;
+    op.resolve("real-result");
+    await expect(w).resolves.toBe("real-result");
   });
 
   test("errors propagate when not interrupted", async () => {

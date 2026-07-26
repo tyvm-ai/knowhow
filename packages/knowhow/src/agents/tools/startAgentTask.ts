@@ -9,6 +9,11 @@ export interface StartAgentTaskParams {
   taskId?: string;
   resume?: boolean;
   prompt: string;
+  /**
+   * Push this agent's work to a remote Knowhow task identified by taskId.
+   * When set (and no messageId), the spawned agent attaches to that remote task.
+   */
+  syncRemote?: boolean;
   provider?: string;
   model?: string;
   agentName?: string;
@@ -49,6 +54,37 @@ function generateTaskId(prompt: string): string {
 }
 
 /**
+ * A short capabilities note appended to a spawned subagent's prompt so it knows
+ * it can use the `knowhow agents` and related CLI commands (via its execCommand
+ * tool) to coordinate, inspect, and orchestrate other agents — things it may
+ * not have dedicated tools for.
+ */
+function subagentCapabilitiesNote(): string {
+  const lines = [
+    "",
+    "---",
+    "SUBAGENT ORCHESTRATION CAPABILITIES:",
+    "You are running as a knowhow agent with a synchronized task directory. In addition to your tools,",
+    "you can shell out (via execCommand) to the `knowhow agents` CLI to coordinate and inspect other agents:",
+    "  • knowhow agents list                 — list running/recent agent tasks (with row indexes)",
+    "  • knowhow agents status <id|-i N>      — status, cost, last tool/message for a task",
+    "  • knowhow agents tail <id|-i N> [-f]   — read recent messages (read-only; -f to follow live)",
+    "  • knowhow agents answer <id|-i N>      — print the final answer of a COMPLETED task",
+    "  • knowhow agents attach <id|-i N>      — open the interactive chat attached to a running task",
+    "You can spawn more subagents with the startAgentTask tool, or run whole pipelines with the runGenerate tool",
+    "(supports dependsOn ordering, per-source agents, and concurrency for map/reduce fan-out).",
+    "To coordinate spawned subagents from your tools: use waitForAgentCompleted (join a subagent and",
+    "get a structured { status, costUsd, finalAnswer } result) and observe (stream a tool's results",
+    "back to yourself on an interval, e.g. observe waitForAgentCompleted or `agents status`).",
+    "To communicate with running agents: use sendAgentMessage (send a message or /poke to a child/peer/parent),",
+    "replyToParent (report back to whoever spawned you), and connectAgent (wire agents together with an ARRAY",
+    "of { listener, speaker } connections — enables bidirectional, pipeline, star, and mesh topologies in one call).",
+  ];
+  lines.push("---", "");
+  return lines.join("\n");
+}
+
+/**
  * Creates a chat task in Knowhow based on a message ID and prompt.
  * Spawns the knowhow CLI with the prompt piped via stdin to avoid
  * shell escaping issues with special characters (quotes, backticks,
@@ -69,6 +105,7 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
     taskId: providedTaskId,
     resume,
     syncFs,
+    syncRemote,
     provider,
     model,
     agentName,
@@ -81,6 +118,11 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
   if (!prompt) {
     throw new Error("prompt is required to create a chat task");
   }
+
+  // Default filesystem synchronization ON unless the caller explicitly opts out
+  // (syncFs: false) or is using a messageId-based web sync. This ensures spawned
+  // subagents always appear in `knowhow agents list` and can be attached/tailed.
+  const useSyncFs = syncFs !== false && !messageId;
 
   // Use provided taskId if given, otherwise generate one from the prompt
   const taskId = providedTaskId ?? generateTaskId(prompt);
@@ -96,11 +138,17 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
 
   if (messageId) {
     args.push("--message-id", messageId);
-  } else if (syncFs) {
+  } else if (useSyncFs) {
     args.push("--sync-fs");
   }
+  // When syncRemote is requested, pass it through so the spawned agent pushes
+  // its work to the remote task identified by --task-id rather than staying
+  // local-only.
+  if (syncRemote) {
+    args.push("--sync-remote");
+  }
 
-  if (syncFs || providedTaskId) {
+  if (useSyncFs || providedTaskId) {
     // Pass --task-id whenever we have a known taskId (syncFs or explicit taskId)
     args.push("--task-id", taskId);
   }
@@ -157,7 +205,12 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
   fs.writeSync(fd, `PID: ${pid}\n`);
 
   // Write prompt to stdin and close it so the process reads it
-  child.stdin!.write(prompt, "utf8");
+  // Append the subagent orchestration capabilities note (unless resuming — a
+  // resumed task already has its full context and we don't want to re-inject).
+  const promptWithCaps = resume
+    ? prompt
+    : prompt + subagentCapabilitiesNote();
+  child.stdin!.write(promptWithCaps, "utf8");
   child.stdin!.end();
 
   return new Promise<string>((resolve) => {
@@ -173,7 +226,7 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
       done(`Failed to start agent: ${String(e)}\nLogs: ${logPath}`);
     });
 
-    const syncFsNote = syncFs
+    const syncFsNote = useSyncFs
       ? `\nTask ID: ${taskId}\nAgent dir: ${agentTaskDir}\n` +
         `To send agent messages, write to: ${agentTaskDir}/input.txt\n` +
         `To check status, read: ${agentTaskDir}/status.txt\n`
@@ -221,7 +274,15 @@ export const startAgentTaskDefinition: Tool = {
         syncFs: {
           type: "boolean",
           description:
-            "Enable filesystem-based synchronization for the task. Use this when no messageId is available.",
+            "Filesystem-based synchronization for the task. Defaults to true (enabled) when no messageId is given, " +
+            "so the spawned agent always appears in `knowhow agents list` and can be attached/tailed. Pass false to opt out.",
+        },
+        syncRemote: {
+          type: "boolean",
+          description:
+            "Push this agent's work to a remote Knowhow task identified by taskId (in addition to fs sync). " +
+            "Use this to sync a spawned subagent's progress to an already-created remote task. " +
+            "If messageId is given instead, a fresh remote task is created from that message.",
         },
         prompt: {
           type: "string",

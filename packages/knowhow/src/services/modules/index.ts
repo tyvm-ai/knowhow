@@ -50,42 +50,78 @@ export class ModulesService {
     ];
 
     for (const modulePath of allModulePaths) {
-      // Resolve relative paths relative to process.cwd() so that paths like
-      // "../../packages/knowhow-module-load-webpage" in knowhow.json work
-      // regardless of where the compiled output lives.
-      let resolvedPath: string;
+      // Build an ordered list of candidate resolutions for this module.
+      // Relative paths resolve to a single candidate (relative to cwd), while
+      // npm package names get one candidate per search path so we can fall
+      // back to the global install if a locally-symlinked (e.g. workspace dev)
+      // build fails to load (wrong Node ABI, broken build, etc.).
+      const candidates: string[] = [];
       if (modulePath.startsWith(".")) {
-        resolvedPath = path.resolve(process.cwd(), modulePath);
+        candidates.push(path.resolve(process.cwd(), modulePath));
       } else {
-        // For npm package names, try resolving from cwd first so locally-installed
-        // modules are found even when knowhow is installed globally.
+        // For npm package names, resolve against each search path individually
+        // (in priority order) so each becomes its own fallback candidate.
+        for (const searchPath of resolvePaths) {
+          try {
+            const resolved = require.resolve(modulePath, {
+              paths: [searchPath],
+            });
+            if (!candidates.includes(resolved)) candidates.push(resolved);
+          } catch {
+            // this search path doesn't have the module — try the next one
+          }
+        }
+        // Finally, normal require resolution as a last resort.
         try {
-          resolvedPath = require.resolve(modulePath, { paths: resolvePaths });
+          const resolved = require.resolve(modulePath);
+          if (!candidates.includes(resolved)) candidates.push(resolved);
         } catch {
-          resolvedPath = modulePath; // fall back to normal require resolution
+          // ignore — will fall through to the bare name below
+        }
+        if (candidates.length === 0) candidates.push(modulePath);
+      }
+
+      // Try each candidate in order. Only if EVERY candidate fails to load do
+      // we surface an error — a failure on one candidate (e.g. a stale local
+      // workspace build) should silently fall back to the next (e.g. the
+      // global install).
+      let importedModule: KnowhowModule;
+      let loaded = false;
+      const errors: { candidate: string; error: Error }[] = [];
+      for (const resolvedPath of candidates) {
+        try {
+          const rawModule = require(resolvedPath);
+          importedModule = (rawModule.default || rawModule) as KnowhowModule;
+          context.Events?.log(
+            "ModulesService",
+            `🔌 Loading module: ${modulePath} (resolved: ${resolvedPath})`
+          );
+          await importedModule.init({
+            config,
+            cwd: process.cwd(),
+            context: context as ModuleContext,
+          });
+          context.Events?.log(
+            "ModulesService",
+            `✅ Module initialized: ${modulePath} (tools: ${importedModule.tools.length}, agents: ${importedModule.agents.length}, plugins: ${importedModule.plugins.length}, clients: ${importedModule.clients.length})`
+          );
+          loaded = true;
+          break;
+        } catch (err: any) {
+          errors.push({ candidate: resolvedPath, error: err });
+          // try the next candidate
         }
       }
 
-      let importedModule: KnowhowModule;
-      try {
-        const rawModule = require(resolvedPath);
-        importedModule = (rawModule.default || rawModule) as KnowhowModule;
-        context.Events?.log(
-          "ModulesService",
-          `🔌 Loading module: ${modulePath} (resolved: ${resolvedPath})`
-        );
-        await importedModule.init({
-          config,
-          cwd: process.cwd(),
-          context: context as ModuleContext,
-        });
-        context.Events?.log(
-          "ModulesService",
-          `✅ Module initialized: ${modulePath} (tools: ${importedModule.tools.length}, agents: ${importedModule.agents.length}, plugins: ${importedModule.plugins.length}, clients: ${importedModule.clients.length})`
-        );
-      } catch (err: any) {
+      if (!loaded) {
+        // All candidates failed — report the last (most fully-resolved) error.
+        const last = errors[errors.length - 1];
+        const detail = last
+          ? `${last.error.message}`
+          : "no resolvable module found";
         process.stderr.write(
-          `\n⚠️  Failed to load module "${modulePath}": ${err.message}\n` +
+          `\n⚠️  Failed to load module "${modulePath}": ${detail}\n` +
+          `   Tried: ${candidates.join(", ") || "(none)"}\n` +
           `   Run "knowhow modules setup --global" or "knowhow modules install ${modulePath} --global" to fix this.\n\n`
         );
         continue;

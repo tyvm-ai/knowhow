@@ -43,6 +43,41 @@ export interface ToolCallEvent {
   functionResp: any;
 }
 
+/**
+ * A source is anything that can (a) start producing data, (b) hand each datum to
+ * a callback, and (c) be torn down. This is the unified contract behind
+ * `agent.observe()` — tool polls, events, streams, promises, peer agent threads,
+ * file tails, etc. all become adapters that satisfy this shape.
+ */
+export interface ObservationSource {
+  /** Human-friendly label for logs / delivered messages. */
+  label: string;
+  /**
+   * Begin producing. Call `emit(datum)` for each piece of data. Return a
+   * teardown function (or void). May be sync or async.
+   */
+  start(
+    emit: (datum: unknown) => void
+  ): void | (() => void) | Promise<void | (() => void)>;
+}
+
+export interface ObserveOpts {
+  /** Only deliver when the datum changed since the last emit. Default true. */
+  onlyOnChange?: boolean;
+  /** Max number of updates before auto-stopping. Default 20. */
+  maxUpdates?: number;
+  /** Max total duration in ms before auto-stopping. Default 10 min. */
+  maxDurationMs?: number;
+}
+
+interface ActiveObservation {
+  id: string;
+  label: string;
+  updates: number;
+  teardownPromise: Promise<void | (() => void)>;
+  expiry?: NodeJS.Timeout;
+}
+
 export abstract class BaseAgent implements IAgent {
   abstract name: string;
   abstract description: string;
@@ -92,9 +127,6 @@ export abstract class BaseAgent implements IAgent {
   // Used to ensure a stale (slow) operation completing in the background cannot
   // clobber a newer interruptible window's resolver.
   private _interruptToken = 0;
-  // Set when interrupt() is called with no active window, so the next
-  // makeInterruptible fires immediately instead of dropping the interrupt.
-  private _pendingInterrupt = false;
 
   protected threads = [] as Message[][];
 
@@ -103,6 +135,12 @@ export abstract class BaseAgent implements IAgent {
 
   // Internal messages
   protected pendingMessages = [] as Message[];
+
+  // Active observations (subscriptions) owned by this agent instance. Kept
+  // per-agent (not module scope) so stopObserving() on one agent can't clobber
+  // another agent's observers, and so newTask() can tear them all down.
+  protected _observations = new Map<string, ActiveObservation>();
+  private _observationSeq = 0;
 
   protected taskBreakdown = "";
   protected summaries = [] as string[];
@@ -254,8 +292,11 @@ export abstract class BaseAgent implements IAgent {
     // Reset interrupt state so a queued/stale interrupt from a prior task
     // can't fire against the new task.
     this._interruptResolve = null;
-    this._pendingInterrupt = false;
     this._forceCompact = false;
+
+    // Tear down any observers from a prior task so they can't leak or inject
+    // into the new task.
+    this.stopObserving(undefined, "new task started");
 
     // Emit event for plugin integration
     const id = taskId || this.startTimeMs.toString();
@@ -818,13 +859,6 @@ export abstract class BaseAgent implements IAgent {
 
       this._interruptResolve = () => finish(() => resolve(interruptValue));
 
-      // If an interrupt arrived while there was no active window, honor it now.
-      if (this._pendingInterrupt) {
-        this._pendingInterrupt = false;
-        finish(() => resolve(interruptValue));
-        return;
-      }
-
       promise
         .then((result) => {
           // If this window was already interrupted/settled, drop the stale
@@ -862,12 +896,13 @@ export abstract class BaseAgent implements IAgent {
       this._interruptResolve();
     } else {
       // No active interruptible window right now (we're between the AI
-      // completion and the tool call, or in message processing). Queue the
-      // interrupt so the next makeInterruptible window fires immediately
-      // instead of silently dropping it.
-      this._pendingInterrupt = true;
+      // completion and the tool call, or in message processing). There is
+      // nothing to interrupt, so we do NOT queue it — a queued interrupt
+      // would pre-empt the next tool call and drop its result. Any message
+      // supplied with the poke was already added as a pending user message
+      // above, so the agent will still see it on its next step.
       this.log(
-        "No active interruptible operation — queued interrupt for next step",
+        "No active interruptible operation to interrupt",
         "warn"
       );
     }
@@ -1352,6 +1387,99 @@ export abstract class BaseAgent implements IAgent {
       this.pendingUserMessages.push(message);
     }
     this.events.emit(this.eventTypes.userSay, message.content);
+  }
+
+  /**
+   * Subscribe to any data-yielding source and stream its data into this agent's
+   * loop as non-blocking pending messages. This is the unified subscription
+   * primitive behind the `observe` tool — a tool poll, an event, a stream, a
+   * peer agent's thread, a file tail, etc. all become `ObservationSource`
+   * adapters feeding the same sink (`addPendingMessage`).
+   *
+   * Returns an observation id that can be passed to `stopObserving`. Auto-expires
+   * after `maxUpdates` or `maxDurationMs` so a forgotten observer never leaks.
+   */
+  observe(source: ObservationSource, opts: ObserveOpts = {}): string {
+    const {
+      onlyOnChange = true,
+      maxUpdates = 20,
+      maxDurationMs = 10 * 60 * 1000,
+    } = opts;
+
+    this._observationSeq += 1;
+    // Keep the id free of characters that would break id-extraction regexes
+    // (labels can contain parens, spaces, JSON, etc).
+    const safeLabel = source.label.replace(/[^A-Za-z0-9]+/g, "_").slice(0, 24);
+    const id = `obs_${safeLabel}_${Date.now()}_${this._observationSeq}`;
+    let last: string | undefined;
+
+    const emit = (datum: unknown) => {
+      // status gate: don't inject once the agent is done
+      if (this.status === this.eventTypes.done) {
+        this.stopObserving(id);
+        return;
+      }
+      const str = typeof datum === "string" ? datum : JSON.stringify(datum);
+      if (onlyOnChange && str === last) return; // dedupe noise
+      last = str;
+      const obs = this._observations.get(id);
+      if (!obs) return;
+      obs.updates += 1;
+      this.addPendingMessage({
+        role: "user",
+        content: `[observe:${id}] ${source.label} (update ${obs.updates}/${maxUpdates}):\n${str}`,
+      });
+      if (obs.updates >= maxUpdates) {
+        this.stopObserving(id, "max updates reached");
+      }
+    };
+
+    const teardownPromise = Promise.resolve(source.start(emit)).catch((e) => {
+      this.log(`observe(${source.label}) start failed: ${e?.message ?? e}`, "warn");
+      return undefined;
+    });
+
+    const expiry = maxDurationMs
+      ? setTimeout(() => this.stopObserving(id, "max duration reached"), maxDurationMs)
+      : undefined;
+    if (expiry && typeof (expiry as any).unref === "function") {
+      (expiry as any).unref();
+    }
+
+    this._observations.set(id, {
+      id,
+      label: source.label,
+      updates: 0,
+      teardownPromise,
+      expiry,
+    });
+    return id;
+  }
+
+  /**
+   * Cancel one observation (by id) or all of them (no id). Companion to
+   * `observe`. Runs each source's teardown function if it returned one.
+   */
+  stopObserving(id?: string, reason = "stopped"): string {
+    const ids = id ? [id] : [...this._observations.keys()];
+    let stopped = 0;
+    for (const oid of ids) {
+      const obs = this._observations.get(oid);
+      if (!obs) continue;
+      if (obs.expiry) clearTimeout(obs.expiry);
+      Promise.resolve(obs.teardownPromise)
+        .then((fn) => {
+          if (typeof fn === "function") fn();
+        })
+        .catch(() => {});
+      this._observations.delete(oid);
+      stopped += 1;
+    }
+    return id
+      ? stopped
+        ? `Stopped observer ${id} (${reason}).`
+        : `No active observer found with id: ${id}.`
+      : `Stopped ${stopped} active observer(s) (${reason}).`;
   }
 
   getMessagesLength(messages: Message[]) {
