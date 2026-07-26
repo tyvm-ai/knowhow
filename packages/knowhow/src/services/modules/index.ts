@@ -7,6 +7,37 @@ import { KnowhowModule, ModuleContext } from "./types";
 import { services } from "../";
 import { toUniqueArray } from "../../utils";
 
+/**
+ * Module resolution search paths.
+ *
+ * A module's resolution order depends on WHICH config declared it:
+ *
+ * - Modules declared in the GLOBAL config should resolve against the global
+ *   install's node_modules (~/.knowhow/node_modules) — i.e. what's installed
+ *   alongside the global config. We still fall back to cwd paths as a last
+ *   resort so a globally-declared module can still be found if it only exists
+ *   locally.
+ *
+ * - Modules declared in the LOCAL config should resolve against the local
+ *   project first (cwd/.knowhow/node_modules), then the global config's
+ *   node_modules (~/.knowhow/node_modules), then cwd/node_modules.
+ */
+function localResolvePaths(): string[] {
+  return [
+    path.join(process.cwd(), ".knowhow", "node_modules"),
+    path.join(os.homedir(), ".knowhow", "node_modules"),
+    path.join(process.cwd(), "node_modules"),
+  ];
+}
+
+function globalResolvePaths(): string[] {
+  return [
+    path.join(os.homedir(), ".knowhow", "node_modules"),
+    path.join(process.cwd(), ".knowhow", "node_modules"),
+    path.join(process.cwd(), "node_modules"),
+  ];
+}
+
 export class ModulesService {
   async getDefaultContext() {
     return { ...services() };
@@ -19,7 +50,8 @@ export class ModulesService {
 
   async loadModulesFrom(
     config: { modules: string[] } & any,
-    context?: Partial<ModuleContext>
+    context?: Partial<ModuleContext>,
+    resolvePaths: string[] = localResolvePaths()
   ) {
     // If no context provided, fall back to global singletons
     if (!context) {
@@ -38,16 +70,10 @@ export class ModulesService {
 
     const allModulePaths = config.modules;
 
-    // Search paths: local .knowhow/node_modules first (where `knowhow modules install`
-    // puts packages for this project), then global ~/.knowhow/node_modules, and finally
-    // cwd/node_modules as a last resort. Putting cwd/node_modules last avoids accidentally
-    // picking up workspace-symlinked dev versions of modules (e.g. when running knowhow
-    // from within the knowhow monorepo itself) instead of the properly-installed version.
-    const resolvePaths = [
-      path.join(process.cwd(), ".knowhow", "node_modules"),
-      path.join(os.homedir(), ".knowhow", "node_modules"),
-      path.join(process.cwd(), "node_modules"),
-    ];
+    // `resolvePaths` (passed in by the caller) determines the search-path order.
+    // Global-config modules resolve against ~/.knowhow/node_modules first; local-config
+    // modules resolve against cwd/.knowhow/node_modules first. See localResolvePaths()
+    // and globalResolvePaths() above.
 
     for (const modulePath of allModulePaths) {
       // Build an ordered list of candidate resolutions for this module.
@@ -166,14 +192,33 @@ export class ModulesService {
     const config = await getConfig();
 
     const globalConfig = await getGlobalConfig();
-    const allModulePaths = [
-      ...(globalConfig.modules || []),
-      ...(config.modules || []),
-    ];
 
-    return this.loadModulesFrom(
-      { ...config, modules: toUniqueArray(allModulePaths) },
-      context
+    const globalModules = toUniqueArray(globalConfig.modules || []);
+    // Local modules already loaded globally shouldn't be loaded again (a module
+    // that adds a CLI command would throw "already have command"). De-dupe local
+    // against global.
+    const localModules = toUniqueArray(config.modules || []).filter(
+      (m) => !globalModules.includes(m)
     );
+
+    // Load global-config modules resolving against the global install's
+    // node_modules (~/.knowhow/node_modules) first.
+    if (globalModules.length > 0) {
+      await this.loadModulesFrom(
+        { ...config, modules: globalModules },
+        context,
+        globalResolvePaths()
+      );
+    }
+
+    // Load local-config modules resolving against the local project's
+    // node_modules (cwd/.knowhow/node_modules) first.
+    if (localModules.length > 0) {
+      await this.loadModulesFrom(
+        { ...config, modules: localModules },
+        context,
+        localResolvePaths()
+      );
+    }
   }
 }

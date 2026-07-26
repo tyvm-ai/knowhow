@@ -68,8 +68,12 @@ export function checkScript(
 
   const compilerOptions = {
     target: ts.ScriptTarget.ES2020,
-    module: ts.ModuleKind.ESNext,
-    lib: ["lib.es2020.d.ts"],
+    // CommonJS (not ESNext) is required so that `declare global {}` augmentation
+    // in the lib file is correctly resolved for the script file.
+    // ESNext module mode breaks global augmentation from companion .d.ts files.
+    module: ts.ModuleKind.CommonJS,
+    // Include dom for console, and es2020 for Promise/async etc.
+    lib: ["lib.es2020.d.ts", "lib.dom.d.ts"],
     noEmit: true,
     strict: false,
     noImplicitAny: false,

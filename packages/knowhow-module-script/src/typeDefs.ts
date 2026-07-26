@@ -1,6 +1,21 @@
 import { Tool } from "@tyvm/knowhow/ts_build/src/clients";
 
 /**
+ * Sanitize a string for safe embedding inside a JSDoc /** ... *\/ comment.
+ * - Strips `*\/` sequences (they would close the comment early)
+ * - Trims to first line only (multi-line descriptions with code fences like
+ *   ```typescript...``` contain their own `*\/` and corrupt the typedef)
+ * - Escapes backticks (cosmetic — TS doesn't care, but avoids confusion)
+ */
+function sanitizeJsDoc(text: string): string {
+  if (!text) return "";
+  // Take only the first line of multi-line descriptions
+  const firstLine = text.split("\n")[0].trim();
+  // Remove anything that would close a JSDoc comment
+  return firstLine.replace(/\*\//g, "* /").replace(/\/\*/g, "/ *");
+}
+
+/**
  * Converts a JSON Schema property definition to a TypeScript type string.
  * Mirrors the knowhow-web tool-script intellisense generator so scripts run in
  * the CLI sandbox get the SAME typing/autocomplete story as the web editor.
@@ -95,10 +110,9 @@ export function generateScriptTypeDefs(tools: Tool[]): string {
   lines.push("// Auto-generated KnowHow executeScript sandbox declarations.");
   lines.push("// These globals are injected by the runtime — do NOT import them.");
   lines.push("");
-  lines.push("export {};");
-  lines.push("");
-  lines.push("declare global {");
-  lines.push("namespace KnowhowTools {");
+  // Use pure ambient declarations (no export/import = no module wrapper needed).
+  // This matches Monaco's addExtraLib approach and avoids declare global quirks.
+  lines.push("declare namespace KnowhowTools {");
 
   const seenIface = new Set<string>();
   for (const tool of tools) {
@@ -116,20 +130,20 @@ export function generateScriptTypeDefs(tools: Tool[]): string {
       Object.keys(params.properties).length > 0
     ) {
       const required: string[] = params.required || [];
-      lines.push(`  /** ${fn.description || shortName} */`);
+      lines.push(`  /** ${sanitizeJsDoc(fn.description || shortName)} */`);
       lines.push(`  interface ${ifaceName}Args {`);
       for (const [propName, propSchema] of Object.entries(
         params.properties as Record<string, any>
       )) {
         const optional = required.includes(propName) ? "" : "?";
         if (propSchema.description) {
-          lines.push(`    /** ${propSchema.description} */`);
+          lines.push(`    /** ${sanitizeJsDoc(propSchema.description)} */`);
         }
         lines.push(`    ${propName}${optional}: ${schemaTypeToTs(propSchema, 2)};`);
       }
       lines.push(`  }`);
     } else {
-      lines.push(`  /** ${fn.description || shortName} */`);
+      lines.push(`  /** ${sanitizeJsDoc(fn.description || shortName)} */`);
       lines.push(`  type ${ifaceName}Args = Record<string, any>;`);
     }
   }
@@ -148,21 +162,21 @@ export function generateScriptTypeDefs(tools: Tool[]): string {
 
     if (!seenOverloads.has(shortName)) {
       seenOverloads.add(shortName);
-      if (fn.description) lines.push(`/** ${fn.description} */`);
+      if (fn.description) lines.push(`/** ${sanitizeJsDoc(fn.description)} */`);
       lines.push(
-        `function callTool(toolName: "${shortName}", args?: KnowhowTools.${ifaceName}Args): Promise<any>;`
+        `declare function callTool(toolName: "${shortName}", args?: KnowhowTools.${ifaceName}Args): Promise<any>;`
       );
     }
     if (rawName !== shortName && !seenOverloads.has(rawName)) {
       seenOverloads.add(rawName);
       lines.push(
-        `function callTool(toolName: "${rawName}", args?: KnowhowTools.${ifaceName}Args): Promise<any>;`
+        `declare function callTool(toolName: "${rawName}", args?: KnowhowTools.${ifaceName}Args): Promise<any>;`
       );
     }
   }
   lines.push("/** Call any tool by name with arbitrary arguments. */");
   lines.push(
-    "function callTool(toolName: string, args?: Record<string, any>): Promise<any>;"
+    "declare function callTool(toolName: string, args?: Record<string, any>): Promise<any>;"
   );
   lines.push("");
 
@@ -177,41 +191,40 @@ export function generateScriptTypeDefs(tools: Tool[]): string {
     if (seenGlobals.has(shortName)) continue;
     seenGlobals.add(shortName);
     const ifaceName = toolNameToJsId(shortName);
-    if (fn.description) lines.push(`/** ${fn.description} */`);
+    if (fn.description) lines.push(`/** ${sanitizeJsDoc(fn.description)} */`);
     lines.push(
-      `function ${shortName}(args?: KnowhowTools.${ifaceName}Args): Promise<any>;`
+      `declare function ${shortName}(args?: KnowhowTools.${ifaceName}Args): Promise<any>;`
     );
   }
   lines.push("");
 
   // Built-in sandbox globals
-  lines.push("interface LlmMessage { role: string; content: string; }");
-  lines.push("interface LlmOptions { model?: string; maxTokens?: number; temperature?: number; }");
+  lines.push("declare interface LlmMessage { role: string; content: string; }");
+  lines.push("declare interface LlmOptions { model?: string; maxTokens?: number; temperature?: number; }");
   lines.push("/** Run a single stateless LLM completion. */");
   lines.push(
-    "function llm(messages: LlmMessage[], options?: LlmOptions): Promise<any>;"
+    "declare function llm(messages: LlmMessage[], options?: LlmOptions): Promise<any>;"
   );
   lines.push(
     "/** Run another registered agent as a node and get its final answer string. */"
   );
-  lines.push("function agent(agentName: string, query: string): Promise<string>;");
+  lines.push("declare function agent(agentName: string, query: string): Promise<string>;");
   lines.push("/** Pause execution (max 2000ms). */");
-  lines.push("function sleep(ms: number): Promise<void>;");
+  lines.push("declare function sleep(ms: number): Promise<void>;");
   lines.push(
     '/** Create a downloadable artifact. */'
   );
   lines.push(
-    'function createArtifact(name: string, content: string, type?: "text" | "json" | "csv" | "html" | "markdown"): Promise<any>;'
+    'declare function createArtifact(name: string, content: string, type?: "text" | "json" | "csv" | "html" | "markdown"): Promise<any>;'
   );
   lines.push("/** Get current resource quota usage. */");
-  lines.push("function getQuotaUsage(): any;");
-  lines.push("const console: {");
+  lines.push("declare function getQuotaUsage(): any;");
+  lines.push("declare const console: {");
   lines.push("  log(...args: any[]): void;");
   lines.push("  info(...args: any[]): void;");
   lines.push("  warn(...args: any[]): void;");
   lines.push("  error(...args: any[]): void;");
   lines.push("};");
-  lines.push("}"); // end declare global
   lines.push("");
 
   return lines.join("\n");

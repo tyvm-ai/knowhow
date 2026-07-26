@@ -1,3 +1,5 @@
+import * as os from "os";
+import * as path from "path";
 import { Config } from "../../../src/types";
 
 // Mock config before any other imports that depend on it
@@ -231,6 +233,73 @@ describe("ModulesService.loadModulesFromConfig", () => {
 
     expect(loadedPaths).toEqual(["./global-module", "./local-module"]);
     expect(context.Agents.registerAgent).toHaveBeenCalledTimes(2);
+    spy.mockRestore();
+  });
+
+  it("resolves global-config modules against ~/.knowhow/node_modules first, local against cwd/.knowhow/node_modules first", async () => {
+    mockGetGlobalConfig.mockResolvedValue({
+      modules: ["global-pkg"],
+    } as unknown as Config);
+    mockGetConfig.mockResolvedValue({
+      modules: ["local-pkg"],
+    } as unknown as Config);
+
+    const service = new ModulesService();
+    const context = makeContext();
+
+    const calls: { modules: string[]; resolvePaths: string[] }[] = [];
+    const spy = jest
+      .spyOn(service as any, "loadModulesFrom")
+      .mockImplementation(async (...args: any[]) => {
+        const [cfg, , resolvePaths] = args;
+        calls.push({ modules: cfg.modules, resolvePaths });
+      });
+
+    await service.loadModulesFromConfig(context);
+
+    const globalKnowhow = path.join(os.homedir(), ".knowhow", "node_modules");
+    const localKnowhow = path.join(process.cwd(), ".knowhow", "node_modules");
+
+    const globalCall = calls.find((c) => c.modules.includes("global-pkg"));
+    const localCall = calls.find((c) => c.modules.includes("local-pkg"));
+
+    expect(globalCall).toBeDefined();
+    expect(localCall).toBeDefined();
+    // Global-config module: global node_modules is first in the search order
+    expect(globalCall!.resolvePaths[0]).toBe(globalKnowhow);
+    // Local-config module: local project node_modules is first in the search order
+    expect(localCall!.resolvePaths[0]).toBe(localKnowhow);
+
+    spy.mockRestore();
+  });
+
+  it("does not load a local module again if it is already declared globally (avoids duplicate command registration)", async () => {
+    mockGetGlobalConfig.mockResolvedValue({
+      modules: ["shared-pkg"],
+    } as unknown as Config);
+    mockGetConfig.mockResolvedValue({
+      modules: ["shared-pkg", "local-only-pkg"],
+    } as unknown as Config);
+
+    const service = new ModulesService();
+    const context = makeContext();
+
+    const loadedModuleLists: string[][] = [];
+    const spy = jest
+      .spyOn(service as any, "loadModulesFrom")
+      .mockImplementation(async (...args: any[]) => {
+        const [cfg] = args;
+        loadedModuleLists.push(cfg.modules);
+      });
+
+    await service.loadModulesFromConfig(context);
+
+    const allLoaded = loadedModuleLists.flat();
+    // shared-pkg loaded exactly once (via the global pass)
+    expect(allLoaded.filter((m) => m === "shared-pkg")).toHaveLength(1);
+    // local-only-pkg still loaded
+    expect(allLoaded).toContain("local-only-pkg");
+
     spy.mockRestore();
   });
 });
