@@ -13,6 +13,52 @@ Scripts run in an isolated-vm sandbox with access to `callTool`, `llm`, `sleep`,
 
 ---
 
+## Installation
+
+This module depends on [`isolated-vm`](https://www.npmjs.com/package/isolated-vm), a **native (node-gyp) addon**. `isolated-vm` ships prebuilt binaries for common platforms/ABIs, and its `install` script (`node-gyp-build || node-gyp rebuild`) is what selects the correct prebuilt binary (or compiles from source if no prebuild matches your platform).
+
+> **⚠️ npm 11 and some org/CI policies block package install scripts by default.** If the `install` script doesn't run, `isolated-vm` can be left in a broken/mismatched state that later **aborts the whole process** at require-time (e.g. `Assertion 'key <= detail::IsolateSpecificSize' failed`). Because of this, you should install this module with install scripts **allowed**.
+
+Install (or update) with the `--allow-scripts` flag so the native build/prebuild-selection step runs:
+
+```bash
+# Set up the default built-in modules (script + terminal)
+knowhow modules setup --allow-scripts
+
+# Or install this module specifically
+knowhow modules install @tyvm/knowhow-module-script --allow-scripts
+
+# Global install (into ~/.knowhow/node_modules)
+knowhow modules setup --global --allow-scripts
+
+# When updating modules later
+knowhow modules update --allow-scripts
+```
+
+`--allow-scripts` passes `--foreground-scripts --ignore-scripts=false` to npm under the hood, forcing `isolated-vm`'s install lifecycle to run even under npm 11 / restrictive script policies.
+
+### Supported platforms / ABIs
+
+`isolated-vm` ships prebuilds for **Node 22 (abi127)** and **Node 24 (abi137)** on `linux-x64`/`linux-arm64` (glibc + musl), `darwin-arm64`, and `win32-x64`. On those platforms no compiler is needed — the matching prebuild is used. On any other platform/ABI (e.g. **Node 20 / abi115**, **Intel macOS / darwin-x64**) there is no prebuild, so a from-source build runs and you'll need a C++ toolchain (`make`, `g++`/clang, `python3`). Node **22+** is recommended.
+
+### Graceful degradation
+
+Loading this module no longer requires `isolated-vm` to be importable — the native module is loaded **lazily**, only when you actually run a script (`knowhow script` or the `executeScript` tool). This means a broken/missing `isolated-vm` install won't crash `knowhow` at startup; you'll only see the error when you try to run a script. If that happens, reinstall with `--allow-scripts` as shown above.
+
+### Fixing a broken install on a running host
+
+If you hit the `IsolateSpecificSize` (or `Cannot find module 'isolated-vm'`) crash, clear the stale copy and reinstall with scripts allowed:
+
+```bash
+rm -rf ~/.knowhow/node_modules ~/.knowhow/package-lock.json
+knowhow modules setup --global --allow-scripts
+
+# Or, on the affected host, approve/rebuild directly:
+npm rebuild --prefix ~/.knowhow isolated-vm --foreground-scripts
+```
+
+---
+
 ## ⚠️ Important: Dynamic Module Loading & Local Development
 
 ### The Two-Copy Problem

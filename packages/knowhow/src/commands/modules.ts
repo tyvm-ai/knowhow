@@ -40,14 +40,145 @@ function ensureKnowhowPackageJson(knowhowDir: string): void {
 }
 
 /**
+ * Options that control how a module is installed via npm.
+ */
+interface InstallOptions {
+  /**
+   * When true, force npm to run the module's install/build lifecycle scripts
+   * (preinstall/install/postinstall) in the foreground.
+   *
+   * This matters for native modules like `isolated-vm`, whose `install` script
+   * (`node-gyp-build || node-gyp rebuild`) selects/copies the correct prebuilt
+   * binary (or compiles from source). npm 11 and some org/CI policies block
+   * install scripts by default, which leaves native deps in a broken/mismatched
+   * state that later aborts the process at require-time (e.g. the
+   * `IsolateSpecificSize` assertion). Passing this flag ensures those scripts
+   * actually run so the right binary is in place.
+   */
+  allowScripts?: boolean;
+}
+
+/**
  * Run `npm install --prefix <knowhowDir> <mod>` so that modules land in
  * .knowhow/node_modules rather than the project's node_modules.
+ *
+ * When `allowScripts` is set, we explicitly force install lifecycle scripts to
+ * run (`--foreground-scripts --ignore-scripts=false`) so native modules build
+ * correctly even under npm 11 / restrictive org policies that skip scripts by
+ * default.
  */
-function npmInstallToKnowhow(mod: string, knowhowDir: string): void {
-  execSync(`npm install --prefix "${knowhowDir}" ${mod}`, {
+function npmInstallToKnowhow(
+  mod: string,
+  knowhowDir: string,
+  options: InstallOptions = {}
+): void {
+  const scriptFlags = options.allowScripts
+    ? " --foreground-scripts --ignore-scripts=false"
+    : "";
+  execSync(`npm install --prefix "${knowhowDir}" ${mod}${scriptFlags}`, {
     stdio: "inherit",
     encoding: "utf-8",
   });
+
+  // When scripts weren't explicitly allowed, npm 11+ (and restrictive org/CI
+  // policies) silently *skip* package install/build scripts. For native addons
+  // like isolated-vm this leaves the package present but its native binary
+  // unbuilt — which later aborts at runtime with a cryptic error. Detect that
+  // situation now and tell the user exactly how to fix it (re-run with
+  // --allow-scripts) rather than letting them hit the runtime crash.
+  if (!options.allowScripts) {
+    warnIfInstallScriptsSkipped(knowhowDir);
+  }
+}
+
+/**
+ * Names of lifecycle scripts that run during `npm install` and typically build
+ * native code. If a freshly-installed package declares any of these AND we
+ * installed without allowing scripts, they were skipped.
+ */
+const INSTALL_LIFECYCLE_SCRIPTS = ["preinstall", "install", "postinstall"];
+
+/**
+ * Walk the installed dependency tree under <knowhowDir>/node_modules and return
+ * the names of packages that declare native/build install-lifecycle scripts.
+ *
+ * This reads the *actually installed* package.json files (rather than querying
+ * the registry) so it works offline, reflects the real resolved tree, and
+ * catches transitive dependencies (e.g. isolated-vm pulled in by a module).
+ */
+function findPackagesWithInstallScripts(knowhowDir: string): string[] {
+  const nodeModules = path.join(knowhowDir, "node_modules");
+  const found = new Set<string>();
+
+  const readPkgScripts = (pkgDir: string): void => {
+    const pkgJsonPath = path.join(pkgDir, "package.json");
+    if (!fs.existsSync(pkgJsonPath)) return;
+    try {
+      const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
+      const scripts = pkg.scripts ?? {};
+      const hasInstallScript = INSTALL_LIFECYCLE_SCRIPTS.some(
+        (s) => typeof scripts[s] === "string" && scripts[s].trim().length > 0
+      );
+      if (hasInstallScript && pkg.name) {
+        found.add(pkg.name);
+      }
+    } catch {
+      // ignore malformed package.json
+    }
+  };
+
+  const scanDir = (dir: string): void => {
+    if (!fs.existsSync(dir)) return;
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      if (entry.name === ".bin" || entry.name === ".cache") continue;
+      const full = path.join(dir, entry.name);
+      if (entry.name.startsWith("@")) {
+        // scope directory — recurse one level into the scoped packages
+        scanDir(full);
+        continue;
+      }
+      readPkgScripts(full);
+      // Recurse into nested node_modules for hoisting edge cases.
+      const nested = path.join(full, "node_modules");
+      if (fs.existsSync(nested)) scanDir(nested);
+    }
+  };
+
+  scanDir(nodeModules);
+  return Array.from(found).sort();
+}
+
+/**
+ * Check whether the just-installed tree contains packages with install scripts
+ * (that were skipped because --allow-scripts wasn't passed) and, if so, print a
+ * clear warning telling the user to re-run with --allow-scripts.
+ */
+function warnIfInstallScriptsSkipped(knowhowDir: string): void {
+  let pkgsWithScripts: string[] = [];
+  try {
+    pkgsWithScripts = findPackagesWithInstallScripts(knowhowDir);
+  } catch {
+    return;
+  }
+  if (pkgsWithScripts.length === 0) return;
+
+  console.warn(
+    "\n⚠️  Some installed packages have native install/build scripts that may have\n" +
+      "   been skipped (npm 11+ blocks install scripts by default):\n" +
+      pkgsWithScripts.map((p) => `     • ${p}`).join("\n") +
+      "\n\n   If a module fails to load at runtime (e.g. isolated-vm), re-run the\n" +
+      "   install with --allow-scripts so these build steps can run:\n\n" +
+      "     knowhow modules install <module> --allow-scripts\n" +
+      "     # or\n" +
+      "     knowhow modules setup --allow-scripts\n"
+  );
 }
 
 /**
@@ -289,9 +420,14 @@ export function addModulesCommand(program: Command): void {
       "Add default built-in modules to your config and install them into .knowhow/node_modules"
     )
     .option("--global", "Use the global config (~/.knowhow/knowhow.json)")
+    .option(
+      "--allow-scripts",
+      "Allow modules' native install/build scripts to run (needed for native deps like isolated-vm under npm 11)"
+    )
     .action(async (opts) => {
       try {
         const isGlobal: boolean = opts.global ?? false;
+        const allowScripts: boolean = opts.allowScripts ?? false;
         const cfg = isGlobal ? await getGlobalConfig() : await getConfig();
         const configLabel = isGlobal
           ? "~/.knowhow/knowhow.json"
@@ -307,10 +443,16 @@ export function addModulesCommand(program: Command): void {
         let anyChanges = false;
         for (const mod of BUILTIN_MODULES) {
           if (!mod.startsWith(".") && !mod.startsWith("/")) {
-            if (!isModuleInstalled(mod, knowhowDir)) {
+            // Reinstall if the module isn't installed yet, OR if the user
+            // explicitly passed --allow-scripts. In the latter case the whole
+            // point is to (re-)run the native install/build scripts (e.g.
+            // isolated-vm's node-gyp build), so skipping because the package
+            // is "already installed" would silently do nothing — which is
+            // exactly the confusing "Nothing to do" case we want to avoid.
+            if (!isModuleInstalled(mod, knowhowDir) || allowScripts) {
               const installTarget = await fetchLatestCompatibleVersion(mod);
               console.log(`📦 Installing ${installTarget}...`);
-              npmInstallToKnowhow(installTarget, knowhowDir);
+              npmInstallToKnowhow(installTarget, knowhowDir, { allowScripts });
               console.log(`✅ Installed ${mod}`);
               anyChanges = true;
             }
@@ -346,9 +488,14 @@ export function addModulesCommand(program: Command): void {
     )
     .option("--global", "Use the global config (~/.knowhow/knowhow.json)")
     .option("--latest", "Force install the latest version (bypasses package-lock)")
+    .option(
+      "--allow-scripts",
+      "Allow the module's native install/build scripts to run (needed for native deps like isolated-vm under npm 11)"
+    )
     .action(async (moduleName: string | undefined, opts) => {
       try {
         const isGlobal: boolean = opts.global ?? false;
+        const allowScripts: boolean = opts.allowScripts ?? false;
         const cfg = isGlobal ? await getGlobalConfig() : await getConfig();
         const configLabel = isGlobal
           ? "~/.knowhow/knowhow.json"
@@ -374,7 +521,7 @@ export function addModulesCommand(program: Command): void {
           for (const mod of installable) {
             console.log(`  📦 Installing ${mod}...`);
             const installTarget = opts.latest ? await fetchLatestCompatibleVersion(mod) : mod;
-            npmInstallToKnowhow(installTarget, knowhowDir);
+            npmInstallToKnowhow(installTarget, knowhowDir, { allowScripts });
             console.log(`  ✅ Installed ${mod}`);
           }
           console.log(`\n🎉 All modules installed!`);
@@ -384,7 +531,7 @@ export function addModulesCommand(program: Command): void {
         // Install the specified module
         const installTarget = opts.latest ? await fetchLatestCompatibleVersion(moduleName) : moduleName;
         console.log(`📦 Installing ${installTarget} into ${knowhowDir}/node_modules...`);
-        npmInstallToKnowhow(installTarget, knowhowDir);
+        npmInstallToKnowhow(installTarget, knowhowDir, { allowScripts });
         console.log(`✅ Installed ${moduleName}`);
 
         // Add to config if not already there
@@ -453,10 +600,15 @@ export function addModulesCommand(program: Command): void {
     )
     .option("--global", "Use the global config (~/.knowhow/knowhow.json)")
     .option("-y, --yes", "Skip confirmation prompt and update all outdated modules automatically")
+    .option(
+      "--allow-scripts",
+      "Allow modules' native install/build scripts to run (needed for native deps like isolated-vm under npm 11)"
+    )
     .action(async (opts) => {
       try {
         const isGlobal: boolean = opts.global ?? false;
         const skipConfirm: boolean = opts.yes ?? false;
+        const allowScripts: boolean = opts.allowScripts ?? false;
         const cfg = isGlobal ? await getGlobalConfig() : await getConfig();
         const configLabel = isGlobal
           ? "~/.knowhow/knowhow.json"
@@ -540,7 +692,7 @@ export function addModulesCommand(program: Command): void {
         console.log("");
         for (const { mod, compatibleVersion } of toUpdate) {
           console.log(`  📦 Updating ${compatibleVersion}...`);
-          npmInstallToKnowhow(compatibleVersion, knowhowDir);
+          npmInstallToKnowhow(compatibleVersion, knowhowDir, { allowScripts });
           console.log(`  ✅ Updated ${mod}`);
         }
         console.log(`\n🎉 Update complete! ${toUpdate.length} module(s) updated.`);

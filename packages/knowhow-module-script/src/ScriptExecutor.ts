@@ -1,4 +1,86 @@
-import ivm from "isolated-vm";
+// `isolated-vm` is a native (node-gyp) addon. We import ONLY its types eagerly
+// (a compile-time-only construct that emits no runtime `require`), and defer the
+// actual runtime load until a script is executed. This keeps merely *loading*
+// this module (during knowhow module init) from touching the native binary — so
+// a broken/mismatched isolated-vm build fails when you run a script, not when
+// knowhow starts up.
+import type ivm from "isolated-vm";
+
+/**
+ * Cached, lazily-loaded runtime handle to the isolated-vm native module.
+ *
+ * We `require` it on first use rather than importing at module top-level so that
+ * a failing native load surfaces as a catchable error at script-execution time
+ * (see loadIsolatedVm) instead of aborting the whole process at import time.
+ */
+let _ivmRuntime: typeof ivm | null = null;
+function getIvm(): typeof ivm {
+  if (!_ivmRuntime) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      _ivmRuntime = require("isolated-vm");
+    } catch (err) {
+      throw new Error(formatIsolatedVmLoadError(err));
+    }
+  }
+  return _ivmRuntime as typeof ivm;
+}
+
+/**
+ * `isolated-vm` is a native (node-gyp) addon. It can fail to load for a few
+ * distinct reasons, and the raw errors are cryptic. Two common ones:
+ *
+ *   1. "Cannot find module 'isolated-vm'" — the package isn't installed at all.
+ *   2. "No native build was found for platform=... abi=..." — the JS package is
+ *      installed, but the matching native `.node` binary is missing. This is the
+ *      classic symptom of npm 11 (and restrictive org/CI policies) *blocking the
+ *      install/build script by default*. isolated-vm's `install` script
+ *      (`node-gyp-build || node-gyp rebuild`) never ran, so no prebuild was
+ *      selected and nothing was compiled — leaving the binary absent.
+ *
+ * In both cases the fix is the same for a knowhow user: reinstall the module
+ * while allowing install scripts to run. We surface that as an actionable
+ * message so users don't have to reverse-engineer the node-gyp error.
+ */
+function formatIsolatedVmLoadError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const isMissingModule =
+    /cannot find module ['"]isolated-vm['"]/i.test(raw) ||
+    (err as any)?.code === "MODULE_NOT_FOUND";
+  const isMissingNativeBuild = /no native build was found/i.test(raw);
+
+  const reason = isMissingModule
+    ? "The 'isolated-vm' package is not installed."
+    : isMissingNativeBuild
+    ? "The 'isolated-vm' package is installed, but its native binary was not built.\n" +
+      "This almost always means the install/build script was blocked (npm 11+ blocks\n" +
+      "package install scripts by default), so no prebuilt binary was selected and\n" +
+      "nothing was compiled."
+    : "Failed to load the 'isolated-vm' native module.";
+
+  return [
+    "Cannot run scripts: the isolated-vm sandbox failed to load.",
+    "",
+    reason,
+    "",
+    "To fix this, reinstall the script module while allowing native install scripts:",
+    "",
+    "  # Global install (~/.knowhow):",
+    "  knowhow modules install @tyvm/knowhow-module-script --global --allow-scripts",
+    "",
+    "  # Local install (./.knowhow):",
+    "  knowhow modules install @tyvm/knowhow-module-script --allow-scripts",
+    "",
+    "  # Or, if you set up with `knowhow modules setup`, re-run it with:",
+    "  knowhow modules setup --allow-scripts",
+    "",
+    "The --allow-scripts flag lets isolated-vm run its node-gyp build step so the",
+    "correct native binary is installed for your Node.js version.",
+    "",
+    `(original error: ${raw})`,
+  ].join("\n");
+}
+
 import { ToolsService } from "@tyvm/knowhow/ts_build/src/services/Tools";
 import { AIClient } from "@tyvm/knowhow/ts_build/src/clients";
 import { SandboxContext } from "./SandboxContext";
@@ -216,6 +298,7 @@ export class ScriptExecutor {
       note: "Using isolated-vm for secure execution",
     });
 
+    const ivm = getIvm();
     const isolate = new ivm.Isolate({
       memoryLimit: policyEnforcer.getQuotas().maxMemoryMb,
     });
@@ -269,6 +352,7 @@ export class ScriptExecutor {
   ): Promise<void> {
     tracer.emitEvent("context_setup_start", {});
 
+    const ivm = getIvm();
     const globalRef = vmContext.global;
     await globalRef.set("globalThis", globalRef.derefInto());
 
