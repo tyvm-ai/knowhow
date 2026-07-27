@@ -72,8 +72,9 @@ async function resolveSandboxId(nameOrId: string): Promise<string> {
     return nameOrId;
   }
   const sandboxes = await apiGet<Sandbox[]>("/sandboxes");
+  const normalizedName = nameOrId.toLocaleLowerCase();
   const match = sandboxes.find(
-    (s) => s.name === nameOrId || s.id === nameOrId
+    (s) => s.id === nameOrId || s.name?.toLocaleLowerCase() === normalizedName
   );
   if (!match) {
     const names = sandboxes.map((s) => s.name || s.id).join(", ");
