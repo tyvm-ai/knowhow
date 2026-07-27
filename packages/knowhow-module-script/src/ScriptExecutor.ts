@@ -76,6 +76,14 @@ export class ScriptExecutor {
    */
   async execute(request: ExecutionRequest): Promise<ExecutionResult> {
     const tracer = new ScriptTracer();
+
+    // Wire up the caller's real-time event listener BEFORE the first event is
+    // emitted so that execution_start (and everything after) is streamed out.
+    let unsubscribe: (() => void) | undefined;
+    if (request.onEvent) {
+      unsubscribe = tracer.onEvent(request.onEvent);
+    }
+
     const quotas = { ...this.defaultQuotas, ...request.quotas };
     const policy = { ...this.defaultPolicy, ...request.policy };
     const policyEnforcer = new ScriptPolicyEnforcer(quotas, policy);
@@ -161,6 +169,9 @@ export class ScriptExecutor {
         artifacts: [],
         consoleOutput: [],
       };
+    } finally {
+      // Always clean up the event listener subscription.
+      unsubscribe?.();
     }
   }
 

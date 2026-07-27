@@ -20,7 +20,14 @@ export class SandboxContext {
   ) {}
 
   /**
-   * Console implementation that captures output
+   * Console implementation that captures output and emits trace events.
+   *
+   * NOTE: Nothing is written directly to process.stdout / process.stderr here.
+   * Callers (e.g. the CLI `script` command) should subscribe to tracer events
+   * via `tracer.onEvent(listener)` and render console_log / console_error /
+   * console_warn / console_info events however they like.  This keeps the
+   * sandbox decoupled from stdout so that programmatic consumers of
+   * ScriptExecutor can handle output in their own way.
    */
   console = {
     log: (...args: any[]) => {
@@ -64,7 +71,6 @@ export class SandboxContext {
     },
   };
 
-  /**
   /**
    * List the names of all tools available to this script (respecting the
    * ToolsService's enabled set). Used by the generic function resolver to know

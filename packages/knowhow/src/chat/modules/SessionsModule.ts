@@ -771,18 +771,15 @@ export class SessionsModule extends BaseChatModule {
     await watcher.startWatching(taskId);
     this.agentModule.setActiveSyncedWatcher(watcher);
 
-    // Wire rendering via AgentModule utility (handles cleanup on detach)
-    this.agentModule.wireAgentRendering(taskId, watcher.agentEvents, watcher.eventTypes, watcher.agentName);
-    watcher.agentEvents.once(watcher.eventTypes.done, (output) => {
-      console.log(Marked.parse(output));
-    });
-
     const context = this.chatService?.getContext();
     if (context) context.activeAgentTaskId = taskId;
 
     console.log(`📁 Attached to filesystem agent: ${taskId}`);
 
     // Enter interactive loop — this sets mode to "agent:attached" and blocks until detach/done/kill
+    // attachedAgentChatLoop calls wireAgentRendering internally — do NOT call it here too,
+    // otherwise two sets of listeners are registered and output is doubled (or, after detach,
+    // the wrong agentEvents object holds the listeners).
     const fsWatcherAgent = new WatcherBackedAgent(watcher);
     await this.agentModule.attachedAgentChatLoop(taskId, fsWatcherAgent);
   }
@@ -812,15 +809,13 @@ export class SessionsModule extends BaseChatModule {
     await watcher.startWatching(taskId);
     this.agentModule.setActiveSyncedWatcher(watcher);
 
-    // Wire rendering via AgentModule utility (handles cleanup on detach)
-    this.agentModule.wireAgentRendering(taskId, watcher.agentEvents, watcher.eventTypes, watcher.agentName);
-
     const context = this.chatService?.getContext();
     if (context) context.activeAgentTaskId = taskId;
 
     console.log(`🌐 Attached to web agent: ${taskId}`);
 
-    // Enter interactive loop — this sets mode to "agent:attached" and blocks until detach/done/kill
+    // Enter interactive loop — wireAgentRendering is called inside attachedAgentChatLoop.
+    // Do NOT call it here too (would double-register listeners).
     const webWatcherAgent = new WatcherBackedAgent(watcher);
     await this.agentModule.attachedAgentChatLoop(taskId, webWatcherAgent);
   }

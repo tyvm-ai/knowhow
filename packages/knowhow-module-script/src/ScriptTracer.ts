@@ -1,12 +1,19 @@
 import { TraceEvent, TraceMetrics, ExecutionTrace, QuotaUsage } from "./types";
 
+export type TraceEventListener = (event: TraceEvent) => void;
+
 /**
- * Handles tracing and monitoring of script execution
+ * Handles tracing and monitoring of script execution.
+ *
+ * Consumers can subscribe to events in real-time via `onEvent()` so that
+ * things like console.log output can be rendered as they happen rather than
+ * being buffered until the script finishes.
  */
 export class ScriptTracer {
   private events: TraceEvent[] = [];
   private metrics: TraceMetrics;
   private startTime: number;
+  private listeners: TraceEventListener[] = [];
 
   constructor() {
     this.startTime = Date.now();
@@ -28,7 +35,18 @@ export class ScriptTracer {
   }
 
   /**
-   * Emit a trace event
+   * Subscribe to trace events as they are emitted.
+   * Returns an unsubscribe function.
+   */
+  onEvent(listener: TraceEventListener): () => void {
+    this.listeners.push(listener);
+    return () => {
+      this.listeners = this.listeners.filter((l) => l !== listener);
+    };
+  }
+
+  /**
+   * Emit a trace event and notify all listeners immediately.
    */
   emitEvent(type: string, data: any): void {
     const event: TraceEvent = {
@@ -40,6 +58,15 @@ export class ScriptTracer {
 
     this.events.push(event);
     this.updateMetrics(event);
+
+    // Notify listeners synchronously so console output appears immediately.
+    for (const listener of this.listeners) {
+      try {
+        listener(event);
+      } catch {
+        // Never let a listener crash the script.
+      }
+    }
   }
 
   /**

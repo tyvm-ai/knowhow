@@ -122,6 +122,13 @@ export interface GitCredentialResponse {
 }
 
 export function loadKnowhowJwt(): string {
+  // Check env var first — this is how cloud workers/CI runners get auth
+  // (injected via KNOWHOW_JWT env var in the runner's .env file by GithubRunnerService).
+  // This avoids depending on a potentially stale .knowhow/.jwt file from the snapshot.
+  if (process.env.KNOWHOW_JWT) {
+    return process.env.KNOWHOW_JWT;
+  }
+
   const jwtFile = path.join(process.cwd(), ".knowhow", ".jwt");
   if (!fs.existsSync(jwtFile)) {
     return "";

@@ -77,6 +77,12 @@ export interface ExecutionRequest {
   context?: Record<string, any>;
   quotas?: Partial<ResourceQuotas>;
   policy?: Partial<SecurityPolicy>;
+  /**
+   * Optional callback invoked for every trace event as it is emitted during
+   * execution.  Use this to stream console output, tool calls, etc. in
+   * real-time rather than waiting for the script to finish.
+   */
+  onEvent?: (event: TraceEvent) => void;
 }
 
 // Script execution result

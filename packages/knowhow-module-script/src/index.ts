@@ -103,19 +103,54 @@ const scriptModule: KnowhowModule = {
            }
  
           const executor = new ScriptExecutor(Tools, Clients);
+
+          // Render trace events live as the script runs so that console.log
+          // output (and other interesting events like tool calls) appear
+          // immediately rather than being buffered until the script finishes.
+          const renderEvent = (event: { type: string; data: any }) => {
+            switch (event.type) {
+              case "console_log":
+                process.stdout.write(`[script] ${event.data.message}\n`);
+                break;
+              case "console_info":
+                process.stdout.write(`[script:info] ${event.data.message}\n`);
+                break;
+              case "console_warn":
+                process.stderr.write(`[script:warn] ${event.data.message}\n`);
+                break;
+              case "console_error":
+                process.stderr.write(`[script:error] ${event.data.message}\n`);
+                break;
+              case "tool_call_start":
+                process.stderr.write(`[script:tool] → ${event.data.toolName}\n`);
+                break;
+              case "tool_call_success":
+                process.stderr.write(`[script:tool] ✓ ${event.data.toolName}\n`);
+                break;
+              case "tool_call_error":
+                process.stderr.write(
+                  `[script:tool] ✗ ${event.data.toolName}: ${event.data.error}\n`
+                );
+                break;
+              // Other events (llm calls, agent calls, etc.) are silently
+              // recorded in the trace but not printed to avoid noise. Add
+              // cases here to expose more detail.
+            }
+          };
+
           const result = await executor.execute({
             script: scriptContent,
             policy: {
               allowNetworkAccess: !!options.allowNetwork,
             },
             quotas: {
-              maxExecutionTimeMs: 5 * 60 * 1000, // 5 minutes for CLI scripts
+               maxExecutionTimeMs: 30 * 60 * 1000, // 30 minutes for CLI scripts
             },
+            onEvent: renderEvent,
           });
 
-          if (result.consoleOutput?.length) {
-            console.log(result.consoleOutput.join("\n"));
-          }
+          // Only print the final return value — live output was already
+          // streamed above via onEvent.
           console.log(JSON.stringify(result.result, null, 2));
           if (!result.success) {
             console.error("Script error:", result.error);
