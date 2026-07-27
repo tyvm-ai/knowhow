@@ -6,6 +6,7 @@ import { ModelPricing } from "./types";
  */
 export const FireworksTextPricing: Record<string, ModelPricing> = {
   // Moonshot AI
+  "accounts/fireworks/models/kimi-k3": { input: 3.0, cache_hit: 0.30, output: 15.0 },
   "accounts/fireworks/models/kimi-k2p7-code": { input: 0.95, cache_hit: 0.19, output: 4.0 },
   "accounts/fireworks/models/kimi-k2-6": { input: 0.95, cache_hit: 0.16, output: 4.0 },
   "accounts/fireworks/models/kimi-k2-5": { input: 0.60, cache_hit: 0.10, output: 3.0 },
