@@ -222,12 +222,14 @@ import {
 import {
   XaiModels, XaiTextModels, XaiImageModels, XaiVideoModels, XaiResponsesOnlyModels, XaiReasoningModels,
 } from "./clients/pricing/xai";
+import { FireworksModels } from "./clients/pricing/fireworks";
 
 export const Models = {
   anthropic: AnthropicModels,
   xai: XaiModels,
   openai: OpenAiModels,
   google: GoogleModels,
+  fireworks: FireworksModels,
 };
 
 export const EmbeddingModels = {
