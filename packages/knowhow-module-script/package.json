@@ -1,6 +1,6 @@
 {
   "name": "@tyvm/knowhow-module-script",
-  "version": "0.22.4",
+  "version": "0.22.5",
   "description": "Script execution module for @tyvm/knowhow — isolated-vm sandbox",
   "main": "ts_build/index.js",
   "types": "ts_build/index.d.ts",
