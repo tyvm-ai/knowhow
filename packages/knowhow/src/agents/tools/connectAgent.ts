@@ -288,6 +288,7 @@ export const connectAgentDefinition: Tool = {
     parameters: {
       type: "object",
       positional: false,
+      usesContext: true,
       properties: {
         connections: {
           type: "array",
@@ -340,6 +341,7 @@ export const stopConnectionsDefinition: Tool = {
     parameters: {
       type: "object",
       positional: false,
+      usesContext: true,
       properties: {
         id: {
           type: "string",

@@ -40,6 +40,14 @@ export interface Tool {
     parameters: {
       type: string;
       positional?: boolean;
+      /**
+       * When true, this tool is a local/in-memory (functional) tool that needs
+       * the per-call agent context. ToolsService will inject `_ctx` into the
+       * invocation (last positional arg for positional tools, or the `_ctx` key
+       * for non-positional tools). Tools that don't set this (e.g. MCP tools,
+       * which are serialized over the wire) never receive `_ctx`.
+       */
+      usesContext?: boolean;
       properties: {
         [key: string]: ToolProp;
       };

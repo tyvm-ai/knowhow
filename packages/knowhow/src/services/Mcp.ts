@@ -442,6 +442,9 @@ export class McpService {
 
     const realName = this.parseToolName(toolName);
     return async (args: any) => {
+      // MCP tools are registered without `usesContext`, so ToolsService.callTool
+      // never injects the per-call `_ctx` here — the args we receive are already
+      // safe to serialize over the wire (no circular BaseAgent/AI-client refs).
       console.log("Calling tool via mcp client", realName, "with args", args);
       const tool = await client.callTool(
         {

@@ -110,6 +110,7 @@ export const replyToParentDefinition: Tool = {
     parameters: {
       type: "object",
       positional: true,
+      usesContext: true,
       properties: {
         message: {
           type: "string",

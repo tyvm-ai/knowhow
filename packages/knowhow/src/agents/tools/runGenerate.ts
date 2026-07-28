@@ -142,6 +142,7 @@ export const runGenerateDefinition: Tool = {
       "When `sources` is omitted, it runs the sources defined in .knowhow/knowhow.json (optionally scoped by name/filter).",
     parameters: {
       type: "object",
+      usesContext: true,
       properties: {
         sources: {
           type: "array",

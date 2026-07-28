@@ -245,9 +245,15 @@ export class ToolsService {
       const properties = toolDefinition?.function?.parameters?.properties || {};
       const isPositional =
         toolDefinition?.function?.parameters?.positional || false;
+      const usesContext =
+        toolDefinition?.function?.parameters?.usesContext || false;
 
       // Thread the per-call context (`_ctx`) into the invocation so tools can be
       // self-referential (e.g. read the calling agent off `_ctx.caller`).
+      // Only tools that opt-in via `usesContext: true` receive `_ctx`. This keeps
+      // the context (which holds non-serializable, circular references like the
+      // calling agent / AI client) out of tools that don't need it — notably MCP
+      // tools, whose args are serialized to JSON and sent over the wire.
       // - positional tools receive `_ctx` as the LAST positional argument
       // - non-positional tools receive it merged onto the args object as `_ctx`
       const ctx: ToolCallContext = { ...(callContext || {}), Tools: this };
@@ -257,8 +263,12 @@ export class ToolsService {
         : functionArgs;
 
       const fnArgs = isPositional
-        ? [...positionalArgs, ctx]
-        : { ...functionArgs, _ctx: ctx };
+        ? usesContext
+          ? [...positionalArgs, ctx]
+          : positionalArgs
+        : usesContext
+        ? { ...functionArgs, _ctx: ctx }
+        : functionArgs;
 
       // Execute the function
       const rawResponse = isPositional

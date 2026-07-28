@@ -182,6 +182,7 @@ export const observeDefinition: Tool = {
     parameters: {
       type: "object",
       positional: false,
+      usesContext: true,
       properties: {
         toolName: {
           type: "string",
@@ -232,6 +233,7 @@ export const stopObservingDefinition: Tool = {
     parameters: {
       type: "object",
       positional: false,
+      usesContext: true,
       properties: {
         id: {
           type: "string",

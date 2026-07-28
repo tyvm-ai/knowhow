@@ -265,6 +265,7 @@ export const startAgentTaskDefinition: Tool = {
       "The return value includes the taskId and agent directory path when syncFs is used.",
     parameters: {
       type: "object",
+      usesContext: true,
       properties: {
         messageId: {
           type: "string",

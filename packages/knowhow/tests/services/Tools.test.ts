@@ -268,11 +268,11 @@ describe("ToolsService", () => {
 
       const result = await toolsService.callTool(mockToolCall);
 
-      // Non-positional tools receive `_ctx` merged onto the args object.
+      // By default (no `usesContext`), tools do NOT receive `_ctx`.
       expect(mockFunction).toHaveBeenCalledWith(
         expect.objectContaining({ input: "test value" })
       );
-      expect(mockFunction.mock.calls[0][0]._ctx).toBeDefined();
+      expect(mockFunction.mock.calls[0][0]._ctx).toBeUndefined();
       expect(result.toolMessages).toHaveLength(1);
       expect(result.toolMessages[0]).toEqual({
         tool_call_id: "call_123",
@@ -316,12 +316,9 @@ describe("ToolsService", () => {
 
       await toolsService.callTool(positionalCall);
 
-      // Positional tools receive `_ctx` as the LAST positional argument.
-      expect(mockFunction).toHaveBeenCalledWith(
-        "hello",
-        42,
-        expect.objectContaining({ Tools: expect.anything() })
-      );
+      // By default (no `usesContext`), positional tools receive ONLY their
+      // declared positional args — no trailing `_ctx`.
+      expect(mockFunction).toHaveBeenCalledWith("hello", 42);
     });
 
     it("should handle tool not enabled error", async () => {
@@ -445,7 +442,8 @@ describe("ToolsService", () => {
       expect(mockFunction).toHaveBeenCalledWith(
         expect.objectContaining({ input: "escaped\nstring" })
       );
-      expect(mockFunction.mock.calls[0][0]._ctx).toBeDefined();
+      // testTool does not opt into context, so no `_ctx` is injected.
+      expect(mockFunction.mock.calls[0][0]._ctx).toBeUndefined();
     });
   });
   describe("Tool Override System", () => {
@@ -504,7 +502,8 @@ describe("ToolsService", () => {
 
       const result = await toolsService.callTool(toolCall);
 
-      // Non-positional args now include `_ctx`; the override receives them in an array.
+      // overridableTool does not opt into context, so args have no `_ctx`;
+      // the override receives them in an array.
       expect(overrideFunction).toHaveBeenCalledWith(
         [expect.objectContaining({ input: "test" })],
         expect.any(Object)
@@ -857,7 +856,8 @@ describe("ToolsService", () => {
       const result = await toolsService.callTool(noParamCall);
 
       expect(mockFunction).toHaveBeenCalledWith(expect.any(Object));
-      expect(mockFunction.mock.calls[0][0]._ctx).toBeDefined();
+      // noParamTool does not opt into context, so no `_ctx` is injected.
+      expect(mockFunction.mock.calls[0][0]._ctx).toBeUndefined();
       expect(result.functionResp).toBe("no param result");
     });
 
@@ -1597,6 +1597,7 @@ describe("ToolsService", () => {
         parameters: {
           type: "object",
           positional: true,
+          usesContext: true,
           properties: {
             arg1: { type: "string" },
           },
@@ -1611,6 +1612,7 @@ describe("ToolsService", () => {
         name: "nonPosCtxTool",
         parameters: {
           type: "object",
+          usesContext: true,
           properties: {
             input: { type: "string" },
           },

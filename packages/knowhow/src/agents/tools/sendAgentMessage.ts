@@ -112,6 +112,7 @@ export const sendAgentMessageDefinition: Tool = {
     parameters: {
       type: "object",
       positional: false,
+      usesContext: true,
       properties: {
         taskId: {
           type: "string",
