@@ -13,6 +13,10 @@ export class DeveloperAgent extends BaseAgent {
         model: Models.anthropic.Sonnet4_6,
         provider: "anthropic",
       },
+      {
+        model: Models.openai.GPT_56_Sol,
+        provider: "openai",
+      },
     ]);
   }
 
@@ -70,4 +74,3 @@ export class DeveloperAgent extends BaseAgent {
     ] as Message[];
   }
 }
-

@@ -4,6 +4,7 @@ import { ChatCommand, ChatMode, ChatContext } from "../types";
 import { ask } from "../../utils";
 import { services } from "../../services";
 import { Models } from "../../types";
+import { FireworksModels } from "src/clients/pricing/fireworks";
 
 export class SystemModule extends BaseChatModule {
   name = "system";
@@ -102,11 +103,12 @@ export class SystemModule extends BaseChatModule {
 
     // Get default model for new provider
     const ChatModelDefaults = {
-      openai: Models.openai.GPT_53_Codex,
+      openai: Models.openai.GPT_56_Sol,
       anthropic: Models.anthropic.Sonnet4_6,
-      google: Models.google.Gemini_3_Flash_Preview,
-      xai: Models.xai.Grok4_1_Fast_NonReasoning,
+      google: Models.google.Gemini_35_Flash_Lite,
+      xai: Models.xai.Grok4_5,
       knowhow: "anthropic/" + Models.anthropic.Sonnet4_6,
+      fireworks: FireworksModels.KimiK3
     };
 
     const newModel =
