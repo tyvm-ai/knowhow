@@ -60,6 +60,7 @@ interface SandboxSnapshot {
   status: string;
   errorMsg?: string | null;
   statusMessage?: string | null;
+  regenerationSandboxId?: string | null;
   snapshotContent?: string;
   setupScript?: string | null;
 }
@@ -121,6 +122,51 @@ async function resolveSnapshot(
 }
 
 // ─── Polling helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Poll a snapshot's status until regeneration is complete.
+ *
+ * The backend's POST /regenerate endpoint is fire-and-forget — it returns
+ * immediately with regenerationSandboxId set. We poll GET /snapshots/:id
+ * until one of:
+ *   - regenerationSandboxId is null AND status === "ready"  → success
+ *   - status === "error"                                    → failure
+ *   - deadline exceeded                                     → timeout
+ *
+ * statusMessage is printed whenever it changes so the user sees progress.
+ */
+async function pollRegeneration(
+  sandboxId: string,
+  snapshotId: string,
+  timeoutMs: number
+): Promise<SandboxSnapshot> {
+  const deadline = Date.now() + timeoutMs;
+  let lastStatus = "";
+  let lastMessage = "";
+  while (Date.now() < deadline) {
+    const snap = await apiGet<SandboxSnapshot>(
+      `/sandboxes/${sandboxId}/snapshots/${snapshotId}`
+    );
+    if (snap.status !== lastStatus) {
+      console.log(`  [snapshot] status: ${snap.status}`);
+      lastStatus = snap.status;
+    }
+    if (snap.statusMessage && snap.statusMessage !== lastMessage) {
+      console.log(`  [snapshot] ${snap.statusMessage}`);
+      lastMessage = snap.statusMessage;
+    }
+    if (!snap.regenerationSandboxId && snap.status === "ready") return snap;
+    if (snap.status === "error") {
+      throw new Error(
+        `Snapshot regeneration failed: ${snap.errorMsg || snap.statusMessage || "(no details)"}`
+      );
+    }
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+  throw new Error(
+    `Timeout waiting for snapshot regeneration to complete (${timeoutMs}ms). Last status: ${lastStatus}`
+  );
+}
 
 async function pollSandboxStatus(
   sandboxId: string,
@@ -373,7 +419,7 @@ export function addSandboxCommand(program: Command): void {
     .option("--sandbox-name <name>", "Source sandbox name (alternative to --sandbox-id)")
     .option("--snapshot-id <id>", "Snapshot ID to regenerate")
     .option("--snapshot-name <name>", "Snapshot label to regenerate")
-    .option("--no-wait", "Return immediately without waiting for snapshot to be ready")
+    .option("--no-wait", "Trigger regeneration and return immediately (do not poll for completion)")
     .option("--timeout-minutes <min>", "Max time for the full regen cycle", "60")
     .action(
       async (opts: {
@@ -381,20 +427,18 @@ export function addSandboxCommand(program: Command): void {
         sandboxName?: string;
         snapshotId?: string;
         snapshotName?: string;
-        wait: boolean; // commander flips --no-wait → wait=false
+        wait: boolean;
         timeoutMinutes: string;
       }) => {
         const timeoutMs = Number(opts.timeoutMinutes) * 60 * 1000;
-        const deadline = Date.now() + timeoutMs;
 
-        // ── 1. Resolve sandbox ──────────────────────────────────────────────
+        // ── 1. Resolve sandbox & snapshot ──────────────────────────────────
         if (!opts.sandboxId && !opts.sandboxName) {
           throw new Error("Provide --sandbox-id or --sandbox-name");
         }
         const sandboxId =
           opts.sandboxId || (await resolveSandboxId(opts.sandboxName!));
 
-        // ── 2. Resolve snapshot ─────────────────────────────────────────────
         if (!opts.snapshotId && !opts.snapshotName) {
           throw new Error("Provide --snapshot-id or --snapshot-name");
         }
@@ -410,132 +454,113 @@ export function addSandboxCommand(program: Command): void {
         );
         console.log(`   Source sandbox: ${sandboxId}`);
 
-        if (snapshot.status !== "ready") {
+        // ── 2. Validate preconditions ───────────────────────────────────────
+        if (snapshot.status !== "ready" && !snapshot.regenerationSandboxId) {
           throw new Error(
             `Snapshot must be in 'ready' status to regenerate (current: ${snapshot.status})`
           );
         }
-        if (!snapshot.setupScript) {
-          throw new Error(
-            "Snapshot has no setupScript. Add one via the UI before regenerating."
-          );
-        }
 
-        // ── 3. Fork ephemeral sandbox from the snapshot ─────────────────────
-        console.log("\n📦 Step 1/4: Forking ephemeral sandbox from snapshot...");
-        const ephemeralName = `regen-${snapshotId.slice(0, 8)}-${Date.now()}`;
-        const forkResult = await apiPost<{ id?: string; sandboxId?: string }>(
-          "/sandboxes/fork",
-          { snapshotId, name: ephemeralName }
+        // ── 3. Kick off background regeneration via backend API ─────────────
+        // The backend POST /regenerate endpoint returns immediately with the
+        // updated snapshot (regenerationSandboxId set). It runs the full
+        // cycle (fork ephemeral → setupScript → snapshot) in the background.
+        console.log("\n📡 Triggering backend regeneration...");
+        const triggered = await apiPost<SandboxSnapshot>(
+          `/sandboxes/${sandboxId}/snapshots/${snapshotId}/regenerate`
         );
-        const ephemeralId = forkResult.id || forkResult.sandboxId;
-        if (!ephemeralId) {
-          throw new Error(
-            `Fork did not return a sandbox ID: ${JSON.stringify(forkResult)}`
+        console.log(`   regenerationSandboxId: ${triggered.regenerationSandboxId || "(none)"}`);
+
+        if (!opts.wait) {
+          console.log(
+            `\n✅ Regeneration triggered. Monitor with:\n` +
+              `   knowhow sandbox snapshot-status --sandbox-id ${sandboxId} --snapshot-id ${snapshotId}`
           );
-        }
-        console.log(`   Ephemeral sandbox: ${ephemeralId} (${ephemeralName})`);
-
-        // ── 4. Wait for ephemeral sandbox to be running ─────────────────────
-        console.log("\n⏳ Step 2/4: Waiting for sandbox to start...");
-        await pollSandboxStatus(
-          ephemeralId,
-          ["running"],
-          Math.min(deadline - Date.now(), 10 * 60 * 1000),
-          ephemeralName
-        );
-        console.log("   ✓ Running");
-
-        // ── 5. Execute the setupScript ──────────────────────────────────────
-        console.log("\n🔧 Step 3/4: Executing setupScript...");
-        console.log(`   Script length: ${snapshot.setupScript.length} chars`);
-        let execResult: { stdout?: string; stderr?: string; exitCode?: number };
-        try {
-          execResult = await apiPost<{
-            stdout?: string;
-            stderr?: string;
-            exitCode?: number;
-          }>(`/sandboxes/${ephemeralId}/exec`, {
-            command: "/bin/bash",
-            args: ["-c", snapshot.setupScript],
-            timeoutMs: Math.min(deadline - Date.now(), 25 * 60 * 1000),
-          });
-        } catch (err: any) {
-          console.error(`\n❌ setupScript exec failed: ${err.message}`);
-          await safeDestroy(ephemeralId);
-          throw err;
+          return;
         }
 
-        if (execResult.stdout) {
-          console.log("--- stdout ---");
-          process.stdout.write(execResult.stdout);
-        }
-        if (execResult.stderr) {
-          console.error("--- stderr ---");
-          process.stderr.write(execResult.stderr);
-        }
-        if (execResult.exitCode != null && execResult.exitCode !== 0) {
-          await safeDestroy(ephemeralId);
-          throw new Error(`setupScript exited with code ${execResult.exitCode}`);
-        }
-        console.log("   ✓ setupScript completed");
-
-        // ── 6. Capture new snapshot with the same label ─────────────────────
-        console.log("\n📸 Step 4/4: Capturing new snapshot...");
-        const newLabel = snapshot.label || `regen-${snapshotId.slice(0, 8)}`;
-        let createResult: { snapshot?: SandboxSnapshot; id?: string };
-        try {
-          createResult = await apiPost<{ snapshot?: SandboxSnapshot; id?: string }>(
-            `/sandboxes/${ephemeralId}/snapshots`,
-            {
-              label: newLabel,
-              description: snapshot.description,
-              snapshotContent: snapshot.snapshotContent || "full",
-              snapshotType: "full",
-            }
-          );
-        } catch (err: any) {
-          console.error(`\n❌ Snapshot creation failed: ${err.message}`);
-          await safeDestroy(ephemeralId);
-          throw err;
-        }
-
-        const newSnapshot = createResult.snapshot || (createResult as SandboxSnapshot);
-        const newSnapshotId = newSnapshot.id;
-        console.log(`   New snapshot ID: ${newSnapshotId}`);
-
-        if (opts.wait) {
-          console.log("   Waiting for snapshot upload...");
-          await pollSnapshotStatus(
-            ephemeralId,
-            newSnapshotId,
-            ["ready"],
-            Math.min(deadline - Date.now(), 20 * 60 * 1000)
-          );
-          console.log("   ✓ Snapshot ready");
-        }
-
-        // ── 7. Destroy ephemeral sandbox ────────────────────────────────────
-        console.log("\n🗑  Destroying ephemeral sandbox...");
-        await safeDestroy(ephemeralId);
-        console.log("   ✓ Destroyed");
+        // ── 4. Poll until complete ──────────────────────────────────────────
+        console.log("\n⏳ Waiting for regeneration to complete (Ctrl+C to stop polling)...");
+        const done = await pollRegeneration(sandboxId, snapshotId, timeoutMs);
 
         console.log(
           `\n✅ Snapshot regeneration complete!\n` +
-            `   Old snapshot ID : ${snapshotId}\n` +
-            `   New snapshot ID : ${newSnapshotId}\n` +
-            `   Label           : ${newLabel}\n\n` +
-            `ℹ  The old snapshot still exists. Clean it up with:\n` +
-            `   knowhow sandbox delete-snapshot --sandbox-id ${sandboxId} --snapshot-id ${snapshotId}`
+            `   Snapshot ID : ${done.id}\n` +
+            `   Label       : ${done.label || "(none)"}\n` +
+            `   Status      : ${done.status}`
         );
       }
     );
-}
 
-async function safeDestroy(sandboxId: string): Promise<void> {
-  try {
-    await apiDelete(`/sandboxes/${sandboxId}`);
-  } catch (err: any) {
-    console.warn(`⚠ Could not destroy sandbox ${sandboxId}: ${err.message}`);
-  }
+  // ── sandbox snapshot-status ──────────────────────────────────────────────────
+  sandboxCmd
+    .command("snapshot-status")
+    .description(
+      "Check and optionally wait for a snapshot's regeneration to complete.\n" +
+        "Useful after triggering regeneration with --no-wait."
+    )
+    .option("--sandbox-id <id>", "Sandbox ID")
+    .option("--sandbox-name <name>", "Sandbox name")
+    .option("--snapshot-id <id>", "Snapshot ID")
+    .option("--snapshot-name <name>", "Snapshot label")
+    .option("--wait", "Poll until regeneration completes (or times out)")
+    .option("--timeout-minutes <min>", "Max poll time in minutes", "60")
+    .option("--json", "Output raw JSON")
+    .action(
+      async (opts: {
+        sandboxId?: string;
+        sandboxName?: string;
+        snapshotId?: string;
+        snapshotName?: string;
+        wait?: boolean;
+        timeoutMinutes: string;
+        json?: boolean;
+      }) => {
+        if (!opts.sandboxId && !opts.sandboxName) {
+          throw new Error("Provide --sandbox-id or --sandbox-name");
+        }
+        const sandboxId =
+          opts.sandboxId || (await resolveSandboxId(opts.sandboxName!));
+
+        if (!opts.snapshotId && !opts.snapshotName) {
+          throw new Error("Provide --snapshot-id or --snapshot-name");
+        }
+        const snapshot = opts.snapshotId
+          ? await apiGet<SandboxSnapshot>(
+              `/sandboxes/${sandboxId}/snapshots/${opts.snapshotId}`
+            )
+          : await resolveSnapshot(sandboxId, opts.snapshotName!);
+
+        if (opts.wait && snapshot.regenerationSandboxId) {
+          console.log("⏳ Waiting for regeneration to complete...");
+          const done = await pollRegeneration(
+            sandboxId,
+            snapshot.id,
+            Number(opts.timeoutMinutes) * 60 * 1000
+          );
+          if (opts.json) {
+            console.log(JSON.stringify(done, null, 2));
+          } else {
+            console.log(
+              `✅ Done — status: ${done.status}  label: ${done.label || "(none)"}`
+            );
+          }
+          return;
+        }
+
+        if (opts.json) {
+          console.log(JSON.stringify(snapshot, null, 2));
+        } else {
+          const regenInfo = snapshot.regenerationSandboxId
+            ? `🔄 regenerating (ephemeral: ${snapshot.regenerationSandboxId})`
+            : `✅ ${snapshot.status}`;
+          console.log(
+            `Snapshot ${snapshot.id}  label=${snapshot.label || "(none)"}  ${regenInfo}`
+          );
+          if (snapshot.statusMessage) {
+            console.log(`  message: ${snapshot.statusMessage}`);
+          }
+        }
+      }
+    );
 }
