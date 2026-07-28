@@ -4,7 +4,6 @@ import { ChatCommand, ChatMode, ChatContext } from "../types";
 import { ask } from "../../utils";
 import { services } from "../../services";
 import { Models } from "../../types";
-import { FireworksModels } from "src/clients/pricing/fireworks";
 
 export class SystemModule extends BaseChatModule {
   name = "system";
@@ -108,7 +107,7 @@ export class SystemModule extends BaseChatModule {
       google: Models.google.Gemini_35_Flash_Lite,
       xai: Models.xai.Grok4_5,
       knowhow: "anthropic/" + Models.anthropic.Sonnet4_6,
-      fireworks: FireworksModels.KimiK3
+      fireworks: Models.fireworks.KimiK3,
     };
 
     const newModel =
