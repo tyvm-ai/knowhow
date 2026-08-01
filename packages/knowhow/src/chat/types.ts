@@ -94,6 +94,12 @@ export interface TaskInfo {
   endTime?: number;
   totalCost: number;
   sessionFile?: string;
+  // Model/provider/reasoning actually used for this run, so a resume can
+  // restore the exact configuration instead of falling back to agent defaults.
+  model?: string;
+  provider?: string;
+  reasoningEffort?: "none" | "low" | "medium" | "high";
+  summarizeReasoning?: boolean;
 }
 
 export interface ChatSession {
@@ -111,6 +117,11 @@ export interface ChatSession {
   threads: any[][];
   currentThread: number;
   lastUpdated: number;
+  // Persisted run configuration for exact resume restoration.
+  model?: string;
+  provider?: string;
+  reasoningEffort?: "none" | "low" | "medium" | "high";
+  summarizeReasoning?: boolean;
 }
 
 export interface ChatHistory {

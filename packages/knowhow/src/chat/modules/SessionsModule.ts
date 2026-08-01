@@ -396,6 +396,12 @@ export class SessionsModule extends BaseChatModule {
             threads: normalizedThreads,
             input: additionalContext?.trim() || initialInput || "",
             interactive: true,
+            // Restore the exact model/provider/reasoning the run used so
+            // resuming doesn't silently drop back to agent defaults.
+            model: metadata.model,
+            provider: metadata.provider,
+            reasoningEffort: metadata.reasoningEffort,
+            summarizeReasoning: metadata.summarizeReasoning,
           });
           return;
         } catch (e: any) {

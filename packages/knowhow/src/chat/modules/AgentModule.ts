@@ -682,6 +682,11 @@ export class AgentModule extends BaseChatModule {
         messageId: session.knowhowMessageId,
         chatHistory: [],
         run: false, // Don't run yet, we need to set up event listeners first
+        // Restore the exact model/provider/reasoning the original run used.
+        model: session.model,
+        provider: session.provider,
+        reasoningEffort: session.reasoningEffort,
+        summarizeReasoning: session.summarizeReasoning,
       });
 
       // After resume finishes, revert to normal chat (non-agent mode) so the
@@ -758,6 +763,10 @@ export class AgentModule extends BaseChatModule {
     run?: boolean; // whether to run immediately
     taskId?: string; // optional pre-generated taskId
     parentTaskId?: string; // taskId of the parent agent that spawned this task
+    // Reasoning settings to restore (e.g. on resume). When provided these take
+    // precedence over the module-level CLI defaults.
+    reasoningEffort?: CompletionOptions["reasoning_effort"];
+    summarizeReasoning?: boolean;
   }) {
     const { input, chatHistory = [], agentName } = options;
     const agentContext = services().Agents.getAgentContext();
@@ -841,8 +850,15 @@ export class AgentModule extends BaseChatModule {
 
       // Set up session update listener
       const threadUpdateHandler = async (threadState: any) => {
-        this.updateSession(taskId, agent.getThreads());
         taskInfo.totalCost = agent.getTotalCostUsd();
+        // Capture the live run configuration so it's persisted for an exact
+        // resume (including mid-run model/provider fallbacks).
+        taskInfo.model = agent.getModel();
+        taskInfo.provider = agent.getProvider();
+        taskInfo.reasoningEffort = agent.getReasoningEffort?.();
+        taskInfo.summarizeReasoning = agent.getSummarizeReasoning?.();
+        // updateSession pulls the (mutated) taskInfo from the registry.
+        this.updateSession(taskId, agent.getThreads());
       };
       agent.agentEvents.on(agent.eventTypes.threadUpdate, threadUpdateHandler);
 
@@ -854,6 +870,13 @@ export class AgentModule extends BaseChatModule {
       // Initialize new task
       await agent.newTask(taskId);
 
+      // Record the parent task id on the agent so self-referential tools
+      // (e.g. replyToParent) can resolve who spawned this agent without
+      // relying solely on reading metadata.json off disk.
+      if (options.parentTaskId) {
+        agent.setParentTaskId(options.parentTaskId);
+      }
+
       if (options.model) {
         console.log("Setting model:", options.model);
         agent.setModel(options.model);
@@ -862,11 +885,28 @@ export class AgentModule extends BaseChatModule {
         ]);
       }
 
-      // Apply module-level reasoning settings to the agent
-      if (this.reasoningEffort !== undefined) {
-        agent.setReasoningEffort(this.reasoningEffort);
+      // Restore the provider explicitly (e.g. on resume) so the agent talks to
+      // the same client the original run used, not the model's default provider.
+      if (options.provider) {
+        agent.setProvider(options.provider as any);
       }
-      agent.setSummarizeReasoning(this.summarizeReasoning);
+
+      // Apply reasoning settings to the agent. Explicit per-task settings
+      // (e.g. restored from a resumed task's metadata) take precedence over
+      // the module-level CLI defaults so a /resume keeps the same reasoning
+      // effort the original run used.
+      const effectiveReasoningEffort =
+        options.reasoningEffort !== undefined
+          ? options.reasoningEffort
+          : this.reasoningEffort;
+      if (effectiveReasoningEffort !== undefined) {
+        agent.setReasoningEffort(effectiveReasoningEffort);
+      }
+      agent.setSummarizeReasoning(
+        options.summarizeReasoning !== undefined
+          ? options.summarizeReasoning
+          : this.summarizeReasoning
+      );
 
       // Set up message processors like in original startAgent
 
@@ -1119,6 +1159,50 @@ export class AgentModule extends BaseChatModule {
   }
 
   /**
+   * Load the persisted run settings (model / provider / reasoning) for a task
+   * from local FS metadata, so a headless --resume can restore the exact
+   * configuration the original run used instead of falling back to agent
+   * defaults. Returns an empty object when no local metadata is found (e.g.
+   * remote-only tasks).
+   */
+  public async loadTaskSettings(
+    taskId: string,
+    messageId?: string
+  ): Promise<{
+    model?: string;
+    provider?: string;
+    reasoningEffort?: CompletionOptions["reasoning_effort"];
+    summarizeReasoning?: boolean;
+    agentName?: string;
+  }> {
+    const localMetadataPath = path.join(
+      ".knowhow",
+      "processes",
+      "agents",
+      taskId,
+      "metadata.json"
+    );
+
+    if (!messageId && fs.existsSync(localMetadataPath)) {
+      try {
+        const raw = await fsPromises.readFile(localMetadataPath, "utf-8");
+        const metadata = JSON.parse(raw);
+        return {
+          model: metadata.model,
+          provider: metadata.provider,
+          reasoningEffort: metadata.reasoningEffort,
+          summarizeReasoning: metadata.summarizeReasoning,
+          agentName: metadata.agentName,
+        };
+      } catch (e) {
+        console.warn(`⚠️ Failed to parse local metadata for settings: ${e.message}`);
+      }
+    }
+
+    return {};
+  }
+
+  /**
    * Resume an agent from a set of existing message threads
    * Used by the CLI --resume flag to continue crashed/failed tasks
    */
@@ -1129,6 +1213,11 @@ export class AgentModule extends BaseChatModule {
     messageId?: string;
     taskId?: string;
     interactive?: boolean;
+    // Restore the exact model/provider/reasoning the original run used.
+    model?: string;
+    provider?: string;
+    reasoningEffort?: CompletionOptions["reasoning_effort"];
+    summarizeReasoning?: boolean;
   }): Promise<{ taskCompleted: Promise<string> }> {
     const { agentName, input, threads, messageId, taskId } = options;
 
@@ -1189,6 +1278,11 @@ export class AgentModule extends BaseChatModule {
       // remote task identified by taskId.
       syncRemote: !messageId && !!taskId,
       run: false,
+      // Restore the model/provider/reasoning captured from the task metadata.
+      model: options.model,
+      provider: options.provider,
+      reasoningEffort: options.reasoningEffort,
+      summarizeReasoning: options.summarizeReasoning,
     });
 
     // Interactive (chat REPL) resume: route through the attached chat loop so the

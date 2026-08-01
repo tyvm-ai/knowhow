@@ -257,11 +257,26 @@ export class Base64ImageProcessor {
       try {
         // Try to parse as JSON
         const parsed = JSON.parse(message.content);
-        
-        // Check if it's an image_url object
-        if (parsed.type === "image_url" && parsed.image_url?.url) {
-          // Convert the tool message content from JSON string to an array with the image
-          message.content = [parsed];
+
+        // Normalize the parsed value into an array of candidate parts so we can
+        // handle BOTH shapes a tool might return:
+        //   1. a single image_url object:  {type:"image_url", image_url:{url}}
+        //   2. an array of parts:          [{type:"image_url", image_url:{url}}, {type:"text", ...}]
+        // (Computer-use screenshot tools and loadWebpage return the array form,
+        //  which the single-object check above previously missed — leaving the
+        //  model to see a raw base64 JSON string instead of an actual image.)
+        const candidates = Array.isArray(parsed) ? parsed : [parsed];
+        const isImagePart = (p: any) =>
+          p && p.type === "image_url" && p.image_url?.url;
+        const isTextPart = (p: any) =>
+          p && p.type === "text" && typeof p.text === "string";
+
+        // Only rewrite the content if it actually contains at least one image
+        // part; otherwise leave the original tool text untouched.
+        if (candidates.some(isImagePart)) {
+          message.content = candidates.filter(
+            (p) => isImagePart(p) || isTextPart(p)
+          );
         }
       } catch (e) {
         // Not JSON, check if it's a plain base64 string (only if still a string)
@@ -414,10 +429,34 @@ export class Base64ImageProcessor {
 
       // Read the file as base64
       const imageBuffer = fs.readFileSync(filePath);
+
+      // Detect actual MIME type from magic bytes (overrides extension-based detection)
+      // This handles cases where a file is saved with the wrong extension (e.g. JPEG saved as .png)
+      let detectedMimeType = mimeType;
+      if (imageBuffer.length >= 4) {
+        // JPEG: starts with FF D8 FF
+        if (imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8 && imageBuffer[2] === 0xff) {
+          detectedMimeType = "image/jpeg";
+        }
+        // PNG: starts with 89 50 4E 47 0D 0A 1A 0A
+        else if (imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50 && imageBuffer[2] === 0x4e && imageBuffer[3] === 0x47) {
+          detectedMimeType = "image/png";
+        }
+        // GIF: starts with 47 49 46 38 (GIF8)
+        else if (imageBuffer[0] === 0x47 && imageBuffer[1] === 0x49 && imageBuffer[2] === 0x46 && imageBuffer[3] === 0x38) {
+          detectedMimeType = "image/gif";
+        }
+        // WebP: starts with 52 49 46 46 (RIFF) ... 57 45 42 50 (WEBP) at offset 8
+        else if (imageBuffer.length >= 12 && imageBuffer[0] === 0x52 && imageBuffer[1] === 0x49 && imageBuffer[2] === 0x46 && imageBuffer[3] === 0x46 &&
+                 imageBuffer[8] === 0x57 && imageBuffer[9] === 0x45 && imageBuffer[10] === 0x42 && imageBuffer[11] === 0x50) {
+          detectedMimeType = "image/webp";
+        }
+      }
+
       const base64Data = imageBuffer.toString("base64");
 
-      // Create data URL
-      const dataUrl = `data:${mimeType};base64,${base64Data}`;
+      // Create data URL using the actual detected MIME type
+      const dataUrl = `data:${detectedMimeType};base64,${base64Data}`;
 
       // Return in a format that indicates this is an image
       // The Base64ImageDetector will convert this to proper image content

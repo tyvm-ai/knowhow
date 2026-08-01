@@ -157,6 +157,8 @@ async function main() {
   await program.parseAsync(process.argv);
 }
 
+export { main };
+
 if (require.main === module) {
   main()
     .catch((e) => {

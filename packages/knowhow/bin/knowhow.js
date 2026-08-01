@@ -1,23 +1,25 @@
-#!/usr/bin/env node
+#!/usr/bin/env node --no-node-snapshot
 
-const { spawnSync } = require("node:child_process");
+// knowhow CLI entry point.
+//
+// --no-node-snapshot is required for isolated-vm (used by executeScript).
+// It is declared in the shebang above so that Node starts with it directly —
+// no re-exec needed. This means the process stays as a direct child of the
+// terminal (e.g. Ghostty) and inherits its macOS TCC (Screen Recording /
+// Accessibility) permissions without needing to grant them to node itself.
+
 const path = require("node:path");
+const cliJs = path.join(__dirname, "../ts_build/src/cli.js");
 
-// If the current Node process wasn't started with --no-node-snapshot,
-// re-exec Node with the flag and forward the original arguments.
-if (!process.execArgv.includes("--no-node-snapshot")) {
-  const cliEntrypoint = path.join(__dirname, "../ts_build/src/cli.js");
-
-  const result = spawnSync(
-    process.execPath,
-    ["--no-node-snapshot", "--enable-source-maps", cliEntrypoint, ...process.argv.slice(2)],
-    {
-      stdio: "inherit",
-    }
-  );
-
-  process.exit(result.status ?? 1);
-}
-
-// Already running with the flag → just load the CLI
-require("../ts_build/src/cli.js");
+// cli.js only auto-runs main() when it is the entry module (require.main ===
+// module). Since we're requiring it here, we call main() ourselves so the
+// CLI actually runs and exits cleanly.
+const cli = require(cliJs);
+cli.main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .then(() => {
+    process.exit(0);
+  });
