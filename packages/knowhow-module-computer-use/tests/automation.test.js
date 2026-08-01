@@ -182,7 +182,7 @@ describe("AutomationRunner", () => {
     expect(result.stopped).toBe("manual");
   });
 
-  test("runEvery repeats only its callback at the requested rate", async () => {
+  test("runEvery repeats only its callback at the requested interval (ms)", async () => {
     const svc = makeFakeService();
     const spec = {
       name: "__test_run_every",
@@ -233,7 +233,7 @@ describe("AutomationRunner", () => {
       script: `
         import { sdk } from "@tyvm/knowhow-module-computer-use";
         async function heavyFrame() {
-          // Synchronous busy-work that overruns the ~8ms (120Hz) interval,
+          // Synchronous busy-work that overruns the 120ms interval,
           // mimicking a native screen-capture + shape-detection iteration.
           const until = sdk.now() + 15;
           while (sdk.now() < until) { /* burn CPU */ }

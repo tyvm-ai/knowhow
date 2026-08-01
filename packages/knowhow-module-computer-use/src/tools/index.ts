@@ -746,7 +746,7 @@ export async function computerUseClearRegion(
  * tool call. The `script` is a .ts async body with an injected `sdk` object
  * (perception + mouse/keyboard + control). Its editor-only SDK import is
  * allowed, while all other module access remains forbidden. Repeated work is
- * scoped explicitly with `await sdk.runEvery(callback, hz)`.
+ * scoped explicitly with `await sdk.runEvery(callback, intervalMs)`.
  */
 export async function computerUseWriteAutomation(
   this: ToolsService,
@@ -763,7 +763,7 @@ export async function computerUseWriteAutomation(
   return (
     `Saved automation "${name}" (${script.length} chars) as ${name}.ts. ` +
     `File: ${saved.filePath}. ` +
-    `Import { sdk } from "@tyvm/knowhow-module-computer-use" for editor types, then use await sdk.runEvery(callback, hz).` +
+    `Import { sdk } from "@tyvm/knowhow-module-computer-use" for editor types, then use await sdk.runEvery(callback, intervalMs).` +
     ` Run it with computerUseRunAutomation("${name}"), or dry-run first with computerUseTestAutomation("${name}").` +
     (missingDoc
       ? ` Warning: no discoverable header found. Add a leading JSDoc block comment at the top with @description, @useWhen, @startState, @endState, and @window tags so a future agent knows WHEN to use this automation without reading its code.`

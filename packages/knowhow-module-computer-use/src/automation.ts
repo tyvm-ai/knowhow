@@ -13,7 +13,7 @@ import { resolveRegion } from "./regions";
  * Automations — a locally-run perception→action loop that the LLM authors once
  * (after watching a game/UI) and then launches with a single tool call. The LLM
  * (the slow, smart "coach") stays OUT of the per-frame loop; the automation (the
- * fast, dumb "actor") runs entirely in-process at up to ~60Hz with no model
+ * fast, dumb "actor") runs entirely in-process at a tight interval with no model
  * round-trip per target, which is the only way to beat the ~1s human bar.
  *
  * Design (see .knowhow/tasks/computer-use-improvements/implementation-plan.md):
@@ -165,8 +165,11 @@ export interface AutomationSDK {
   elapsed(): number;
   log(data: any): void;
   /**
-   * Run this callback repeatedly at the requested frequency until the run is
-   * stopped (or the max duration cap is reached). Optionally pass
+   * Run this callback repeatedly on a fixed interval (in MILLISECONDS, like
+   * setInterval) until the run is stopped (or the max duration cap is
+   * reached). The interval is measured between iteration starts; if a callback
+   * overruns its interval it simply runs again immediately (after a yield).
+   * Pass `intervalMs` of 0 to run as fast as possible. Optionally pass
    * `{ requiredWindow }` to gate the loop on a focused window in one call —
    * equivalent to awaiting sdk.requiredWindow(match) first, so actions auto-
    * pause the moment focus leaves that window (the primary way a human reclaims
@@ -174,11 +177,9 @@ export interface AutomationSDK {
    */
   runEvery(
     callback: () => void | Promise<void>,
-    hz: number,
+    intervalMs: number,
     opts?: { requiredWindow?: WindowMatch }
   ): Promise<void>;
-  /** @deprecated Prefer runEvery(callback, hz). */
-  loopHz(hz?: number): number;
   /** Set/clear the focus gate. Await before performing actions. */
   requiredWindow(match?: WindowMatch): Promise<void>;
   readonly ctl: AutomationControl;
@@ -406,7 +407,6 @@ export class AutomationRunner {
   private logs: AutomationLogEntry[] = [];
   private gateTimer: NodeJS.Timeout | null = null;
   private durationTimer: NodeJS.Timeout | null = null;
-  private loopRate = 60;
   /** True once a non-empty required-window gate has been configured. */
   private everGatedWindow = false;
   /** Resolved max run duration (ms). Set at the start of run(). */
@@ -536,21 +536,14 @@ export class AutomationRunner {
     const clickSettleMs = Math.max(0, this.opts.clickSettleMs ?? 40);
     const sdk: AutomationSDK = {
       ctl: this.ctl,
-      loopHz: (hz) => {
-        if (hz !== undefined) {
-          if (!Number.isFinite(hz) || hz <= 0) {
-            throw new Error("sdk.loopHz(hz) requires a positive number.");
-          }
-          self.loopRate = hz;
-        }
-        return self.loopRate;
-      },
-      runEvery: async (callback, hz, opts) => {
+      runEvery: async (callback, intervalMs, opts) => {
         if (typeof callback !== "function") {
-          throw new Error("sdk.runEvery(callback, hz) requires a function.");
+          throw new Error("sdk.runEvery(callback, intervalMs) requires a function.");
         }
-        if (!Number.isFinite(hz) || hz <= 0) {
-          throw new Error("sdk.runEvery(callback, hz) requires a positive frequency.");
+        if (!Number.isFinite(intervalMs) || intervalMs < 0) {
+          throw new Error(
+            "sdk.runEvery(callback, intervalMs) requires a non-negative interval in milliseconds."
+          );
         }
         // Inline focus gate: gate the loop on a window in one call so authors
         // don't forget the requiredWindow guard that lets a human reclaim the
@@ -558,8 +551,6 @@ export class AutomationRunner {
         if (opts?.requiredWindow) {
           await self.configureRequiredWindow(opts.requiredWindow);
         }
-        self.loopRate = hz;
-        const intervalMs = 1000 / hz;
         // Hard backstop: even if the OS-level duration timer is starved (see
         // below), never let this loop outlive the configured max duration.
         const deadline = self.startedAt
