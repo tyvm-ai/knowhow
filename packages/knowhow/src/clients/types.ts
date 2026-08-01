@@ -8,7 +8,10 @@ export type ModelModality =
 
 export type MessageContent =
   | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string } }
+  | {
+      type: "image_url";
+      image_url: { url: string; detail?: "auto" | "low" | "high" };
+    }
   | { type: "audio_url"; audio_url: { url: string } }
   | { type: "video_url"; video_url: { url: string } };
 

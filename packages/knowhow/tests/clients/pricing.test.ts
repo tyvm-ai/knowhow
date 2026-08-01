@@ -30,6 +30,8 @@ import {
   GeminiTextPricing,
   AnthropicTextPricing,
   XaiTextPricing,
+  FireworksTextPricing,
+  FireworksEmbeddingPricing,
   ALL_MODEL_CATALOG,
   XaiImagePricing,
   XaiVideoPricing,
@@ -61,6 +63,8 @@ describe("Model Pricing Coverage", () => {
     ...GeminiTextPricing,
     ...AnthropicTextPricing,
     ...XaiTextPricing,
+    ...FireworksTextPricing,
+    ...FireworksEmbeddingPricing,
   };
 
   describe("Text completion models have pricing", () => {
@@ -166,6 +170,8 @@ describe("Model Catalog Coverage", () => {
       ...GeminiTextPricing,
       ...AnthropicTextPricing,
       ...XaiTextPricing,
+      ...FireworksTextPricing,
+      ...FireworksEmbeddingPricing,
     } as Record<string, { deprecated?: boolean }>)
       .filter(([, p]) => p && p.deprecated === true)
       .map(([id]) => id)

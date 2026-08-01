@@ -1,4 +1,4 @@
-import { ModelPricing } from "./types";
+import { ModelPricing, ModelCatalogEntry, completions, embeddings } from "./types";
 
 /**
  * Fireworks AI model IDs, pricing, and catalog.
@@ -101,3 +101,52 @@ export const FireworksEmbeddingPricing: Record<string, ModelPricing> = {
   // Qwen3 Reranker 8B — $0.20/M tokens, context 40k
   [FireworksModels.Qwen3Reranker8b]: { input: 0.20, output: 0.20 },
 };
+
+
+// ─── Active text models (non-deprecated) ─────────────────────────────────────
+
+export const FireworksActiveTextModels: string[] = [
+  // Moonshot AI
+  FireworksModels.KimiK3,
+  FireworksModels.KimiK2p7Code,
+  FireworksModels.KimiK2_6,
+  FireworksModels.KimiK2_5,
+  // MiniMax
+  FireworksModels.MinimaxM3,
+  FireworksModels.MinimaxM2_7,
+  FireworksModels.MinimaxM2_5,
+  // Qwen
+  FireworksModels.Qwen3p7Plus,
+  // Z.ai
+  FireworksModels.Glm5p2,
+  FireworksModels.Glm5p1,
+  // DeepSeek AI
+  FireworksModels.DeepseekV4Pro,
+  FireworksModels.DeepseekV4Flash,
+  // OpenAI OSS
+  FireworksModels.GptOss120b,
+];
+
+export const FireworksDeprecatedTextModels: string[] = [
+  FireworksModels.Qwen3_6Plus,
+  FireworksModels.Qwen3p6Plus,
+  FireworksModels.Qwen3Vl30bA3bThinking,
+  FireworksModels.Qwen3Vl30bA3bInstruct,
+  FireworksModels.Qwen3_8b,
+  FireworksModels.Glm5,
+  FireworksModels.Glm4_7,
+  FireworksModels.DeepseekV3_2,
+  FireworksModels.DeepseekV3_1,
+];
+
+// ─── Catalog ──────────────────────────────────────────────────────────────────
+
+export const FIREWORKS_MODEL_CATALOG: ModelCatalogEntry[] = [
+  ...completions(FireworksActiveTextModels, "fireworks", FireworksTextPricing),
+  ...completions(FireworksDeprecatedTextModels, "fireworks", FireworksTextPricing),
+  ...embeddings(
+    [FireworksModels.Qwen3Embedding8b, FireworksModels.Qwen3Reranker8b],
+    "fireworks",
+    FireworksEmbeddingPricing,
+  ),
+];

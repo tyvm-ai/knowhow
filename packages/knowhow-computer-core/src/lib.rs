@@ -12,6 +12,7 @@ use napi_derive::napi;
 
 mod backend;
 mod keys;
+mod perception;
 mod platform;
 mod types;
 
@@ -22,6 +23,11 @@ use types::*;
 // Re-export napi object types so they appear in the generated .d.ts.
 pub use types::{
   Capabilities, Display, PermissionsStatus, Point, RawImage, Region, ScreenshotOptions, Size,
+};
+
+// Re-export native perception primitives (free functions) + their result types.
+pub use perception::{
+  find_boxes_raw, find_color_regions_raw, BoxNative, ColorRegionNative,
 };
 
 /// The main entry point handed to JS. Wraps the platform backend chosen at

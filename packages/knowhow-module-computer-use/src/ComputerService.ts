@@ -12,6 +12,22 @@ import {
   Size,
 } from "@tyvm/knowhow";
 import { RawScreenshot } from "./drivers/RustCoreDriver";
+import {
+  Frame,
+  BoxNode,
+  ShapeMatch,
+  findBoxes as tsFindBoxes,
+  nestBoxes as _nestBoxes,
+  findShapes as tsFindShapes,
+  findColorBlobs as tsFindColorBlobs,
+  FindBoxesOptions,
+  FindShapesOptions,
+  FindColorBlobsOptions,
+} from "./perception";
+import {
+  nativeFindColorRegions,
+  nativeFindBoxes,
+} from "./nativePerception";
 
 const execFileAsync = promisify(execFile);
 
@@ -32,6 +48,25 @@ export interface ColorRegion {
   sampledPixels: number;
 }
 
+/** A detected box in ABSOLUTE DESKTOP coordinates with its nesting children. */
+export interface DesktopBox {
+  bounds: Region;
+  center: Point;
+  area: number;
+  edgeScore: number;
+  depth: number;
+  children: DesktopBox[];
+}
+
+/** A detected shape/blob in ABSOLUTE DESKTOP coordinates. */
+export interface DesktopShape {
+  kind: "line-h" | "line-v" | "rect" | "square" | "circle" | "blob";
+  bounds: Region;
+  center: Point;
+  area: number;
+  score: number;
+}
+
 export interface FindColorRegionsOptions {
   colors: string[];
   displayId?: number;
@@ -40,6 +75,12 @@ export interface FindColorRegionsOptions {
   minPixels?: number;
   minSize?: number;
   maxSize?: number;
+  /**
+   * Restrict the scan to a desktop-space region (crop). Without this the scan
+   * covers the whole display, so unrelated same-hue UI (window buttons, browser
+   * chrome, debug text) pollutes the per-color bounding box.
+   */
+  region?: Region;
 }
 
 export interface ClickColorSequenceOptions extends FindColorRegionsOptions {
@@ -169,42 +210,49 @@ export class ComputerService implements ComputerUseService {
    */
   async findColorRegions(opts: FindColorRegionsOptions): Promise<ColorRegion[]> {
     if (!opts.colors?.length) throw new Error("At least one color is required.");
-    const driver = await this.getDriver();
-    const shot = await driver.screenshot(
-      opts.displayId === undefined ? undefined : { displayId: opts.displayId }
-    );
-    let raw = shot as unknown as RawScreenshot;
-    if (!raw || (raw as any).__raw !== true) {
-      // Adapter drivers may return an encoded image rather than our raw envelope.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const sharp = require("sharp");
-      const decoded = await sharp(shot).ensureAlpha().raw().toBuffer({
-        resolveWithObject: true,
-      });
+    const grabbed = await this.grabRawFrame(opts.displayId);
+    const desktop = grabbed.desktop;
+    const scaleX = grabbed.scaleX;
+    const scaleY = grabbed.scaleY;
+    // Optionally crop to a desktop-space region so unrelated same-hue UI outside
+    // the play area (window buttons, chrome, debug text) cannot pollute a color
+    // bounding box. Scan coordinates are offset back to full-frame image space.
+    let raw: RawScreenshot = grabbed.raw;
+    let regionOffsetX = 0;
+    let regionOffsetY = 0;
+    if (opts.region) {
+      const cropped = this.cropFrame(grabbed.raw, opts.region, desktop, scaleX, scaleY);
       raw = {
         __raw: true,
-        width: decoded.info.width,
-        height: decoded.info.height,
-        data: decoded.data,
-      };
+        width: cropped.frame.width,
+        height: cropped.frame.height,
+        data: cropped.frame.data as Buffer,
+      } as RawScreenshot;
+      regionOffsetX = cropped.offsetX;
+      regionOffsetY = cropped.offsetY;
     }
-
-    const displays = await driver.getDisplays();
-    const display =
-      displays.find((d) => opts.displayId !== undefined && d.id === opts.displayId) ??
-      displays.find((d) => d.primary) ??
-      displays[0];
-    const desktop = display?.bounds ?? {
-      x: 0,
-      y: 0,
-      width: raw.width,
-      height: raw.height,
-    };
-    const scaleX = raw.width / Math.max(1, desktop.width);
-    const scaleY = raw.height / Math.max(1, desktop.height);
     const tolerance = Math.max(0, Math.min(255, Math.round(opts.tolerance ?? 12)));
     const step = Math.max(1, Math.round(opts.sampleStep ?? 2));
     const minPixels = Math.max(1, Math.round(opts.minPixels ?? 20));
+    const nativeRegions = nativeFindColorRegions(
+      raw.data as Buffer,
+      raw.width,
+      raw.height,
+      opts.colors,
+      { tolerance, sampleStep: step, minPixels }
+    );
+    if (nativeRegions) {
+      return this.mapColorAggregates(
+        nativeRegions,
+        desktop,
+        scaleX,
+        scaleY,
+        step,
+        opts,
+        regionOffsetX,
+        regionOffsetY
+      );
+    }
     const parsed = opts.colors.map((color) => {
       const hex = color.replace(/^#/, "");
       if (!/^[0-9a-f]{6}$/i.test(hex)) throw new Error(`Invalid color: ${color}`);
@@ -250,8 +298,51 @@ export class ComputerService implements ComputerUseService {
       .filter((c) => c.count >= minPixels)
       .map((c): ColorRegion => {
         const bounds = {
-          x: desktop.x + c.minX / scaleX,
-          y: desktop.y + c.minY / scaleY,
+          x: desktop.x + (c.minX + regionOffsetX) / scaleX,
+          y: desktop.y + (c.minY + regionOffsetY) / scaleY,
+          width: (c.maxX - c.minX + step) / scaleX,
+          height: (c.maxY - c.minY + step) / scaleY,
+        };
+        return {
+          color: c.color,
+          bounds,
+          center: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 },
+          sampledPixels: c.count,
+        };
+      })
+      .filter((r) => {
+        const size = Math.max(r.bounds.width, r.bounds.height);
+        return size >= (opts.minSize ?? 1) && size <= (opts.maxSize ?? Infinity);
+      });
+  }
+
+  /**
+   * Map raw per-color pixel aggregates (image space) into desktop-space
+   * ColorRegions, applying the min/max size filter. Shared by the native scan
+   * path so it produces results identical to the JS loop.
+   */
+  private mapColorAggregates(
+    aggs: Array<{
+      color: string;
+      count: number;
+      minX: number;
+      minY: number;
+      maxX: number;
+      maxY: number;
+    }>,
+    desktop: Region,
+    scaleX: number,
+    scaleY: number,
+    step: number,
+    opts: FindColorRegionsOptions,
+    offsetX = 0,
+    offsetY = 0
+  ): ColorRegion[] {
+    return aggs
+      .map((c): ColorRegion => {
+        const bounds = {
+          x: desktop.x + (c.minX + offsetX) / scaleX,
+          y: desktop.y + (c.minY + offsetY) / scaleY,
           width: (c.maxX - c.minX + step) / scaleX,
           height: (c.maxY - c.minY + step) / scaleY,
         };
@@ -301,6 +392,185 @@ export class ComputerService implements ComputerUseService {
       timedOut: targets.length < maxClicks,
       targets,
     };
+  }
+
+  /**
+   * Grab a raw RGBA frame from the active driver plus the mapping needed to turn
+   * image-space coordinates into absolute desktop coordinates. Shared by all the
+   * perception detectors (boxes/shapes/blobs).
+   */
+  private async grabRawFrame(
+    displayId?: number
+  ): Promise<{ raw: RawScreenshot; desktop: Region; scaleX: number; scaleY: number }> {
+    const driver = await this.getDriver();
+    const shot = await driver.screenshot(
+      displayId === undefined ? undefined : { displayId }
+    );
+    let raw = shot as unknown as RawScreenshot;
+    if (!raw || (raw as any).__raw !== true) {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const sharp = require("sharp");
+      const decoded = await sharp(shot).ensureAlpha().raw().toBuffer({
+        resolveWithObject: true,
+      });
+      raw = {
+        __raw: true,
+        width: decoded.info.width,
+        height: decoded.info.height,
+        data: decoded.data,
+      };
+    }
+    const displays = await driver.getDisplays();
+    const display =
+      displays.find((d) => displayId !== undefined && d.id === displayId) ??
+      displays.find((d) => d.primary) ??
+      displays[0];
+    const desktop = display?.bounds ?? {
+      x: 0,
+      y: 0,
+      width: raw.width,
+      height: raw.height,
+    };
+    const scaleX = raw.width / Math.max(1, desktop.width);
+    const scaleY = raw.height / Math.max(1, desktop.height);
+    return { raw, desktop, scaleX, scaleY };
+  }
+
+  /** Crop a raw RGBA frame to a desktop-space region, returning a new Frame. */
+  private cropFrame(
+    raw: RawScreenshot,
+    region: Region,
+    desktop: Region,
+    scaleX: number,
+    scaleY: number
+  ): { frame: Frame; offsetX: number; offsetY: number } {
+    const ix = Math.max(0, Math.round((region.x - desktop.x) * scaleX));
+    const iy = Math.max(0, Math.round((region.y - desktop.y) * scaleY));
+    const iw = Math.min(raw.width - ix, Math.max(1, Math.round(region.width * scaleX)));
+    const ih = Math.min(raw.height - iy, Math.max(1, Math.round(region.height * scaleY)));
+    const out = Buffer.allocUnsafe(iw * ih * 4);
+    for (let y = 0; y < ih; y++) {
+      const srcStart = ((iy + y) * raw.width + ix) * 4;
+      (raw.data as Buffer).copy(out, y * iw * 4, srcStart, srcStart + iw * 4);
+    }
+    return {
+      frame: { width: iw, height: ih, data: out },
+      offsetX: ix,
+      offsetY: iy,
+    };
+  }
+
+  private imgRegionToDesktop(
+    r: Region,
+    desktop: Region,
+    scaleX: number,
+    scaleY: number,
+    offsetX = 0,
+    offsetY = 0
+  ): Region {
+    return {
+      x: desktop.x + (r.x + offsetX) / scaleX,
+      y: desktop.y + (r.y + offsetY) / scaleY,
+      width: r.width / scaleX,
+      height: r.height / scaleY,
+    };
+  }
+
+  /**
+   * Detect axis-aligned rectangular boxes (buttons, cards, panels, modals) and
+   * return them as a containment hierarchy in ABSOLUTE DESKTOP coordinates. This
+   * lets an agent express structural queries like "the small rectangle (button)
+   * inside this large square (modal)". Prefers the native Rust detector; falls
+   * back to the pure-TS implementation.
+   */
+  async findBoxes(
+    opts: FindBoxesOptions & { displayId?: number; region?: Region } = {}
+  ): Promise<DesktopBox[]> {
+    const { raw, desktop, scaleX, scaleY } = await this.grabRawFrame(opts.displayId);
+    let frame: Frame = { width: raw.width, height: raw.height, data: raw.data as Buffer };
+    let offsetX = 0;
+    let offsetY = 0;
+    if (opts.region) {
+      const cropped = this.cropFrame(raw, opts.region, desktop, scaleX, scaleY);
+      frame = cropped.frame;
+      offsetX = cropped.offsetX;
+      offsetY = cropped.offsetY;
+    }
+    const mapBounds = (b: Region) =>
+      this.imgRegionToDesktop(b, desktop, scaleX, scaleY, offsetX, offsetY);
+
+    const native = nativeFindBoxes(frame.data as Buffer, frame.width, frame.height, opts);
+    if (native) {
+      // Rebuild the tree from the flat native list (parent = index).
+      const nodes: DesktopBox[] = native.map((b) => {
+        const bounds = mapBounds({ x: b.x, y: b.y, width: b.width, height: b.height });
+        return {
+          bounds,
+          center: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 },
+          area: bounds.width * bounds.height,
+          edgeScore: Number(b.edgeScore.toFixed(4)),
+          depth: b.depth,
+          children: [],
+        };
+      });
+      const roots: DesktopBox[] = [];
+      native.forEach((b, i) => {
+        if (b.parent >= 0 && native[b.parent]) nodes[b.parent].children.push(nodes[i]);
+        else roots.push(nodes[i]);
+      });
+      return roots;
+    }
+
+    // TS fallback returns a BoxNode tree in image space; remap to desktop.
+    const tree = tsFindBoxes(frame, opts);
+    const remap = (n: BoxNode): DesktopBox => {
+      const bounds = mapBounds(n.bounds);
+      return {
+        bounds,
+        center: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 },
+        area: bounds.width * bounds.height,
+        edgeScore: Number(n.edgeScore.toFixed(4)),
+        depth: n.depth,
+        children: n.children.map(remap),
+      };
+    };
+    return tree.map(remap);
+  }
+
+  /**
+   * Detect geometric shapes (horizontal/vertical lines, rectangles, squares,
+   * circles, blobs) matching a color/size in ABSOLUTE DESKTOP coordinates.
+   */
+  async findShapes(
+    opts: FindShapesOptions & { displayId?: number; region?: Region }
+  ): Promise<DesktopShape[]> {
+    const { raw, desktop, scaleX, scaleY } = await this.grabRawFrame(opts.displayId);
+    let frame: Frame = { width: raw.width, height: raw.height, data: raw.data as Buffer };
+    let offsetX = 0;
+    let offsetY = 0;
+    if (opts.region) {
+      const cropped = this.cropFrame(raw, opts.region, desktop, scaleX, scaleY);
+      frame = cropped.frame;
+      offsetX = cropped.offsetX;
+      offsetY = cropped.offsetY;
+    }
+    return tsFindShapes(frame, opts).map((s: ShapeMatch) => {
+      const bounds = this.imgRegionToDesktop(s.bounds, desktop, scaleX, scaleY, offsetX, offsetY);
+      return {
+        kind: s.kind,
+        bounds,
+        center: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 },
+        area: s.area,
+        score: s.score,
+      };
+    });
+  }
+
+  /** Connected-component color blobs in ABSOLUTE DESKTOP coordinates. */
+  async findColorBlobs(
+    opts: FindColorBlobsOptions & { displayId?: number; region?: Region }
+  ): Promise<DesktopShape[]> {
+    return this.findShapes({ ...opts, kind: "blob" } as any);
   }
 
   private async encode(
@@ -353,8 +623,13 @@ export class ComputerService implements ComputerUseService {
    * Capture a screenshot with an optional labeled coordinate grid and/or a
    * crosshair marker drawn over it. Hugely helpful for an agent aiming clicks:
    * it can read approximate pixel coordinates straight off the image instead of
-   * eyeballing against a raw frame. Grid coordinates are in the SCALED output
-   * image's pixel space (i.e. what you actually see).
+   * eyeballing against a raw frame.
+   *
+   * Grid and crosshair labels are rendered in ABSOLUTE DESKTOP coordinates —
+   * they already account for the capture `scale` and any `region` offset, so an
+   * agent can read a value straight off the image and pass it directly to
+   * clickAt / moveMouse WITHOUT doing any 1/scale or region-offset math. The
+   * `crosshair` marker is likewise specified in absolute desktop coordinates.
    */
   async screenshotAnnotated(
     opts?: ScreenshotOptions & {
@@ -370,30 +645,56 @@ export class ComputerService implements ComputerUseService {
     const meta = await sharp(base).metadata();
     const w = meta.width || 0;
     const h = meta.height || 0;
+    // Convert a displayed (scaled image) pixel position back to an absolute
+    // desktop coordinate: divide out the scale, then add the region offset.
+    // IMPORTANT: fall back to the service's configured default screenshotScale
+    // (e.g. 0.5 for 4K displays) when the caller did not pass an explicit scale,
+    // because encode() has ALREADY applied that same default to the pixels. If we
+    // used 1 here, the grid/crosshair labels would be off by 1/defaultScale and
+    // clicks aimed from the labels would miss (e.g. read "960" for desktop 1920).
+    const effectiveScale =
+      opts.scale && opts.scale > 0
+        ? opts.scale
+        : this.opts.screenshotScale && this.opts.screenshotScale > 0
+        ? this.opts.screenshotScale
+        : 1;
+    const scale = effectiveScale;
+    const offsetX = opts.region?.x ?? 0;
+    const offsetY = opts.region?.y ?? 0;
+    const toDesktopX = (imgX: number) => Math.round(offsetX + imgX / scale);
+    const toDesktopY = (imgY: number) => Math.round(offsetY + imgY / scale);
     const step = Math.max(20, Math.round(opts.gridStep ?? Math.max(w, h) / 12));
     const parts: string[] = [];
     if (opts.grid) {
       for (let x = step; x < w; x += step) {
         parts.push(
           `<line x1="${x}" y1="0" x2="${x}" y2="${h}" stroke="rgba(255,0,80,0.35)" stroke-width="1"/>` +
-            `<text x="${x + 2}" y="14" fill="rgba(255,0,80,0.9)" font-size="12" font-family="monospace">${x}</text>`
+            `<text x="${x + 2}" y="14" fill="rgba(255,0,80,0.9)" font-size="12" font-family="monospace">${toDesktopX(
+              x
+            )}</text>`
         );
       }
       for (let y = step; y < h; y += step) {
         parts.push(
           `<line x1="0" y1="${y}" x2="${w}" y2="${y}" stroke="rgba(255,0,80,0.35)" stroke-width="1"/>` +
-            `<text x="2" y="${y - 2}" fill="rgba(255,0,80,0.9)" font-size="12" font-family="monospace">${y}</text>`
+            `<text x="2" y="${y - 2}" fill="rgba(255,0,80,0.9)" font-size="12" font-family="monospace">${toDesktopY(
+              y
+            )}</text>`
         );
       }
     }
     if (opts.crosshair) {
-      const cx = Math.round(opts.crosshair.x);
-      const cy = Math.round(opts.crosshair.y);
+      // Crosshair is given in absolute desktop coords; map it into the scaled
+      // image's pixel space for drawing, but label it with the desktop values.
+      const desktopX = Math.round(opts.crosshair.x);
+      const desktopY = Math.round(opts.crosshair.y);
+      const cx = Math.round((desktopX - offsetX) * scale);
+      const cy = Math.round((desktopY - offsetY) * scale);
       parts.push(
         `<line x1="${cx}" y1="0" x2="${cx}" y2="${h}" stroke="rgba(0,180,255,0.9)" stroke-width="2"/>` +
           `<line x1="0" y1="${cy}" x2="${w}" y2="${cy}" stroke="rgba(0,180,255,0.9)" stroke-width="2"/>` +
           `<circle cx="${cx}" cy="${cy}" r="6" fill="none" stroke="rgba(0,180,255,1)" stroke-width="2"/>` +
-          `<text x="${cx + 8}" y="${cy - 8}" fill="rgba(0,180,255,1)" font-size="13" font-family="monospace">${cx},${cy}</text>`
+          `<text x="${cx + 8}" y="${cy - 8}" fill="rgba(0,180,255,1)" font-size="13" font-family="monospace">${desktopX},${desktopY}</text>`
       );
     }
     const svg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${parts.join(

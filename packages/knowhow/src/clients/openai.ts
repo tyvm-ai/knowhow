@@ -22,13 +22,17 @@ import {
   FileUploadResponse,
   FileDownloadOptions,
   FileDownloadResponse,
+  Message,
 } from "./types";
 import {
   ChatCompletionMessageParam,
   ChatCompletionToolMessageParam,
   ChatCompletionMessageToolCall,
 } from "openai/resources/chat";
-import { ResponseFunctionToolCall } from "openai/resources/responses/responses";
+import {
+  ResponseFunctionToolCall,
+  ResponseInputMessageContentList,
+} from "openai/resources/responses/responses";
 
 import {
   EmbeddingModels,
@@ -140,6 +144,75 @@ export class GenericOpenAiClient implements GenericClient {
     return options.reasoning_effort === "none";
   }
 
+  /**
+   * OpenAI only permits image parts on user messages. A Chat Completions
+   * `tool` message may contain text parts, but not `image_url` parts. Keep the
+   * required tool result and attach images in a following user message.
+   */
+  toChatCompletionMessages(
+    messages: CompletionOptions["messages"]
+  ): ChatCompletionMessageParam[] {
+    return messages.flatMap((msg): ChatCompletionMessageParam[] => {
+      if (msg.role !== "tool") return [msg as ChatCompletionMessageParam];
+
+      const parts = Array.isArray(msg.content) ? msg.content : [];
+      const unsupportedPart = parts.find(
+        (part) => part.type !== "text" && part.type !== "image_url"
+      );
+      if (unsupportedPart) {
+        throw new Error(
+          `OpenAI Chat Completions cannot attach ${unsupportedPart.type} content to a tool result.`
+        );
+      }
+      const imageParts = parts.filter((part) => part.type === "image_url");
+      const textParts = parts.filter((part) => part.type === "text");
+      const toolMessage: ChatCompletionToolMessageParam = {
+        role: "tool",
+        tool_call_id: msg.tool_call_id!,
+        content: Array.isArray(msg.content)
+          ? textParts.length
+            ? textParts
+            : [{
+                type: "text",
+                text: "Image output attached in the following user message.",
+              }]
+          : msg.content || "",
+      };
+
+      if (!imageParts.length) return [toolMessage];
+      return [
+        toolMessage,
+        { role: "user", content: imageParts } as ChatCompletionMessageParam,
+      ];
+    });
+  }
+
+  /** Convert the CLI's Chat Completions-style parts to Responses API parts. */
+  toResponseContent(
+    content: Message["content"]
+  ): string | ResponseInputMessageContentList {
+    if (!Array.isArray(content)) return content || "";
+    const result: ResponseInputMessageContentList = [];
+    for (const part of content) {
+      if (part.type === "text") {
+        result.push({ type: "input_text", text: part.text });
+      }
+      else if (part.type === "image_url") {
+        result.push({
+          type: "input_image",
+          image_url: part.image_url.url,
+          detail: part.image_url.detail || "auto",
+        });
+      }
+      else {
+        throw new Error(
+          `OpenAI Responses API conversion does not support ${part.type} content.`
+        );
+      }
+    }
+    return result;
+  }
+
   async createChatCompletion(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
@@ -148,17 +221,7 @@ export class GenericOpenAiClient implements GenericClient {
       return this.createChatResponse(options);
     }
 
-    const openaiMessages = options.messages.map((msg) => {
-      if (msg.role === "tool") {
-        return {
-          ...msg,
-          content: msg.content || "",
-          role: "tool",
-          tool_call_id: msg.tool_call_id,
-        } as ChatCompletionToolMessageParam;
-      }
-      return msg as ChatCompletionMessageParam;
-    });
+    const openaiMessages = this.toChatCompletionMessages(options.messages);
 
     const response = await this.client.chat.completions.create({
       model: options.model,
@@ -222,17 +285,7 @@ export class GenericOpenAiClient implements GenericClient {
       return;
     }
 
-    const openaiMessages = options.messages.map((msg) => {
-      if (msg.role === "tool") {
-        return {
-          ...msg,
-          content: msg.content || "",
-          role: "tool",
-          tool_call_id: msg.tool_call_id,
-        } as ChatCompletionToolMessageParam;
-      }
-      return msg as ChatCompletionMessageParam;
-    });
+    const openaiMessages = this.toChatCompletionMessages(options.messages);
 
     const stream = await this.client.chat.completions.create({
       model: options.model,
@@ -340,12 +393,26 @@ export class GenericOpenAiClient implements GenericClient {
     // The Responses API accepts: user/assistant/system messages and function_call_output items
     const input: any[] = nonSystemMessages.map((msg) => {
       if (msg.role === "tool") {
-        // tool result → function_call_output
-        return {
+        // OpenAI function outputs cannot directly contain image content. Send
+        // the required function output, then attach images as a user message.
+        const parts = Array.isArray(msg.content) ? msg.content : [];
+        const imageParts = parts.filter((part) => part.type === "image_url");
+        const text = parts
+          .filter((part) => part.type === "text")
+          .map((part: any) => part.text)
+          .join("\n");
+        const toolOutput = {
           type: "function_call_output",
           call_id: msg.tool_call_id,
-          output: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+          output: typeof msg.content === "string"
+            ? msg.content
+            : text || "Image output attached in the following user message.",
         };
+        if (!imageParts.length) return toolOutput;
+        return [
+          toolOutput,
+          { role: "user", content: this.toResponseContent(imageParts) },
+        ];
       }
       if (msg.role === "assistant" && msg.tool_calls?.length) {
         // assistant message with tool calls → function_call items.
@@ -372,14 +439,14 @@ export class GenericOpenAiClient implements GenericClient {
           ...this.getReasoningItems(msg),
           {
             role: msg.role,
-            content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+            content: this.toResponseContent(msg.content),
           },
         ];
       }
       // Regular user/assistant message
       return {
         role: msg.role,
-        content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+        content: this.toResponseContent(msg.content),
       };
     }).flat();
 

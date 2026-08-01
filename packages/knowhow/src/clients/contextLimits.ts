@@ -1,4 +1,5 @@
 import { Models, EmbeddingModels } from "../types";
+import { FireworksModels } from "./pricing/fireworks";
 
 /**
  * Context window limits (in tokens) for all supported models.
@@ -207,6 +208,45 @@ export const ContextLimits: Record<string, number> = {
   [Models.xai.GrokImagineImage]: 0,
   [Models.xai.GrokImagineVideo]: 0,
   [Models.xai.Grok2Image1212]: 0,
+
+  // ─── Fireworks AI ──────────────────────────────────────────────────────────
+  // Moonshot AI (Kimi) — context windows per fireworks.ai/pricing
+  [FireworksModels.KimiK3]:       131_072,
+  [FireworksModels.KimiK2p7Code]: 131_072,
+  [FireworksModels.KimiK2_6]:     131_072,
+  [FireworksModels.KimiK2_5]:     131_072,
+
+  // MiniMax
+  [FireworksModels.MinimaxM3]:    1_000_000,
+  [FireworksModels.MinimaxM2_7]:  1_000_000,
+  [FireworksModels.MinimaxM2_5]:  1_000_000,
+
+  // Qwen
+  [FireworksModels.Qwen3p7Plus]:  131_072,
+  [FireworksModels.Qwen3_6Plus]:  131_072,
+  [FireworksModels.Qwen3p6Plus]:  131_072,
+  [FireworksModels.Qwen3Vl30bA3bThinking]: 32_768,
+  [FireworksModels.Qwen3Vl30bA3bInstruct]: 32_768,
+  [FireworksModels.Qwen3_8b]:     131_072,
+
+  // Z.ai (GLM)
+  [FireworksModels.Glm5p2]: 131_072,
+  [FireworksModels.Glm5p1]: 131_072,
+  [FireworksModels.Glm5]:   131_072,
+  [FireworksModels.Glm4_7]: 131_072,
+
+  // DeepSeek AI
+  [FireworksModels.DeepseekV4Pro]:   163_840,
+  [FireworksModels.DeepseekV4Flash]: 163_840,
+  [FireworksModels.DeepseekV3_2]:    163_840,
+  [FireworksModels.DeepseekV3_1]:    163_840,
+
+  // OpenAI OSS
+  [FireworksModels.GptOss120b]: 131_072,
+
+  // Fireworks embedding/reranker models — 40k context
+  [FireworksModels.Qwen3Embedding8b]: 40_960,
+  [FireworksModels.Qwen3Reranker8b]:  40_960,
 };
 
 /** Default fallback context window limit (tokens) used when a model is not found. */

@@ -1,0 +1,719 @@
+import * as fs from "fs";
+import * as path from "path";
+import { Point, Region } from "@tyvm/knowhow";
+import {
+  ComputerService,
+  ColorRegion,
+  DesktopBox,
+  DesktopShape,
+} from "./ComputerService";
+import { resolveRegion } from "./regions";
+
+/**
+ * Automations — a locally-run perception→action loop that the LLM authors once
+ * (after watching a game/UI) and then launches with a single tool call. The LLM
+ * (the slow, smart "coach") stays OUT of the per-frame loop; the automation (the
+ * fast, dumb "actor") runs entirely in-process at up to ~60Hz with no model
+ * round-trip per target, which is the only way to beat the ~1s human bar.
+ *
+ * Design (see .knowhow/tasks/computer-use-improvements/implementation-plan.md):
+ *  - The automation is a .ts async function body with access to a small `sdk`.
+ *  - It can call `await sdk.requiredWindow(...)`; if OS focus leaves that window
+ *    the runner auto-pauses (action methods become no-ops), so a human
+ *    interrupts any automation just by clicking away / Cmd-Tabbing out.
+ *  - It supports `dryRun`, where action methods RECORD intent instead of moving
+ *    the real mouse — this powers offline testAutomation against a recording.
+ */
+
+const STORE_DIR = path.join(".knowhow", "automations");
+
+export interface WindowMatch {
+  /** Substring (case-insensitive) that must appear in the active window title. */
+  titleIncludes?: string;
+  /** Substring (case-insensitive) that must appear in the active window app. */
+  app?: string;
+}
+
+export interface AutomationSpec {
+  name: string;
+  /** Async function body. Receives (sdk). May `await` sdk.* calls. */
+  script: string;
+  /** Parsed structured header (see parseAutomationDoc) describing when to use it. */
+  doc?: AutomationDoc;
+  /** Absolute path to the saved .ts file (populated by loaders). */
+  filePath?: string;
+}
+
+/**
+ * Structured "skill card" for an automation, parsed from a JSDoc-style header
+ * comment at the very top of the script. This is what makes an automation
+ * DISCOVERABLE: it tells a future agent what the automation does, WHEN to reach
+ * for it, what the screen must look like before it runs, and what it leaves
+ * behind afterward — so the agent can pick the right automation without reading
+ * (or guessing at) the whole implementation.
+ */
+export interface AutomationDoc {
+  description?: string;
+  useWhen?: string;
+  startState?: string;
+  endState?: string;
+  window?: string;
+  notes?: string;
+}
+
+export interface AutomationAction {
+  t: number;
+  kind: "clickAt" | "moveMouse" | "type" | "key";
+  x?: number;
+  y?: number;
+  button?: string;
+  text?: string;
+  /** True when the runner suppressed this action (paused / dry-run). */
+  suppressed?: boolean;
+}
+
+export interface AutomationLogEntry {
+  t: number;
+  data: any;
+}
+
+export interface AutomationRunResult {
+  name: string;
+  elapsedMs: number;
+  stopped: "duration" | "manual" | "completed" | "error";
+  error?: string;
+  actions: AutomationAction[];
+  actionCount: number;
+  logs: AutomationLogEntry[];
+  pausedMs: number;
+  dryRun: boolean;
+}
+
+export interface AutomationControl {
+  paused: boolean;
+  stopped: boolean;
+  requiredWindow?: WindowMatch;
+  stop(): void;
+}
+
+/**
+ * The surface handed to an authored automation script. Perception methods read
+ * real rendered pixels; action methods drive the real mouse/keyboard (unless
+ * paused or in dry-run). Everything is in ABSOLUTE DESKTOP coordinates.
+ */
+export interface AutomationSDK {
+  // ── perception (real pixels) ──
+  screenSize(): Promise<{ width: number; height: number }>;
+  findColor(
+    colors: string | string[],
+    opts?: {
+      region?: Region | string;
+      tolerance?: number;
+      minPixels?: number;
+      minSize?: number;
+      maxSize?: number;
+    }
+  ): Promise<ColorRegion[]>;
+  findShape(opts: {
+    kind: "line-h" | "line-v" | "rect" | "square" | "circle" | "blob";
+    color?: string;
+    region?: Region | string;
+    tolerance?: number;
+    minSize?: number;
+    maxSize?: number;
+    length?: number;
+    thickness?: number;
+  }): Promise<DesktopShape[]>;
+  findBoxes(opts?: {
+    region?: Region | string;
+    minSize?: number;
+    maxSize?: number;
+    minEdgeScore?: number;
+    maxBoxes?: number;
+  }): Promise<DesktopBox[]>;
+  pixelColor(x: number, y: number): Promise<string>;
+
+  // ── action (no-op while paused; recorded in dry-run) ──
+  clickAt(x: number, y: number, button?: "left" | "right" | "middle"): Promise<void>;
+  moveMouse(x: number, y: number): Promise<void>;
+  type(text: string): Promise<void>;
+  key(name: string): Promise<void>;
+
+  // ── control / telemetry ──
+  sleep(ms: number): Promise<void>;
+  now(): number;
+  elapsed(): number;
+  log(data: any): void;
+  /** Run only this callback repeatedly at the requested frequency. */
+  runEvery(callback: () => void | Promise<void>, hz: number): Promise<void>;
+  /** @deprecated Prefer runEvery(callback, hz). */
+  loopHz(hz?: number): number;
+  /** Set/clear the focus gate. Await before performing actions. */
+  requiredWindow(match?: WindowMatch): Promise<void>;
+  readonly ctl: AutomationControl;
+}
+
+/**
+ * Editor/type-only binding for authored automation files. At execution time
+ * the runner injects the real value and removes its SDK import declaration.
+ */
+export const sdk: AutomationSDK = undefined as any;
+
+// ── registry (running instances, so stopAutomation can reach them) ──
+const running = new Map<string, AutomationRunner>();
+
+export function getRunning(name: string): AutomationRunner | undefined {
+  return running.get(name);
+}
+
+export function listRunning(): string[] {
+  return [...running.keys()];
+}
+
+/** Persisted automation storage (git-trackable). */
+export function automationPath(name: string): string {
+  const safe = name.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return path.join(STORE_DIR, `${safe}.ts`);
+}
+
+/**
+ * Extract the structured "skill card" from an automation script. We look for a
+ * leading block comment (before any executable code) and read JSDoc-style tags:
+ *   @description  one-liner of what it does
+ *   @useWhen      the situation/trigger that should make an agent pick this
+ *   @startState   what the screen must look like BEFORE running
+ *   @endState     what the screen will look like AFTER it finishes
+ *   @window       the required window (title/app) it operates on
+ *   @notes        anything else worth knowing (limits, caveats)
+ * Tag text may wrap onto continuation lines. Returns undefined when no
+ * recognizable header is present.
+ */
+export function parseAutomationDoc(script: string): AutomationDoc | undefined {
+  const block = script.match(/^\s*\/\*\*?([\s\S]*?)\*\//);
+  if (!block) return undefined;
+  // Strip leading " * " decoration from each comment line.
+  const body = block[1]
+    .split("\n")
+    .map((l) => l.replace(/^\s*\*?\s?/, ""))
+    .join("\n");
+
+  const tags: Record<string, string> = {};
+  let current: string | null = null;
+  const known = new Set([
+    "description",
+    "usewhen",
+    "startstate",
+    "endstate",
+    "window",
+    "notes",
+  ]);
+  for (const rawLine of body.split("\n")) {
+    const line = rawLine.trimEnd();
+    const m = line.match(/^@(\w+)\s*(.*)$/);
+    if (m && known.has(m[1].toLowerCase())) {
+      current = m[1].toLowerCase();
+      tags[current] = m[2].trim();
+    } else if (current && line.trim()) {
+      tags[current] = (tags[current] + " " + line.trim()).trim();
+    }
+  }
+  if (!Object.keys(tags).length) return undefined;
+  const doc: AutomationDoc = {
+    description: tags["description"],
+    useWhen: tags["usewhen"],
+    startState: tags["startstate"],
+    endState: tags["endstate"],
+    window: tags["window"],
+    notes: tags["notes"],
+  };
+  // Drop empty keys for a tidy summary.
+  for (const k of Object.keys(doc) as (keyof AutomationDoc)[]) {
+    if (!doc[k]) delete doc[k];
+  }
+  return Object.keys(doc).length ? doc : undefined;
+}
+
+export function saveAutomation(spec: AutomationSpec): AutomationSpec {
+  fs.mkdirSync(STORE_DIR, { recursive: true });
+  fs.writeFileSync(automationPath(spec.name), spec.script);
+  return { ...spec, doc: parseAutomationDoc(spec.script), filePath: automationPath(spec.name) };
+}
+
+export function loadAutomation(name: string): AutomationSpec {
+  const spec = loadAutomationSafe(name);
+  if (!spec) throw new Error(`No automation named "${name}".`);
+  return spec;
+}
+
+export function loadAutomationSafe(name: string): AutomationSpec | undefined {
+  try {
+    const p = automationPath(name);
+    if (fs.existsSync(p)) {
+      const script = fs.readFileSync(p, "utf8");
+      return { name, script, doc: parseAutomationDoc(script), filePath: p };
+    }
+    // Read old files during migration, but all new writes use plain .ts files.
+    const safe = name.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const legacy = path.join(STORE_DIR, `${safe}.automation.json`);
+    if (!fs.existsSync(legacy)) return undefined;
+    const parsed = JSON.parse(fs.readFileSync(legacy, "utf8"));
+    return {
+      name,
+      script: parsed.script,
+      doc: parseAutomationDoc(parsed.script || ""),
+      filePath: legacy,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+export function listAutomations(): AutomationSpec[] {
+  try {
+    if (!fs.existsSync(STORE_DIR)) return [];
+    return fs
+      .readdirSync(STORE_DIR)
+      .filter((f) => f.endsWith(".ts"))
+      .map((f) => loadAutomationSafe(f.slice(0, -3)) || null)
+      .filter((x): x is AutomationSpec => !!x);
+  } catch {
+    return [];
+  }
+}
+
+export function deleteAutomation(name: string): boolean {
+  const p = automationPath(name);
+  let deleted = false;
+  if (fs.existsSync(p)) {
+    fs.unlinkSync(p);
+    deleted = true;
+  }
+  const safe = name.replace(/[^a-zA-Z0-9_-]/g, "_");
+  const legacy = path.join(STORE_DIR, `${safe}.automation.json`);
+  if (fs.existsSync(legacy)) {
+    fs.unlinkSync(legacy);
+    deleted = true;
+  }
+  return deleted;
+}
+
+/**
+ * Reject scripts that try to escape the SDK sandbox. Automations must "play"
+ * honestly — only real pixels in, real mouse out — so we forbid network/shell/
+ * filesystem/module access. This is a static guard, not a full sandbox; the
+ * script still runs with `new Function` and only `sdk` in scope.
+ */
+const FORBIDDEN_TOKENS = [
+  "require",
+  "import",
+  "process",
+  "child_process",
+  "fetch",
+  "eval",
+  "Function",
+  "globalThis",
+  "__dirname",
+  "__filename",
+  "XMLHttpRequest",
+  "WebSocket",
+];
+
+const SDK_IMPORT = /^\s*import\s*\{\s*sdk\s*\}\s*from\s*["']@tyvm\/knowhow-module-computer-use["']\s*;?\s*$/gm;
+
+/** Remove the one editor-only import supported by automation source files. */
+export function prepareAutomationScript(script: string): string {
+  return script.replace(SDK_IMPORT, "");
+}
+
+export function validateScript(script: string): void {
+  script = prepareAutomationScript(script);
+  for (const tok of FORBIDDEN_TOKENS) {
+    const re = new RegExp(`\\b${tok}\\b`);
+    if (re.test(script)) {
+      throw new Error(
+        `Automation script rejected: forbidden token "${tok}". Automations may only use the provided sdk (perception + mouse/keyboard). No network, shell, filesystem, or module access.`
+      );
+    }
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-empty-function
+const AsyncFunction = Object.getPrototypeOf(async function () {})
+  .constructor as {
+  new (...args: string[]): (...a: any[]) => Promise<any>;
+};
+
+export interface RunOptions {
+  maxDurationMs?: number;
+  /** When true, action methods record intent but do NOT move the real mouse. */
+  dryRun?: boolean;
+  /** Poll interval for the window-focus gate (default 200ms). */
+  gatePollMs?: number;
+  /** Optional callback for streamed telemetry (e.g. push to the coach). */
+  onLog?: (entry: AutomationLogEntry) => void;
+  /**
+   * Delay (ms) between the SDK's moveMouse and the click inside clickAt so the
+   * OS commits the new cursor position before the button event — otherwise a
+   * click posted back-to-back with a move can register at a stale location
+   * (default 40).
+   */
+  clickSettleMs?: number;
+}
+
+/**
+ * Runs a single automation instance: builds the SDK, enforces the window gate
+ * (auto-pause on focus loss), guards a max duration, and collects telemetry.
+ */
+export class AutomationRunner {
+  readonly spec: AutomationSpec;
+  private svc: ComputerService;
+  private opts: RunOptions;
+  private startedAt = 0;
+  private pausedAccumMs = 0;
+  private pauseStartedAt = 0;
+  private actions: AutomationAction[] = [];
+  private logs: AutomationLogEntry[] = [];
+  private gateTimer: NodeJS.Timeout | null = null;
+  private durationTimer: NodeJS.Timeout | null = null;
+  private loopRate = 60;
+  /** Resolved max run duration (ms). Set at the start of run(). */
+  maxDurationMs = 120000;
+  private stopReason: "duration" | "manual" | "completed" | "error" | null =
+    null;
+
+  readonly ctl: AutomationControl = {
+    paused: false,
+    stopped: false,
+    requiredWindow: undefined,
+    stop: () => {
+      if (!this.ctl.stopped) this.stopReason = this.stopReason ?? "manual";
+      this.ctl.stopped = true;
+    },
+  };
+
+  constructor(spec: AutomationSpec, svc: ComputerService, opts: RunOptions = {}) {
+    this.spec = spec;
+    this.svc = svc;
+    this.opts = opts;
+  }
+
+  private now(): number {
+    return Date.now();
+  }
+
+  elapsed(): number {
+    return this.startedAt ? this.now() - this.startedAt : 0;
+  }
+
+  private matchesWindow(
+    active: { title: string; app?: string } | null,
+    match?: WindowMatch
+  ): boolean {
+    if (!match || (!match.titleIncludes && !match.app)) return true;
+    if (!active) return false;
+    const title = (active.title || "").toLowerCase();
+    const app = (active.app || "").toLowerCase();
+    if (match.titleIncludes) {
+      const t = match.titleIncludes.toLowerCase();
+      if (title.includes(t) || app.includes(t)) return true;
+    }
+    if (match.app) {
+      const a = match.app.toLowerCase();
+      if (app.includes(a) || title.includes(a)) return true;
+    }
+    return false;
+  }
+
+  private async pollGate(): Promise<void> {
+    if (this.ctl.stopped) return;
+    if (!this.ctl.requiredWindow) return;
+    let active: { title: string; app?: string } | null = null;
+    try {
+      active = (await this.svc.getActiveWindow()) as any;
+    } catch {
+      active = null;
+    }
+    const ok = this.matchesWindow(active, this.ctl.requiredWindow);
+    if (!ok && !this.ctl.paused) {
+      this.ctl.paused = true;
+      this.pauseStartedAt = this.now();
+      this.emit({
+        paused: "window-focus-lost",
+        active: active?.title || null,
+      });
+    } else if (ok && this.ctl.paused) {
+      this.ctl.paused = false;
+      if (this.pauseStartedAt) {
+        this.pausedAccumMs += this.now() - this.pauseStartedAt;
+        this.pauseStartedAt = 0;
+      }
+      this.emit({ resumed: true, active: active?.title || null });
+    }
+  }
+
+  private async configureRequiredWindow(match?: WindowMatch): Promise<void> {
+    this.ctl.requiredWindow = match;
+    if (this.gateTimer) {
+      clearInterval(this.gateTimer);
+      this.gateTimer = null;
+    }
+    if (!match || (!match.titleIncludes && !match.app)) {
+      if (this.ctl.paused) {
+        this.ctl.paused = false;
+        if (this.pauseStartedAt) {
+          this.pausedAccumMs += this.now() - this.pauseStartedAt;
+          this.pauseStartedAt = 0;
+        }
+        this.emit({ resumed: true, gateCleared: true });
+      }
+      return;
+    }
+
+    // Awaiting this function guarantees the next action is already gated.
+    await this.pollGate();
+    const gateMs = Math.max(50, this.opts.gatePollMs ?? 200);
+    this.gateTimer = setInterval(() => {
+      this.pollGate().catch(() => {});
+    }, gateMs);
+    if (this.gateTimer.unref) this.gateTimer.unref();
+  }
+
+  private emit(data: any): void {
+    const entry: AutomationLogEntry = { t: this.elapsed(), data };
+    this.logs.push(entry);
+    if (this.opts.onLog) {
+      try {
+        this.opts.onLog(entry);
+      } catch {
+        /* streaming is best-effort */
+      }
+    }
+  }
+
+  private canAct(): boolean {
+    return !this.ctl.stopped && !this.ctl.paused && !this.opts.dryRun;
+  }
+
+  private buildSDK(): AutomationSDK {
+    const svc = this.svc;
+    const self = this;
+    const clickSettleMs = Math.max(0, this.opts.clickSettleMs ?? 40);
+    const sdk: AutomationSDK = {
+      ctl: this.ctl,
+      loopHz: (hz) => {
+        if (hz !== undefined) {
+          if (!Number.isFinite(hz) || hz <= 0) {
+            throw new Error("sdk.loopHz(hz) requires a positive number.");
+          }
+          self.loopRate = hz;
+        }
+        return self.loopRate;
+      },
+      runEvery: async (callback, hz) => {
+        if (typeof callback !== "function") {
+          throw new Error("sdk.runEvery(callback, hz) requires a function.");
+        }
+        if (!Number.isFinite(hz) || hz <= 0) {
+          throw new Error("sdk.runEvery(callback, hz) requires a positive frequency.");
+        }
+        self.loopRate = hz;
+        const intervalMs = 1000 / hz;
+        // Hard backstop: even if the OS-level duration timer is starved (see
+        // below), never let this loop outlive the configured max duration.
+        const deadline = self.startedAt
+          ? self.startedAt + self.maxDurationMs
+          : Number.POSITIVE_INFINITY;
+        while (!self.ctl.stopped) {
+          const iterationStarted = self.now();
+          // In-loop duration guard. The setTimeout-based durationTimer is a
+          // macrotask; a callback that consistently runs longer than intervalMs
+          // (screen capture + shape detection easily do) would otherwise leave
+          // `remaining <= 0`, skip the setTimeout yield, and spin as a tight
+          // microtask loop — starving timers AND SIGINT so neither the 30s
+          // timeout nor Ctrl-C could ever fire. Check the deadline directly.
+          if (iterationStarted >= deadline) {
+            if (!self.ctl.stopped) {
+              self.stopReason = self.stopReason ?? "duration";
+              self.ctl.stopped = true;
+              self.emit({ stopped: "duration", maxDurationMs: self.maxDurationMs });
+            }
+            break;
+          }
+          await callback();
+          if (self.ctl.stopped) break;
+          const remaining = intervalMs - (self.now() - iterationStarted);
+          if (remaining > 0) {
+            await new Promise((resolve) => setTimeout(resolve, remaining));
+          } else {
+            // Always yield to the macrotask queue at least once per iteration so
+            // timers and process signals (Ctrl-C) are delivered even when the
+            // callback overruns the interval budget.
+            await new Promise((resolve) => setImmediate(resolve));
+          }
+        }
+      },
+      requiredWindow: (match) => self.configureRequiredWindow(match),
+
+      screenSize: () => svc.screenSize(),
+
+      findColor: (colors, o = {}) =>
+        svc.findColorRegions({
+          colors: Array.isArray(colors) ? colors : [colors],
+          region: resolveRegion(o.region as any),
+          tolerance: o.tolerance,
+          minPixels: o.minPixels,
+          minSize: o.minSize,
+          maxSize: o.maxSize,
+        } as any),
+
+      findShape: (o) =>
+        svc.findShapes({
+          kind: o.kind,
+          color: o.color,
+          region: resolveRegion(o.region as any),
+          tolerance: o.tolerance,
+          minSize: o.minSize,
+          maxSize: o.maxSize,
+          length: o.length,
+          thickness: o.thickness,
+        } as any),
+
+      findBoxes: (o = {}) =>
+        svc.findBoxes({
+          region: resolveRegion(o.region as any),
+          minSize: o.minSize,
+          maxSize: o.maxSize,
+          minEdgeScore: o.minEdgeScore,
+          maxBoxes: o.maxBoxes,
+        } as any),
+
+      pixelColor: (x, y) => svc.pixelColor({ x, y }),
+
+      clickAt: async (x, y, button = "left") => {
+        const act: AutomationAction = {
+          t: self.elapsed(),
+          kind: "clickAt",
+          x,
+          y,
+          button,
+          suppressed: !self.canAct(),
+        };
+        self.actions.push(act);
+        if (!self.canAct()) return;
+        await svc.moveMouse({ x, y });
+        // Let the OS commit the cursor move before the button event; a click
+        // fired back-to-back with a move can register at a stale position.
+        if (clickSettleMs) await new Promise((r) => setTimeout(r, clickSettleMs));
+        await svc.click(button);
+      },
+
+      moveMouse: async (x, y) => {
+        const act: AutomationAction = {
+          t: self.elapsed(),
+          kind: "moveMouse",
+          x,
+          y,
+          suppressed: !self.canAct(),
+        };
+        self.actions.push(act);
+        if (!self.canAct()) return;
+        await svc.moveMouse({ x, y });
+      },
+
+      type: async (text) => {
+        const act: AutomationAction = {
+          t: self.elapsed(),
+          kind: "type",
+          text,
+          suppressed: !self.canAct(),
+        };
+        self.actions.push(act);
+        if (!self.canAct()) return;
+        await svc.typeText(text);
+      },
+
+      key: async (name) => {
+        const act: AutomationAction = {
+          t: self.elapsed(),
+          kind: "key",
+          text: name,
+          suppressed: !self.canAct(),
+        };
+        self.actions.push(act);
+        if (!self.canAct()) return;
+        await svc.pressKey(name);
+      },
+
+      sleep: (ms) =>
+        new Promise((resolve) => {
+          const capped = Math.max(0, Math.min(60000, ms || 0));
+          setTimeout(resolve, capped);
+        }),
+
+      now: () => self.now(),
+      elapsed: () => self.elapsed(),
+      log: (data) => self.emit(data),
+    };
+    return sdk;
+  }
+
+  async run(): Promise<AutomationRunResult> {
+    const script = prepareAutomationScript(this.spec.script);
+    validateScript(script);
+    running.set(this.spec.name, this);
+    this.startedAt = this.now();
+    let stopped: AutomationRunResult["stopped"] = "completed";
+    let error: string | undefined;
+
+    const maxDurationMs = (this.maxDurationMs = Math.max(
+      500,
+      Math.min(30 * 60 * 1000, this.opts.maxDurationMs ?? 120000)
+    ));
+    this.durationTimer = setTimeout(() => {
+      if (!this.ctl.stopped) {
+        this.stopReason = "duration";
+        this.ctl.stopped = true;
+        this.emit({ stopped: "duration", maxDurationMs });
+      }
+    }, maxDurationMs);
+    if (this.durationTimer.unref) this.durationTimer.unref();
+
+    const sdk = this.buildSDK();
+    const fn = new AsyncFunction("sdk", script);
+    try {
+      await fn(sdk);
+      // Script returned. The reason is whatever set ctl.stopped (duration/
+      // manual), or a clean completion if nothing forced a stop.
+      stopped = this.stopReason ?? "completed";
+    } catch (e: any) {
+      if (this.ctl.stopped && this.stopReason) {
+        stopped = this.stopReason;
+      } else {
+        stopped = "error";
+        error = e?.message || String(e);
+        this.emit({ error });
+      }
+    } finally {
+      this.ctl.stopped = true;
+      if (this.gateTimer) clearInterval(this.gateTimer);
+      if (this.durationTimer) clearTimeout(this.durationTimer);
+      if (this.pauseStartedAt) {
+        this.pausedAccumMs += this.now() - this.pauseStartedAt;
+        this.pauseStartedAt = 0;
+      }
+      running.delete(this.spec.name);
+    }
+
+    return {
+      name: this.spec.name,
+      elapsedMs: this.elapsed(),
+      stopped,
+      error,
+      actions: this.actions,
+      actionCount: this.actions.length,
+      logs: this.logs,
+      pausedMs: this.pausedAccumMs,
+      dryRun: !!this.opts.dryRun,
+    };
+  }
+}

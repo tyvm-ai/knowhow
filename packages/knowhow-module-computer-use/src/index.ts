@@ -13,6 +13,9 @@ export { ComputerService } from "./ComputerService";
 export { RustCoreDriver } from "./drivers/RustCoreDriver";
 export * from "./tools";
 export { computerToolDefinitions } from "./tools/definitions";
+// `sdk` is an editor/type binding for .knowhow/automations/*.ts files; the
+// automation runner replaces its import with the live SDK at execution time.
+export { sdk, AutomationSDK, AutomationControl, WindowMatch } from "./automation";
 
 // A single service instance shared across the register + init phases (module
 // object is cached by Node, so this persists between the early CLI phase and
@@ -38,6 +41,8 @@ function getAgentCliOptions(config: any) {
   };
 }
 
+// Every computer-use tool is namespaced with a `computerUse` prefix so the
+// whole toolset can be enabled with a single glob: enableTools("computerUse*").
 const tools: ModuleTool[] = computerToolDefinitions.map((definition) => ({
   name: definition.function.name,
   handler: (computerTools as any)[definition.function.name],

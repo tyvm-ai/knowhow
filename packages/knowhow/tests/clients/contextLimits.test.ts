@@ -9,6 +9,8 @@ import {
   GeminiTextPricing,
   AnthropicTextPricing,
   XaiTextPricing,
+  FireworksTextPricing,
+  FireworksEmbeddingPricing,
 } from "../../src/clients/pricing";
 
 // Model ids explicitly marked deprecated across all pricing tables. Deprecated
@@ -21,6 +23,8 @@ const deprecatedModelIds = new Set<string>(
     ...GeminiTextPricing,
     ...AnthropicTextPricing,
     ...XaiTextPricing,
+    ...FireworksTextPricing,
+    ...FireworksEmbeddingPricing,
   } as Record<string, { deprecated?: boolean }>)
     .filter(([, p]) => p && p.deprecated === true)
     .map(([id]) => id)

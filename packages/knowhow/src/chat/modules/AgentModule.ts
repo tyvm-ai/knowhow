@@ -27,6 +27,7 @@ import {
   CustomVariables,
   XmlToolCallProcessor,
   HarmonyToolProcessor,
+  GemmaToolProcessor,
   Base64ImageProcessor,
   MinimalToolsMessageProcessor,
 } from "../../processors/index";
@@ -948,6 +949,7 @@ export class AgentModule extends BaseChatModule {
       agent.messageProcessor.setProcessors("post_call", [
         new XmlToolCallProcessor().createProcessor(),
         new HarmonyToolProcessor().createProcessor(),
+        new GemmaToolProcessor().createProcessor(),
       ]);
 
       agent.messageProcessor.setProcessors("pre_tools", [

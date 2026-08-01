@@ -56,6 +56,10 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
     .option("--model <model>", "Specific model for the provider")
     .option("--agent-name <name>", "Which agent to use", "Patcher")
     .option(
+      "--reasoning-effort <effort>",
+      "Reasoning effort: none, low, medium, or high. Use 'none' to disable thinking on models that support it (e.g. for faster computer-use)."
+    )
+    .option(
       "--max-time-limit <minutes>",
       "Time limit for agent execution (minutes)",
       "30"
@@ -220,6 +224,9 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
           input,
           maxTimeLimit: parseInt(options.maxTimeLimit, 10),
           maxSpendLimit: parseFloat(options.maxSpendLimit),
+          ...(options.reasoningEffort
+            ? { reasoningEffort: options.reasoningEffort }
+            : {}),
           ...(behaviorSystemPrompt ? { systemPrompt: behaviorSystemPrompt } : {}),
           ...(behaviorModel ? { model: behaviorModel } : {}),
           run: true,

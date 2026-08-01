@@ -2,7 +2,7 @@ import {
   Base64ImageProcessor,
   globalBase64ImageDetector,
 } from "../../src/processors/Base64ImageDetector";
-import { Message } from "../../src/clients/types";
+import { Message, MessageContent } from "../../src/clients/types";
 import { ToolsService } from "../../src/services/Tools";
 import * as fs from "fs";
 

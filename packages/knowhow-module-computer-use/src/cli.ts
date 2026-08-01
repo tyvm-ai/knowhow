@@ -7,6 +7,14 @@ import { spawn } from "child_process";
 import * as os from "os";
 import * as path from "path";
 import { COMPUTER_USE_PROMPT } from "./prompt";
+import {
+  AutomationRunner,
+  AutomationSpec,
+  loadAutomation,
+  listAutomations,
+  saveAutomation,
+  validateScript,
+} from "./automation";
 
 /**
  * Register `knowhow computer <verb>` CLI subcommands on the passed Program.
@@ -370,6 +378,112 @@ export function registerComputerCli(
       if (failed && !opts.continueOnError) process.exitCode = 1;
     });
 
+  // ── automations ────────────────────────────────────────────────────────────
+  // A CLI harness for authoring/testing automations against the FRESHLY COMPILED
+  // module. Because these commands `require` the compiled ComputerService + SDK
+  // each run, recompiling (`npm run compile`) hot-reloads the logic — so tool/SDK
+  // changes can be iterated here WITHOUT a long-lived agent session (which caches
+  // the module and has no reload-tools mechanism).
+  cmd
+    .command("automations")
+    .description("List saved automations (from .knowhow/automations/*.ts).")
+    .action(async () => {
+      const specs = listAutomations();
+      if (!specs.length) return console.log("No automations defined.");
+      for (const s of specs) {
+        console.log(`- ${s.name}.ts  (${s.script.length} chars)`);
+      }
+    });
+
+  cmd
+    .command("write-automation <name> <scriptFile>")
+    .description(
+      "Save an automation as <name>.ts (async body using only `sdk`). Configuration belongs in the script."
+    )
+    .action(async (name, scriptFile) => {
+      const script = fs.readFileSync(scriptFile, "utf8");
+      validateScript(script);
+      const spec: AutomationSpec = { name, script };
+      const saved = saveAutomation(spec);
+      console.log(`Saved automation "${name}" (${saved.script.length} chars).`);
+    });
+
+  const runAutomationCli = async (
+    name: string,
+    opts: { maxMs?: string; dryRun?: boolean; driver?: string }
+  ) => {
+    const svc = buildService(opts.driver);
+    const spec = loadAutomation(name);
+    const runner = new AutomationRunner(spec, svc, {
+      maxDurationMs: opts.maxMs ? Number(opts.maxMs) : undefined,
+      dryRun: !!opts.dryRun,
+      onLog: (e) => console.log(`t+${e.t}ms ${JSON.stringify(e.data)}`),
+    });
+    console.log(
+      `${opts.dryRun ? "DRY-RUN" : "RUN"} automation "${name}"${
+        opts.dryRun ? " (no real mouse/keyboard)" : ""
+      }...`
+    );
+    // Ctrl-C cooperatively stops the automation. runEvery now yields to the
+    // macrotask queue every iteration, so this handler is actually delivered
+    // even when the per-frame callback overruns its interval budget. A second
+    // Ctrl-C hard-exits in case a driver call is genuinely wedged.
+    let interrupts = 0;
+    const onSigint = () => {
+      interrupts++;
+      if (interrupts >= 2) {
+        console.log("\nForce exiting.");
+        process.exit(130);
+      }
+      console.log("\nStopping automation (Ctrl-C again to force quit)...");
+      runner.ctl.stop();
+    };
+    process.on("SIGINT", onSigint);
+    try {
+    const result = await runner.run();
+    process.off("SIGINT", onSigint);
+    console.log("\n=== summary ===");
+    console.log(
+      JSON.stringify(
+        {
+          stopped: result.stopped,
+          error: result.error,
+          elapsedMs: result.elapsedMs,
+          pausedMs: result.pausedMs,
+          actionCount: result.actionCount,
+          dryRun: result.dryRun,
+        },
+        null,
+        2
+      )
+    );
+    } finally {
+      process.off("SIGINT", onSigint);
+    }
+  };
+
+  cmd
+    .command("run-automation <name>")
+    .description("Run a saved automation LIVE (real mouse/keyboard).")
+    .option("--driver <name>", "Pin a driver by name")
+    .option("--max-ms <ms>", "Max run duration in ms (default 120000)")
+    .action((name, opts) => runAutomationCli(name, opts));
+
+  cmd
+    .command("test-automation <name>")
+    .description(
+      "DRY-RUN a saved automation against LIVE perception without moving the mouse — prints what it WOULD click."
+    )
+    .option("--driver <name>", "Pin a driver by name")
+    .option("--max-ms <ms>", "How long to observe in ms (default 8000)")
+    .action((name, opts) =>
+      runAutomationCli(name, {
+        ...opts,
+        maxMs: opts.maxMs ?? "8000",
+        dryRun: true,
+      })
+    );
+
   // ── computer-use agent ─────────────────────────────────────────────────
   // Spawns a knowhow agent primed for computer use, with models pre-selected
   // for their performance driving a GUI. It shells out to `knowhow agent` so
@@ -383,6 +497,16 @@ export function registerComputerCli(
     .option("--input <text>", "The task, e.g. 'open X and scroll the timeline'")
     .option("--provider <provider>", "Override the AI provider")
     .option("--model <model>", "Override the model")
+    .option(
+      "--reasoning-effort <effort>",
+      "Reasoning effort: none, low, medium, high. Use 'none'/'low' for faster computer-use on models that support it."
+    )
+    // Forgiving alias: users frequently type the underscore form. Without this,
+    // allowUnknownOption(true) would silently swallow `--reasoning_effort low`.
+    .option(
+      "--reasoning_effort <effort>",
+      "Alias for --reasoning-effort."
+    )
     .option("--agent-name <name>", "Base agent to use", cliOpts.agentName || "Patcher")
     .option("--max-time-limit <minutes>", "Time limit (minutes)", "30")
     .option("--max-spend-limit <dollars>", "Cost limit (dollars)", "10")
@@ -424,6 +548,10 @@ export function registerComputerCli(
       ];
       if (provider) args.push("--provider", provider);
       if (model) args.push("--model", model);
+      const reasoningEffort =
+        opts.reasoningEffort || opts.reasoning_effort;
+      if (reasoningEffort)
+        args.push("--reasoning-effort", String(reasoningEffort));
 
       console.log(
         `🤖 Launching computer-use agent (${provider || "default"}/${

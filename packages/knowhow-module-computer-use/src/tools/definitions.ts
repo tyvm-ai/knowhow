@@ -11,7 +11,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "getScreenSize",
+      name: "computerUseGetScreenSize",
       description: "Get the size (width/height) of the primary/virtual desktop.",
       parameters: noArgs,
     },
@@ -19,7 +19,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "getDisplays",
+      name: "computerUseGetDisplays",
       description: "List all connected displays with bounds and scale factors.",
       parameters: noArgs,
     },
@@ -27,9 +27,9 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "screenshot",
+      name: "computerUseScreenshot",
       description:
-        "Capture the screen and return it as an image for you to look at. Optionally pass a displayId to capture a single display, a region to crop {x,y,width,height}, a scale factor to downscale (e.g. 0.5), grid=true to overlay a labeled coordinate grid to help you aim clicks, a crosshair {x,y} marker, or out to write the image to a file instead of returning it.",
+        "Capture the screen and return it as an image for you to look at, PLUS a JSON coordinateMapping text block describing the image->desktop scale (scaleX/scaleY, imageWidth/Height, desktopWidth/Height, regionX/Y). The returned image is often downscaled (the configured screenshotScale, e.g. 0.5 on a 4K display, applies even if you pass no scale), so a pixel you read off the raw image is NOT the desktop coordinate — divide by scaleX/scaleY (and add regionX/Y) first, or just use grid=true. Optionally pass a displayId to capture a single display, a region to crop {x,y,width,height}, a scale factor to downscale (e.g. 0.5), grid=true to overlay a labeled coordinate grid to help you aim clicks, a crosshair {x,y} marker, or out to write the image to a file instead of returning it. IMPORTANT: grid labels and the crosshair are in ABSOLUTE DESKTOP coordinates — they already account for scale and region offset, so you can read a value straight off the grid and pass it directly to computerUseClickAt with NO 1/scale or offset math.",
       parameters: {
         type: "object",
         positional: true,
@@ -56,11 +56,12 @@ export const computerToolDefinitions: Tool[] = [
           grid: {
             type: "boolean",
             description:
-              "Overlay a labeled coordinate grid to help you aim clicks (default false).",
+              "Overlay a labeled coordinate grid to help you aim clicks (default false). Grid labels are absolute desktop coordinates — read them off directly and pass to computerUseClickAt, no scale/offset math needed.",
           },
           crosshair: {
             type: "object",
-            description: "Optional crosshair marker to draw at {x, y}.",
+            description:
+              "Optional crosshair marker drawn at absolute desktop {x, y}. Use it to visually confirm a coordinate before clicking.",
             properties: {
               x: { type: "number" },
               y: { type: "number" },
@@ -79,9 +80,9 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "screenshotRegion",
+      name: "computerUseScreenshotRegion",
       description:
-        "Capture a cropped region of the screen (x, y, width, height in pixels) and return it as an image. Use this to zoom into a specific area (e.g. a timeline column) instead of reasoning over a full 4K frame. Set grid=true to overlay a labeled coordinate grid to help you aim clicks.",
+        "Capture a cropped region of the screen (x, y, width, height in pixels) and return it as an image. Use this to zoom into a specific area (e.g. a timeline column) instead of reasoning over a full 4K frame. Set grid=true to overlay a labeled coordinate grid to help you aim clicks. Grid labels are ABSOLUTE DESKTOP coordinates (they include this region's x/y offset), so read a value off the grid and pass it directly to computerUseClickAt — no offset math required.",
       parameters: {
         type: "object",
         positional: true,
@@ -93,7 +94,8 @@ export const computerToolDefinitions: Tool[] = [
           displayId: { type: "number", description: "Optional display id" },
           grid: {
             type: "boolean",
-            description: "Overlay a labeled coordinate grid (default false).",
+            description:
+              "Overlay a labeled coordinate grid (default false). Labels are absolute desktop coordinates including this region's offset — pass them straight to computerUseClickAt.",
           },
         },
         required: ["x", "y", "width", "height"],
@@ -103,7 +105,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "getPixelColor",
+      name: "computerUseGetPixelColor",
       description: "Get the #RRGGBB color of the pixel at (x, y).",
       parameters: {
         type: "object",
@@ -119,7 +121,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "findColorRegions",
+      name: "computerUseFindColorRegions",
       description:
         "Find solid-color regions in a screenshot and return exact desktop-coordinate centers and bounds. This is faster and more precise than visually estimating coordinates for flat-color UI targets.",
       parameters: {
@@ -144,7 +146,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "clickColorSequence",
+      name: "computerUseClickColorSequence",
       description:
         "Detect and click a sequence of changing solid-color targets in one fast local loop. Use for reaction/precision tasks instead of taking a screenshot and making an LLM tool call for every target. Returns exact clicked regions and timing.",
       parameters: {
@@ -171,7 +173,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "getMousePosition",
+      name: "computerUseGetMousePosition",
       description: "Get the current mouse cursor position.",
       parameters: noArgs,
     },
@@ -179,7 +181,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "listWindows",
+      name: "computerUseListWindows",
       description:
         "List the currently open application windows (title + owning app).",
       parameters: noArgs,
@@ -188,7 +190,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "getActiveWindow",
+      name: "computerUseGetActiveWindow",
       description: "Get the currently focused/active window.",
       parameters: noArgs,
     },
@@ -196,7 +198,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "focusWindow",
+      name: "computerUseFocusWindow",
       description:
         "Focus/activate a window or application by name (e.g. 'Google Chrome').",
       parameters: {
@@ -215,7 +217,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "moveMouse",
+      name: "computerUseMoveMouse",
       description: "Move the mouse cursor to absolute (x, y).",
       parameters: {
         type: "object",
@@ -231,7 +233,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "click",
+      name: "computerUseClick",
       description: "Click the mouse at its current position.",
       parameters: {
         type: "object",
@@ -250,7 +252,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "doubleClick",
+      name: "computerUseDoubleClick",
       description: "Double-click the mouse at its current position.",
       parameters: {
         type: "object",
@@ -269,8 +271,9 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "clickAt",
-      description: "Move to (x, y) then click in one step.",
+      name: "computerUseClickAt",
+      description:
+        "Move to (x, y), capture a tight pre-click crop, click, then return a larger post-click context crop in the same response. Image metadata includes absolute desktop bounds. Use the attached post-click image instead of taking a separate screenshot. Pass feedback.enabled=false only when images are unnecessary.",
       parameters: {
         type: "object",
         positional: true,
@@ -282,6 +285,62 @@ export const computerToolDefinitions: Tool[] = [
             enum: ["left", "right", "middle"],
             description: "Mouse button (default left).",
           },
+          feedback: {
+            type: "object",
+            description:
+              "Optional bounded visual-feedback settings. Feedback is enabled by default.",
+            properties: {
+              enabled: {
+                type: "boolean",
+                description: "Set false for the legacy text-only response.",
+              },
+              before: {
+                type: "object",
+                description: "Tight pre-click crop settings.",
+                properties: {
+                  width: { type: "number", description: "Crop width (default 240)." },
+                  height: { type: "number", description: "Crop height (default 240)." },
+                  scale: { type: "number", description: "Image scale (default 1)." },
+                },
+              },
+              after: {
+                type: "object",
+                description:
+                  "Post-click crop settings. Defaults to the active window at scale 0.25 to reduce vision latency.",
+                properties: {
+                  width: {
+                    type: "number",
+                    description: "Centered crop width; omit to use active-window bounds.",
+                  },
+                  height: {
+                    type: "number",
+                    description: "Centered crop height; omit to use active-window bounds.",
+                  },
+                  scale: { type: "number", description: "Image scale (default 0.25)." },
+                  region: {
+                    type: "object",
+                    description:
+                      "Explicit absolute desktop crop; overrides width/height and active-window detection.",
+                    properties: {
+                      x: { type: "number" },
+                      y: { type: "number" },
+                      width: { type: "number" },
+                      height: { type: "number" },
+                    },
+                  },
+                },
+              },
+              delayMs: {
+                type: "number",
+                description: "Wait before post-click capture (default 100ms, max 5000ms).",
+              },
+              omitUnchanged: {
+                type: "boolean",
+                description:
+                  "Compare the same context before/after and omit an unchanged after image.",
+              },
+            },
+          },
         },
         required: ["x", "y"],
       },
@@ -290,7 +349,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "dragMouse",
+      name: "computerUseDragMouse",
       description: "Press at (fromX, fromY), move to (toX, toY), and release.",
       parameters: {
         type: "object",
@@ -308,7 +367,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "scroll",
+      name: "computerUseScroll",
       description:
         "Scroll by (dx, dy) wheel deltas. Positive dy scrolls down, negative up.",
       parameters: {
@@ -325,7 +384,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "smoothScroll",
+      name: "computerUseSmoothScroll",
       description:
         "Scroll smoothly by repeating a small (dx, dy) delta N times with a pause between each step. Best for scrolling a feed a controlled amount (e.g. dy=-3, repeat=10). Positive dy scrolls down, negative up.",
       parameters: {
@@ -347,7 +406,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "typeText",
+      name: "computerUseTypeText",
       description: "Type a string of text at the current focus.",
       parameters: {
         type: "object",
@@ -362,7 +421,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "pressKey",
+      name: "computerUsePressKey",
       description:
         "Press a single named key, e.g. 'Enter', 'Escape', 'Tab', 'ArrowDown'.",
       parameters: {
@@ -378,7 +437,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "hotkey",
+      name: "computerUseHotkey",
       description:
         "Press a key chord, e.g. ['control','c'] or ['command','l']. Modifiers first.",
       parameters: {
@@ -398,9 +457,9 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "runComputerMacro",
+      name: "computerUseRunComputerMacro",
       description:
-        "Run a sequence of computer-use steps in ONE call, in order. Much faster and smoother than issuing many separate tool calls. Each step is an object like {action:'move',x,y}, {action:'clickAt',x,y}, {action:'type',text}, {action:'key',key}, {action:'hotkey',keys:[]}, {action:'scroll',dx,dy,repeat,intervalMs}, {action:'focus',match}, {action:'sleep',ms}, {action:'screenshot',out}. Use this to script multi-step interactions (e.g. focus a window, scroll a feed, type a message).",
+        "Run a sequence of computer-use steps in ONE call, in order. Much faster and smoother than issuing many separate tool calls. Each step is an object like {action:'move',x,y}, {action:'computerUseClickAt',x,y}, {action:'type',text}, {action:'key',key}, {action:'hotkey',keys:[]}, {action:'scroll',dx,dy,repeat,intervalMs}, {action:'focus',match}, {action:'sleep',ms}, {action:'screenshot',out}. Use this to script multi-step interactions (e.g. focus a window, scroll a feed, type a message).",
       parameters: {
         type: "object",
         positional: true,
@@ -423,7 +482,7 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
-      name: "runComputerMacroFile",
+      name: "computerUseRunComputerMacroFile",
       description:
         "Run a saved computer-use macro/script file (JSON or YAML list of steps) in ONE call. Use this to execute a re-usable automation script from disk (the same format the `knowhow computer run <file>` CLI uses).",
       parameters: {
@@ -440,6 +499,219 @@ export const computerToolDefinitions: Tool[] = [
           },
         },
         required: ["file"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseFindBoxes",
+      description:
+        "Detect axis-aligned rectangular boxes (buttons, cards, panels, modals) on screen and return them as a CONTAINMENT HIERARCHY in absolute desktop coordinates. Each box has bounds, center, area, edgeScore, depth, and nested children. Use this to locate UI structurally — e.g. find the small rectangle (button) nested inside a large square (modal) — instead of eyeballing pixels. Pass a region (name or {x,y,width,height}) to limit the search. Prefers the native Rust detector.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          region: {
+            description:
+              "Optional search area: a named region string or {x,y,width,height} in desktop coords.",
+            type: "object",
+            properties: {
+              x: { type: "number" },
+              y: { type: "number" },
+              width: { type: "number" },
+              height: { type: "number" },
+            },
+          },
+          minSize: { type: "number", description: "Minimum box width/height in desktop px (default 12)." },
+          maxSize: { type: "number", description: "Maximum box width/height in desktop px." },
+          minEdgeScore: { type: "number", description: "Required border edge coverage 0..1 (default 0.6)." },
+          edgeThreshold: { type: "number", description: "Gradient threshold for the edge map (default 40)." },
+          maxBoxes: { type: "number", description: "Cap on returned boxes (default 200)." },
+          displayId: { type: "number", description: "Optional display id." },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseFindShape",
+      description:
+        "Find geometric shapes on screen by kind — 'line-h', 'line-v', 'rect', 'square', 'circle', or 'blob' — optionally constrained to a color, and return their centers/bounds in absolute desktop coordinates (ready for computerUseClickAt). More expressive than color-only matching: e.g. a horizontal line of a given length/color, a square button, or a circular target.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          kind: {
+            type: "string",
+            enum: ["line-h", "line-v", "rect", "square", "circle", "blob"],
+            description: "Shape kind to match.",
+          },
+          color: { type: "string", description: "Optional #RRGGBB color mask; omit to match by edges." },
+          region: {
+            description: "Optional named region or {x,y,width,height} to limit the search.",
+            type: "object",
+            properties: {
+              x: { type: "number" },
+              y: { type: "number" },
+              width: { type: "number" },
+              height: { type: "number" },
+            },
+          },
+          tolerance: { type: "number", description: "Per-channel color tolerance (default 16)." },
+          minSize: { type: "number", description: "Minimum shape size in desktop px." },
+          maxSize: { type: "number", description: "Maximum shape size in desktop px." },
+          length: { type: "number", description: "For lines: minimum length in px." },
+          thickness: { type: "number", description: "For lines: maximum thickness in px." },
+          displayId: { type: "number", description: "Optional display id." },
+        },
+        required: ["kind"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseDefineRegion",
+      description:
+        "Save a named region (absolute desktop {x,y,width,height}) to the registry so detectors/observers can reference it by name instead of repeating coordinates. Persists to .knowhow/automations/regions.json.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          name: { type: "string", description: "Region name, e.g. 'gameBoard'." },
+          x: { type: "number" },
+          y: { type: "number" },
+          width: { type: "number" },
+          height: { type: "number" },
+        },
+        required: ["name", "x", "y", "width", "height"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseListRegions",
+      description: "List all named regions in the registry.",
+      parameters: noArgs,
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseClearRegion",
+      description: "Remove a named region from the registry.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          name: { type: "string", description: "Region name to remove." },
+        },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseWriteAutomation",
+      description:
+        "Author + persist an AUTOMATION as a readable .ts file. ALWAYS begin the file with a JSDoc header block documenting when to use it — @description, @useWhen, @startState, @endState, @window — this is the automation's discoverable 'skill card' that lets a future agent pick it without reading the code. Import `{ sdk }` from `@tyvm/knowhow-module-computer-use` for autocomplete; the runner strips that editor-only import and injects the live SDK. Other imports and require/process/fetch/eval remain forbidden. Use `await sdk.runEvery(callback, hz)` to scope repeated work instead of looping the whole file. Always configure a required window so focus loss auto-pauses the automation.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          name: { type: "string", description: "Automation name, e.g. 'mousePrecision'." },
+          script: {
+            type: "string",
+            description:
+              "Async .ts body saved verbatim. START with a JSDoc header describing when to use it, THEN the code. Example (header + code): `/**\\n * @description Auto-clicks the moving colored target in the game board.\\n * @useWhen playing the reflex/whack-a-target game and you want it beaten automatically.\\n * @startState game is visible and running in Chrome; a target square is on screen.\\n * @endState the game has been auto-clicked until stopped/timed out.\\n * @window Chrome\\n */\\nimport { sdk } from '@tyvm/knowhow-module-computer-use'; await sdk.requiredWindow({titleIncludes:'Chrome'}); async function clickShapes(){ const t=(await sdk.findColor(['ff4444']))[0]; if(t) await sdk.clickAt(t.center.x,t.center.y); } await sdk.runEvery(clickShapes, 120);`",
+          },
+        },
+        required: ["name", "script"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseListAutomations",
+      description:
+        "List saved automations with their FULL filepath, running state, size, and their parsed skill header (doc: @description/@useWhen/@startState/@endState/@window). ALWAYS check this before deciding whether to solve a task manually — an existing automation may already do the job. Read the `doc.useWhen` to know when each applies and `doc.startState` to know what the screen must look like first. `documented:false` means the automation lacks a header; read its file before trusting it.",
+      parameters: noArgs,
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseRunAutomation",
+      description:
+        "Run a saved automation LIVE (it moves the real mouse/keyboard). It runs in-process to completion (or until maxDurationMs, or until it loses window focus and you call stop). Returns a summary: how it stopped, elapsed/paused ms, number of clicks, average click interval, and the tail of the telemetry log. TIP: dry-run first with computerUseTestAutomation to verify targeting before letting it act.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          name: { type: "string", description: "Automation name to run." },
+          maxDurationMs: {
+            type: "number",
+            description: "Hard cap on run time (default 120000, max 1800000).",
+          },
+        },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseTestAutomation",
+      description:
+        "DRY-RUN a saved automation against LIVE perception WITHOUT moving the real mouse. Perception reads real pixels, but every clickAt/moveMouse/type is RECORDED instead of performed. Use this on the game to confirm the automation is locking onto the right targets (and how fast) BEFORE switching to computerUseRunAutomation. Returns the same summary with dryRun:true and the would-be actions.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          name: { type: "string", description: "Automation name to dry-run." },
+          maxDurationMs: {
+            type: "number",
+            description: "How long to observe (default 8000).",
+          },
+        },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseStopAutomation",
+      description:
+        "Request a running automation to stop (sets sdk.ctl.stopped). The loop exits on its next check.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          name: { type: "string", description: "Automation name to stop." },
+        },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseDeleteAutomation",
+      description: "Delete a saved automation (stops it first if running).",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          name: { type: "string", description: "Automation name to delete." },
+        },
+        required: ["name"],
       },
     },
   },
