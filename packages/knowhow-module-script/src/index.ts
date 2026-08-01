@@ -4,6 +4,7 @@ import {
   KnowhowModule,
   InitParams,
 } from "@tyvm/knowhow/ts_build/src/services/modules/types";
+import { persistArtifacts, printManifestSummary } from "./artifactPersistence";
 import { executeScript } from "./handler";
 import { executeScriptDefinition } from "./definition";
 import { ScriptExecutor } from "./ScriptExecutor";
@@ -17,6 +18,7 @@ export { ScriptTracer } from "./ScriptTracer";
 export { checkScript, formatDiagnostics } from "./checkScript";
 export { generateScriptTypeDefs } from "./typeDefs";
 export * from "./types";
+export * from "./artifactPersistence";
 
 const scriptModule: KnowhowModule = {
   async init(params: InitParams) {
@@ -45,6 +47,10 @@ const scriptModule: KnowhowModule = {
          "--emit-types <path>",
          "Write the generated TypeScript declarations (.d.ts) for the sandbox globals to a file and exit"
        )
+      .option(
+        "--artifact-dir <path>",
+        "Directory to persist script artifacts. Each run creates a timestamped subdirectory containing artifact files and a manifest.json."
+      )
       .action(async (options) => {
         try {
           if (!options.inputFile) {
@@ -152,6 +158,17 @@ const scriptModule: KnowhowModule = {
           // Only print the final return value — live output was already
           // streamed above via onEvent.
           console.log(JSON.stringify(result.result, null, 2));
+
+          // Persist artifacts to disk if --artifact-dir was provided.
+          // This is done AFTER printing the result so that artifact paths
+          // appear below the script output in a clear block.
+          if (options.artifactDir && result.artifacts.length > 0) {
+            const manifest = persistArtifacts(result.artifacts, options.artifactDir);
+            printManifestSummary(manifest);
+          } else if (options.artifactDir && result.artifacts.length === 0) {
+            process.stdout.write("[artifacts] No artifacts produced by this run.\n");
+          }
+
           if (!result.success) {
             console.error("Script error:", result.error);
             process.exit(1);

@@ -7,9 +7,37 @@ Provides the `knowhow script` CLI command and the `executeScript` tool for runni
 ```bash
 knowhow script --input-file ./my-script.js
 knowhow script --input-file ./my-script.js --allow-network
+knowhow script --input-file ./my-script.js --artifact-dir .knowhow/artifacts/my-script
 ```
 
 Scripts run in an isolated-vm sandbox with access to `callTool`, `llm`, `sleep`, `createArtifact`, and `console`.
+
+### Durable local artifacts
+
+`createArtifact()` always adds the artifact to the in-memory execution result,
+which preserves existing tool/API/web behavior. The local CLI persists those
+artifacts only when `--artifact-dir` is supplied. It creates a unique timestamped
+subdirectory, sanitizes every filename, resolves duplicate sanitized names,
+writes `manifest.json`, and prints each absolute output path and byte size.
+
+For example:
+
+```bash
+knowhow script \
+  --input-file .knowhow/scripts/report.script.js \
+  --artifact-dir .knowhow/artifacts/report
+```
+
+The layout is:
+
+```text
+.knowhow/artifacts/report/<UTC-timestamp>/
+├── <artifact files>
+└── manifest.json
+```
+
+Omitting `--artifact-dir` does not write local files; merely returning artifact
+names from a script does not make their contents durable after process exit.
 
 ---
 
@@ -17,6 +45,12 @@ Scripts run in an isolated-vm sandbox with access to `callTool`, `llm`, `sleep`,
 
 This module depends on [`isolated-vm`](https://www.npmjs.com/package/isolated-vm), a **native (node-gyp) addon**. `isolated-vm` ships prebuilt binaries for common platforms/ABIs, and its `install` script (`node-gyp-build || node-gyp rebuild`) is what selects the correct prebuilt binary (or compiles from source if no prebuild matches your platform).
 
+
+```bash
+npm install --allow-scripts
+```
+
+The equivalent Knowhow module-management commands are:
 > **⚠️ npm 11 and some org/CI policies block package install scripts by default.** If the `install` script doesn't run, `isolated-vm` can be left in a broken/mismatched state that later **aborts the whole process** at require-time (e.g. `Assertion 'key <= detail::IsolateSpecificSize' failed`). Because of this, you should install this module with install scripts **allowed**.
 
 Install (or update) with the `--allow-scripts` flag so the native build/prebuild-selection step runs:
@@ -145,7 +179,7 @@ const response = await llm([{ role: 'user', content: 'Hello' }]);
 await sleep(500);
 
 // Create an artifact (saved to script result)
-createArtifact('output.json', JSON.stringify(data), 'json');
+await createArtifact('output.json', JSON.stringify(data), 'json');
 
 // Get current quota usage
 const usage = getQuotaUsage();
@@ -173,7 +207,8 @@ return { success: true };  // SyntaxError: Unexpected token 'return'
 
 By default scripts:
 - Cannot call `executeScript`, `execCommand`, `writeFileChunk`, `patchFile`
-- Have a 5-minute execution timeout
+- Have a 30-second execution timeout through the `executeScript` tool
+- Have a 30-minute execution timeout through the local `knowhow script` CLI
 - Max 50 tool calls
 - Max 10,000 tokens
 - Max $1.00 cost
