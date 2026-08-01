@@ -65,6 +65,10 @@ export class SessionManager {
         threads,
         currentThread: 0,
         lastUpdated: Date.now(),
+        model: taskInfo.model,
+        provider: taskInfo.provider,
+        reasoningEffort: taskInfo.reasoningEffort,
+        summarizeReasoning: taskInfo.summarizeReasoning,
       };
 
       fs.writeFileSync(sessionPath, JSON.stringify(session, null, 2));
@@ -101,6 +105,16 @@ export class SessionManager {
           session.knowhowMessageId = taskInfo.knowhowMessageId;
           session.knowhowTaskId = taskInfo.knowhowTaskId;
           session.chatSessionId = taskInfo.chatSessionId;
+
+          // Keep the persisted run configuration in sync (captures mid-run
+          // model/provider fallbacks) so a resume restores the exact setup.
+          if (taskInfo.model !== undefined) session.model = taskInfo.model;
+          if (taskInfo.provider !== undefined)
+            session.provider = taskInfo.provider;
+          if (taskInfo.reasoningEffort !== undefined)
+            session.reasoningEffort = taskInfo.reasoningEffort;
+          if (taskInfo.summarizeReasoning !== undefined)
+            session.summarizeReasoning = taskInfo.summarizeReasoning;
         }
 
         fs.writeFileSync(sessionPath, JSON.stringify(session, null, 2));

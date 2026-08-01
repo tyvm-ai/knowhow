@@ -75,6 +75,21 @@ export class ModulesService {
     // modules resolve against cwd/.knowhow/node_modules first. See localResolvePaths()
     // and globalResolvePaths() above.
 
+    // Two-phase load:
+    //   Phase 1 (register): resolve + require EVERY module and run its optional
+    //     `register()`, which may (a) register CLI subcommands on Program and
+    //     (b) inject shared services into `context` (e.g. `ComputerUse`) so that
+    //     sibling/adapter modules loaded later can consume them.
+    //   Phase 2 (init): run every loaded module's `init()`, now that all
+    //     services registered during phase 1 are present. This lets, e.g., a
+    //     `-nutjs` adapter module register a driver against the base
+    //     computer-use service during phase 1, and the base module resolve the
+    //     best driver during phase 2.
+    const loadedModules: {
+      modulePath: string;
+      module: KnowhowModule;
+    }[] = [];
+
     for (const modulePath of allModulePaths) {
       // Build an ordered list of candidate resolutions for this module.
       // Relative paths resolve to a single candidate (relative to cwd), while
@@ -122,15 +137,16 @@ export class ModulesService {
             "ModulesService",
             `🔌 Loading module: ${modulePath} (resolved: ${resolvedPath})`
           );
-          await importedModule.init({
-            config,
-            cwd: process.cwd(),
-            context: context as ModuleContext,
-          });
-          context.Events?.log(
-            "ModulesService",
-            `✅ Module initialized: ${modulePath} (tools: ${importedModule.tools.length}, agents: ${importedModule.agents.length}, plugins: ${importedModule.plugins.length}, clients: ${importedModule.clients.length})`
-          );
+          // Phase 1: register (optional). Injects services into `context` and
+          // registers CLI commands. Must be idempotent (may run in the early
+          // Program-only CLI phase AND the full-services phase).
+          if (typeof importedModule.register === "function") {
+            await importedModule.register({
+              config,
+              cwd: process.cwd(),
+              context: context as ModuleContext,
+            });
+          }
           loaded = true;
           break;
         } catch (err: any) {
@@ -149,6 +165,28 @@ export class ModulesService {
           `\n⚠️  Failed to load module "${modulePath}": ${detail}\n` +
           `   Tried: ${candidates.join(", ") || "(none)"}\n` +
           `   Run "knowhow modules setup --global" or "knowhow modules install ${modulePath} --global" to fix this.\n\n`
+        );
+        continue;
+      }
+      loadedModules.push({ modulePath, module: importedModule });
+    }
+
+    // Phase 2: init every successfully-loaded module now that all `register`
+    // phases have run and injected their services into `context`.
+    for (const { modulePath, module: importedModule } of loadedModules) {
+      try {
+        await importedModule.init({
+          config,
+          cwd: process.cwd(),
+          context: context as ModuleContext,
+        });
+        context.Events?.log(
+          "ModulesService",
+          `✅ Module initialized: ${modulePath} (tools: ${importedModule.tools.length}, agents: ${importedModule.agents.length}, plugins: ${importedModule.plugins.length}, clients: ${importedModule.clients.length})`
+        );
+      } catch (err: any) {
+        process.stderr.write(
+          `\n⚠️  Failed to init module "${modulePath}": ${err?.message || err}\n\n`
         );
         continue;
       }

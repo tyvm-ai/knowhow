@@ -180,6 +180,17 @@ export class AgentSyncFs {
       metadata.totalCostUsd = agent.getTotalCostUsd();
       metadata.tokenUsage = agent.getTokenUsage();
       metadata.agentName = agent.name;
+      // Record the model/provider actually in use at this sync so task
+      // history reflects the real model (including mid-run fallbacks), not
+      // just the named agent.
+      metadata.model = agent.getModel();
+      metadata.provider = agent.getProvider();
+      // Persist reasoning settings so a resume can restore the exact
+      // reasoning effort / summarize behavior the run was using. (The
+      // encrypted reasoning items + summaries themselves ride along on the
+      // thread messages via `_reasoning_details` / `reasoning_summary`.)
+      metadata.reasoningEffort = agent.getReasoningEffort?.();
+      metadata.summarizeReasoning = agent.getSummarizeReasoning?.();
       metadata.inProgress = inProgress;
       metadata.lastUpdate = new Date().toISOString();
 

@@ -34,6 +34,8 @@ export interface ToolCallContext {
   caller?: any;
   /** The task id of the calling agent, if known. */
   taskId?: string;
+  /** The task id of the parent agent that spawned the calling agent, if any. */
+  parentTaskId?: string;
   /** Arbitrary additional per-call context. */
   [key: string]: any;
 }
@@ -46,6 +48,7 @@ export interface ToolContext {
   Plugins?: PluginService;
   Mcp?: McpService;
   Behaviors?: BehaviorsService;
+  ComputerUse?: import("./modules/computerUse").ComputerUseService;
   metadata?: { [key: string]: any };
 }
 

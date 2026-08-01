@@ -14,6 +14,7 @@ import { TunnelHandler } from "@tyvm/knowhow-tunnel";
 import { EventService } from "../EventService";
 import { ConversionService } from "../conversion/ConversionService";
 import { BehaviorsService } from "../BehaviorsService";
+import { ComputerUseService } from "./computerUse";
 
 /*
  *
@@ -62,10 +63,31 @@ export interface ModuleContext {
   Conversion?: ConversionService;
   Tunnel?: TunnelHandler;
   Program?: Command;
-  Behaviors?: BehaviorsService
+  Behaviors?: BehaviorsService;
+  ComputerUse?: ComputerUseService;
+  [key: string]: any;
 }
 
 export interface KnowhowModule {
+  /**
+   * Phase 1 (optional): called first, potentially with ONLY `Program` in
+   * context (e.g. during early CLI command registration). Use this to:
+   *   - register CLI subcommands on `context.Program`
+   *   - inject services into the shared context (e.g.
+   *     `context.Tools?.addContext("ComputerUse", svc)`) so that OTHER modules
+   *     (or a sibling adapter module) can consume them during their own init.
+   *
+   * `register` must be side-effect-light and MUST NOT assume the full service
+   * graph is present — only `Program` is guaranteed during the early phase.
+   * It may be called more than once (early CLI phase + full-services phase);
+   * implementations should be idempotent.
+   */
+  register?: (params: InitParams) => Promise<void>;
+  /**
+   * Phase 2: called with the full service graph available. Use this to
+   * actually connect/start things (open drivers, spin up watchers, read
+   * services registered by other modules' `register` phase, etc.).
+   */
   init: (params: InitParams) => Promise<void>;
   commands: ModuleChatCommand[];
   tools: ModuleTool[];
