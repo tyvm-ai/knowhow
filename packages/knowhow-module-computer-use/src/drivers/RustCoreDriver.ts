@@ -73,6 +73,53 @@ export class RustCoreDriver implements ComputerDriver {
     };
   }
 
+  async getActiveWindow(): Promise<{
+    title: string;
+    app?: string;
+    bounds?: { x: number; y: number; width: number; height: number };
+  } | null> {
+    const core = this.ensureCore();
+    if (typeof core.activeWindow !== "function") return null;
+    const w = core.activeWindow();
+    if (!w) return null;
+    return {
+      title: w.title || w.app || "",
+      app: w.app,
+      bounds: w.bounds
+        ? {
+            x: w.bounds.x,
+            y: w.bounds.y,
+            width: w.bounds.width,
+            height: w.bounds.height,
+          }
+        : undefined,
+    };
+  }
+
+  async listWindows(): Promise<
+    Array<{
+      title: string;
+      app?: string;
+      bounds?: { x: number; y: number; width: number; height: number };
+    }>
+  > {
+    const core = this.ensureCore();
+    if (typeof core.listWindows !== "function") return [];
+    const list = core.listWindows() as Array<any>;
+    return list.map((w) => ({
+      title: w.title || w.app || "",
+      app: w.app,
+      bounds: w.bounds
+        ? {
+            x: w.bounds.x,
+            y: w.bounds.y,
+            width: w.bounds.width,
+            height: w.bounds.height,
+          }
+        : undefined,
+    }));
+  }
+
   async getDisplays(): Promise<Display[]> {
     return this.ensureCore().getDisplays().map((d: any) => ({
       id: d.id,

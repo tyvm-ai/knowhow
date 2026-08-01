@@ -770,12 +770,63 @@ export class ComputerService implements ComputerUseService {
   async getActiveWindow(): Promise<{ title: string; bounds?: Region } | null> {
     const driver = await this.getDriver();
     if (driver.getActiveWindow) return driver.getActiveWindow();
-    // macOS fallback via AppleScript.
+    // The default RustCoreDriver implements getActiveWindow natively (via
+    // CGWindowListCopyWindowInfo, front-to-back z-order — the true focused
+    // window). This AppleScript path is only a fallback for environments where
+    // the native core failed to load. Do NOT fall back to listWindows()[0]:
+    // that returns an arbitrary window, not the focused one.
     if (process.platform === "darwin") {
-      const list = await this.listWindows();
-      return list.length ? { title: list[0].title } : null;
+      return this.getActiveWindowMac();
     }
     return null;
+  }
+
+  private async getActiveWindowMac(): Promise<{
+    title: string;
+    app?: string;
+    bounds?: Region;
+  } | null> {
+    const script = [
+      'tell application "System Events"',
+      "  set frontApp to first application process whose frontmost is true",
+      "  set appName to name of frontApp",
+      '  set winName to ""',
+      '  set winBounds to ""',
+      "  try",
+      "    set fw to front window of frontApp",
+      "    set winName to name of fw",
+      "    set p to position of fw",
+      "    set s to size of fw",
+      '    set winBounds to ((item 1 of p) & "," & (item 2 of p) & "," & (item 1 of s) & "," & (item 2 of s)) as string',
+      "  end try",
+      "  return appName & tab & winName & tab & winBounds",
+      "end tell",
+    ].join("\n");
+    try {
+      const { stdout } = await execFileAsync("osascript", ["-e", script], {
+        maxBuffer: 1024 * 1024,
+      });
+      const [app = "", winName = "", boundsStr = ""] = stdout
+        .trim()
+        .split("\t");
+      const appName = app.trim();
+      if (!appName) return null;
+      let bounds: Region | undefined;
+      const parts = boundsStr
+        .trim()
+        .split(",")
+        .map((n) => parseInt(n, 10));
+      if (parts.length === 4 && parts.every((n) => Number.isFinite(n))) {
+        bounds = { x: parts[0], y: parts[1], width: parts[2], height: parts[3] };
+      }
+      const title = winName.trim() || appName;
+      return { title, app: appName, bounds };
+    } catch (e: any) {
+      throw new Error(
+        `Failed to get active window via osascript: ${e?.message || e}. ` +
+          `Grant Accessibility permission to the host process (System Settings > Privacy & Security > Accessibility).`
+      );
+    }
   }
 
   async listWindows(): Promise<

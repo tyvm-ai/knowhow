@@ -30,6 +30,20 @@ pub struct Region {
   pub height: f64,
 }
 
+/// A window on the desktop. `bounds` is in virtual-desktop coords (top-left
+/// origin). `active` is true for the frontmost (focused) window.
+#[napi(object)]
+#[derive(Clone, Debug)]
+pub struct WindowInfo {
+  /// Window title (may be empty; the TS layer falls back to `app`).
+  pub title: String,
+  /// Owning application / process name.
+  pub app: String,
+  pub bounds: Region,
+  /// True for the frontmost window of the frontmost app.
+  pub active: bool,
+}
+
 /// A single physical/logical display.
 #[napi(object)]
 #[derive(Clone, Debug)]

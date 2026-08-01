@@ -128,10 +128,16 @@ export function registerComputerCli(
 
   cmd
     .command("windows")
+    .aliases(["list-windows"])
     .description("List open windows.")
-    .action(async () => {
+    .option("--json", "Print full window objects (title/app/bounds) as JSON")
+    .action(async (opts) => {
       const svc = buildService();
       const windows = await svc.listWindows();
+      if (opts.json) {
+        console.log(JSON.stringify(windows, null, 2));
+        return;
+      }
       for (const w of windows) {
         console.log(`${w.app ? `[${w.app}] ` : ""}${w.title}`);
       }
@@ -466,7 +472,10 @@ export function registerComputerCli(
     .command("run-automation <name>")
     .description("Run a saved automation LIVE (real mouse/keyboard).")
     .option("--driver <name>", "Pin a driver by name")
-    .option("--max-ms <ms>", "Max run duration in ms (default 120000)")
+    .option(
+      "--max-ms <ms>",
+      "Max run duration in ms (default 10000, HARD-CAPPED at 10000 so a human can always reclaim the mouse)"
+    )
     .action((name, opts) => runAutomationCli(name, opts));
 
   cmd

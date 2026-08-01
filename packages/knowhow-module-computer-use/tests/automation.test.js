@@ -208,6 +208,115 @@ describe("AutomationRunner", () => {
       callbackRuns: 3,
     });
   });
+
+  test("a hot runEvery loop still lets external timers fire (so /poke stays responsive)", async () => {
+    // Regression for: an automation whose per-iteration callback overruns its
+    // interval budget used to yield with setImmediate, which starves the event
+    // loop's timers phase — exactly where the /poke input watcher's setInterval
+    // (and the agent's interrupt handling) lives. With a real setTimeout(0)
+    // yield, concurrent timers must still get to run while the loop runs hot.
+    const svc = makeFakeService();
+
+    // Simulate the /poke watcher: an independent timer that ticks every 10ms
+    // and, after a few ticks, "interrupts" the automation by stopping it.
+    let watcherTicks = 0;
+    let runnerRef = null;
+    const watcher = setInterval(() => {
+      watcherTicks++;
+      // After the watcher has demonstrably run several times WHILE the loop is
+      // busy, deliver the interrupt (what /poke does via runner.ctl.stop()).
+      if (watcherTicks >= 3 && runnerRef) runnerRef.ctl.stop();
+    }, 10);
+
+    const spec = {
+      name: "__test_hot_loop_timers",
+      script: `
+        import { sdk } from "@tyvm/knowhow-module-computer-use";
+        async function heavyFrame() {
+          // Synchronous busy-work that overruns the ~8ms (120Hz) interval,
+          // mimicking a native screen-capture + shape-detection iteration.
+          const until = sdk.now() + 15;
+          while (sdk.now() < until) { /* burn CPU */ }
+        }
+        await sdk.runEvery(heavyFrame, 120);
+      `,
+    };
+
+    const runner = new AutomationRunner(spec, svc, { maxDurationMs: 5000 });
+    runnerRef = runner;
+    const result = await runner.run();
+    clearInterval(watcher);
+
+    // The watcher timer got CPU time while the loop was hammering the core...
+    expect(watcherTicks).toBeGreaterThanOrEqual(3);
+    // ...and its stop() actually took effect (i.e. the interrupt was honored),
+    // proving /poke would have been delivered rather than starved.
+    expect(result.stopped).toBe("manual");
+  });
+
+  test("hard-caps maxDurationMs at 10s so a human can always reclaim the mouse", async () => {
+    const svc = makeFakeService();
+    const spec = {
+      name: "__test_cap",
+      script: `
+        // Loop forever; only the duration cap can stop it.
+        while (!sdk.ctl.stopped) { await sdk.sleep(1); }
+      `,
+    };
+    // Ask for 5 minutes; the runner must clamp to 10s.
+    const runner = new AutomationRunner(spec, svc, { maxDurationMs: 5 * 60 * 1000 });
+    expect(runner.maxDurationMs).toBeLessThanOrEqual(10000);
+    // Sanity-check the resolved value is exactly the cap after run() resolves it.
+    // (We don't actually wait 10s here; asserting the clamp field is enough.)
+    runner.ctl.stop();
+    const result = await runner.run();
+    expect(runner.maxDurationMs).toBe(10000);
+    expect(result.elapsedMs).toBeLessThan(10000);
+  });
+
+  test("flags a live run that moved the mouse WITHOUT a required-window gate", async () => {
+    const svc = makeFakeService();
+    const spec = {
+      name: "__test_no_gate",
+      script: `
+        // No sdk.requiredWindow(...) — cannot be reclaimed by clicking away.
+        await sdk.clickAt(1, 2);
+      `,
+    };
+    const result = await new AutomationRunner(spec, svc, {
+      maxDurationMs: 5000,
+    }).run();
+    expect(result.ranWithoutWindowGate).toBe(true);
+    expect(result.requiredWindow).toBeUndefined();
+  });
+
+  test("runEvery accepts an inline requiredWindow that gates the loop", async () => {
+    const svc = makeFakeService();
+    // Focus is on some OTHER app, so the inline gate must suppress every action.
+    svc._state.activeTitle = "Some Other App";
+    const spec = {
+      name: "__test_run_every_gate",
+      script: `
+        import { sdk } from "@tyvm/knowhow-module-computer-use";
+        let n = 0;
+        async function frame() {
+          await sdk.clickAt(5, 5);
+          if (++n >= 3) sdk.ctl.stop();
+        }
+        await sdk.runEvery(frame, 120, { requiredWindow: { titleIncludes: "Mouse Precision" } });
+      `,
+    };
+    const result = await new AutomationRunner(spec, svc, {
+      maxDurationMs: 5000,
+      gatePollMs: 50,
+    }).run();
+    // The inline gate was configured, so no real clicks happened and it is not
+    // flagged as ungated.
+    expect(svc._state.clicks.length).toBe(0);
+    expect(result.requiredWindow).toEqual({ titleIncludes: "Mouse Precision" });
+    expect(result.ranWithoutWindowGate).toBeFalsy();
+    expect(result.actions.every((a) => a.suppressed)).toBe(true);
+  });
 });
 
 describe("automation persistence", () => {

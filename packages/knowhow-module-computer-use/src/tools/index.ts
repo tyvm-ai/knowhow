@@ -768,8 +768,8 @@ export async function computerUseWriteAutomation(
     (missingDoc
       ? ` Warning: no discoverable header found. Add a leading JSDoc block comment at the top with @description, @useWhen, @startState, @endState, and @window tags so a future agent knows WHEN to use this automation without reading its code.`
       : ` Parsed skill header: ${JSON.stringify(saved.doc)}.`) +
-    (!script.includes("sdk.requiredWindow(")
-      ? " Warning: no required-window gate was found; it will not auto-pause on focus loss."
+    (!script.includes("sdk.requiredWindow(") && !/requiredWindow\s*:/.test(script)
+      ? " Warning: no required-window gate was found (neither sdk.requiredWindow(...) nor a { requiredWindow } option on sdk.runEvery). Without it, clicking away will NOT auto-pause the automation and a human can't easily reclaim the mouse. Note runs are hard-capped at 10s regardless."
       : "")
   );
 }
@@ -818,6 +818,11 @@ function summarizeRun(result: any): string {
       clicks: clicks.length,
       suppressedActions: suppressed.length,
       avgClickIntervalMs: avgInterval,
+      requiredWindow: result.requiredWindow || null,
+      ranWithoutWindowGate: !!result.ranWithoutWindowGate,
+      warning: result.ranWithoutWindowGate
+        ? "This live run moved the real mouse WITHOUT a required-window gate, so a human could not reclaim control by clicking away. Add await sdk.requiredWindow({ titleIncludes }) (or pass { requiredWindow } to sdk.runEvery) before re-running."
+        : undefined,
       logs: result.logs.slice(-40),
     },
     null,

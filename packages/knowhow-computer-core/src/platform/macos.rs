@@ -12,6 +12,12 @@ use core_graphics::event::{
 };
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 
+use core_foundation::array::{CFArray, CFArrayRef};
+use core_foundation::base::{CFType, TCFType};
+use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
+use core_foundation::number::CFNumber;
+use core_foundation::string::CFString;
+
 use napi::{Error, Result, Status};
 
 extern "C" {
@@ -20,6 +26,18 @@ extern "C" {
   /// Available on macOS 10.15+.
   fn CGPreflightScreenCaptureAccess() -> bool;
 }
+
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+  /// Copy info about on-screen windows. Returns a CFArray of CFDictionary, in
+  /// front-to-back z-order when `kCGWindowListOptionOnScreenOnly` is used.
+  fn CGWindowListCopyWindowInfo(option: u32, relative_to_window: u32) -> CFArrayRef;
+}
+
+// kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements
+const K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY: u32 = 1 << 0;
+const K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS: u32 = 1 << 4;
+const K_CG_NULL_WINDOW_ID: u32 = 0;
 
 use crate::backend::Backend;
 use crate::keys::Key;
@@ -93,7 +111,7 @@ impl Backend for MacBackend {
     Capabilities {
       input: p.input_ok,
       capture: p.capture_ok,
-      windows: false,
+      windows: true,
       reason: p.fix.clone(),
     }
   }
@@ -130,6 +148,14 @@ impl Backend for MacBackend {
         Some(fixes.join("; "))
       },
     }
+  }
+
+  fn list_windows(&self) -> Result<Vec<WindowInfo>> {
+    list_windows_cg()
+  }
+
+  fn active_window(&self) -> Result<Option<WindowInfo>> {
+    Ok(list_windows_cg()?.into_iter().find(|w| w.active))
   }
 
   fn get_displays(&self) -> Result<Vec<Display>> {
@@ -350,6 +376,99 @@ fn keycode(key: Key) -> Option<CGKeyCode> {
     Char(c) => return ansi_char_keycode(c),
   };
   Some(code)
+}
+
+/// Read a CFString value for `key` out of a window-info CFDictionary.
+fn dict_string(dict: &CFDictionary<CFString, CFType>, key: &str) -> Option<String> {
+  let cf_key = CFString::new(key);
+  dict.find(&cf_key).and_then(|val| {
+    val.downcast::<CFString>().map(|s| s.to_string())
+  })
+}
+
+/// Read an i64 value for `key` out of a window-info CFDictionary.
+fn dict_i64(dict: &CFDictionary<CFString, CFType>, key: &str) -> Option<i64> {
+  let cf_key = CFString::new(key);
+  dict.find(&cf_key).and_then(|val| {
+    val.downcast::<CFNumber>().and_then(|n| n.to_i64())
+  })
+}
+
+/// Read the kCGWindowBounds sub-dictionary ({X,Y,Width,Height}) as a Region.
+fn dict_bounds(dict: &CFDictionary<CFString, CFType>) -> Option<Region> {
+  let cf_key = CFString::new("kCGWindowBounds");
+  let bounds_val = dict.find(&cf_key)?;
+  let bounds: CFDictionary<CFString, CFType> =
+    unsafe { CFDictionary::wrap_under_get_rule(bounds_val.as_CFTypeRef() as CFDictionaryRef) };
+  let x = dict_f64(&bounds, "X")?;
+  let y = dict_f64(&bounds, "Y")?;
+  let w = dict_f64(&bounds, "Width")?;
+  let h = dict_f64(&bounds, "Height")?;
+  Some(Region { x, y, width: w, height: h })
+}
+
+fn dict_f64(dict: &CFDictionary<CFString, CFType>, key: &str) -> Option<f64> {
+  let cf_key = CFString::new(key);
+  dict.find(&cf_key).and_then(|val| {
+    val.downcast::<CFNumber>().and_then(|n| n.to_f64())
+  })
+}
+
+/// Enumerate on-screen application windows using CoreGraphics, front-to-back.
+/// The first normal (layer 0) window is flagged `active` — it is the focused
+/// window of the frontmost app, so no AppleScript / arbitrary ordering.
+fn list_windows_cg() -> Result<Vec<WindowInfo>> {
+  let option =
+    K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY | K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS;
+  let array_ref = unsafe { CGWindowListCopyWindowInfo(option, K_CG_NULL_WINDOW_ID) };
+  if array_ref.is_null() {
+    return Ok(Vec::new());
+  }
+  // CGWindowListCopyWindowInfo returns a +1 retained CFArray (Copy rule).
+  let array: CFArray<CFType> = unsafe { CFArray::wrap_under_create_rule(array_ref) };
+
+  let mut out: Vec<WindowInfo> = Vec::new();
+  let mut active_assigned = false;
+  for item in array.iter() {
+    // Each item is a CFDictionaryRef.
+    let dict: CFDictionary<CFString, CFType> =
+      unsafe { CFDictionary::wrap_under_get_rule(item.as_CFTypeRef() as CFDictionaryRef) };
+
+    let layer = dict_i64(&dict, "kCGWindowLayer").unwrap_or(0);
+    // Only surface normal application windows (layer 0). Skip menus, the Dock,
+    // status items, wallpaper, etc. which live on non-zero layers.
+    if layer != 0 {
+      continue;
+    }
+
+    let app = dict_string(&dict, "kCGWindowOwnerName").unwrap_or_default();
+    let title = dict_string(&dict, "kCGWindowName").unwrap_or_default();
+    let bounds = dict_bounds(&dict).unwrap_or(Region {
+      x: 0.0,
+      y: 0.0,
+      width: 0.0,
+      height: 0.0,
+    });
+
+    // Ignore zero-area/offscreen helper windows.
+    if bounds.width < 1.0 || bounds.height < 1.0 {
+      continue;
+    }
+
+    let active = !active_assigned;
+    if active {
+      active_assigned = true;
+    }
+
+    out.push(WindowInfo {
+      title,
+      app,
+      bounds,
+      active,
+    });
+  }
+
+  Ok(out)
 }
 
 /// ANSI keycodes for common characters used in chords (e.g. cmd+c). Letters map

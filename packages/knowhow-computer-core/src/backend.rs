@@ -12,6 +12,19 @@ pub trait Backend: Send {
   fn capabilities(&self) -> Capabilities;
   fn permissions_status(&self) -> PermissionsStatus;
 
+  // ── windows ──
+  /// Enumerate on-screen windows, front-to-back. Default: unsupported → empty.
+  fn list_windows(&self) -> Result<Vec<WindowInfo>> {
+    Ok(Vec::new())
+  }
+
+  /// The frontmost (focused) window, or None when unavailable. Default: derive
+  /// from `list_windows()` by picking the one flagged active.
+  fn active_window(&self) -> Result<Option<WindowInfo>> {
+    let list = self.list_windows()?;
+    Ok(list.into_iter().find(|w| w.active))
+  }
+
   // ── screen ──
   fn get_displays(&self) -> Result<Vec<Display>>;
   fn screen_size(&self) -> Result<Size>;

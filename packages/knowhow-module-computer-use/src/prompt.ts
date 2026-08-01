@@ -34,13 +34,13 @@ Automations (reusable skills): BEFORE solving any fast/repetitive or game-like t
 Authoring automations: for fast or repetitive tasks, watch once and then use computerUseWriteAutomation({name, script}). The source is saved verbatim as a readable .ts file. ALWAYS begin the file with a JSDoc header block (before the import) documenting when to use it, so future runs are discoverable:
   /**
    * @description  one line: what this automation does.
+   * @window       the window it operates on (title/app), matching requiredWindow. Put this right after @description — it is the key safety detail (focus loss auto-pauses the automation so a human can reclaim the mouse).
    * @useWhen      the situation/trigger that should make you reach for it.
    * @startState   what the screen must look like BEFORE running it.
    * @endState     what the screen will look like AFTER it finishes.
-   * @window       the window it operates on (title/app), matching requiredWindow.
    * @notes        limits/caveats (optional).
    */
-Then \`import { sdk } from "@tyvm/knowhow-module-computer-use";\` for editor autocomplete (the runner strips this import), configure \`await sdk.requiredWindow(...)\`, and put only repeated work in \`await sdk.runEvery(callback, hz)\`. Use sdk.findColor/findShape/findBoxes/pixelColor/screenSize for perception, sdk.clickAt/moveMouse/type/key for actions, and sdk.sleep/now/elapsed/log plus sdk.ctl for control. Dry-run before running live. ALWAYS configure requiredWindow and ALWAYS write the header. Other imports and require/process/fetch/eval are rejected.
+Then \`import { sdk } from "@tyvm/knowhow-module-computer-use";\` for editor autocomplete (the runner strips this import) and put repeated work in \`await sdk.runEvery(callback, hz, { requiredWindow: { titleIncludes: "..." } })\` — passing requiredWindow inline gates the loop on a focused window in one call (equivalent to awaiting sdk.requiredWindow(match) first) so clicking away auto-pauses it. Use sdk.findColor/findShape/findBoxes/pixelColor/screenSize for perception, sdk.clickAt/moveMouse/type/key for actions, and sdk.sleep/now/elapsed/log plus sdk.ctl for control. Dry-run before running live. ALWAYS configure a required window (inline on runEvery or via sdk.requiredWindow) and ALWAYS write the header. Note: EVERY live run is hard-capped at 10 seconds so a human can always reclaim the mouse — re-launch the automation if a task needs more time. Other imports and require/process/fetch/eval are rejected.
 
 Task:
 {text}

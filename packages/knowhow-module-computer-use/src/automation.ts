@@ -27,6 +27,18 @@ import { resolveRegion } from "./regions";
 
 const STORE_DIR = path.join(".knowhow", "automations");
 
+/**
+ * Hard ceiling on how long ANY automation may run before it is force-stopped.
+ * Automations take over the real mouse/keyboard, so a human needs to be able to
+ * reliably reclaim control quickly. We cap every run at 10s (regardless of what
+ * the caller requests) so a runaway automation can never hold the mouse hostage
+ * for longer than that. Re-launch the automation if you legitimately need more.
+ */
+export const MAX_AUTOMATION_DURATION_MS = 10000;
+
+/** Default run duration when the caller doesn't specify one. */
+export const DEFAULT_AUTOMATION_DURATION_MS = 10000;
+
 export interface WindowMatch {
   /** Substring (case-insensitive) that must appear in the active window title. */
   titleIncludes?: string;
@@ -87,6 +99,14 @@ export interface AutomationRunResult {
   logs: AutomationLogEntry[];
   pausedMs: number;
   dryRun: boolean;
+  /** The window gate that was in effect (if any) — the focus-loss auto-pause. */
+  requiredWindow?: WindowMatch;
+  /**
+   * True when a LIVE run performed real actions without ever configuring a
+   * required-window gate. Such a run can't be reclaimed by clicking away, so
+   * callers should treat this as a warning.
+   */
+  ranWithoutWindowGate?: boolean;
 }
 
 export interface AutomationControl {
@@ -144,8 +164,19 @@ export interface AutomationSDK {
   now(): number;
   elapsed(): number;
   log(data: any): void;
-  /** Run only this callback repeatedly at the requested frequency. */
-  runEvery(callback: () => void | Promise<void>, hz: number): Promise<void>;
+  /**
+   * Run this callback repeatedly at the requested frequency until the run is
+   * stopped (or the max duration cap is reached). Optionally pass
+   * `{ requiredWindow }` to gate the loop on a focused window in one call —
+   * equivalent to awaiting sdk.requiredWindow(match) first, so actions auto-
+   * pause the moment focus leaves that window (the primary way a human reclaims
+   * the mouse mid-run).
+   */
+  runEvery(
+    callback: () => void | Promise<void>,
+    hz: number,
+    opts?: { requiredWindow?: WindowMatch }
+  ): Promise<void>;
   /** @deprecated Prefer runEvery(callback, hz). */
   loopHz(hz?: number): number;
   /** Set/clear the focus gate. Await before performing actions. */
@@ -376,8 +407,10 @@ export class AutomationRunner {
   private gateTimer: NodeJS.Timeout | null = null;
   private durationTimer: NodeJS.Timeout | null = null;
   private loopRate = 60;
+  /** True once a non-empty required-window gate has been configured. */
+  private everGatedWindow = false;
   /** Resolved max run duration (ms). Set at the start of run(). */
-  maxDurationMs = 120000;
+  maxDurationMs = DEFAULT_AUTOMATION_DURATION_MS;
   private stopReason: "duration" | "manual" | "completed" | "error" | null =
     null;
 
@@ -453,6 +486,9 @@ export class AutomationRunner {
 
   private async configureRequiredWindow(match?: WindowMatch): Promise<void> {
     this.ctl.requiredWindow = match;
+    if (match && (match.titleIncludes || match.app)) {
+      this.everGatedWindow = true;
+    }
     if (this.gateTimer) {
       clearInterval(this.gateTimer);
       this.gateTimer = null;
@@ -509,12 +545,18 @@ export class AutomationRunner {
         }
         return self.loopRate;
       },
-      runEvery: async (callback, hz) => {
+      runEvery: async (callback, hz, opts) => {
         if (typeof callback !== "function") {
           throw new Error("sdk.runEvery(callback, hz) requires a function.");
         }
         if (!Number.isFinite(hz) || hz <= 0) {
           throw new Error("sdk.runEvery(callback, hz) requires a positive frequency.");
+        }
+        // Inline focus gate: gate the loop on a window in one call so authors
+        // don't forget the requiredWindow guard that lets a human reclaim the
+        // mouse just by clicking away.
+        if (opts?.requiredWindow) {
+          await self.configureRequiredWindow(opts.requiredWindow);
         }
         self.loopRate = hz;
         const intervalMs = 1000 / hz;
@@ -545,10 +587,16 @@ export class AutomationRunner {
           if (remaining > 0) {
             await new Promise((resolve) => setTimeout(resolve, remaining));
           } else {
-            // Always yield to the macrotask queue at least once per iteration so
-            // timers and process signals (Ctrl-C) are delivered even when the
-            // callback overruns the interval budget.
-            await new Promise((resolve) => setImmediate(resolve));
+            // The callback overran its interval budget (screen capture + shape
+            // detection routinely do). Yield with a real timer tick rather than
+            // setImmediate: setImmediate callbacks run in the event loop's
+            // "check" phase and, when re-queued every iteration, can keep
+            // starving the "timers" phase — which is exactly where the /poke
+            // input watcher's setInterval and the agent's interrupt handling
+            // live. A setTimeout(0) forces the loop through the timers phase
+            // each iteration, so /poke (and Ctrl-C) stay responsive while an
+            // automation is running hot.
+            await new Promise((resolve) => setTimeout(resolve, 0));
           }
         }
       },
@@ -667,7 +715,10 @@ export class AutomationRunner {
 
     const maxDurationMs = (this.maxDurationMs = Math.max(
       500,
-      Math.min(30 * 60 * 1000, this.opts.maxDurationMs ?? 120000)
+      Math.min(
+        MAX_AUTOMATION_DURATION_MS,
+        this.opts.maxDurationMs ?? DEFAULT_AUTOMATION_DURATION_MS
+      )
     ));
     this.durationTimer = setTimeout(() => {
       if (!this.ctl.stopped) {
@@ -714,6 +765,11 @@ export class AutomationRunner {
       logs: this.logs,
       pausedMs: this.pausedAccumMs,
       dryRun: !!this.opts.dryRun,
+      requiredWindow: this.everGatedWindow ? this.ctl.requiredWindow : undefined,
+      ranWithoutWindowGate:
+        !this.opts.dryRun &&
+        !this.everGatedWindow &&
+        this.actions.some((a) => !a.suppressed),
     };
   }
 }

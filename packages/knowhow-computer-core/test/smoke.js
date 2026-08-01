@@ -41,4 +41,18 @@ if (caps.capture) {
   console.log("(skipping capture test: Screen Recording permission not granted)");
 }
 
+if (caps.windows) {
+  const windows = core.listWindows();
+  console.log("listWindows:", windows.length, "window(s)");
+  assert.ok(Array.isArray(windows), "listWindows returns an array");
+  const active = core.activeWindow();
+  console.log("activeWindow:", active ? `[${active.app}] ${active.title}` : null);
+  if (active) {
+    assert.strictEqual(typeof active.app, "string");
+    assert.strictEqual(active.active, true, "activeWindow is flagged active");
+  }
+} else {
+  console.log("(skipping window test: windows capability not reported)");
+}
+
 console.log("\nSMOKE OK");

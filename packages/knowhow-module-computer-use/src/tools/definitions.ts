@@ -619,7 +619,7 @@ export const computerToolDefinitions: Tool[] = [
     function: {
       name: "computerUseWriteAutomation",
       description:
-        "Author + persist an AUTOMATION as a readable .ts file. ALWAYS begin the file with a JSDoc header block documenting when to use it — @description, @useWhen, @startState, @endState, @window — this is the automation's discoverable 'skill card' that lets a future agent pick it without reading the code. Import `{ sdk }` from `@tyvm/knowhow-module-computer-use` for autocomplete; the runner strips that editor-only import and injects the live SDK. Other imports and require/process/fetch/eval remain forbidden. Use `await sdk.runEvery(callback, hz)` to scope repeated work instead of looping the whole file. Always configure a required window so focus loss auto-pauses the automation.",
+        "Author + persist an AUTOMATION as a readable .ts file. ALWAYS begin the file with a JSDoc header block documenting when to use it — order the tags @description, @window, @useWhen, @startState, @endState (put @window right after @description since the required window is the key safety detail). This header is the automation's discoverable 'skill card' that lets a future agent pick it without reading the code. Import `{ sdk }` from `@tyvm/knowhow-module-computer-use` for autocomplete; the runner strips that editor-only import and injects the live SDK. Other imports and require/process/fetch/eval remain forbidden. Use `await sdk.runEvery(callback, hz, { requiredWindow })` to scope repeated work AND gate it on a focused window in one call — this is REQUIRED so focus loss (clicking away) auto-pauses the automation and a human can reclaim the mouse. Note every live run is hard-capped at 10 seconds.",
       parameters: {
         type: "object",
         positional: true,
@@ -628,7 +628,7 @@ export const computerToolDefinitions: Tool[] = [
           script: {
             type: "string",
             description:
-              "Async .ts body saved verbatim. START with a JSDoc header describing when to use it, THEN the code. Example (header + code): `/**\\n * @description Auto-clicks the moving colored target in the game board.\\n * @useWhen playing the reflex/whack-a-target game and you want it beaten automatically.\\n * @startState game is visible and running in Chrome; a target square is on screen.\\n * @endState the game has been auto-clicked until stopped/timed out.\\n * @window Chrome\\n */\\nimport { sdk } from '@tyvm/knowhow-module-computer-use'; await sdk.requiredWindow({titleIncludes:'Chrome'}); async function clickShapes(){ const t=(await sdk.findColor(['ff4444']))[0]; if(t) await sdk.clickAt(t.center.x,t.center.y); } await sdk.runEvery(clickShapes, 120);`",
+              "Async .ts body saved verbatim. START with a JSDoc header (with @window right after @description), THEN the code. Example (header + code): `/**\\n * @description Auto-clicks the moving colored target in the game board.\\n * @window Chrome\\n * @useWhen playing the reflex/whack-a-target game and you want it beaten automatically.\\n * @startState game is visible and running in Chrome; a target square is on screen.\\n * @endState the game has been auto-clicked until stopped/timed out.\\n */\\nimport { sdk } from '@tyvm/knowhow-module-computer-use'; async function clickShapes(){ const t=(await sdk.findColor(['ff4444']))[0]; if(t) await sdk.clickAt(t.center.x,t.center.y); } await sdk.runEvery(clickShapes, 120, { requiredWindow: { titleIncludes: 'Chrome' } });`",
           },
         },
         required: ["name", "script"],
@@ -649,7 +649,7 @@ export const computerToolDefinitions: Tool[] = [
     function: {
       name: "computerUseRunAutomation",
       description:
-        "Run a saved automation LIVE (it moves the real mouse/keyboard). It runs in-process to completion (or until maxDurationMs, or until it loses window focus and you call stop). Returns a summary: how it stopped, elapsed/paused ms, number of clicks, average click interval, and the tail of the telemetry log. TIP: dry-run first with computerUseTestAutomation to verify targeting before letting it act.",
+        "Run a saved automation LIVE (it moves the real mouse/keyboard). It runs in-process to completion (or until maxDurationMs, or until it loses window focus and you call stop). EVERY run is HARD-CAPPED at 10 seconds so a human can always reclaim the mouse — re-launch it if you need more time. The automation should configure a required window (via sdk.requiredWindow or the { requiredWindow } option on sdk.runEvery) so clicking away auto-pauses it; a run that moved the mouse without a window gate returns a ranWithoutWindowGate warning. Returns a summary: how it stopped, elapsed/paused ms, number of clicks, average click interval, and the tail of the telemetry log. TIP: dry-run first with computerUseTestAutomation to verify targeting before letting it act.",
       parameters: {
         type: "object",
         positional: true,
@@ -657,7 +657,7 @@ export const computerToolDefinitions: Tool[] = [
           name: { type: "string", description: "Automation name to run." },
           maxDurationMs: {
             type: "number",
-            description: "Hard cap on run time (default 120000, max 1800000).",
+            description: "Requested run time in ms (default 10000). HARD-CAPPED at 10000 regardless of value.",
           },
         },
         required: ["name"],

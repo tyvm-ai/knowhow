@@ -23,6 +23,7 @@ use types::*;
 // Re-export napi object types so they appear in the generated .d.ts.
 pub use types::{
   Capabilities, Display, PermissionsStatus, Point, RawImage, Region, ScreenshotOptions, Size,
+  WindowInfo,
 };
 
 // Re-export native perception primitives (free functions) + their result types.
@@ -65,6 +66,21 @@ impl ComputerCore {
   #[napi]
   pub fn permissions_status(&self) -> PermissionsStatus {
     self.backend.permissions_status()
+  }
+
+  // ── windows ──
+
+  /// Enumerate on-screen application windows, front-to-back z-order. The first
+  /// entry (and the one with `active == true`) is the focused window.
+  #[napi]
+  pub fn list_windows(&self) -> Result<Vec<WindowInfo>> {
+    self.backend.list_windows()
+  }
+
+  /// The frontmost (focused) window, or null when none/unavailable.
+  #[napi]
+  pub fn active_window(&self) -> Result<Option<WindowInfo>> {
+    self.backend.active_window()
   }
 
   // ── screen ──
