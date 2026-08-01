@@ -43,6 +43,11 @@ export interface ToolCallEvent {
   functionResp: any;
 }
 
+type ChatCompletion = Parameters<GenericClient["createChatCompletion"]>[0];
+type CachedChatCompletion = { messages: ChatCompletion["messages"] } & Partial<
+  Omit<ChatCompletion, "messages">
+>;
+
 /**
  * A source is anything that can (a) start producing data, (b) hand each datum to
  * a callback, and (c) be torn down. This is the unified contract behind
@@ -145,6 +150,12 @@ export abstract class BaseAgent implements IAgent {
   protected taskBreakdown = "";
   protected summaries = [] as string[];
   protected currentTaskId: string | null = null;
+  /**
+   * The taskId of the parent agent that spawned this task, if any.
+   * Used by self-referential tools (e.g. replyToParent) to know who to
+   * report back to without relying solely on reading metadata.json off disk.
+   */
+  public parentTaskId: string | null = null;
 
   public agentEvents = new EventService();
   public eventTypes = {
@@ -347,6 +358,14 @@ export abstract class BaseAgent implements IAgent {
 
   getProvider() {
     return this.provider;
+  }
+
+  getParentTaskId(): string | null {
+    return this.parentTaskId;
+  }
+
+  setParentTaskId(value: string | null) {
+    this.parentTaskId = value ?? null;
   }
 
   setProvider(value: keyof typeof Clients.clients) {
@@ -595,14 +614,31 @@ export abstract class BaseAgent implements IAgent {
    * no-op).
    */
   protected async createAgentCompletion(
-    params: Parameters<GenericClient["createChatCompletion"]>[0],
+    params: CachedChatCompletion,
     options: {
       interruptValue?: CompletionResponse;
     } = {}
   ): Promise<CompletionResponse> {
     const { interruptValue } = options;
 
-    const callPromise = this.getClient().createChatCompletion(params);
+    // If you change the tools, or any of this, you bust cache
+    // only safe to change messages
+    const defaultedParams: ChatCompletion = {
+      model: this.getModel(),
+      tools: this.getEnabledTools(),
+      tool_choice: "auto",
+      long_ttl_cache: this.runTime() > 300_000,
+      ...(this.reasoningEffort !== undefined && {
+        reasoning_effort: this.reasoningEffort,
+      }),
+      ...(this.summarizeReasoning !== undefined && {
+        reasoning_summary: this.summarizeReasoning,
+      }),
+
+      ...params,
+    };
+
+    const callPromise = this.getClient().createChatCompletion(defaultedParams);
     const response = interruptValue
       ? await this.makeInterruptible(callPromise, interruptValue)
       : await callPromise;
@@ -663,6 +699,7 @@ export abstract class BaseAgent implements IAgent {
       this.tools.callTool(toolCall, this.getEnabledToolNames(), {
         caller: this,
         taskId: this.currentTaskId,
+        parentTaskId: this.parentTaskId ?? undefined,
       }),
       interruptResult
     );
@@ -677,6 +714,14 @@ export abstract class BaseAgent implements IAgent {
 
   logMessages(messages: Message[]) {
     for (const message of messages) {
+      // Surface the model's reasoning summary (what it's "thinking") when the
+      // provider exposes one, so it appears alongside the assistant's output.
+      const reasoningSummary = (message as any).reasoning_summary;
+      if (message.role === "assistant" && reasoningSummary) {
+        this.agentEvents.emit(this.eventTypes.agentSay, {
+          message: `💭 ${reasoningSummary}`,
+        });
+      }
       if (message.role === "assistant" && message.content) {
         this.agentEvents.emit(this.eventTypes.agentSay, {
           message: message.content,
@@ -901,10 +946,7 @@ export abstract class BaseAgent implements IAgent {
       // would pre-empt the next tool call and drop its result. Any message
       // supplied with the poke was already added as a pending user message
       // above, so the agent will still see it on its next step.
-      this.log(
-        "No active interruptible operation to interrupt",
-        "warn"
-      );
+      this.log("No active interruptible operation to interrupt", "warn");
     }
   }
 
@@ -1435,12 +1477,18 @@ export abstract class BaseAgent implements IAgent {
     };
 
     const teardownPromise = Promise.resolve(source.start(emit)).catch((e) => {
-      this.log(`observe(${source.label}) start failed: ${e?.message ?? e}`, "warn");
+      this.log(
+        `observe(${source.label}) start failed: ${e?.message ?? e}`,
+        "warn"
+      );
       return undefined;
     });
 
     const expiry = maxDurationMs
-      ? setTimeout(() => this.stopObserving(id, "max duration reached"), maxDurationMs)
+      ? setTimeout(
+          () => this.stopObserving(id, "max duration reached"),
+          maxDurationMs
+        )
       : undefined;
     if (expiry && typeof (expiry as any).unref === "function") {
       (expiry as any).unref();
@@ -1601,7 +1649,15 @@ export abstract class BaseAgent implements IAgent {
     const response = await this.createAgentCompletion({
       model,
       messages: taskBreakdownMessages,
-      max_tokens: 2000,
+      tools: this.getEnabledTools(),
+      tool_choice: "auto",
+      long_ttl_cache: this.runTime() > 300_000,
+      ...(this.reasoningEffort !== undefined && {
+        reasoning_effort: this.reasoningEffort,
+      }),
+      ...(this.summarizeReasoning !== undefined && {
+        reasoning_summary: this.summarizeReasoning,
+      }),
     });
 
     this.taskBreakdown = response.choices[0].message.content;
@@ -1644,7 +1700,6 @@ export abstract class BaseAgent implements IAgent {
     ] as Message[];
 
     const response = await this.createAgentCompletion({
-      model,
       messages: compressMessagesPayload,
     });
 

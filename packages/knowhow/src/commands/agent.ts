@@ -116,17 +116,29 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
             options.taskId,
             options.messageId
           );
+          // Restore the exact model/provider/reasoning the original run used
+          // (falls back to agent defaults when not persisted / remote-only).
+          const savedSettings = await agentModule.loadTaskSettings(
+            options.taskId,
+            options.messageId
+          );
           const resumeInput =
             options.input || "Please continue from where you left off.";
 
           await agentModule.initialize(chatService);
           const { taskCompleted: resumed } =
             await agentModule.resumeFromMessages({
-              agentName: options.agentName || "Patcher",
+              agentName:
+                options.agentName || savedSettings.agentName || "Patcher",
               input: resumeInput,
               threads,
               messageId: options.messageId,
               taskId: options.taskId,
+              // CLI-provided model/provider still win over persisted ones.
+              model: options.model || savedSettings.model,
+              provider: options.provider || savedSettings.provider,
+              reasoningEffort: savedSettings.reasoningEffort,
+              summarizeReasoning: savedSettings.summarizeReasoning,
             });
           await resumed;
           return;

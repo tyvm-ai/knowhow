@@ -907,6 +907,46 @@ export function fixPatch(originalContent: string, patch: string): string {
   return finalPatch;
 }
 
+/**
+ * Verify that auto-correction did not broaden or change the requested edit.
+ * Line locations and hunk headers may change, but the exact multiset of added
+ * and removed lines must remain the same.
+ */
+export function autoCorrectionPreservesChanges(
+  originalContent: string,
+  updatedContent: string,
+  requestedPatch: string
+): boolean {
+  const changedLines = (patch: string, prefix: "+" | "-"): string[] =>
+    parseHunks(patch)
+      .flatMap((hunk) =>
+        hunk.lines
+          .filter((line) => line.startsWith(prefix))
+          .map((line) => line.slice(1))
+      )
+      .sort();
+
+  const actualPatch = createTwoFilesPatch(
+    "original",
+    "updated",
+    originalContent,
+    updatedContent,
+    "",
+    "",
+    { context: 0 }
+  );
+
+  const requestedAdditions = changedLines(requestedPatch, "+");
+  const requestedRemovals = changedLines(requestedPatch, "-");
+  const actualAdditions = changedLines(actualPatch, "+");
+  const actualRemovals = changedLines(actualPatch, "-");
+
+  return (
+    JSON.stringify(actualAdditions) === JSON.stringify(requestedAdditions) &&
+    JSON.stringify(actualRemovals) === JSON.stringify(requestedRemovals)
+  );
+}
+
 // --- Existing Application/Utility Code (Keep as is, ensure imports/exports are correct) ---
 
 export async function savePatchError(
@@ -1112,6 +1152,25 @@ export async function patchFile(
     }
 
     const wasFixed = appliedPatch !== patch;
+
+    // Auto-correction may re-anchor hunks, but it must never invent removals,
+    // drop requested edits, or move lines by representing them as extra edits.
+    // Reject before events or disk writes if its actual delta differs from the
+    // submitted patch.
+    if (
+      wasFixed &&
+      !autoCorrectionPreservesChanges(
+        originalContent,
+        updatedContent as string,
+        patch
+      )
+    ) {
+      return [
+        `❌ Patch failed: auto-correction changed the requested edit, so no changes were written.`,
+        `File: ${filePath} (${originalContent.split("\n").length} lines)`,
+        `Tip: Re-read the file and submit smaller hunks with unique surrounding context.`,
+      ].join("\n");
+    }
 
     const eventResults: any[] = [];
     // Emit pre-edit blocking event
