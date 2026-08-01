@@ -307,6 +307,20 @@ export class GenericOpenAiClient implements GenericClient {
     }
   }
 
+  /**
+   * Resolve the OpenAI-native reasoning items to re-inject for an assistant
+   * message. Reads the provider-agnostic `_reasoning_details` slot (only when
+   * it was produced by this provider) and falls back to the deprecated
+   * `_reasoning_items` for backward compatibility.
+   */
+  private getReasoningItems(msg: any): any[] {
+    const details = (msg as any)._reasoning_details;
+    if (details && details.provider === "openai" && Array.isArray(details.items)) {
+      return details.items;
+    }
+    return (msg as any)._reasoning_items ?? [];
+  }
+
   async createChatResponse(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
@@ -334,15 +348,33 @@ export class GenericOpenAiClient implements GenericClient {
         };
       }
       if (msg.role === "assistant" && msg.tool_calls?.length) {
-        // assistant message with tool calls → function_call items
-        return msg.tool_calls.map((tc) => ({
+        // assistant message with tool calls → function_call items.
+        // If the prior turn captured reasoning items (encrypted_content path),
+        // re-inject them *before* the function_call items so the model keeps its
+        // chain-of-thought instead of re-deriving it from scratch.
+        const reasoningItems = this.getReasoningItems(msg);
+        return [
+          ...reasoningItems,
+          ...msg.tool_calls.map((tc) => ({
           type: "function_call",
           // id must start with 'fc_'; call_id is the original call_ ID used for function_call_output matching
           id: tc.id.startsWith("fc") ? tc.id : `fc_${tc.id}`,
           call_id: tc.id,
           name: tc.function.name,
           arguments: tc.function.arguments,
-        }));
+          })),
+        ];
+      }
+      if (msg.role === "assistant" && this.getReasoningItems(msg).length) {
+        // assistant message (no tool calls) that carried reasoning items →
+        // re-inject reasoning items, then the visible message content.
+        return [
+          ...this.getReasoningItems(msg),
+          {
+            role: msg.role,
+            content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+          },
+        ];
       }
       // Regular user/assistant message
       return {
@@ -360,10 +392,29 @@ export class GenericOpenAiClient implements GenericClient {
       strict: false,
     }));
 
+    // Reasoning persistence:
+    //  - store === true  → OpenAI persists the response server-side; the next
+    //    turn passes previous_response_id to continue the reasoning chain.
+    //  - store !== true  → stateless; ask OpenAI to return encrypted reasoning
+    //    content so we can thread it back into the next request's input ourselves.
+    const store = options.store === true;
+    const wantsReasoning =
+      OpenAiReasoningModels.includes(options.model) &&
+      !this.isReasoningDisabled(options);
+
     const response = await this.client.responses.create({
       model: options.model as any,
       input,
       ...(instructions && { instructions }),
+      ...(store && { store: true }),
+      ...(!store && { store: false }),
+      ...(options.previous_response_id && {
+        previous_response_id: options.previous_response_id,
+      }),
+      // When stateless, request encrypted reasoning so we can re-inject it next turn.
+      ...(!store && wantsReasoning && {
+        include: ["reasoning.encrypted_content"],
+      }),
       // Don't limit max_output_tokens for Responses API - codex truncates tool call arguments when limited
       ...(OpenAiReasoningModels.includes(options.model) && !this.isReasoningDisabled(options) && {
         max_output_tokens: Math.max(options.max_tokens || 0, 16000),
@@ -376,7 +427,6 @@ export class GenericOpenAiClient implements GenericClient {
         tools,
         tool_choice: "auto",
       }),
-      store: false,
     } as any);
 
     // Map Responses API usage to Chat Completions usage format
@@ -405,6 +455,10 @@ export class GenericOpenAiClient implements GenericClient {
     // Collect text content and tool calls from the output items
     let textContent: string | null = null;
     const toolCalls: ChatCompletionMessageToolCall[] = [];
+    // Reasoning items (with encrypted_content) to thread back into the next turn,
+    // and a human-readable summary of the model's thinking (when requested).
+    const reasoningItems: any[] = [];
+    let reasoningSummary: string | null = null;
 
     for (const item of response.output) {
       if (item.type === "message") {
@@ -413,6 +467,18 @@ export class GenericOpenAiClient implements GenericClient {
         for (const part of msgItem.content ?? []) {
           if (part.type === "output_text") {
             textContent = (textContent ?? "") + part.text;
+          }
+        }
+      } else if (item.type === "reasoning") {
+        // ResponseReasoningItem — keep the raw item so we can re-inject it
+        // (it carries encrypted_content when include was requested), and pull
+        // out any human-readable summary text.
+        reasoningItems.push(item);
+        const summaryParts = (item as any).summary ?? [];
+        for (const part of summaryParts) {
+          const text = typeof part === "string" ? part : part?.text;
+          if (text) {
+            reasoningSummary = (reasoningSummary ?? "") + text;
           }
         }
       } else if (item.type === "function_call") {
@@ -444,12 +510,21 @@ export class GenericOpenAiClient implements GenericClient {
             role: "assistant",
             content: textContent,
             ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
+            ...(reasoningSummary && { reasoning_summary: reasoningSummary }),
+            // Stash the raw reasoning items (encrypted_content) so the next call
+            // to createChatResponse can re-inject them into the input. We populate
+            // both the provider-agnostic slot and the deprecated legacy field.
+            ...(reasoningItems.length > 0 && {
+              _reasoning_items: reasoningItems,
+              _reasoning_details: { provider: "openai", items: reasoningItems },
+            }),
           },
         },
       ],
       model: options.model,
       usage,
       usd_cost: usdCost,
+      response_id: (response as any).id,
     };
   }
 

@@ -245,6 +245,18 @@ export class GenericAnthropicClient implements GenericClient {
 
   transformMessages(messages: Message[], longTtl = false): MessageParam[] {
     const toolCalls = messages.flatMap((msg) => msg.tool_calls || []);
+    // Map each tool_call id → the thinking blocks captured on the assistant
+    // message that produced it, so we can re-inject them before the tool_use.
+    const thinkingByCallId: { [id: string]: any[] } = {};
+    for (const m of messages) {
+      if (m.role !== "assistant" || !m.tool_calls?.length) continue;
+      const details = (m as any)._reasoning_details;
+      if (details?.provider === "anthropic" && Array.isArray(details.items)) {
+        // Attach to the FIRST tool_call of this assistant turn (thinking blocks
+        // must precede the first tool_use in the turn).
+        thinkingByCallId[m.tool_calls[0].id] = details.items;
+      }
+    }
     const claudeMessages: MessageParam[] = messages
       .filter((msg) => msg.role !== "system")
       .filter((msg) => msg.content || msg.role === "tool")
@@ -258,9 +270,14 @@ export class GenericAnthropicClient implements GenericClient {
               JSON.stringify(msg, null, 2)
             );
           } else {
+            // Re-inject any captured thinking / redacted_thinking blocks
+            // (verbatim, with signature/data) BEFORE the tool_use block, as
+            // Anthropic requires for reasoning continuity across tool turns.
+            const thinkingBlocks = thinkingByCallId[msg.tool_call_id] ?? [];
             toolMessages.push({
               role: "assistant",
               content: [
+                ...thinkingBlocks,
                 {
                   type: "tool_use",
                   id: msg.tool_call_id,
@@ -440,8 +457,42 @@ export class GenericAnthropicClient implements GenericClient {
         console.log("no content in Anthropic response", response);
       }
 
+      // Capture thinking / redacted_thinking blocks verbatim (with their
+      // signature / data) so they can be round-tripped unmodified on the next
+      // tool-use turn. Anthropic REQUIRES thinking blocks from the assistant
+      // message to be passed back, complete and unmodified, when returning tool
+      // results — otherwise reasoning continuity and prompt-cache hits are lost.
+      const thinkingBlocks = response.content.filter(
+        (c) => c.type === "thinking" || c.type === "redacted_thinking"
+      );
+      const reasoningDetails =
+        thinkingBlocks.length > 0
+          ? { provider: "anthropic", items: thinkingBlocks }
+          : undefined;
+      // Extract a human-readable summary from thinking blocks (when present).
+      const reasoningSummary = thinkingBlocks
+        .map((b) => ("thinking" in b ? (b as any).thinking : ""))
+        .filter(Boolean)
+        .join("\n") || undefined;
+
+      // Determine which resulting choice should carry the thinking blocks. They
+      // are re-injected before the first tool_use on the next turn, so prefer
+      // the first tool_use block; if there are no tool calls, fall back to the
+      // first (text) block. This keeps a single copy that transformMessages can
+      // reliably find via the assistant message's tool_calls.
+      const nonThinking = response.content.filter(
+        (c) => c.type !== "thinking" && c.type !== "redacted_thinking"
+      );
+      const firstToolUseIdx = nonThinking.findIndex((c) => c.type === "tool_use");
+      const carryIdx = firstToolUseIdx >= 0 ? firstToolUseIdx : 0;
+
       return {
-        choices: response.content.map((c) => {
+        choices: nonThinking.map((c, idx) => {
+            // Only the FIRST resulting assistant message carries the thinking
+            // blocks (Anthropic requires a single thinking block sequence at the
+            // start of the assistant turn); attaching to every choice would
+            // duplicate them once the messages are re-transformed.
+            const carryReasoning = idx === carryIdx;
           if (c.type === "tool_use") {
             return {
               message: {
@@ -457,6 +508,8 @@ export class GenericAnthropicClient implements GenericClient {
                     },
                   },
                 ],
+                ...(carryReasoning && reasoningDetails && { _reasoning_details: reasoningDetails }),
+                ...(carryReasoning && reasoningSummary && { reasoning_summary: reasoningSummary }),
               },
             };
           } else {
@@ -465,6 +518,8 @@ export class GenericAnthropicClient implements GenericClient {
                 role: "assistant",
                 content: "text" in c ? c.text : c.type,
                 tool_calls: [],
+                ...(carryReasoning && reasoningDetails && { _reasoning_details: reasoningDetails }),
+                ...(carryReasoning && reasoningSummary && { reasoning_summary: reasoningSummary }),
               },
             };
           }

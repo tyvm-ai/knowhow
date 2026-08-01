@@ -23,6 +23,50 @@ export interface Message {
 
 export interface OutputMessage extends Message {
   content?: string | null;
+  /**
+   * The model's reasoning/thinking content, when the provider exposes it.
+   * - OpenAI Responses API: a human-readable summary of the model's reasoning
+   *   (populated when reasoning_summary is requested).
+   */
+  reasoning_summary?: string;
+  /**
+   * OpenAI Responses API only (internal): the raw reasoning output items
+   * (carrying encrypted_content) captured from a stateless response. These are
+   * re-injected into the next request's input to preserve the reasoning chain.
+   * Not intended for display.
+   *
+   * @deprecated Prefer the provider-agnostic `_reasoning_details` slot. This is
+   * retained for backward compatibility with the OpenAI client only.
+   */
+  _reasoning_items?: any[];
+  /**
+   * Provider-agnostic (internal): an opaque, provider-tagged carrier for the
+   * model's reasoning artifact that must be round-tripped verbatim on the next
+   * tool-use turn to preserve reasoning continuity. Each provider stashes its
+   * own native artifact here and re-injects it only when the `provider` tag
+   * matches, so provider-specific payload never leaks into the generic
+   * (OpenAI-format) message shape.
+   *
+   *  - openai / xai: Responses API `reasoning` output items (encrypted_content)
+   *  - anthropic:    `thinking` / `redacted_thinking` blocks (with signature/data)
+   *  - gemini:       `thoughtSignature` strings keyed by tool-call id (+ thought parts)
+   *
+   * Not intended for display.
+   */
+  _reasoning_details?: ReasoningDetails;
+}
+
+/**
+ * Opaque, provider-tagged reasoning artifact. The `items` are provider-native
+ * and only meaningful to the client whose id matches `provider`; any other
+ * client must ignore them (they are never mapped into a foreign provider's
+ * request payload).
+ */
+export interface ReasoningDetails {
+  /** The provider that produced these items, e.g. "openai" | "xai" | "anthropic" | "gemini". */
+  provider: string;
+  /** Provider-native reasoning items to round-trip verbatim on the next turn. */
+  items: any[];
 }
 
 export interface ToolProp {
@@ -30,6 +74,7 @@ export interface ToolProp {
   description?: string;
   properties?: { [key: string]: ToolProp };
   items?: ToolProp;
+  enum?: any[];
 }
 
 export interface Tool {
@@ -115,6 +160,20 @@ export interface CompletionOptions extends RetryOptions {
    */
   reasoning_summary?: boolean;
   /**
+   * OpenAI Responses API only: when true, OpenAI stores the response server-side
+   * so subsequent turns can reference it via `previous_response_id` instead of
+   * resending the full reasoning/message history. Defaults to false (stateless).
+   * When false, the client automatically requests `reasoning.encrypted_content`
+   * and threads the reasoning items back in the next request's input.
+   */
+  store?: boolean;
+  /**
+   * OpenAI Responses API only: the id of a previously-stored response to continue
+   * from. Only meaningful when `store` was true on the prior request. When set,
+   * the model keeps its prior chain-of-thought instead of re-deriving it.
+   */
+  previous_response_id?: string;
+  /**
    * When true, hints to the client that this task is long-running and it should
    * use a long-TTL cache where available.
    * - Anthropic: enables the `extended-cache-ttl-2025-02-19` beta and sets
@@ -165,6 +224,12 @@ export interface CompletionResponse {
   model: string;
   usage: TokenUsage | undefined;
   usd_cost?: number;
+  /**
+   * OpenAI Responses API only: the id of this response. When `store` was true,
+   * this can be passed as `previous_response_id` on the next request to continue
+   * the reasoning chain without resending history.
+   */
+  response_id?: string;
 }
 
 /** A single chunk yielded by a streaming completion. */

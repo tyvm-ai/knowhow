@@ -116,6 +116,20 @@ export class GenericXAIClient implements GenericClient {
    * Used for grok-4.20 reasoning/non-reasoning and multi-agent models.
    * Translates Chat Completions message format to Responses API format.
    */
+  /**
+   * Resolve the xai-native reasoning items (Responses API `reasoning` items
+   * with encrypted_content) to re-inject for an assistant message, reading the
+   * provider-agnostic `_reasoning_details` slot only when it was produced by
+   * this provider.
+   */
+  private getReasoningItems(msg: any): any[] {
+    const details = msg?._reasoning_details;
+    if (details && details.provider === "xai" && Array.isArray(details.items)) {
+      return details.items;
+    }
+    return [];
+  }
+
   async createChatResponse(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
@@ -142,13 +156,31 @@ export class GenericXAIClient implements GenericClient {
         };
       }
       if (msg.role === "assistant" && msg.tool_calls?.length) {
-        return msg.tool_calls.map((tc) => ({
+        // Re-inject any captured reasoning items (encrypted_content) BEFORE the
+        // function_call items so the model keeps its chain-of-thought instead of
+        // re-deriving it from scratch each turn.
+        const reasoningItems = this.getReasoningItems(msg);
+        return [
+          ...reasoningItems,
+          ...msg.tool_calls.map((tc) => ({
           type: "function_call",
           id: tc.id.startsWith("fc") ? tc.id : `fc_${tc.id}`,
           call_id: tc.id,
           name: tc.function.name,
           arguments: tc.function.arguments,
-        }));
+          })),
+        ];
+      }
+      if (msg.role === "assistant" && this.getReasoningItems(msg).length) {
+        // assistant message (no tool calls) that carried reasoning items →
+        // re-inject reasoning items, then the visible message content.
+        return [
+          ...this.getReasoningItems(msg),
+          {
+            role: msg.role,
+            content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+          },
+        ];
       }
       return {
         role: msg.role,
@@ -182,7 +214,18 @@ export class GenericXAIClient implements GenericClient {
       ...(options.max_tokens && { max_output_tokens: Math.max(options.max_tokens, 16_000) }),
       ...(reasoningEffort && { reasoning: { effort: reasoningEffort } }),
       ...(tools?.length && { tools, tool_choice: "auto" }),
-      store: false,
+      // Reasoning persistence (same construct as OpenAI's Responses API):
+      //  - store === true  → xAI persists the response; next turn passes
+      //    previous_response_id to continue the reasoning chain server-side.
+      //  - store !== true  → stateless; request encrypted reasoning content so
+      //    we can thread the reasoning items back into the next request ourselves.
+      store: options.store === true,
+      ...(options.previous_response_id && {
+        previous_response_id: options.previous_response_id,
+      }),
+      ...(options.store !== true && reasoningEffort && {
+        include: ["reasoning.encrypted_content"],
+      }),
     };
 
     const response = await fetch("https://api.x.ai/v1/responses", {
@@ -218,12 +261,27 @@ export class GenericXAIClient implements GenericClient {
     // Collect text content and tool calls from output items
     let textContent: string | null = null;
     const toolCalls: any[] = [];
+    // Reasoning items (with encrypted_content) to thread back into the next
+    // turn, plus a human-readable summary of the model's thinking (if present).
+    const reasoningItems: any[] = [];
+    let reasoningSummary: string | null = null;
 
     for (const item of data.output ?? []) {
       if (item.type === "message") {
         for (const part of item.content ?? []) {
           if (part.type === "output_text") {
             textContent = (textContent ?? "") + part.text;
+          }
+        }
+      } else if (item.type === "reasoning") {
+        // Keep the raw reasoning item so it can be re-injected next turn
+        // (carries encrypted_content when include was requested).
+        reasoningItems.push(item);
+        const summaryParts = item.summary ?? [];
+        for (const part of summaryParts) {
+          const text = typeof part === "string" ? part : part?.text;
+          if (text) {
+            reasoningSummary = (reasoningSummary ?? "") + text;
           }
         }
       } else if (item.type === "function_call") {
@@ -245,12 +303,17 @@ export class GenericXAIClient implements GenericClient {
             role: "assistant",
             content: textContent,
             ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
+            ...(reasoningSummary && { reasoning_summary: reasoningSummary }),
+            ...(reasoningItems.length > 0 && {
+              _reasoning_details: { provider: "xai", items: reasoningItems },
+            }),
           },
         },
       ],
       model: options.model,
       usage,
       usd_cost: usdCost,
+      response_id: data.id,
     };
   }
 

@@ -93,6 +93,33 @@ export class HttpClient implements GenericClient {
   }
 
   /**
+   * A stable provider id used to tag/read the provider-agnostic
+   * `_reasoning_details` slot. Reasoning items are opaque and only meaningful
+   * to the provider that produced them, so we key on the client's baseUrl.
+   */
+  protected reasoningProviderId(): string {
+    return `http:${this.baseUrl}`;
+  }
+
+  /**
+   * Resolve the provider-native reasoning items (Responses API `reasoning`
+   * items with encrypted_content) to re-inject for an assistant message,
+   * reading the provider-agnostic `_reasoning_details` slot only when it was
+   * produced by this same client.
+   */
+  protected getReasoningItems(msg: any): any[] {
+    const details = msg?._reasoning_details;
+    if (
+      details &&
+      details.provider === this.reasoningProviderId() &&
+      Array.isArray(details.items)
+    ) {
+      return details.items;
+    }
+    return [];
+  }
+
+  /**
    * Returns the pricing entry for a specific model, or all pricing entries if no model is given.
    * Returns undefined for a specific model if no pricing is known.
    */
@@ -308,13 +335,29 @@ export class HttpClient implements GenericClient {
           };
         }
         if (msg.role === "assistant" && msg.tool_calls?.length) {
-          return (msg.tool_calls as any[]).map((tc: any) => ({
+          // Re-inject any captured reasoning items (encrypted_content) BEFORE
+          // the function_call items so the model preserves its chain-of-thought
+          // across tool-use turns instead of re-deriving it each turn.
+          const reasoningItems = this.getReasoningItems(msg);
+          return [
+            ...reasoningItems,
+            ...(msg.tool_calls as any[]).map((tc: any) => ({
             type: "function_call",
             id: tc.id.startsWith("fc") ? tc.id : `fc_${tc.id}`,
             call_id: tc.id,
             name: tc.function.name,
             arguments: tc.function.arguments,
-          }));
+            })),
+          ];
+        }
+        if (msg.role === "assistant" && this.getReasoningItems(msg).length) {
+          return [
+            ...this.getReasoningItems(msg),
+            {
+              role: msg.role,
+              content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+            },
+          ];
         }
         return {
           role: msg.role,
@@ -336,7 +379,18 @@ export class HttpClient implements GenericClient {
         ...(instructions && { instructions }),
         ...(options.max_tokens && { max_output_tokens: options.max_tokens }),
         ...(tools?.length && { tools, tool_choice: "auto" }),
-        store,
+        // Reasoning persistence: store server-side when requested, otherwise
+        // ask the provider to return encrypted reasoning content so we can
+        // thread the reasoning items back into the next request ourselves.
+        store: options.store === true ? true : store,
+        ...(options.previous_response_id && {
+          previous_response_id: options.previous_response_id,
+        }),
+        ...(options.store !== true &&
+          options.reasoning_effort &&
+          options.reasoning_effort !== "none" && {
+            include: ["reasoning.encrypted_content"],
+          }),
         ...this.extra_body,
       };
 
@@ -368,12 +422,25 @@ export class HttpClient implements GenericClient {
       // Collect text content and tool calls from output items
       let textContent: string | null = null;
       const toolCalls: any[] = [];
+      // Reasoning items (encrypted_content) to thread back into the next turn,
+      // plus a human-readable summary of the model's thinking (if present).
+      const reasoningItems: any[] = [];
+      let reasoningSummary: string | null = null;
 
       for (const item of data.output ?? []) {
         if (item.type === "message") {
           for (const part of item.content ?? []) {
             if (part.type === "output_text") {
               textContent = (textContent ?? "") + part.text;
+            }
+          }
+        } else if (item.type === "reasoning") {
+          reasoningItems.push(item);
+          const summaryParts = item.summary ?? [];
+          for (const part of summaryParts) {
+            const text = typeof part === "string" ? part : part?.text;
+            if (text) {
+              reasoningSummary = (reasoningSummary ?? "") + text;
             }
           }
         } else if (item.type === "function_call") {
@@ -392,12 +459,20 @@ export class HttpClient implements GenericClient {
               role: "assistant",
               content: textContent,
               ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
+              ...(reasoningSummary && { reasoning_summary: reasoningSummary }),
+              ...(reasoningItems.length > 0 && {
+                _reasoning_details: {
+                  provider: this.reasoningProviderId(),
+                  items: reasoningItems,
+                },
+              }),
             },
           },
         ],
         model: data.model ?? options.model,
         usage,
         usd_cost: data.usd_cost ?? this.calculateCost(options.model, usage),
+        response_id: data.id,
       };
     });
   }

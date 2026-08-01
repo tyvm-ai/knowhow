@@ -225,16 +225,43 @@ export class GenericGeminiClient implements GenericClient {
           msg.tool_calls &&
           msg.tool_calls.length > 0
         ) {
+          // Look up any captured thoughtSignatures for this assistant message so
+          // we can re-attach them to the matching functionCall part (required by
+          // Gemini 3 to preserve reasoning continuity across tool-use turns).
+          const details = (msg as any)._reasoning_details;
+          const sigByCallId: { [id: string]: string } = {};
+          const standaloneThoughtSigs: string[] = [];
+          if (details && details.provider === "gemini" && Array.isArray(details.items)) {
+            for (const item of details.items) {
+              if (item?.kind === "functionCall" && item.callId) {
+                sigByCallId[item.callId] = item.thoughtSignature;
+              } else if (item?.kind === "thoughtSignature" && item.thoughtSignature) {
+                standaloneThoughtSigs.push(item.thoughtSignature);
+              }
+            }
+          }
           for (const toolCall of msg.tool_calls) {
-            parts.push({
+            const callPart: any = {
               functionCall: {
                 name: toolCall.function.name,
                 // Google expects arguments as a parsed object, not a string
                 args: JSON.parse(toolCall.function.arguments || "{}"),
               },
-            });
+            };
+            if (sigByCallId[toolCall.id]) {
+              callPart.thoughtSignature = sigByCallId[toolCall.id];
+            }
+            parts.push(callPart);
             // Store the tool call to potentially link with a future tool response message
             assistantToolCalls[toolCall.id] = toolCall;
+          }
+          // Re-attach any standalone thought-part signatures onto the leading
+          // text part(s) so reasoning-only thoughts are also round-tripped.
+          for (let s = 0; s < standaloneThoughtSigs.length; s++) {
+            const p: any = parts[s];
+            if (p && "text" in p && !p.thoughtSignature) {
+              p.thoughtSignature = standaloneThoughtSigs[s];
+            }
           }
         }
 
@@ -499,24 +526,51 @@ export class GenericGeminiClient implements GenericClient {
             return { message };
           }
 
+          // Capture Gemini thoughtSignatures so they can be round-tripped on the
+          // next turn. Gemini 3 REQUIRES these to be echoed back on the matching
+          // functionCall part or it returns a 400 "Thought signature is not
+          // valid" on the 2nd+ tool-calling turn. We key them by tool-call id
+          // (and also keep any standalone thought-part signatures in order).
+          const reasoningItems: any[] = [];
+
           candidate?.content?.parts?.forEach((part) => {
             if ("text" in part && typeof part.text === "string") {
               textContent += part.text; // Concatenate text parts
+              if ((part as any).thoughtSignature) {
+                reasoningItems.push({
+                  kind: "thoughtSignature",
+                  thoughtSignature: (part as any).thoughtSignature,
+                });
+              }
             } else if ("functionCall" in part && part.functionCall) {
+              const callId =
+                part.functionCall.id ||
+                `fc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
               message.tool_calls.push({
-                id:
-                  part.functionCall.id ||
-                  `fc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                id: callId,
                 type: "function",
                 function: {
                   name: part.functionCall.name,
                   arguments: JSON.stringify(part.functionCall.args || {}),
                 },
               });
+              if ((part as any).thoughtSignature) {
+                reasoningItems.push({
+                  kind: "functionCall",
+                  callId,
+                  thoughtSignature: (part as any).thoughtSignature,
+                });
+              }
             }
           });
 
           message.content = textContent || null;
+          if (reasoningItems.length > 0) {
+            (message as any)._reasoning_details = {
+              provider: "gemini",
+              items: reasoningItems,
+            };
+          }
 
           return { message };
         }) || []; // Handle case with no candidates
