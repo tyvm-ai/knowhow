@@ -433,3 +433,468 @@ pub fn find_boxes_raw(
   }
   Ok(out)
 }
+
+// ── region detection (foreground / colors / panels segmentation) ─────────────
+//
+// Native port of the TS `findRegions` (perception.ts). All three modes share a
+// connected-components core and a nesting-by-containment step. Returns the same
+// flattened `BoxNative` list (parent index + depth) that `find_boxes_raw`
+// returns, so the TS layer rebuilds the tree identically for both.
+
+/// A labelled connected component's bounding box + pixel/edge counts.
+struct Comp {
+  min_x: usize,
+  min_y: usize,
+  max_x: usize,
+  max_y: usize,
+  count: usize,
+}
+
+/// 4-connectivity connected components over a boolean mask. Mirrors the TS
+/// `connectedComponents`.
+fn connected_components(mask: &[u8], w: usize, h: usize, min_pixels: usize) -> Vec<Comp> {
+  let mut seen = vec![0u8; w * h];
+  let mut comps: Vec<Comp> = Vec::new();
+  let mut stack: Vec<usize> = Vec::new();
+  for start in 0..(w * h) {
+    if mask[start] == 0 || seen[start] != 0 {
+      continue;
+    }
+    let mut min_x = w;
+    let mut min_y = h;
+    let mut max_x = 0usize;
+    let mut max_y = 0usize;
+    let mut count = 0usize;
+    stack.clear();
+    stack.push(start);
+    seen[start] = 1;
+    while let Some(idx) = stack.pop() {
+      let x = idx % w;
+      let y = idx / w;
+      count += 1;
+      if x < min_x {
+        min_x = x;
+      }
+      if y < min_y {
+        min_y = y;
+      }
+      if x > max_x {
+        max_x = x;
+      }
+      if y > max_y {
+        max_y = y;
+      }
+      // 4-neighbours
+      if x > 0 {
+        let n = idx - 1;
+        if mask[n] != 0 && seen[n] == 0 {
+          seen[n] = 1;
+          stack.push(n);
+        }
+      }
+      if x + 1 < w {
+        let n = idx + 1;
+        if mask[n] != 0 && seen[n] == 0 {
+          seen[n] = 1;
+          stack.push(n);
+        }
+      }
+      if y > 0 {
+        let n = idx - w;
+        if mask[n] != 0 && seen[n] == 0 {
+          seen[n] = 1;
+          stack.push(n);
+        }
+      }
+      if y + 1 < h {
+        let n = idx + w;
+        if mask[n] != 0 && seen[n] == 0 {
+          seen[n] = 1;
+          stack.push(n);
+        }
+      }
+    }
+    if count >= min_pixels {
+      comps.push(Comp {
+        min_x,
+        min_y,
+        max_x,
+        max_y,
+        count,
+      });
+    }
+  }
+  comps
+}
+
+/// Grow a boolean mask by `r` px (square structuring element), separable.
+/// Mirrors the TS `dilateMask`.
+fn dilate_mask(mask: &[u8], w: usize, h: usize, r: usize) -> Vec<u8> {
+  let ri = r as i64;
+  let mut tmp = vec![0u8; w * h];
+  for y in 0..h {
+    for x in 0..w {
+      let mut on = false;
+      let mut dx = -ri;
+      while dx <= ri && !on {
+        let xx = x as i64 + dx;
+        if xx >= 0 && (xx as usize) < w && mask[y * w + xx as usize] != 0 {
+          on = true;
+        }
+        dx += 1;
+      }
+      if on {
+        tmp[y * w + x] = 1;
+      }
+    }
+  }
+  let mut out = vec![0u8; w * h];
+  for y in 0..h {
+    for x in 0..w {
+      let mut on = false;
+      let mut dy = -ri;
+      while dy <= ri && !on {
+        let yy = y as i64 + dy;
+        if yy >= 0 && (yy as usize) < h && tmp[yy as usize * w + x] != 0 {
+          on = true;
+        }
+        dy += 1;
+      }
+      if on {
+        out[y * w + x] = 1;
+      }
+    }
+  }
+  out
+}
+
+/// Quantized color key for a pixel (bits per channel). Mirrors the TS
+/// `colorSegments` key function.
+#[inline]
+fn color_key(bytes: &[u8], w: usize, x: usize, y: usize, bits: u32) -> u32 {
+  let shift = 8 - bits;
+  let i = (y * w + x) * 4;
+  let r = (bytes[i] as u32) >> shift;
+  let g = (bytes[i + 1] as u32) >> shift;
+  let b = (bytes[i + 2] as u32) >> shift;
+  (r << (bits * 2)) | (g << bits) | b
+}
+
+/// The dominant coarsely-binned color in the frame (4-bit per channel bins),
+/// sampled for speed. Mirrors the TS `dominantColor`.
+fn dominant_color(bytes: &[u8], w: usize, h: usize) -> (i32, i32, i32) {
+  use std::collections::HashMap;
+  let total = w * h;
+  let step = std::cmp::max(1, total / 200_000);
+  let mut bins: HashMap<u32, u32> = HashMap::new();
+  let mut i = 0usize;
+  while i < total {
+    let j = i * 4;
+    let key = (((bytes[j] as u32) >> 4) << 8)
+      | (((bytes[j + 1] as u32) >> 4) << 4)
+      | ((bytes[j + 2] as u32) >> 4);
+    *bins.entry(key).or_insert(0) += 1;
+    i += step;
+  }
+  let mut best_key = 0u32;
+  let mut best_n = 0u32;
+  for (&k, &n) in bins.iter() {
+    if n > best_n {
+      best_n = n;
+      best_key = k;
+    }
+  }
+  let r = (((best_key >> 8) & 0xf) * 16 + 8) as i32;
+  let g = (((best_key >> 4) & 0xf) * 16 + 8) as i32;
+  let b = ((best_key & 0xf) * 16 + 8) as i32;
+  (r, g, b)
+}
+
+/// Connected components where adjacency requires the SAME quantized color.
+/// Mirrors the TS `colorSegments`.
+fn color_segments(bytes: &[u8], w: usize, h: usize, bits: u32, min_pixels: usize) -> Vec<Comp> {
+  let mut seen = vec![0u8; w * h];
+  let mut comps: Vec<Comp> = Vec::new();
+  let mut stack: Vec<usize> = Vec::new();
+  for start in 0..(w * h) {
+    if seen[start] != 0 {
+      continue;
+    }
+    let sx = start % w;
+    let sy = start / w;
+    let k = color_key(bytes, w, sx, sy, bits);
+    let mut min_x = w;
+    let mut min_y = h;
+    let mut max_x = 0usize;
+    let mut max_y = 0usize;
+    let mut count = 0usize;
+    stack.clear();
+    stack.push(start);
+    seen[start] = 1;
+    while let Some(idx) = stack.pop() {
+      let x = idx % w;
+      let y = idx / w;
+      count += 1;
+      if x < min_x {
+        min_x = x;
+      }
+      if y < min_y {
+        min_y = y;
+      }
+      if x > max_x {
+        max_x = x;
+      }
+      if y > max_y {
+        max_y = y;
+      }
+      let push_if = |n: usize, seen: &mut [u8], stack: &mut Vec<usize>| {
+        if seen[n] == 0 {
+          let nx = n % w;
+          let ny = n / w;
+          if color_key(bytes, w, nx, ny, bits) == k {
+            seen[n] = 1;
+            stack.push(n);
+          }
+        }
+      };
+      if x > 0 {
+        push_if(idx - 1, &mut seen, &mut stack);
+      }
+      if x + 1 < w {
+        push_if(idx + 1, &mut seen, &mut stack);
+      }
+      if y > 0 {
+        push_if(idx - w, &mut seen, &mut stack);
+      }
+      if y + 1 < h {
+        push_if(idx + w, &mut seen, &mut stack);
+      }
+    }
+    if count >= min_pixels {
+      comps.push(Comp {
+        min_x,
+        min_y,
+        max_x,
+        max_y,
+        count,
+      });
+    }
+  }
+  comps
+}
+
+/// Mark out[i]=1 for pixels in component bbox that match the component's
+/// center color key. Mirrors the TS `markComponentPixels`.
+fn mark_component_pixels(bytes: &[u8], w: usize, bits: u32, c: &Comp, out: &mut [u8]) {
+  // Match the TS `markComponentPixels` center = round((min+max)/2), clamped.
+  let cx = (((c.min_x + c.max_x) as f64 / 2.0).round() as usize).clamp(c.min_x, c.max_x);
+  let cy = (((c.min_y + c.max_y) as f64 / 2.0).round() as usize).clamp(c.min_y, c.max_y);
+  let k = color_key(bytes, w, cx, cy, bits);
+  for y in c.min_y..=c.max_y {
+    for x in c.min_x..=c.max_x {
+      if color_key(bytes, w, x, y, bits) == k {
+        out[y * w + x] = 1;
+      }
+    }
+  }
+}
+
+/// "Panels" segmentation: large flat same-color areas become background
+/// SURFACES; the remaining foreground content is dilated + clustered. Mirrors
+/// the TS `panelSegments`. Returns [surfaces..., clusters...].
+fn panel_segments(
+  bytes: &[u8],
+  w: usize,
+  h: usize,
+  bits: u32,
+  min_pixels: usize,
+  cluster_gap: usize,
+  bg_area_frac: f64,
+) -> Vec<Comp> {
+  let color_comps = color_segments(bytes, w, h, bits, std::cmp::max(1, min_pixels));
+  let frame_area = (w * h) as f64;
+  let min_surface_area =
+    std::cmp::max(min_pixels * 4, (frame_area * bg_area_frac).round() as usize);
+  let mut surfaces: Vec<Comp> = Vec::new();
+  let mut is_surface = vec![0u8; w * h];
+  for c in color_comps.into_iter() {
+    let bw = c.max_x - c.min_x + 1;
+    let bh = c.max_y - c.min_y + 1;
+    let area = bw * bh;
+    let fill = c.count as f64 / std::cmp::max(1, area) as f64;
+    if c.count >= min_surface_area && fill >= 0.5 {
+      mark_component_pixels(bytes, w, bits, &c, &mut is_surface);
+      surfaces.push(c);
+    }
+  }
+  let mut fg_base = vec![0u8; w * h];
+  for i in 0..(w * h) {
+    fg_base[i] = if is_surface[i] != 0 { 0 } else { 1 };
+  }
+  let fg = if cluster_gap > 0 {
+    dilate_mask(&fg_base, w, h, cluster_gap)
+  } else {
+    fg_base
+  };
+  let clusters = connected_components(&fg, w, h, std::cmp::max(1, min_pixels));
+  let mut out = surfaces;
+  out.extend(clusters);
+  out
+}
+
+/// Detect UI regions/elements by segmentation, returning a flattened box list
+/// (parent index + depth) — the native port of TS `findRegions`. `mode`:
+/// "foreground" (default) | "colors" | "panels".
+#[napi]
+pub fn find_regions_raw(
+  data: Buffer,
+  width: u32,
+  height: u32,
+  mode: Option<String>,
+  bg_tolerance: Option<u32>,
+  min_size: Option<u32>,
+  max_size_frac: Option<f64>,
+  min_pixels: Option<u32>,
+  max_boxes: Option<u32>,
+  dilate: Option<u32>,
+  color_bits: Option<u32>,
+  cluster_gap: Option<u32>,
+  bg_area_frac: Option<f64>,
+) -> Result<Vec<BoxNative>> {
+  let w = width as usize;
+  let h = height as usize;
+  let bytes = data.as_ref();
+  if bytes.len() < w * h * 4 {
+    return Err(Error::new(
+      Status::InvalidArg,
+      "RGBA buffer smaller than width*height*4".to_string(),
+    ));
+  }
+  let mode = mode.unwrap_or_else(|| "foreground".to_string());
+  let bg_tol = bg_tolerance.unwrap_or(18).min(255) as i32;
+  let min_size = std::cmp::max(2, min_size.unwrap_or(16)) as usize;
+  let max_size_frac = max_size_frac.unwrap_or(0.98);
+  let min_px = std::cmp::max(1, min_pixels.unwrap_or(40)) as usize;
+  let max_boxes = std::cmp::max(1, max_boxes.unwrap_or(300)) as usize;
+  let dilate = dilate.unwrap_or(3) as usize;
+  let bits = color_bits.unwrap_or(3).clamp(1, 8);
+
+  let comps: Vec<Comp> = match mode.as_str() {
+    "panels" => panel_segments(
+      bytes,
+      w,
+      h,
+      bits,
+      min_px,
+      cluster_gap.unwrap_or(3) as usize,
+      bg_area_frac.unwrap_or(0.004),
+    ),
+    "colors" => color_segments(bytes, w, h, bits, min_px),
+    _ => {
+      // foreground = NOT dominant background color
+      let (br, bg, bb) = dominant_color(bytes, w, h);
+      let mut mask = vec![0u8; w * h];
+      for y in 0..h {
+        for x in 0..w {
+          let i = (y * w + x) * 4;
+          let pr = bytes[i] as i32;
+          let pg = bytes[i + 1] as i32;
+          let pb = bytes[i + 2] as i32;
+          if !((pr - br).abs() <= bg_tol && (pg - bg).abs() <= bg_tol && (pb - bb).abs() <= bg_tol)
+          {
+            mask[y * w + x] = 1;
+          }
+        }
+      }
+      let mask = if dilate > 0 {
+        dilate_mask(&mask, w, h, dilate)
+      } else {
+        mask
+      };
+      connected_components(&mask, w, h, min_px)
+    }
+  };
+
+  let max_w = w as f64 * max_size_frac;
+  let max_h = h as f64 * max_size_frac;
+
+  // Turn eligible components into raw boxes with a fill "score".
+  struct RegBox {
+    x0: usize,
+    y0: usize,
+    x1: usize,
+    y1: usize,
+    score: f64,
+  }
+  let mut boxes: Vec<RegBox> = Vec::new();
+  for c in comps.iter() {
+    let bw = c.max_x - c.min_x;
+    let bh = c.max_y - c.min_y;
+    if bw < min_size || bh < min_size {
+      continue;
+    }
+    if (bw as f64) > max_w || (bh as f64) > max_h {
+      continue;
+    }
+    let fill = c.count as f64 / std::cmp::max(1, bw * bh) as f64;
+    boxes.push(RegBox {
+      x0: c.min_x,
+      y0: c.min_y,
+      x1: c.max_x,
+      y1: c.max_y,
+      score: fill,
+    });
+  }
+  // Sort by area desc and cap.
+  let area = |b: &RegBox| (b.x1 - b.x0) * (b.y1 - b.y0);
+  boxes.sort_by(|a, b| area(b).cmp(&area(a)));
+  boxes.truncate(max_boxes);
+
+  // Nest by containment (smallest container = parent), mirroring nestBoxes.
+  let idxs: Vec<usize> = (0..boxes.len()).collect();
+  let contains = |o: &RegBox, i: &RegBox| -> bool {
+    let pad = 2i64;
+    i.x0 as i64 >= o.x0 as i64 - pad
+      && i.y0 as i64 >= o.y0 as i64 - pad
+      && (i.x1 as i64) <= o.x1 as i64 + pad
+      && (i.y1 as i64) <= o.y1 as i64 + pad
+      && area(i) < area(o)
+  };
+  let mut out: Vec<BoxNative> = Vec::with_capacity(boxes.len());
+  for &i in &idxs {
+    let bi = &boxes[i];
+    let mut parent: i32 = -1;
+    let mut parent_area = usize::MAX;
+    for (oi, &jo) in idxs.iter().enumerate() {
+      if jo == i {
+        continue;
+      }
+      let bj = &boxes[jo];
+      if contains(bj, bi) && area(bj) < parent_area {
+        parent = oi as i32;
+        parent_area = area(bj);
+      }
+    }
+    out.push(BoxNative {
+      x: bi.x0 as u32,
+      y: bi.y0 as u32,
+      width: (bi.x1 - bi.x0) as u32,
+      height: (bi.y1 - bi.y0) as u32,
+      edge_score: bi.score,
+      depth: 0,
+      parent,
+    });
+  }
+  for k in 0..out.len() {
+    let mut d = 0i32;
+    let mut p = out[k].parent;
+    let mut guard = 0;
+    while p >= 0 && guard < out.len() {
+      d += 1;
+      p = out[p as usize].parent;
+      guard += 1;
+    }
+    out[k].depth = d;
+  }
+  Ok(out)
+}

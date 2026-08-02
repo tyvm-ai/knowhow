@@ -537,6 +537,44 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
+      name: "computerUseFindRegions",
+      description:
+        "Detect discrete UI ELEMENTS (buttons, cards, text blocks, icons) by COLOR SEGMENTATION and return them as a nested containment hierarchy in absolute desktop coordinates. Unlike computerUseFindBoxes (which needs full-width/height edges and only finds big panels), this finds small localized elements on an otherwise-empty background — e.g. a centered 'Start Game' button or an 'API Endpoints' card. mode 'colors' (default) labels contiguous same-color areas and nests them (card -> button inside -> text inside); mode 'foreground' finds everything that differs from the dominant background color; mode 'panels' models the UI the way a person eyes it — it finds large flat BACKGROUND surfaces (menu bar, toolbar, card fill) and groups the FOREGROUND content on each into element boxes, so a readout like SCORE/ROUND/HITS/MISSES or a row of buttons is captured (grouped by shared background + proximity) and nested inside its surface (tune clusterGap to merge/split nearby content). Great for mapping out a UI you can't otherwise select structurally.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          region: {
+            description:
+              "Optional search area: a named region string or {x,y,width,height} in desktop coords.",
+            type: "object",
+            properties: {
+              x: { type: "number" },
+              y: { type: "number" },
+              width: { type: "number" },
+              height: { type: "number" },
+            },
+          },
+          mode: {
+            type: "string",
+            enum: ["colors", "foreground", "panels"],
+            description:
+              "'colors' (default): segment & nest by same-color areas. 'foreground': everything differing from the background color. 'panels': background surfaces + grouped foreground content (score readouts, toolbars, button rows).",
+          },
+          minSize: { type: "number", description: "Minimum element width/height in desktop px (default 16)." },
+          colorBits: { type: "number", description: "Color granularity for 'colors'/'panels' mode, 1-8 (default 3)." },
+          clusterGap: { type: "number", description: "'panels' mode: px to merge nearby foreground content into one group (default 3; larger=coarser)." },
+          minPixels: { type: "number", description: "Minimum pixel count per element (default 40)." },
+          maxBoxes: { type: "number", description: "Cap on returned elements (default 300)." },
+          displayId: { type: "number", description: "Optional display id." },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "computerUseFindShape",
       description:
         "Find geometric shapes on screen by kind — 'line-h', 'line-v', 'rect', 'square', 'circle', or 'blob' — optionally constrained to a color, and return their centers/bounds in absolute desktop coordinates (ready for computerUseClickAt). More expressive than color-only matching: e.g. a horizontal line of a given length/color, a square button, or a circular target.",
@@ -594,6 +632,45 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
+      name: "computerUseDefineRegionShape",
+      description:
+        "Save a named NON-RECTANGULAR region so you can describe 'everywhere EXCEPT the toolbar', a circle in the center, a maze/L shape, or an arbitrary SVG-path area. The shape is a RegionShape object (in absolute desktop coords): {type:'rect'|'circle'|'ellipse'|'polygon'|'svgpath'|'union'|'subtract', ...}. Examples: circle {type:'circle',cx,cy,r}; board-minus-toolbar {type:'subtract',base:{type:'rect',...},holes:[{type:'rect',...}]}; maze {type:'union',shapes:[...]}; anything {type:'svgpath',d:'M .. L .. Z'}. Use computerUseRegionContains to test whether a detected click target actually falls inside (rejecting hits in subtracted holes). Persists to .knowhow/automations/regions.json; render it with the CLI 'knowhow computer render-regions <name>'.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          name: { type: "string", description: "Region name, e.g. 'boardMinusChrome'." },
+          shape: {
+            type: "object",
+            description:
+              "A RegionShape object (or JSON string). type is one of rect/circle/ellipse/polygon/svgpath/union/subtract with the matching fields.",
+          },
+        },
+        required: ["name", "shape"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseRegionContains",
+      description:
+        "Shape-aware hit test: is a desktop point (x,y) inside a named region? For flexible regions (circle/subtract/union/svgpath) this respects the true geometry — e.g. returns false for a point that landed on the browser toolbar of a 'board MINUS chrome' region even though it's within the bounding box. Use before clicking a detected target to make sure it's in the intended playable area.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          name: { type: "string", description: "Region name to test against." },
+          x: { type: "number" },
+          y: { type: "number" },
+        },
+        required: ["name", "x", "y"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "computerUseListRegions",
       description: "List all named regions in the registry.",
       parameters: noArgs,
@@ -619,7 +696,7 @@ export const computerToolDefinitions: Tool[] = [
     function: {
       name: "computerUseWriteAutomation",
       description:
-        "Author + persist an AUTOMATION as a readable .ts file. ALWAYS begin the file with a JSDoc header block documenting when to use it — order the tags @description, @window, @useWhen, @startState, @endState (put @window right after @description since the required window is the key safety detail). This header is the automation's discoverable 'skill card' that lets a future agent pick it without reading the code. Import `{ sdk }` from `@tyvm/knowhow-module-computer-use` for autocomplete; the runner strips that editor-only import and injects the live SDK. Other imports and require/process/fetch/eval remain forbidden. Use `await sdk.runEvery(callback, intervalMs, { requiredWindow })` (intervalMs is a delay in milliseconds, like setInterval; 0 = as fast as possible) to scope repeated work AND gate it on a focused window in one call — this is REQUIRED so focus loss (clicking away) auto-pauses the automation and a human can reclaim the mouse. Note every live run is hard-capped at 10 seconds.",
+        "Author + persist an AUTOMATION as a readable .ts file. ALWAYS begin the file with a JSDoc header block documenting when to use it — order the tags @description, @window, @useWhen, @startState, @endState (put @window right after @description since the required window is the key safety detail). This header is the automation's discoverable 'skill card' that lets a future agent pick it without reading the code. Import `{ sdk }` from `@tyvm/knowhow-module-computer-use` for autocomplete; the runner strips that editor-only import and injects the live SDK. Other imports and require/process/fetch/eval remain forbidden. If setup must activate an app, call `await sdk.focus(match)` before installing `requiredWindow` (it is suppressed in dry-run and while paused). Use `await sdk.runEvery(callback, intervalMs, { requiredWindow })` (intervalMs is a delay in milliseconds, like setInterval; 0 = as fast as possible) to scope repeated work AND gate it on a focused window in one call — this is REQUIRED so focus loss (clicking away) auto-pauses the automation and a human can reclaim the mouse. Note every live run is hard-capped at 10 seconds.",
       parameters: {
         type: "object",
         positional: true,

@@ -15,6 +15,8 @@ import {
   saveAutomation,
   validateScript,
 } from "./automation";
+import { listRegions, getRegion, getStoredRegion } from "./regions";
+import { storedBounds, isRegionShape, toShape } from "./regionShape";
 
 /**
  * Register `knowhow computer <verb>` CLI subcommands on the passed Program.
@@ -248,6 +250,200 @@ export function registerComputerCli(
       const svc = buildService();
       const w = await svc.getActiveWindow();
       console.log(w ? JSON.stringify(w) : "No active window.");
+    });
+
+  cmd
+    .command("read-text")
+    .description("Read text from the screen (or a named region) using Vision OCR. macOS only.")
+    .option("--region <name>", "Named region to restrict OCR to (e.g. profilePanel)")
+    .option("--display-id <id>", "Restrict OCR to one display id (from `computer displays`)", parseInt)
+    .option("--active-window", "Restrict OCR to the currently focused window")
+    .option("--min-confidence <n>", "Minimum confidence threshold 0-1 (default 0.3)", parseFloat)
+    .option("--json", "Output full JSON (text, confidence, bounds, center)")
+    .action(async (opts) => {
+      const svc = buildService();
+      const results = await svc.readText({
+        region: opts.region,
+        displayId: opts.displayId,
+        activeWindow: opts.activeWindow,
+        minConfidence: opts.minConfidence ?? 0.3,
+      });
+      if (opts.json) {
+        console.log(JSON.stringify(results, null, 2));
+        return;
+      }
+      if (!results.length) {
+        console.log("(no text recognized)");
+        return;
+      }
+      for (const r of results) {
+        const { x, y } = r.center;
+        console.log(
+          `[${Math.round(r.confidence * 100)}%] ${r.text}  @(${Math.round(x)},${Math.round(y)})`
+        );
+      }
+    });
+
+  // ── region visualization ───────────────────────────────────────────────
+  cmd
+    .command("regions")
+    .aliases(["list-regions"])
+    .description("List named regions saved in .knowhow/automations/regions.json.")
+    .option("--json", "Print the full region map as JSON")
+    .action(async (opts) => {
+      const all = listRegions();
+      const names = Object.keys(all);
+      if (opts.json) {
+        console.log(JSON.stringify(all, null, 2));
+        return;
+      }
+      if (!names.length) return console.log("No regions defined.");
+      for (const name of names) {
+        const r = all[name];
+        const b = storedBounds(r);
+        const kind = isRegionShape(r) ? ` [${r.type}]` : "";
+        console.log(
+          `- ${name}${kind}: x=${b.x} y=${b.y} ${b.width}x${b.height}`
+        );
+      }
+    });
+
+  cmd
+    .command("render-regions [names...]")
+    .description(
+      "Screenshot the screen with saved regions drawn as translucent yellow rectangles. " +
+        "Pass region name(s) to render only those; omit to render all. Writes a PNG (default regions.png)."
+    )
+    .option("--out <file>", "Output PNG file", "regions.png")
+    .option("--display <id>", "Display id")
+    .option("--scale <factor>", "Downscale factor (e.g. 0.5)")
+    .option("--grid", "Also overlay a labeled coordinate grid")
+    .option(
+      "--auto",
+      "Auto-detect UI boxes (findBoxes) and overlay them colored by nesting depth"
+    )
+    .option(
+      "--auto-mode <mode>",
+      "Auto-detect strategy: 'edges' (findBoxes, big panels) | 'segments' (per-color regions, finds buttons/cards & nests them) | 'panels' (background surfaces + grouped foreground content: score/toolbar/button clusters)",
+      "segments"
+    )
+    .option(
+      "--color-bits <n>",
+      "Color granularity for segments/panels mode (1-8, higher = finer)",
+      "3"
+    )
+    .option(
+      "--cluster-gap <n>",
+      "panels mode: px to merge nearby foreground content into one group (default 10)",
+    )
+    .option(
+      "--bg-area-frac <n>",
+      "panels mode: min fraction of frame a same-color area must cover to be a background surface (default 0.004)",
+    )
+    .option("--min-size <n>", "Min box size for --auto (px)", "24")
+    .option("--max-depth <n>", "Only draw --auto boxes up to this nesting depth")
+    .option("--edge-threshold <n>", "Edge gradient threshold for --auto")
+    .option(
+      "--min-edge-score <n>",
+      "Fraction of each border that must be edge pixels for --auto (0..1)"
+    )
+    .action(async (names: string[], opts) => {
+      const svc = buildService();
+      const all = listRegions();
+      const selectedNames =
+        names && names.length ? names : Object.keys(all);
+      if (!selectedNames.length && !opts.auto) {
+        console.log(
+          "No regions defined. Define one first (e.g. from an automation via sdk.defineRegion)."
+        );
+        return;
+      }
+      const regions: Array<{ name: string; region: any }> = [];
+      const shapes: Array<{ name: string; shape: any }> = [];
+      for (const name of selectedNames) {
+        const stored = getStoredRegion(name);
+        if (!stored) {
+          console.error(`⚠️  Unknown region: "${name}" (skipping)`);
+          continue;
+        }
+        if (isRegionShape(stored)) {
+          // Non-rect (circle/polygon/svgpath/union/subtract): draw as a shape
+          // so holes/curves render accurately, not just the bounding box.
+          shapes.push({ name, shape: stored });
+        } else {
+          regions.push({ name, region: stored });
+        }
+      }
+      if (!regions.length && !shapes.length && !opts.auto) {
+        console.error("None of the requested regions could be resolved.");
+        process.exitCode = 1;
+        return;
+      }
+      const shot: any = { regions, shapes };
+      if (opts.display !== undefined) shot.displayId = Number(opts.display);
+      if (opts.scale) shot.scale = Number(opts.scale);
+      if (opts.grid) shot.grid = true;
+      if (opts.auto) {
+        // Detect UI boxes and flatten the nested tree so every box (at every
+        // depth) is drawn. This is the "show me all the bounding boxes you see"
+        // view of the auto-detection.
+        const findOpts: any = {};
+        if (opts.display !== undefined) findOpts.displayId = Number(opts.display);
+        if (opts.minSize) findOpts.minSize = Number(opts.minSize);
+        if (opts.edgeThreshold)
+          findOpts.edgeThreshold = Number(opts.edgeThreshold);
+        if (opts.minEdgeScore)
+          findOpts.minEdgeScore = Number(opts.minEdgeScore);
+        const maxDepth =
+          opts.maxDepth !== undefined ? Number(opts.maxDepth) : Infinity;
+        const mode =
+          opts.autoMode === "edges"
+            ? "edges"
+            : opts.autoMode === "panels"
+            ? "panels"
+            : "segments";
+        let tree;
+        if (mode === "segments") {
+          // Color-segmentation: finds buttons/cards/text and nests same-color
+          // areas by containment (catches the "Start Game" button & the "API
+          // Endpoints" card that whole-frame edge detection misses).
+          findOpts.mode = "colors";
+          findOpts.colorBits = Number(opts.colorBits || 3);
+          tree = await svc.findRegions(findOpts);
+        } else if (mode === "panels") {
+          // Background surfaces + grouped foreground content: models the UI the
+          // way a person eyes it, so the score/rounds/hits readout, a toolbar,
+          // or a row of buttons are captured as grouped boxes over a shared bg.
+          findOpts.mode = "panels";
+          findOpts.colorBits = Number(opts.colorBits || 3);
+          if (opts.clusterGap !== undefined)
+            findOpts.clusterGap = Number(opts.clusterGap);
+          if (opts.bgAreaFrac !== undefined)
+            findOpts.bgAreaFrac = Number(opts.bgAreaFrac);
+          tree = await svc.findRegions(findOpts);
+        } else {
+          tree = await svc.findBoxes(findOpts);
+        }
+        const flat: Array<{ bounds: any; depth: number }> = [];
+        const walk = (nodes: any[]) => {
+          for (const n of nodes) {
+            if (n.depth <= maxDepth) flat.push({ bounds: n.bounds, depth: n.depth });
+            if (n.children?.length) walk(n.children);
+          }
+        };
+        walk(tree);
+        shot.boxes = flat;
+        console.log(`Auto-detected ${flat.length} box(es) [mode=${mode}].`);
+      }
+      const buf = await svc.screenshotAnnotated(shot);
+      fs.writeFileSync(opts.out, buf);
+      console.log(
+        `Rendered ${regions.length} rect region(s) + ${shapes.length} shape region(s)${
+          opts.auto ? ` + ${shot.boxes?.length ?? 0} auto-box(es)` : ""
+        } [${[...regions, ...shapes]
+          .map((r) => r.name)
+          .join(", ")}] -> ${opts.out} (${buf.length} bytes)`
+      );
     });
 
   cmd

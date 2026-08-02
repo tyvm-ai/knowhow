@@ -56,13 +56,20 @@ pub trait Backend: Send {
   }
 
   /// Press a chord: hold each key in order, then release in reverse.
+  /// Brief pacing is intentional: CoreGraphics posts asynchronously, and an
+  /// immediately-following text event can otherwise arrive while macOS still
+  /// considers a modifier held (for example Cmd+A followed by uppercase M can
+  /// be interpreted as Chrome's Cmd+Shift+M shortcut).
   fn hotkey(&self, keys: &[Key]) -> Result<()> {
     for k in keys {
       self.key(*k, true)?;
+      std::thread::sleep(std::time::Duration::from_millis(10));
     }
     for k in keys.iter().rev() {
       self.key(*k, false)?;
+      std::thread::sleep(std::time::Duration::from_millis(10));
     }
+    std::thread::sleep(std::time::Duration::from_millis(20));
     Ok(())
   }
 }

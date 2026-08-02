@@ -452,6 +452,324 @@ function maskByColor(frame: Frame, target: RGB, tol: number): Uint8Array {
   return mask;
 }
 
+// ── segment detection (foreground vs background) ─────────────────────────────
+
+export interface FindRegionsOptions {
+  /** Per-channel tolerance for "same as background" (default 18). */
+  bgTolerance?: number;
+  /** Min box width/height in image px (default 16). */
+  minSize?: number;
+  /** Max box width/height as a FRACTION of the frame (default 0.98). */
+  maxSizeFrac?: number;
+  /** Min pixel count for a component (default 40). */
+  minPixels?: number;
+  /** Cap on returned boxes (default 300). */
+  maxBoxes?: number;
+  /**
+   * Dilate the foreground mask by this many px before labeling so nearby
+   * strokes/glyphs merge into one element (e.g. the words of a button, the
+   * lines of a card). Default 3.
+   */
+  dilate?: number;
+  /**
+   * Segmentation strategy:
+   *  - "foreground" (default): one mask = everything that differs from the
+   *    dominant background color. Great for finding discrete elements on an
+   *    empty background (a button, a card).
+   *  - "colors": quantize every pixel's color into buckets and label connected
+   *    components PER color bucket. This finds NESTED boxes over more of the UI
+   *    — a differently-colored card, the button inside it, a text block inside
+   *    that — because each contiguous same-color area becomes its own box and
+   *    nestBoxes arranges them by containment. Use `colorBits` to control how
+   *    finely colors are distinguished.
+   */
+  mode?: "foreground" | "colors" | "panels";
+  /** Bits-per-channel when mode="colors"/"panels" (default 3 -> 8 levels/channel). */
+  colorBits?: number;
+  /**
+   * For mode="panels": px to dilate foreground content so nearby glyphs/icons
+   * merge into ONE element cluster (default 3). Larger -> coarser groupings
+   * (e.g. the whole score/rounds/hits readout becomes a single box); smaller ->
+   * finer (individual words/values split out).
+   */
+  clusterGap?: number;
+  /**
+   * For mode="panels": min fraction of the frame area a same-color region must
+   * cover to count as a "background surface" (default 0.004). Lower -> smaller
+   * surfaces (cards/pills) qualify as backgrounds their content nests inside.
+   */
+  bgAreaFrac?: number;
+}
+
+/** The dominant (most common, coarsely-binned) color in the frame. */
+function dominantColor(frame: Frame): RGB {
+  const { width: w, height: h } = frame;
+  const bins = new Map<number, number>();
+  const step = Math.max(1, Math.floor((w * h) / 200000)); // sample for speed
+  for (let i = 0; i < w * h; i += step) {
+    const p = px(frame, i % w, (i - (i % w)) / w);
+    const key =
+      ((p.r >> 4) << 8) | ((p.g >> 4) << 4) | (p.b >> 4); // 4-bit-per-channel bin
+    bins.set(key, (bins.get(key) || 0) + 1);
+  }
+  let bestKey = 0;
+  let bestN = -1;
+  for (const [k, n] of bins) if (n > bestN) ((bestN = n), (bestKey = k));
+  return {
+    r: ((bestKey >> 8) & 0xf) * 16 + 8,
+    g: ((bestKey >> 4) & 0xf) * 16 + 8,
+    b: (bestKey & 0xf) * 16 + 8,
+  };
+}
+
+/**
+ * Detect discrete UI ELEMENTS (buttons, cards, text blocks, icons) by
+ * segmenting the frame into connected components of "foreground" — pixels that
+ * differ from the dominant background color — and taking each component's
+ * bounding box.
+ *
+ * Unlike `findBoxes` (which needs full-width/height edge rows and so only finds
+ * large panels), this finds SMALL, LOCALIZED elements in the middle of an
+ * otherwise-empty background — exactly the "Start Game" button or the "API
+ * Endpoints" card that a whole-frame edge detector misses. Returns bounding
+ * boxes in IMAGE space (caller maps to desktop).
+ */
+export function findRegions(
+  frame: Frame,
+  opts: FindRegionsOptions = {}
+): BoxNode[] {
+  const { width: w, height: h } = frame;
+  const bgTol = opts.bgTolerance ?? 18;
+  const minSize = Math.max(2, Math.round(opts.minSize ?? 16));
+  const maxSizeFrac = opts.maxSizeFrac ?? 0.98;
+  const minPixels = Math.max(1, Math.round(opts.minPixels ?? 40));
+  const maxBoxes = Math.max(1, Math.round(opts.maxBoxes ?? 300));
+  const dilate = Math.max(0, Math.round(opts.dilate ?? 3));
+
+  const mode = opts.mode ?? "foreground";
+  let comps: Component[];
+  if (mode === "panels") {
+    comps = panelSegments(frame, {
+      bits: Math.max(1, Math.min(8, Math.round(opts.colorBits ?? 3))),
+      minPixels,
+      clusterGap: Math.max(0, Math.round(opts.clusterGap ?? 3)),
+      bgAreaFrac: opts.bgAreaFrac ?? 0.004,
+    });
+  } else if (mode === "colors") {
+    comps = colorSegments(
+      frame,
+      Math.max(1, Math.min(8, Math.round(opts.colorBits ?? 3))),
+      minPixels
+    );
+  } else {
+    const bg = dominantColor(frame);
+    // Foreground = NOT background color.
+    let mask: Uint8Array = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (!colorMatch(px(frame, x, y), bg, bgTol)) mask[y * w + x] = 1;
+      }
+    }
+    if (dilate > 0) mask = dilateMask(mask, w, h, dilate);
+    comps = connectedComponents(mask, w, h, minPixels);
+  }
+  const maxW = w * maxSizeFrac;
+  const maxH = h * maxSizeFrac;
+  const boxes: RawBox[] = [];
+  for (const c of comps) {
+    const bw = c.maxX - c.minX;
+    const bh = c.maxY - c.minY;
+    if (bw < minSize || bh < minSize) continue;
+    if (bw > maxW || bh > maxH) continue;
+    // fill ratio ~ how "solid/rectangular" the component is (0..1)
+    const fill = c.count / Math.max(1, bw * bh);
+    boxes.push({ x0: c.minX, y0: c.minY, x1: c.maxX, y1: c.maxY, edgeScore: fill });
+  }
+  boxes.sort((a, b) => (b.x1 - b.x0) * (b.y1 - b.y0) - (a.x1 - a.x0) * (a.y1 - a.y0));
+  return nestBoxes(boxes.slice(0, maxBoxes));
+}
+
+/** Grow a boolean mask by `r` px (square structuring element), separable. */
+function dilateMask(mask: Uint8Array, w: number, h: number, r: number): Uint8Array {
+  // Horizontal pass
+  const tmp = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let on = false;
+      for (let dx = -r; dx <= r && !on; dx++) {
+        const xx = x + dx;
+        if (xx >= 0 && xx < w && mask[y * w + xx]) on = true;
+      }
+      if (on) tmp[y * w + x] = 1;
+    }
+  }
+  // Vertical pass
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let on = false;
+      for (let dy = -r; dy <= r && !on; dy++) {
+        const yy = y + dy;
+        if (yy >= 0 && yy < h && tmp[yy * w + x]) on = true;
+      }
+      if (on) out[y * w + x] = 1;
+    }
+  }
+  return out;
+}
+
+/**
+ * Label connected components where adjacency requires the SAME quantized color.
+ * Each contiguous same-color area (a card fill, a button fill, a text glyph
+ * cluster) becomes its own component; nestBoxes then arranges them by
+ * containment so you get boxes-inside-boxes over the UI. `bits` per channel
+ * controls color granularity (3 -> 8 levels/channel = 512 buckets).
+ */
+function colorSegments(frame: Frame, bits: number, minPixels: number): Component[] {
+  const { width: w, height: h } = frame;
+  const shift = 8 - bits;
+  const key = (x: number, y: number) => {
+    const p = px(frame, x, y);
+    return ((p.r >> shift) << (bits * 2)) | ((p.g >> shift) << bits) | (p.b >> shift);
+  };
+  const seen = new Uint8Array(w * h);
+  const comps: Component[] = [];
+  const stack: number[] = [];
+  for (let start = 0; start < w * h; start++) {
+    if (seen[start]) continue;
+    const sx = start % w;
+    const sy = (start - sx) / w;
+    const k = key(sx, sy);
+    let minX = w,
+      minY = h,
+      maxX = -1,
+      maxY = -1,
+      count = 0,
+      edgeCount = 0;
+    stack.length = 0;
+    stack.push(start);
+    seen[start] = 1;
+    while (stack.length) {
+      const idx = stack.pop()!;
+      const x = idx % w;
+      const y = (idx - x) / w;
+      count++;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+      let isEdge = false;
+      const neigh = [
+        [x - 1, y],
+        [x + 1, y],
+        [x, y - 1],
+        [x, y + 1],
+      ];
+      for (const [nx, ny] of neigh) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) {
+          isEdge = true;
+          continue;
+        }
+        const nidx = ny * w + nx;
+        if (seen[nidx]) continue;
+        if (key(nx, ny) === k) {
+          seen[nidx] = 1;
+          stack.push(nidx);
+        } else {
+          isEdge = true;
+        }
+      }
+      if (isEdge) edgeCount++;
+    }
+    if (count >= minPixels) comps.push({ minX, minY, maxX, maxY, count, edgeCount });
+  }
+  return comps;
+}
+
+/**
+ * "Panels" segmentation — models the UI the way a person visually parses it:
+ *   1. Quantize colors and label same-color connected components.
+ *   2. Treat the LARGE flat components as background SURFACES (the macOS menu
+ *      bar, a card fill, a toolbar). Emit each surface as a box.
+ *   3. Everything that is NOT one of those surfaces is FOREGROUND content
+ *      (text, icons, glyphs). Dilate it by `clusterGap` so content that is
+ *      close together on the same surface merges into one cluster, then label
+ *      those clusters and emit each as a box.
+ *
+ * The result: the score/rounds/hits readout, or a row of extension buttons,
+ * become ONE grouped box (shared background + proximity), and nestBoxes nests
+ * those clusters inside the surface they sit on. Returns Components (bounding
+ * boxes) that findRegions turns into a nested box tree.
+ */
+function panelSegments(
+  frame: Frame,
+  opts: { bits: number; minPixels: number; clusterGap: number; bgAreaFrac: number }
+): Component[] {
+  const { width: w, height: h } = frame;
+  const { bits, minPixels, clusterGap, bgAreaFrac } = opts;
+
+  // 1. Same-color components (reuse the color labeller).
+  const colorComps = colorSegments(frame, bits, Math.max(1, minPixels));
+
+  // 2. Surfaces = large, reasonably solid same-color areas.
+  const frameArea = w * h;
+  const minSurfaceArea = Math.max(minPixels * 4, Math.round(frameArea * bgAreaFrac));
+  const surfaces: Component[] = [];
+  // A mask of pixels that belong to a background surface, so we can subtract
+  // them to get the foreground.
+  const isSurface = new Uint8Array(w * h);
+  for (const c of colorComps) {
+    const bw = c.maxX - c.minX + 1;
+    const bh = c.maxY - c.minY + 1;
+    const area = bw * bh;
+    // Surface heuristics: covers enough of the frame AND fills most of its own
+    // bounding box (a flat rectangle-ish region, not a sprawling glyph blob).
+    const fill = c.count / Math.max(1, area);
+    if (c.count >= minSurfaceArea && fill >= 0.5) {
+      surfaces.push(c);
+      // Mark this surface's exact pixels (re-derive via the same color key).
+      markComponentPixels(frame, bits, c, isSurface, w);
+    }
+  }
+
+  // 3. Foreground = pixels not on any surface. Dilate to merge nearby content.
+  const fgBase = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) fgBase[i] = isSurface[i] ? 0 : 1;
+  const fg = clusterGap > 0 ? dilateMask(fgBase, w, h, clusterGap) : fgBase;
+  const clusters = connectedComponents(fg, w, h, Math.max(1, minPixels));
+
+  // Emit surfaces first (they become the parents), then content clusters.
+  return [...surfaces, ...clusters];
+}
+
+/**
+ * Set out[i]=1 for every pixel inside component `c`'s bbox that quantizes to
+ * the component's color key (flood not needed — same-color test is sufficient
+ * for the surface subtraction and much cheaper).
+ */
+function markComponentPixels(
+  frame: Frame,
+  bits: number,
+  c: Component,
+  out: Uint8Array,
+  w: number
+) {
+  const shift = 8 - bits;
+  const keyAt = (x: number, y: number) => {
+    const p = px(frame, x, y);
+    return ((p.r >> shift) << (bits * 2)) | ((p.g >> shift) << bits) | (p.b >> shift);
+  };
+  // Sample the key from the component's centre-ish pixel.
+  const cx = Math.min(c.maxX, Math.max(c.minX, Math.round((c.minX + c.maxX) / 2)));
+  const cy = Math.min(c.maxY, Math.max(c.minY, Math.round((c.minY + c.maxY) / 2)));
+  const k = keyAt(cx, cy);
+  for (let y = c.minY; y <= c.maxY; y++) {
+    for (let x = c.minX; x <= c.maxX; x++) {
+      if (keyAt(x, y) === k) out[y * w + x] = 1;
+    }
+  }
+}
+
 // ── color blobs ──────────────────────────────────────────────────────────────
 
 export interface FindColorBlobsOptions {

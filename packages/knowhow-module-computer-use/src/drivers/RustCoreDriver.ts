@@ -161,6 +161,10 @@ export class RustCoreDriver implements ComputerDriver {
   }
 
   async pixelColor(p: Point): Promise<string> {
+    // Delegate to the native core. Note: on Retina/HiDPI displays the native
+    // pixelColor now scales the logical point by the display pixel ratio before
+    // indexing the raw screenshot buffer (fixed in Rust). The screencapture is
+    // done fresh per call — fast enough for occasional sampling.
     return this.ensureCore().pixelColor(p.x, p.y);
   }
 
@@ -204,8 +208,22 @@ export class RustCoreDriver implements ComputerDriver {
     this.ensureCore().scroll(dx, dy);
   }
 
-  async typeText(text: string): Promise<void> {
-    this.ensureCore().typeText(text);
+  async typeText(text: string, opts?: { delay?: number }): Promise<void> {
+    const delay = opts?.delay ?? 0;
+    if (!Number.isFinite(delay) || delay < 0) {
+      throw new Error("typeText delay must be a non-negative finite number");
+    }
+    const core = this.ensureCore();
+    if (delay === 0) {
+      core.typeText(text);
+      return;
+    }
+    const characters = Array.from(text);
+    for (let index = 0; index < characters.length; index++) {
+      core.typeText(characters[index]);
+      if (index + 1 < characters.length)
+        await new Promise(resolve => setTimeout(resolve, delay));
+    }
   }
 
   async pressKey(key: string): Promise<void> {

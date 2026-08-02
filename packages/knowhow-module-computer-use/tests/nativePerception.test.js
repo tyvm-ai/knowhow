@@ -9,7 +9,11 @@ const {
   nativeFindColorRegions,
   nativeFindBoxes,
 } = require("../ts_build/nativePerception");
-const { findColorBlobs } = require("../ts_build/perception");
+const {
+  hasNativeRegions,
+  nativeFindRegions,
+} = require("../ts_build/nativePerception");
+const { findColorBlobs, findRegions } = require("../ts_build/perception");
 
 function blankFrame(w, h, bg = [255, 255, 255]) {
   const data = Buffer.alloc(w * h * 4);
@@ -88,4 +92,44 @@ describeNative("native perception (Rust core)", () => {
     expect(nested).toBeDefined();
     expect(nested.depth).toBeGreaterThanOrEqual(1);
   });
+
+  // Native findRegions (segmentation) must agree with the pure-TS reference in
+  // ALL THREE modes so the fast native path is a drop-in for the fallback.
+  function regionScene() {
+    const f = blankFrame(200, 150, [200, 200, 200]);
+    fillRect(f, 30, 30, 30, 20, [220, 30, 30]); // red button
+    fillRect(f, 100, 60, 70, 50, [40, 60, 200]); // blue card
+    fillRect(f, 115, 75, 40, 15, [240, 240, 240]); // white text inside card
+    return f;
+  }
+  function flatten(tree) {
+    const out = [];
+    const walk = (n) =>
+      (out.push({
+        x: n.bounds.x,
+        y: n.bounds.y,
+        w: n.bounds.width,
+        h: n.bounds.height,
+        depth: n.depth,
+      }),
+      n.children.forEach(walk));
+    tree.forEach(walk);
+    return out.sort((a, b) => a.x - b.x || a.y - b.y);
+  }
+  function nativeFlat(list) {
+    return list
+      .map((b) => ({ x: b.x, y: b.y, w: b.width, h: b.height, depth: b.depth }))
+      .sort((a, b) => a.x - b.x || a.y - b.y);
+  }
+
+  for (const mode of ["foreground", "colors", "panels"]) {
+    test(`native findRegions (${mode}) agrees with TS reference`, () => {
+      if (!hasNativeRegions()) return;
+      const f = regionScene();
+      const native = nativeFindRegions(f.data, f.width, f.height, { mode });
+      const ts = findRegions(f, { mode });
+      expect(native).not.toBeNull();
+      expect(nativeFlat(native)).toEqual(flatten(ts));
+    });
+  }
 });

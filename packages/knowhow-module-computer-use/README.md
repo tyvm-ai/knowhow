@@ -69,6 +69,42 @@ Agents get the same primitives as tools: `smoothScroll`, `screenshotRegion`
 (with `grid`), and `runComputerMacro(steps)` to run a whole sequence in one tool
 call.
 
+### OCR on multiple displays
+
+`knowhow computer read-text` captures every display independently and OCRs it in
+overlapping tiles. Results are deduplicated and returned in absolute virtual-
+desktop coordinates, including displays whose origin is not `(0, 0)`. Use
+`--display-id <id>` to limit work to one display, `--active-window` to OCR only
+the focused window, or `--region <name|x,y,w,h>` for the fastest/least noisy
+result. The automation equivalent is
+`sdk.readText({ displayId, activeWindow, region })`.
+
+### Named-region coordinate scope
+
+Named regions currently retain their backward-compatible meaning: persisted
+absolute virtual-desktop coordinates. Consequently they are appropriate for a
+fixed display layout, but are not safe anchors for a window that may move or
+resize. Window-relative regions should be persisted as a versioned envelope,
+rather than silently changing the meaning of existing `regions.json` entries:
+
+```json
+{
+  "region": { "x": 0.1, "y": 0.2, "width": 0.8, "height": 0.7 },
+  "anchor": {
+    "coordinateSpace": "window-normalized",
+    "window": { "app": "Google Chrome", "titleIncludes": "Form Master" },
+    "referenceSize": { "width": 1600, "height": 1000 }
+  }
+}
+```
+
+Resolving that form must be asynchronous: validate the currently focused window
+against `anchor.window`, read its current bounds, then scale and translate the
+relative region. A mismatch must fail closed instead of falling back to stale
+absolute coordinates. This also means the change belongs at the shared region
+resolver boundary (OCR, detectors, shape hit-testing, and automations), not only
+in the region-definition tool.
+
 ### Computer-use agent config
 
 ```jsonc

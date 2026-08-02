@@ -19,6 +19,7 @@ function makeFakeService(overrides = {}) {
     moves: [],
     typed: [],
     keys: [],
+    focused: [],
     activeTitle: "Mouse Precision — Chrome",
     colorResults: [
       [{ color: "ff4444", center: { x: 100, y: 200 }, bounds: {}, sampledPixels: 50 }],
@@ -58,6 +59,10 @@ function makeFakeService(overrides = {}) {
     },
     async pressKey(k) {
       state.keys.push(k);
+    },
+    async focusWindow(match) {
+      state.focused.push(match);
+      return true;
     },
   };
   return Object.assign(svc, overrides);
@@ -137,6 +142,23 @@ describe("AutomationRunner", () => {
     expect(svc._state.clicks.length).toBe(0);
     expect(result.actionCount).toBe(2);
     expect(result.actions.every((a) => a.suppressed)).toBe(true);
+  });
+
+  test("focuses before a gate live, but suppresses focus in dry-run", async () => {
+    const script = `await sdk.focus("Google Chrome");`;
+    const live = makeFakeService();
+    const liveResult = await new AutomationRunner(
+      { name: "__test_focus", script }, live, { maxDurationMs: 5000 }
+    ).run();
+    expect(live._state.focused).toEqual(["Google Chrome"]);
+    expect(liveResult.actions[0]).toMatchObject({ kind: "focus", suppressed: false });
+
+    const dry = makeFakeService();
+    const dryResult = await new AutomationRunner(
+      { name: "__test_focus_dry", script }, dry, { maxDurationMs: 5000, dryRun: true }
+    ).run();
+    expect(dry._state.focused).toEqual([]);
+    expect(dryResult.actions[0]).toMatchObject({ kind: "focus", suppressed: true });
   });
 
   test("auto-pauses (suppresses actions) when the required window loses focus", async () => {

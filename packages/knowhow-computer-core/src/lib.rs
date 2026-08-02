@@ -28,7 +28,7 @@ pub use types::{
 
 // Re-export native perception primitives (free functions) + their result types.
 pub use perception::{
-  find_boxes_raw, find_color_regions_raw, BoxNative, ColorRegionNative,
+  find_boxes_raw, find_color_regions_raw, find_regions_raw, BoxNative, ColorRegionNative,
 };
 
 /// The main entry point handed to JS. Wraps the platform backend chosen at

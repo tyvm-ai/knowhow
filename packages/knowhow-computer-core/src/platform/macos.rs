@@ -51,6 +51,9 @@ impl MacBackend {
   }
 
   fn source() -> Result<CGEventSource> {
+    // HIDSystemState is required for Chrome's native select/date controls.
+    // Modifier safety is provided by hotkey(): one shared source, reverse-order
+    // releases, and a post-release delivery delay before the call returns.
     CGEventSource::new(CGEventSourceStateID::HIDSystemState)
       .map_err(|_| Error::new(Status::GenericFailure, "Failed to create CGEventSource"))
   }
@@ -64,6 +67,12 @@ impl MacBackend {
   }
 
   fn post(evt: CGEvent) {
+    evt.post(CGEventTapLocation::HID);
+  }
+
+  fn post_keyboard(evt: CGEvent) {
+    // Chrome's native controls ignore some Session-tap events. HID delivery is
+    // required for select navigation and segmented date inputs.
     evt.post(CGEventTapLocation::HID);
   }
 
@@ -251,8 +260,15 @@ impl Backend for MacBackend {
   fn pixel_color(&self, p: Point) -> Result<String> {
     let region = ScreenshotOptions::default();
     let (w, _h, data) = self.screenshot(&region)?;
-    let x = p.x.max(0.0) as usize;
-    let y = p.y.max(0.0) as usize;
+    // `p` is in LOGICAL (point) coordinates. The screenshot buffer is at physical
+    // pixel resolution (Retina displays capture at 2× or higher). Multiply by the
+    // display's pixel ratio so we index the correct physical pixel.
+    let d = CGDisplay::main();
+    let logical_w = d.bounds().size.width.max(1.0);
+    let physical_w = d.pixels_wide() as f64;
+    let scale = (physical_w / logical_w).max(1.0);
+    let x = (p.x.max(0.0) * scale).round() as usize;
+    let y = (p.y.max(0.0) * scale).round() as usize;
     let idx = (y * w as usize + x) * 4;
     if idx + 2 >= data.len() {
       return Err(Error::new(Status::InvalidArg, "pixel out of bounds"));
@@ -300,22 +316,22 @@ impl Backend for MacBackend {
 
   fn type_text(&self, text: &str) -> Result<()> {
     // Use unicode string injection so we don't need a per-character keycode map.
-    let chars: Vec<u16> = text.encode_utf16().collect();
     for ch in text.chars() {
       let source = Self::source()?;
       let down = CGEvent::new_keyboard_event(source, 0, true)
         .map_err(|_| Error::new(Status::GenericFailure, "keydown event"))?;
       let buf: Vec<u16> = ch.to_string().encode_utf16().collect();
       down.set_string_from_utf16_unchecked(&buf);
-      Self::post(down);
+      Self::post_keyboard(down);
 
       let source_up = Self::source()?;
       let up = CGEvent::new_keyboard_event(source_up, 0, false)
         .map_err(|_| Error::new(Status::GenericFailure, "keyup event"))?;
       up.set_string_from_utf16_unchecked(&buf);
-      Self::post(up);
+      Self::post_keyboard(up);
+      std::thread::sleep(std::time::Duration::from_millis(2));
     }
-    let _ = chars;
+    std::thread::sleep(std::time::Duration::from_millis(10));
     Ok(())
   }
 
@@ -326,7 +342,31 @@ impl Backend for MacBackend {
     let source = Self::source()?;
     let evt = CGEvent::new_keyboard_event(source, code, down)
       .map_err(|_| Error::new(Status::GenericFailure, "keyboard event"))?;
-    Self::post(evt);
+    Self::post_keyboard(evt);
+    Ok(())
+  }
+
+  fn hotkey(&self, keys: &[Key]) -> Result<()> {
+    // All events in a chord must share one event source so its modifier state
+    // is visible to the non-modifier key without leaking into later text.
+    let source = Self::source()?;
+    for key in keys {
+      let code = keycode(*key).ok_or_else(|| {
+        Error::new(Status::InvalidArg, format!("Unsupported key on macOS: {key:?}"))
+      })?;
+      let evt = CGEvent::new_keyboard_event(source.clone(), code, true)
+        .map_err(|_| Error::new(Status::GenericFailure, "hotkey keydown event"))?;
+      Self::post_keyboard(evt);
+      std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    for key in keys.iter().rev() {
+      let code = keycode(*key).expect("key was validated during keydown");
+      let evt = CGEvent::new_keyboard_event(source.clone(), code, false)
+        .map_err(|_| Error::new(Status::GenericFailure, "hotkey keyup event"))?;
+      Self::post_keyboard(evt);
+      std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(20));
     Ok(())
   }
 }

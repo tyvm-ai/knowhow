@@ -1,6 +1,14 @@
 import * as fs from "fs";
 import * as path from "path";
 import { Region } from "@tyvm/knowhow";
+import {
+  StoredRegion,
+  RegionShape,
+  storedBounds,
+  isRegionShape,
+  pointInShape,
+  toShape,
+} from "./regionShape";
 
 /**
  * Named-region registry. An agent (or an automation script) can define a region
@@ -13,7 +21,7 @@ import { Region } from "@tyvm/knowhow";
 const STORE_DIR = path.join(".knowhow", "automations");
 const STORE_FILE = path.join(STORE_DIR, "regions.json");
 
-export type NamedRegions = Record<string, Region>;
+export type NamedRegions = Record<string, StoredRegion>;
 
 let cache: NamedRegions | null = null;
 
@@ -41,7 +49,10 @@ function persist(): void {
   }
 }
 
-export function defineRegion(name: string, region: Region): Region {
+export function defineRegion(
+  name: string,
+  region: StoredRegion
+): StoredRegion {
   const store = load();
   store[name] = region;
   persist();
@@ -49,7 +60,8 @@ export function defineRegion(name: string, region: Region): Region {
 }
 
 export function getRegion(name: string): Region | undefined {
-  return load()[name];
+  const v = load()[name];
+  return v === undefined ? undefined : storedBounds(v);
 }
 
 export function listRegions(): NamedRegions {
@@ -64,12 +76,45 @@ export function clearRegion(name: string): boolean {
   return true;
 }
 
+/** Get the raw stored region (rect OR shape). */
+export function getStoredRegion(name: string): StoredRegion | undefined {
+  return load()[name];
+}
+
+/** Get a stored region normalized to a RegionShape (rect -> RectShape). */
+export function getRegionShape(name: string): RegionShape | undefined {
+  const v = load()[name];
+  return v === undefined ? undefined : toShape(v);
+}
+
+/** Is a stored region shape-based (vs a plain rect)? */
+export function isShapeRegion(name: string): boolean {
+  return isRegionShape(load()[name]);
+}
+
 /**
- * Resolve a region argument that may be either a literal {x,y,width,height} or
- * the string name of a stored region. Throws if a name can't be resolved.
+ * Shape-aware hit test: is a desktop point inside the (possibly non-rect)
+ * region? Use this to reject click targets that land in a subtracted hole
+ * (e.g. a hit that fell on the browser toolbar of a "board MINUS chrome"
+ * region) even though it's within the bounding box.
+ */
+export function regionContainsPoint(
+  name: string,
+  p: { x: number; y: number }
+): boolean {
+  const shape = getRegionShape(name);
+  return shape ? pointInShape(shape, p) : false;
+}
+
+/**
+ * Resolve a region argument to its bounding Region. Accepts a literal
+ * {x,y,width,height}, a RegionShape object, or the string name of a stored
+ * region (rect or shape). Throws if a name can't be resolved. The returned
+ * Region is the axis-aligned bounding box (used for crop/screenshot); for
+ * shape-accurate hit-testing use `regionContainsPoint`/`getRegionShape`.
  */
 export function resolveRegion(
-  region: Region | string | undefined
+  region: StoredRegion | string | undefined
 ): Region | undefined {
   if (region === undefined) return undefined;
   if (typeof region === "string") {
@@ -77,5 +122,5 @@ export function resolveRegion(
     if (!found) throw new Error(`Unknown region name: "${region}"`);
     return found;
   }
-  return region;
+  return storedBounds(region);
 }

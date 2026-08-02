@@ -5,6 +5,7 @@ const {
   connectedComponents,
   edgeMap,
   parseHex,
+  findRegions,
 } = require("../ts_build/perception");
 
 /** Build a blank RGBA frame filled with a background color. */
@@ -111,5 +112,80 @@ describe("perception primitives", () => {
     // Child should be within the parent bounds.
     expect(child.bounds.x).toBeGreaterThanOrEqual(withChildren.bounds.x - 5);
     expect(child.depth).toBe(1);
+  });
+});
+
+describe("findRegions (segment / element detection)", () => {
+  test("foreground mode finds a small button on an empty background", () => {
+    // A large empty background with one small distinct-colored button that does
+    // NOT span a full-width edge row (which findBoxes would miss).
+    const f = blankFrame(400, 400, [100, 130, 40]);
+    fillRect(f, 170, 300, 60, 24, [120, 200, 120]); // "Start Game" button
+    const roots = findRegions(f, { mode: "foreground", minSize: 15, minPixels: 100 });
+    // Should find the button as one of the boxes.
+    const flat = [];
+    const walk = (ns) => ns.forEach((n) => (flat.push(n), walk(n.children)));
+    walk(roots);
+    const btn = flat.find(
+      (b) =>
+        Math.abs(b.bounds.x - 170) <= 6 &&
+        Math.abs(b.bounds.y - 300) <= 6 &&
+        Math.abs(b.bounds.width - 60) <= 8
+    );
+    expect(btn).toBeDefined();
+  });
+
+  test("panels mode groups foreground content over a shared background surface", () => {
+    // A page background, with a distinct horizontal "toolbar" surface strip
+    // near the top that carries several small text-like content blobs (a score
+    // readout). Panels mode should treat the strip as a background SURFACE and
+    // group the content blobs sitting on it, nesting them inside the surface.
+    const f = blankFrame(400, 400, [30, 30, 30]); // page bg
+    // Toolbar surface: a wide flat strip of a distinct flat color (kept below
+    // full frame width so it isn't filtered by the maxSizeFrac guard).
+    fillRect(f, 10, 10, 360, 60, [70, 70, 90]);
+    // Content blobs on the strip (SCORE / ROUND / HITS readout), same-ish text
+    // color, spaced apart so they cluster as separate small elements.
+    fillRect(f, 20, 28, 24, 20, [230, 230, 230]);
+    fillRect(f, 80, 28, 24, 20, [230, 230, 230]);
+    fillRect(f, 140, 28, 24, 20, [230, 230, 230]);
+    const roots = findRegions(f, {
+      mode: "panels",
+      colorBits: 3,
+      minSize: 12,
+      minPixels: 40,
+      clusterGap: 3,
+      bgAreaFrac: 0.01,
+    });
+    const flat = [];
+    const walk = (ns) => ns.forEach((n) => (flat.push(n), walk(n.children)));
+    walk(roots);
+    // The toolbar surface (~400x60) should be detected as a box.
+    const surface = flat.find(
+      (b) => b.bounds.width >= 300 && b.bounds.width <= 380 && Math.abs(b.bounds.height - 60) <= 12
+    );
+    expect(surface).toBeDefined();
+    // And at least one small content element sitting on it should be captured.
+    const content = flat.find(
+      (b) => b.bounds.width < 120 && b.bounds.height < 40 && b.bounds.y >= 10 && b.bounds.y <= 70
+    );
+    expect(content).toBeDefined();
+  });
+
+  test("colors mode nests a differently-colored inner element by containment", () => {
+    const f = blankFrame(400, 400, [100, 130, 40]);
+    // A card (one color) with an inner button (another color) inside it.
+    fillRect(f, 100, 100, 200, 160, [60, 60, 60]); // card fill
+    fillRect(f, 150, 200, 100, 40, [20, 200, 200]); // inner button (distinct)
+    const roots = findRegions(f, { mode: "colors", colorBits: 3, minSize: 20, minPixels: 100 });
+    const flat = [];
+    const walk = (ns) => ns.forEach((n) => (flat.push(n), walk(n.children)));
+    walk(roots);
+    // Card box (~200x160) should be found, and it should contain a nested child.
+    const card = flat.find(
+      (b) => Math.abs(b.bounds.width - 200) <= 12 && Math.abs(b.bounds.height - 160) <= 12
+    );
+    expect(card).toBeDefined();
+    expect(card.children.length).toBeGreaterThanOrEqual(1);
   });
 });

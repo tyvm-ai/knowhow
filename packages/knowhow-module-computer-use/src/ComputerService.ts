@@ -1,4 +1,4 @@
-import { execFile } from "child_process";
+import { execFile, execFile as execFileRaw } from "child_process";
 import { promisify } from "util";
 import {
   ComputerDriver,
@@ -20,15 +20,20 @@ import {
   nestBoxes as _nestBoxes,
   findShapes as tsFindShapes,
   findColorBlobs as tsFindColorBlobs,
+  findRegions as tsFindRegions,
   FindBoxesOptions,
   FindShapesOptions,
   FindColorBlobsOptions,
+  FindRegionsOptions,
 } from "./perception";
 import {
   nativeFindColorRegions,
   nativeFindBoxes,
+  nativeFindRegions,
 } from "./nativePerception";
+import { RegionShape, shapeToSvg, shapeBounds } from "./regionShape";
 
+import * as path from "path";
 const execFileAsync = promisify(execFile);
 
 export interface ComputerServiceOptions {
@@ -95,6 +100,32 @@ export interface ClickColorSequenceResult {
   averageMs: number | null;
   timedOut: boolean;
   targets: Array<ColorRegion & { elapsedMs: number }>;
+}
+
+/** A single text region recognized by OCR. */
+export interface OcrResult {
+  /** The recognized text string. */
+  text: string;
+  /** Recognition confidence 0–1. */
+  confidence: number;
+  /**
+   * Bounding box in ABSOLUTE DESKTOP coordinates (already converted from
+   * Vision's normalized bottom-left origin to desktop top-left origin).
+   */
+  bounds: Region;
+  /** Center of the bounding box in desktop coords (ready for clickAt). */
+  center: { x: number; y: number };
+}
+
+export interface ReadTextOptions {
+  /** Restrict OCR to a region of the desktop (crops before recognition). */
+  region?: Region | string;
+  /** Restrict OCR to one display. Defaults to every connected display. */
+  displayId?: number;
+  /** Restrict OCR to the currently focused window's bounds. */
+  activeWindow?: boolean;
+  /** Minimum confidence threshold (0–1, default 0.3). */
+  minConfidence?: number;
 }
 
 /**
@@ -538,6 +569,84 @@ export class ComputerService implements ComputerUseService {
   }
 
   /**
+   * Detect discrete UI elements/regions by color segmentation (buttons, cards,
+   * text blocks) as a NESTED box tree in ABSOLUTE DESKTOP coordinates. Unlike
+   * findBoxes (whole-frame edges -> big panels only), this finds small,
+   * localized elements — the "Start Game" button, the "API Endpoints" card —
+   * and with mode:"colors" nests same-color areas by containment.
+   */
+  async findRegions(
+    opts: FindRegionsOptions & { displayId?: number; region?: Region } = {}
+  ): Promise<DesktopBox[]> {
+    const { raw, desktop, scaleX, scaleY } = await this.grabRawFrame(opts.displayId);
+    let frame: Frame = { width: raw.width, height: raw.height, data: raw.data as Buffer };
+    let offsetX = 0;
+    let offsetY = 0;
+    if (opts.region) {
+      const cropped = this.cropFrame(raw, opts.region, desktop, scaleX, scaleY);
+      frame = cropped.frame;
+      offsetX = cropped.offsetX;
+      offsetY = cropped.offsetY;
+    }
+    const mapBounds = (b: Region) =>
+      this.imgRegionToDesktop(b, desktop, scaleX, scaleY, offsetX, offsetY);
+    // Prefer the native (Rust) segmentation detector; it returns a flattened
+    // box list (parent index + depth) that we rebuild into a tree — identical
+    // shape to findBoxes native path. Falls back to pure-TS below.
+    const nativeRegionBoxes = nativeFindRegions(
+      frame.data as Buffer,
+      frame.width,
+      frame.height,
+      {
+        mode: opts.mode,
+        bgTolerance: opts.bgTolerance,
+        minSize: opts.minSize,
+        maxSizeFrac: opts.maxSizeFrac,
+        minPixels: opts.minPixels,
+        maxBoxes: opts.maxBoxes,
+        dilate: opts.dilate,
+        colorBits: opts.colorBits,
+        clusterGap: opts.clusterGap,
+        bgAreaFrac: opts.bgAreaFrac,
+      }
+    );
+    if (nativeRegionBoxes) {
+      const nodes: DesktopBox[] = nativeRegionBoxes.map((b) => {
+        const bounds = mapBounds({ x: b.x, y: b.y, width: b.width, height: b.height });
+        return {
+          bounds,
+          center: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 },
+          area: bounds.width * bounds.height,
+          edgeScore: Number(b.edgeScore.toFixed(4)),
+          depth: b.depth,
+          children: [],
+        };
+      });
+      const roots: DesktopBox[] = [];
+      nativeRegionBoxes.forEach((b, i) => {
+        if (b.parent >= 0 && nativeRegionBoxes[b.parent])
+          nodes[b.parent].children.push(nodes[i]);
+        else roots.push(nodes[i]);
+      });
+      return roots;
+    }
+
+    const tree = tsFindRegions(frame, opts);
+    const remap = (n: BoxNode): DesktopBox => {
+      const bounds = mapBounds(n.bounds);
+      return {
+        bounds,
+        center: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 },
+        area: bounds.width * bounds.height,
+        edgeScore: Number(n.edgeScore.toFixed(4)),
+        depth: n.depth,
+        children: n.children.map(remap),
+      };
+    };
+    return tree.map(remap);
+  }
+
+  /**
    * Detect geometric shapes (horizontal/vertical lines, rectangles, squares,
    * circles, blobs) matching a color/size in ABSOLUTE DESKTOP coordinates.
    */
@@ -636,10 +745,35 @@ export class ComputerService implements ComputerUseService {
       grid?: boolean;
       gridStep?: number;
       crosshair?: Point;
+      /**
+       * Named regions to outline as translucent rectangles (great for
+       * visualizing where an automation's regions actually sit on-screen).
+       * Each is drawn in ABSOLUTE DESKTOP coordinates and labeled by name.
+       */
+      regions?: Array<{ name: string; region: Region }>;
+      /**
+       * Non-rectangular named regions (circle/ellipse/polygon/svgpath/union/
+       * subtract) to outline. Drawn with the shape geometry (holes shown as
+       * dashed red cut-outs) so you can SEE a "board MINUS toolbar" or a maze.
+       */
+      shapes?: Array<{ name: string; shape: RegionShape }>;
+      /**
+       * Auto-detected boxes (from findBoxes) to overlay, colored by nesting
+       * depth so you can SEE the UI hierarchy the detector found. Each box is
+       * in ABSOLUTE DESKTOP coordinates and labeled with its depth + size.
+       */
+      boxes?: Array<{ bounds: Region; depth?: number; label?: string }>;
     }
   ): Promise<Buffer> {
     const base = await this.screenshot(opts);
-    if (!opts?.grid && !opts?.crosshair) return base;
+    if (
+      !opts?.grid &&
+      !opts?.crosshair &&
+      !opts?.regions?.length &&
+      !opts?.shapes?.length &&
+      !opts?.boxes?.length
+    )
+      return base;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const sharp = require("sharp");
     const meta = await sharp(base).metadata();
@@ -697,6 +831,91 @@ export class ComputerService implements ComputerUseService {
           `<text x="${cx + 8}" y="${cy - 8}" fill="rgba(0,180,255,1)" font-size="13" font-family="monospace">${desktopX},${desktopY}</text>`
       );
     }
+    if (opts.regions?.length) {
+      // Draw each named region as a translucent yellow rectangle with a filled
+      // fill so it reads as a "highlight" over the screenshot. Coordinates are
+      // absolute desktop -> mapped into the scaled image's pixel space.
+      for (const { name, region } of opts.regions) {
+        const rx = Math.round((region.x - offsetX) * scale);
+        const ry = Math.round((region.y - offsetY) * scale);
+        const rw = Math.round(region.width * scale);
+        const rh = Math.round(region.height * scale);
+        // Label sits just inside the top-left corner; keep it on-screen even
+        // when the region starts above/left of the captured image.
+        const labelX = Math.max(2, rx) + 4;
+        const labelY = Math.max(14, ry + 16);
+        parts.push(
+          `<rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" ` +
+            `fill="rgba(255,220,0,0.18)" stroke="rgba(255,200,0,0.95)" stroke-width="3"/>` +
+            `<rect x="${labelX - 3}" y="${labelY - 13}" width="${
+              name.length * 8 + 6
+            }" height="18" fill="rgba(0,0,0,0.6)"/>` +
+            `<text x="${labelX}" y="${labelY}" fill="rgba(255,230,0,1)" font-size="13" font-family="monospace">${name}</text>` +
+            `<text x="${labelX}" y="${
+              labelY + 15
+            }" fill="rgba(255,230,0,0.85)" font-size="10" font-family="monospace">${Math.round(
+              region.x
+            )},${Math.round(region.y)} ${Math.round(
+              region.width
+            )}x${Math.round(region.height)}</text>`
+        );
+      }
+    }
+    if (opts.shapes?.length) {
+      // Draw non-rectangular regions using their true geometry. tx/ty map an
+      // absolute-desktop coordinate into the scaled image pixel space (same
+      // transform the rect regions use above).
+      const tx = (dx: number) => (dx - offsetX) * scale;
+      const ty = (dy: number) => (dy - offsetY) * scale;
+      const style =
+        'fill="rgba(255,220,0,0.16)" stroke="rgba(255,200,0,0.95)" stroke-width="3"';
+      for (const { name, shape } of opts.shapes) {
+        parts.push(shapeToSvg(shape, tx, ty, style));
+        // Label near the shape's top-left bounding corner.
+        const b = shapeBounds(shape);
+        const labelX = Math.max(2, Math.round(tx(b.x))) + 4;
+        const labelY = Math.max(14, Math.round(ty(b.y)) + 16);
+        parts.push(
+          `<rect x="${labelX - 3}" y="${labelY - 13}" width="${
+            (name.length + shape.type.length + 3) * 8 + 6
+          }" height="18" fill="rgba(0,0,0,0.6)"/>` +
+            `<text x="${labelX}" y="${labelY}" fill="rgba(255,230,0,1)" font-size="13" font-family="monospace">${name} (${shape.type})</text>`
+        );
+      }
+    }
+    if (opts.boxes?.length) {
+      // Draw each auto-detected box, colored by nesting depth so the UI
+      // hierarchy is visible at a glance. Deeper boxes get warmer hues. Boxes
+      // are given in ABSOLUTE DESKTOP coords -> mapped into scaled image space.
+      const depthColors = [
+        "0,200,255", // depth 0 - cyan (outermost)
+        "80,255,120", // depth 1 - green
+        "255,220,0", // depth 2 - yellow
+        "255,140,0", // depth 3 - orange
+        "255,60,60", // depth 4 - red
+        "220,80,255", // depth 5+ - magenta
+      ];
+      for (const { bounds, depth = 0, label } of opts.boxes) {
+        const color = depthColors[Math.min(depth, depthColors.length - 1)];
+        const rx = Math.round((bounds.x - offsetX) * scale);
+        const ry = Math.round((bounds.y - offsetY) * scale);
+        const rw = Math.round(bounds.width * scale);
+        const rh = Math.round(bounds.height * scale);
+        const text =
+          label ??
+          `d${depth} ${Math.round(bounds.width)}x${Math.round(bounds.height)}`;
+        const labelX = Math.max(2, rx) + 3;
+        const labelY = Math.max(12, ry + 12);
+        parts.push(
+          `<rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" ` +
+            `fill="rgba(${color},0.05)" stroke="rgba(${color},0.95)" stroke-width="2"/>` +
+            `<rect x="${labelX - 2}" y="${labelY - 10}" width="${
+              text.length * 6 + 4
+            }" height="13" fill="rgba(0,0,0,0.55)"/>` +
+            `<text x="${labelX}" y="${labelY}" fill="rgba(${color},1)" font-size="10" font-family="monospace">${text}</text>`
+        );
+      }
+    }
     const svg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${parts.join(
       ""
     )}</svg>`;
@@ -706,7 +925,120 @@ export class ComputerService implements ComputerUseService {
   }
 
   async pixelColor(p: Point): Promise<string> {
-    return (await this.getDriver()).pixelColor(await this.clamp(p));
+    // Use grabRawFrame (same buffer as findColorRegions) which correctly handles
+    // Retina/HiDPI scaling and multi-display setups. The native core's pixelColor
+    // takes a fresh screencapture per call and has coordinate-system issues on
+    // HiDPI displays, so we bypass it here.
+    const clamped = await this.clamp(p);
+    const grabbed = await this.grabRawFrame();
+    const { raw, scaleX, scaleY } = grabbed;
+    const px = Math.round(clamped.x * scaleX);
+    const py = Math.round(clamped.y * scaleY);
+    const idx = (py * raw.width + px) * 4;
+    const buf = raw.data as Buffer;
+    if (idx + 2 >= buf.length) return "#000000";
+    const r = buf[idx].toString(16).padStart(2, "0");
+    const g = buf[idx + 1].toString(16).padStart(2, "0");
+    const b = buf[idx + 2].toString(16).padStart(2, "0");
+    return `#${r}${g}${b}`.toUpperCase();
+  }
+
+  /**
+   * Read text from the screen (or a region) using macOS Vision OCR.
+   * Returns an array of recognized text regions in ABSOLUTE DESKTOP coordinates,
+   * sorted top-to-bottom, left-to-right.
+   *
+   * Each result includes the text, confidence, bounds (desktop coords), and
+   * center (ready for clickAt). Filter by minConfidence (default 0.3).
+   *
+   * Implementation: takes a screenshot of the region (or full screen), writes
+   * a temp PNG, then calls the bundled `ocr.swift` helper (Vision framework).
+   * No external dependencies required — uses macOS built-in Vision.framework.
+   *
+   * On non-macOS platforms, returns an empty array.
+   */
+  async readText(opts?: ReadTextOptions): Promise<OcrResult[]> {
+    if (process.platform !== "darwin") return [];
+    const { resolveRegion } = await import("./regions");
+    let requested = opts?.region
+      ? typeof opts.region === "string" ? resolveRegion(opts.region) : opts.region
+      : undefined;
+    if (opts?.activeWindow) {
+      const active = await this.getActiveWindow();
+      if (!active?.bounds) return [];
+      requested = requested ? this.intersection(requested, active.bounds) : active.bounds;
+      if (!requested) return [];
+    }
+    const displays = (await this.getDisplays()).filter(
+      (d) => opts?.displayId === undefined || d.id === opts.displayId
+    );
+    const results: OcrResult[] = [];
+    for (const display of displays) {
+      const area = requested ? this.intersection(display.bounds, requested) : display.bounds;
+      if (!area) continue;
+      const grabbed = await this.grabRawFrame(display.id);
+      // Vision can return no observations for a dense full-display image. OCR
+      // bounded tiles instead; per-display capture also handles mixed DPI safely.
+      for (let top = area.y; top < area.y + area.height; top += 1176) {
+        const tile = { x: area.x, y: top, width: area.width,
+          height: Math.min(1200, area.y + area.height - top) };
+        results.push(...await this.ocrTile(grabbed, tile, opts?.minConfidence ?? 0.3));
+      }
+    }
+    const unique = results.filter((r, i, all) => !all.slice(0, i).some(
+      (old) => old.text === r.text && Math.hypot(old.center.x-r.center.x, old.center.y-r.center.y) < 20
+    ));
+    return unique.sort((a, b) => a.bounds.y - b.bounds.y || a.bounds.x - b.bounds.x);
+  }
+
+  private intersection(a: Region, b: Region): Region | undefined {
+    const x = Math.max(a.x, b.x), y = Math.max(a.y, b.y);
+    const right = Math.min(a.x + a.width, b.x + b.width);
+    const bottom = Math.min(a.y + a.height, b.y + b.height);
+    return right > x && bottom > y ? { x, y, width: right-x, height: bottom-y } : undefined;
+  }
+
+  private async ocrTile(
+    grabbed: { raw: RawScreenshot; desktop: Region; scaleX: number; scaleY: number },
+    tile: Region,
+    minConfidence: number
+  ): Promise<OcrResult[]> {
+    const crop = this.cropFrame(
+      grabbed.raw, tile, grabbed.desktop, grabbed.scaleX, grabbed.scaleY
+    );
+    const sharp = (await import("sharp")).default;
+    const png = await sharp(crop.frame.data, {
+      raw: { width: crop.frame.width, height: crop.frame.height, channels: 4 },
+    }).png().toBuffer();
+    const os = await import("os");
+    const fs = await import("fs");
+    const tmp = path.join(
+      os.tmpdir(), `knowhow_ocr_${process.pid}_${Date.now()}_${tile.y}.png`
+    );
+    fs.writeFileSync(tmp, png);
+    let observations: any[] = [];
+    try {
+      const helper = path.join(__dirname, "..", "src", "ocr.swift");
+      const { stdout } = await execFileAsync("swift", [helper, tmp], { timeout: 15000 });
+      const parsed = JSON.parse(stdout);
+      if (Array.isArray(parsed)) observations = parsed;
+    } catch {
+      return [];
+    } finally {
+      try { fs.unlinkSync(tmp); } catch {}
+    }
+    return observations
+      .filter((r) => r.confidence >= minConfidence && r.text?.trim())
+      .map((r) => {
+        const bounds: Region = {
+          x: tile.x + r.x * tile.width,
+          y: tile.y + (1-r.y-r.h) * tile.height,
+          width: r.w * tile.width,
+          height: r.h * tile.height,
+        };
+        return { text: r.text, confidence: r.confidence, bounds,
+          center: { x: bounds.x+bounds.width/2, y: bounds.y+bounds.height/2 } };
+      });
   }
 
   async mousePosition(): Promise<Point> {
@@ -884,7 +1216,37 @@ export class ComputerService implements ComputerUseService {
     const driver = await this.getDriver();
     if (driver.focusWindow) return driver.focusWindow(match);
     if (process.platform === "darwin") {
-      // Best-effort: activate the app whose name matches.
+      // Prefer a window-title match. Merely activating an app is insufficient
+      // when it owns multiple windows (for example, Chrome plus an extension
+      // popup), because macOS may raise the wrong one.
+      try {
+        const { stdout } = await execFileAsync("osascript", [
+          "-e",
+          `on run argv
+set needle to item 1 of argv
+tell application "System Events"
+  repeat with appProc in application processes
+    repeat with appWindow in windows of appProc
+      try
+        if name of appWindow contains needle then
+          set frontmost of appProc to true
+          perform action "AXRaise" of appWindow
+          return "true"
+        end if
+      end try
+    end repeat
+  end repeat
+end tell
+return "false"
+end run`,
+          match,
+        ]);
+        if (stdout.trim() === "true") return true;
+      } catch {
+        // Fall through to application-name activation.
+      }
+
+      // Best-effort fallback: activate the app whose name matches.
       try {
         await execFileAsync("osascript", [
           "-e",

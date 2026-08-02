@@ -28,3 +28,4 @@ dist
 .next
 **/tsconfig.tsbuildinfo
 **/tests/manual/modalities/outputs
+regions.png

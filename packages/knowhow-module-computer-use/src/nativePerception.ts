@@ -49,6 +49,21 @@ interface NativeCore {
     mergeTolerance?: number,
     maxBoxes?: number
   ) => NativeBox[];
+  findRegionsRaw?: (
+    data: Buffer,
+    width: number,
+    height: number,
+    mode?: string,
+    bgTolerance?: number,
+    minSize?: number,
+    maxSizeFrac?: number,
+    minPixels?: number,
+    maxBoxes?: number,
+    dilate?: number,
+    colorBits?: number,
+    clusterGap?: number,
+    bgAreaFrac?: number
+  ) => NativeBox[];
 }
 
 let cached: NativeCore | null | undefined;
@@ -71,6 +86,10 @@ export function hasNativeColorScan(): boolean {
 
 export function hasNativeBoxes(): boolean {
   return typeof core()?.findBoxesRaw === "function";
+}
+
+export function hasNativeRegions(): boolean {
+  return typeof core()?.findRegionsRaw === "function";
 }
 
 export function nativeFindColorRegions(
@@ -118,5 +137,41 @@ export function nativeFindBoxes(
     opts.minEdgeScore,
     opts.mergeTolerance,
     opts.maxBoxes
+  );
+}
+
+export function nativeFindRegions(
+  data: Buffer,
+  width: number,
+  height: number,
+  opts: {
+    mode?: "foreground" | "colors" | "panels";
+    bgTolerance?: number;
+    minSize?: number;
+    maxSizeFrac?: number;
+    minPixels?: number;
+    maxBoxes?: number;
+    dilate?: number;
+    colorBits?: number;
+    clusterGap?: number;
+    bgAreaFrac?: number;
+  } = {}
+): NativeBox[] | null {
+  const c = core();
+  if (!c?.findRegionsRaw) return null;
+  return c.findRegionsRaw(
+    data,
+    width,
+    height,
+    opts.mode,
+    opts.bgTolerance,
+    opts.minSize,
+    opts.maxSizeFrac,
+    opts.minPixels,
+    opts.maxBoxes,
+    opts.dilate,
+    opts.colorBits,
+    opts.clusterGap,
+    opts.bgAreaFrac
   );
 }

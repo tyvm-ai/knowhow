@@ -12,6 +12,7 @@ import {
   listRegions,
   clearRegion,
   resolveRegion,
+  regionContainsPoint,
 } from "../regions";
 import {
   AutomationRunner,
@@ -681,6 +682,32 @@ export async function computerUseFindBoxes(
   return JSON.stringify(boxes, null, 2);
 }
 
+export async function computerUseFindRegions(
+  this: ToolsService,
+  region?: { x: number; y: number; width: number; height: number } | string,
+  mode?: "foreground" | "colors" | "panels",
+  minSize?: number,
+  colorBits?: number,
+  clusterGap?: number,
+  minPixels?: number,
+  maxBoxes?: number,
+  displayId?: number
+): Promise<string> {
+  const svc = getService(this) as ComputerService;
+  const resolved = resolveRegion(region as any);
+  const boxes = await svc.findRegions({
+    region: resolved,
+    mode: mode ?? "colors",
+    minSize,
+    colorBits,
+    clusterGap,
+    minPixels,
+    maxBoxes,
+    displayId,
+  });
+  return JSON.stringify(boxes, null, 2);
+}
+
 export async function computerUseFindShape(
   this: ToolsService,
   kind: "line-h" | "line-v" | "rect" | "square" | "circle" | "blob",
@@ -721,6 +748,31 @@ export async function computerUseDefineRegion(
 ): Promise<string> {
   const region = defineRegion(name, { x, y, width, height });
   return `Defined region "${name}": ${JSON.stringify(region)}`;
+}
+
+export async function computerUseDefineRegionShape(
+  this: ToolsService,
+  name: string,
+  shape: any
+): Promise<string> {
+  // shape is a RegionShape object (rect/circle/ellipse/polygon/svgpath/union/
+  // subtract). Persist it so detectors/observers can reference it by name and
+  // hit-test with the true (non-rect) geometry.
+  const parsed = typeof shape === "string" ? JSON.parse(shape) : shape;
+  const region = defineRegion(name, parsed);
+  return `Defined shape region "${name}" (${parsed.type}): ${JSON.stringify(
+    region
+  )}`;
+}
+
+export async function computerUseRegionContains(
+  this: ToolsService,
+  name: string,
+  x: number,
+  y: number
+): Promise<string> {
+  const inside = regionContainsPoint(name, { x, y });
+  return `Point (${x}, ${y}) is ${inside ? "INSIDE" : "OUTSIDE"} region "${name}".`;
 }
 
 export async function computerUseListRegions(this: ToolsService): Promise<string> {

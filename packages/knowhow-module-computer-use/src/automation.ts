@@ -6,6 +6,8 @@ import {
   ColorRegion,
   DesktopBox,
   DesktopShape,
+  OcrResult,
+  ReadTextOptions,
 } from "./ComputerService";
 import { resolveRegion } from "./regions";
 
@@ -32,7 +34,7 @@ const STORE_DIR = path.join(".knowhow", "automations");
  * Automations take over the real mouse/keyboard, so a human needs to be able to
  * reliably reclaim control quickly. We cap every run at 10s (regardless of what
  * the caller requests) so a runaway automation can never hold the mouse hostage
- * for longer than that. Re-launch the automation if you legitimately need more.
+ * for longer than that. Re-launch the automation if you legitimately need more time.
  */
 export const MAX_AUTOMATION_DURATION_MS = 10000;
 
@@ -75,7 +77,7 @@ export interface AutomationDoc {
 
 export interface AutomationAction {
   t: number;
-  kind: "clickAt" | "moveMouse" | "type" | "key";
+  kind: "clickAt" | "moveMouse" | "type" | "key" | "hotkey" | "focus";
   x?: number;
   y?: number;
   button?: string;
@@ -124,6 +126,8 @@ export interface AutomationControl {
 export interface AutomationSDK {
   // ── perception (real pixels) ──
   screenSize(): Promise<{ width: number; height: number }>;
+  /** Return the currently focused window, if one can be identified. */
+  activeWindow(): Promise<{ title: string; app?: string } | null>;
   findColor(
     colors: string | string[],
     opts?: {
@@ -151,6 +155,28 @@ export interface AutomationSDK {
     minEdgeScore?: number;
     maxBoxes?: number;
   }): Promise<DesktopBox[]>;
+  /**
+   * Detect UI element regions by color segmentation, returned as a nested
+   * containment hierarchy in ABSOLUTE DESKTOP coords (each box: bounds, center,
+   * area, depth, children). Useful for "find the clickable things in the play
+   * area" without knowing their exact color:
+   *  - mode "panels" (default here): find large flat BACKGROUND surfaces and
+   *    group the FOREGROUND content on each into element boxes (score readouts,
+   *    button rows) — i.e. things that AREN'T the background color.
+   *  - mode "colors": one box per contiguous same-color area, nested.
+   *  - mode "foreground": everything differing from the dominant background.
+   * Pass a region to constrain the search (e.g. the playfield) so you only get
+   * targets inside the game area.
+   */
+  findRegions(opts?: {
+    region?: Region | string;
+    mode?: "foreground" | "colors" | "panels";
+    minSize?: number;
+    colorBits?: number;
+    clusterGap?: number;
+    minPixels?: number;
+    maxBoxes?: number;
+  }): Promise<DesktopBox[]>;
   pixelColor(x: number, y: number): Promise<string>;
 
   // ── action (no-op while paused; recorded in dry-run) ──
@@ -158,6 +184,10 @@ export interface AutomationSDK {
   moveMouse(x: number, y: number): Promise<void>;
   type(text: string): Promise<void>;
   key(name: string): Promise<void>;
+  /** Press a key chord, e.g. `["command", "a"]`. */
+  hotkey(keys: string[]): Promise<void>;
+  /** Focus an app/window. Call before installing requiredWindow. */
+  focus(match: string): Promise<boolean>;
 
   // ── control / telemetry ──
   sleep(ms: number): Promise<void>;
@@ -182,6 +212,21 @@ export interface AutomationSDK {
   ): Promise<void>;
   /** Set/clear the focus gate. Await before performing actions. */
   requiredWindow(match?: WindowMatch): Promise<void>;
+  /**
+   * Read text from the screen (or a named/explicit region) using macOS Vision
+   * OCR. Returns recognized text regions in ABSOLUTE DESKTOP coordinates,
+   * sorted top-to-bottom then left-to-right.
+   * Each result: { text, confidence, bounds, center }
+   * bounds/center are desktop coords ready for clickAt().
+   * Pass a region to restrict OCR to part of the screen — faster, less noise.
+   * On non-macOS platforms, returns [].
+   */
+  readText(opts?: {
+    region?: Region | string;
+    displayId?: number;
+    activeWindow?: boolean;
+    minConfidence?: number;
+  }): Promise<OcrResult[]>;
   readonly ctl: AutomationControl;
 }
 
@@ -594,6 +639,7 @@ export class AutomationRunner {
       requiredWindow: (match) => self.configureRequiredWindow(match),
 
       screenSize: () => svc.screenSize(),
+      activeWindow: () => svc.getActiveWindow() as any,
 
       findColor: (colors, o = {}) =>
         svc.findColorRegions({
@@ -626,7 +672,23 @@ export class AutomationRunner {
           maxBoxes: o.maxBoxes,
         } as any),
 
+      findRegions: (o = {}) =>
+        svc.findRegions({
+          region: resolveRegion(o.region as any),
+          // Default to "panels" in automations: it groups foreground content
+          // over background surfaces, which is what "find the clickable things
+          // that aren't the background" usually means for a game/UI.
+          mode: o.mode ?? "panels",
+          minSize: o.minSize,
+          colorBits: o.colorBits,
+          clusterGap: o.clusterGap,
+          minPixels: o.minPixels,
+          maxBoxes: o.maxBoxes,
+        } as any),
+
       pixelColor: (x, y) => svc.pixelColor({ x, y }),
+
+      readText: (o = {}) => svc.readText(o as ReadTextOptions),
 
       clickAt: async (x, y, button = "left") => {
         const act: AutomationAction = {
@@ -681,6 +743,33 @@ export class AutomationRunner {
         self.actions.push(act);
         if (!self.canAct()) return;
         await svc.pressKey(name);
+      },
+
+      hotkey: async (keys) => {
+        const act: AutomationAction = {
+          t: self.elapsed(),
+          kind: "hotkey",
+          text: keys.join("+"),
+          suppressed: !self.canAct(),
+        };
+        self.actions.push(act);
+        if (!self.canAct()) return;
+        await svc.hotkey(...keys);
+      },
+
+      focus: async (match) => {
+        const act: AutomationAction = {
+          t: self.elapsed(),
+          kind: "focus",
+          text: match,
+          suppressed: !self.canAct(),
+        };
+        self.actions.push(act);
+        // Intentionally obeys the same dry-run, stopped, and focus-gate pause
+        // rules as every other action. Authors that need to establish focus
+        // must call this before requiredWindow/runEvery installs its gate.
+        if (!self.canAct()) return false;
+        return svc.focusWindow(match);
       },
 
       sleep: (ms) =>
