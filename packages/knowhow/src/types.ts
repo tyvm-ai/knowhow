@@ -86,6 +86,9 @@ export type Config = {
   chat?: {
     rootModule?: string;
     renderer?: string;
+    defaultAgent?: string;
+    defaultModel?: string;
+    defaultProvider?: string;
     modules?: string[];
   };
   modules: string[];

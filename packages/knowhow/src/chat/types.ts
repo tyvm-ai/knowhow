@@ -10,6 +10,9 @@ export interface ChatContext {
   debugMode?: boolean;
   agentMode?: boolean;
   currentAgent?: string;
+  defaultAgent?: string;
+  defaultModel?: string;
+  defaultProvider?: string;
   promptText?: string;
   searchMode?: boolean;
   voiceMode?: boolean;

@@ -340,7 +340,34 @@ export class AgentModule extends BaseChatModule {
       }
     );
 
-    await this.handleAgentCommand(["Patcher"]);
+    // Determine the default agent from context (set by chat.ts from config.chat.defaultAgent)
+    // falling back to "Patcher" if not configured.
+    const context = this.chatService?.getContext();
+    const defaultAgentName = context?.defaultAgent ?? "Patcher";
+    await this.handleAgentCommand([defaultAgentName]);
+
+    // Apply defaultModel and defaultProvider if configured
+    const defaultModel = context?.defaultModel;
+    const defaultProvider = context?.defaultProvider;
+    if (defaultModel || defaultProvider) {
+      const selectedAgent = context?.selectedAgent;
+      if (selectedAgent) {
+        if (defaultModel) {
+          selectedAgent.setModel(defaultModel);
+          selectedAgent.setModelPreferences([
+            { model: defaultModel, provider: defaultProvider as any },
+          ]);
+        }
+        if (defaultProvider) {
+          selectedAgent.setProvider(defaultProvider as any);
+        }
+        // Refresh context model/provider display
+        if (context) {
+          if (defaultModel) context.currentModel = defaultModel;
+          if (defaultProvider) context.currentProvider = defaultProvider;
+        }
+      }
+    }
   }
 
   async handleAgentCommand(args: string[]): Promise<void> {
