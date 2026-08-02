@@ -198,6 +198,60 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
+      name: "computerUseAccessibilityElements",
+      description:
+        "Inspect controls in the focused macOS window using native Accessibility APIs. Returns short-lived element IDs, roles, values, bounds, and supported actions.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          maxDepth: { type: "number", description: "Maximum tree depth (default 12)." },
+          maxElements: { type: "number", description: "Maximum returned controls (default 500)." },
+          interactiveOnly: { type: "boolean", description: "Only return interactive controls (default true)." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseSetAccessibilityValue",
+      description:
+        "Set the value of a focused-window accessibility element. Use a fresh ID from computerUseAccessibilityElements.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          id: { type: "string", description: "Short-lived accessibility element ID." },
+          value: { type: "string", description: "Value to set." },
+        },
+        required: ["id", "value"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUsePerformAccessibilityAction",
+      description:
+        "Perform an allowlisted native accessibility action on a focused-window element, such as AXPress or AXShowMenu.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          id: { type: "string", description: "Short-lived accessibility element ID." },
+          action: {
+            type: "string",
+            enum: ["AXPress", "AXConfirm", "AXCancel", "AXShowMenu", "AXIncrement", "AXDecrement", "AXPick"],
+          },
+        },
+        required: ["id", "action"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "computerUseFocusWindow",
       description:
         "Focus/activate a window or application by name (e.g. 'Google Chrome').",
@@ -614,7 +668,7 @@ export const computerToolDefinitions: Tool[] = [
     function: {
       name: "computerUseDefineRegion",
       description:
-        "Save a named region (absolute desktop {x,y,width,height}) to the registry so detectors/observers can reference it by name instead of repeating coordinates. Persists to .knowhow/automations/regions.json.",
+        "Save a named region so detectors/observers can reference it by name. By default coordinates are absolute desktop coordinates. Set anchorToActiveWindow to persist normalized offsets within the active app window, making the region follow window moves and resizes; resolution fails closed if the app/title does not match. Persists to .knowhow/automations/regions.json.",
       parameters: {
         type: "object",
         positional: true,
@@ -624,6 +678,14 @@ export const computerToolDefinitions: Tool[] = [
           y: { type: "number" },
           width: { type: "number" },
           height: { type: "number" },
+          anchorToActiveWindow: {
+            type: "boolean",
+            description: "Convert the supplied absolute desktop rectangle to normalized coordinates within the active window.",
+          },
+          titleIncludes: {
+            type: "string",
+            description: "Optional title substring required when resolving an active-window anchored region. The active app is always recorded when available.",
+          },
         },
         required: ["name", "x", "y", "width", "height"],
       },

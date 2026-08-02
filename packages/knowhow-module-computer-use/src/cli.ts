@@ -15,7 +15,12 @@ import {
   saveAutomation,
   validateScript,
 } from "./automation";
-import { listRegions, getRegion, getStoredRegion } from "./regions";
+import {
+  listRegions,
+  getRegion,
+  getStoredRegion,
+  isWindowRelativeRegion,
+} from "./regions";
 import { storedBounds, isRegionShape, toShape } from "./regionShape";
 
 /**
@@ -300,6 +305,12 @@ export function registerComputerCli(
       if (!names.length) return console.log("No regions defined.");
       for (const name of names) {
         const r = all[name];
+        if (isWindowRelativeRegion(r)) {
+          console.log(
+            `- ${name} [window-normalized]: ${JSON.stringify(r.region)} anchor=${JSON.stringify(r.anchor.window)}`
+          );
+          continue;
+        }
         const b = storedBounds(r);
         const kind = isRegionShape(r) ? ` [${r.type}]` : "";
         console.log(

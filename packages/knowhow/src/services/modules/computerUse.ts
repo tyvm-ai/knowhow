@@ -46,6 +46,26 @@ export interface DriverCapabilities {
   reason?: string;
 }
 
+export interface AccessibilityElement {
+  id: string;
+  role: string;
+  subrole?: string;
+  title?: string;
+  description?: string;
+  value?: string;
+  enabled?: boolean;
+  focused?: boolean;
+  bounds?: Region;
+  actions: string[];
+  childCount: number;
+}
+
+export interface AccessibilityOptions {
+  maxDepth?: number;
+  maxElements?: number;
+  interactiveOnly?: boolean;
+}
+
 /**
  * The engine seam. Concrete drivers (Rust core, CLI adapter, nut.js demo)
  * implement this. Registered with the service via `registerDriver`.
@@ -88,9 +108,14 @@ export interface ComputerDriver {
   keyUp(key: string): Promise<void>;
 
   // windows (optional / capability-gated)
-  getActiveWindow?(): Promise<{ title: string; bounds?: Region } | null>;
+  getActiveWindow?(): Promise<{ title: string; app?: string; bounds?: Region } | null>;
   listWindows?(): Promise<Array<{ title: string; app?: string; bounds?: Region }>>;
   focusWindow?(match: string): Promise<boolean>;
+
+  accessibilityTrusted?(): Promise<boolean>;
+  accessibilityElements?(options?: AccessibilityOptions): Promise<AccessibilityElement[]>;
+  setAccessibilityValue?(id: string, value: string): Promise<void>;
+  performAccessibilityAction?(id: string, action: string): Promise<void>;
 
   dispose?(): Promise<void>;
 }
@@ -149,11 +174,20 @@ export interface ComputerUseService {
     }
   ): Promise<Buffer>;
 
-  getActiveWindow(): Promise<{ title: string; bounds?: Region } | null>;
+  getActiveWindow(): Promise<{
+    title: string;
+    app?: string;
+    bounds?: Region;
+  } | null>;
   listWindows(): Promise<
     Array<{ title: string; app?: string; bounds?: Region }>
   >;
   focusWindow(match: string): Promise<boolean>;
+
+  accessibilityTrusted(): Promise<boolean>;
+  accessibilityElements(options?: AccessibilityOptions): Promise<AccessibilityElement[]>;
+  setAccessibilityValue(id: string, value: string): Promise<void>;
+  performAccessibilityAction(id: string, action: string): Promise<void>;
 
   dispose(): Promise<void>;
 }

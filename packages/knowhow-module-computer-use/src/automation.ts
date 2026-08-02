@@ -9,7 +9,7 @@ import {
   OcrResult,
   ReadTextOptions,
 } from "./ComputerService";
-import { resolveRegion } from "./regions";
+import { resolveRegionAsync } from "./regions";
 
 /**
  * Automations — a locally-run perception→action loop that the LLM authors once
@@ -641,21 +641,21 @@ export class AutomationRunner {
       screenSize: () => svc.screenSize(),
       activeWindow: () => svc.getActiveWindow() as any,
 
-      findColor: (colors, o = {}) =>
+      findColor: async (colors, o = {}) =>
         svc.findColorRegions({
           colors: Array.isArray(colors) ? colors : [colors],
-          region: resolveRegion(o.region as any),
+          region: await resolveRegionAsync(o.region as any, () => svc.getActiveWindow()),
           tolerance: o.tolerance,
           minPixels: o.minPixels,
           minSize: o.minSize,
           maxSize: o.maxSize,
         } as any),
 
-      findShape: (o) =>
+      findShape: async (o) =>
         svc.findShapes({
           kind: o.kind,
           color: o.color,
-          region: resolveRegion(o.region as any),
+          region: await resolveRegionAsync(o.region as any, () => svc.getActiveWindow()),
           tolerance: o.tolerance,
           minSize: o.minSize,
           maxSize: o.maxSize,
@@ -663,18 +663,18 @@ export class AutomationRunner {
           thickness: o.thickness,
         } as any),
 
-      findBoxes: (o = {}) =>
+      findBoxes: async (o = {}) =>
         svc.findBoxes({
-          region: resolveRegion(o.region as any),
+          region: await resolveRegionAsync(o.region as any, () => svc.getActiveWindow()),
           minSize: o.minSize,
           maxSize: o.maxSize,
           minEdgeScore: o.minEdgeScore,
           maxBoxes: o.maxBoxes,
         } as any),
 
-      findRegions: (o = {}) =>
+      findRegions: async (o = {}) =>
         svc.findRegions({
-          region: resolveRegion(o.region as any),
+          region: await resolveRegionAsync(o.region as any, () => svc.getActiveWindow()),
           // Default to "panels" in automations: it groups foreground content
           // over background surfaces, which is what "find the clickable things
           // that aren't the background" usually means for a game/UI.

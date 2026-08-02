@@ -1,6 +1,8 @@
 import { execFile, execFile as execFileRaw } from "child_process";
 import { promisify } from "util";
 import {
+  AccessibilityElement,
+  AccessibilityOptions,
   ComputerDriver,
   ComputerUseService,
   DriverCapabilities,
@@ -959,9 +961,9 @@ export class ComputerService implements ComputerUseService {
    */
   async readText(opts?: ReadTextOptions): Promise<OcrResult[]> {
     if (process.platform !== "darwin") return [];
-    const { resolveRegion } = await import("./regions");
+    const { resolveRegionAsync } = await import("./regions");
     let requested = opts?.region
-      ? typeof opts.region === "string" ? resolveRegion(opts.region) : opts.region
+      ? await resolveRegionAsync(opts.region as any, () => this.getActiveWindow())
       : undefined;
     if (opts?.activeWindow) {
       const active = await this.getActiveWindow();
@@ -1099,7 +1101,11 @@ export class ComputerService implements ComputerUseService {
     return (await this.getDriver()).hotkey(...keys);
   }
 
-  async getActiveWindow(): Promise<{ title: string; bounds?: Region } | null> {
+  async getActiveWindow(): Promise<{
+    title: string;
+    app?: string;
+    bounds?: Region;
+  } | null> {
     const driver = await this.getDriver();
     if (driver.getActiveWindow) return driver.getActiveWindow();
     // The default RustCoreDriver implements getActiveWindow natively (via
@@ -1111,6 +1117,34 @@ export class ComputerService implements ComputerUseService {
       return this.getActiveWindowMac();
     }
     return null;
+  }
+
+  async accessibilityTrusted(): Promise<boolean> {
+    const driver = await this.getDriver();
+    return driver.accessibilityTrusted ? driver.accessibilityTrusted() : false;
+  }
+
+  async accessibilityElements(
+    options?: AccessibilityOptions
+  ): Promise<AccessibilityElement[]> {
+    const driver = await this.getDriver();
+    if (!driver.accessibilityElements)
+      throw new Error(`Driver ${driver.name} does not support native accessibility`);
+    return driver.accessibilityElements(options);
+  }
+
+  async setAccessibilityValue(id: string, value: string): Promise<void> {
+    const driver = await this.getDriver();
+    if (!driver.setAccessibilityValue)
+      throw new Error(`Driver ${driver.name} does not support accessibility value setting`);
+    return driver.setAccessibilityValue(id, value);
+  }
+
+  async performAccessibilityAction(id: string, action: string): Promise<void> {
+    const driver = await this.getDriver();
+    if (!driver.performAccessibilityAction)
+      throw new Error(`Driver ${driver.name} does not support accessibility actions`);
+    return driver.performAccessibilityAction(id, action);
   }
 
   private async getActiveWindowMac(): Promise<{

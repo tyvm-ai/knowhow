@@ -11,8 +11,8 @@ import {
   defineRegion,
   listRegions,
   clearRegion,
-  resolveRegion,
-  regionContainsPoint,
+  resolveRegionAsync,
+  regionContainsPointAsync,
 } from "../regions";
 import {
   AutomationRunner,
@@ -278,6 +278,41 @@ export async function computerUseListWindows(this: ToolsService): Promise<string
 export async function computerUseGetActiveWindow(this: ToolsService): Promise<string> {
   const w = await getService(this).getActiveWindow();
   return w ? JSON.stringify(w) : "No active window.";
+}
+
+export async function computerUseAccessibilityElements(
+  this: ToolsService,
+  maxDepth?: number,
+  maxElements?: number,
+  interactiveOnly?: boolean
+): Promise<string> {
+  const service = getService(this);
+  if (!(await service.accessibilityTrusted())) {
+    throw new Error("macOS Accessibility permission is not granted");
+  }
+  return JSON.stringify(
+    await service.accessibilityElements({ maxDepth, maxElements, interactiveOnly }),
+    null,
+    2
+  );
+}
+
+export async function computerUseSetAccessibilityValue(
+  this: ToolsService,
+  id: string,
+  value: string
+): Promise<string> {
+  await getService(this).setAccessibilityValue(id, value);
+  return `Set accessibility value for ${id}`;
+}
+
+export async function computerUsePerformAccessibilityAction(
+  this: ToolsService,
+  id: string,
+  action: string
+): Promise<string> {
+  await getService(this).performAccessibilityAction(id, action);
+  return `Performed ${action} on ${id}`;
 }
 
 export async function computerUseFocusWindow(
@@ -669,7 +704,7 @@ export async function computerUseFindBoxes(
   displayId?: number
 ): Promise<string> {
   const svc = getService(this) as ComputerService;
-  const resolved = resolveRegion(region as any);
+  const resolved = await resolveRegionAsync(region as any, () => svc.getActiveWindow());
   const boxes = await svc.findBoxes({
     region: resolved,
     minSize,
@@ -694,7 +729,7 @@ export async function computerUseFindRegions(
   displayId?: number
 ): Promise<string> {
   const svc = getService(this) as ComputerService;
-  const resolved = resolveRegion(region as any);
+  const resolved = await resolveRegionAsync(region as any, () => svc.getActiveWindow());
   const boxes = await svc.findRegions({
     region: resolved,
     mode: mode ?? "colors",
@@ -721,7 +756,7 @@ export async function computerUseFindShape(
   displayId?: number
 ): Promise<string> {
   const svc = getService(this) as ComputerService;
-  const resolved = resolveRegion(region as any);
+  const resolved = await resolveRegionAsync(region as any, () => svc.getActiveWindow());
   const shapes = await svc.findShapes({
     kind,
     color,
@@ -744,8 +779,34 @@ export async function computerUseDefineRegion(
   x: number,
   y: number,
   width: number,
-  height: number
+  height: number,
+  anchorToActiveWindow?: boolean,
+  titleIncludes?: string
 ): Promise<string> {
+  if (anchorToActiveWindow) {
+    const active = await getService(this).getActiveWindow();
+    if (!active?.bounds) {
+      throw new Error("Cannot anchor region: active window bounds are unavailable");
+    }
+    const b = active.bounds;
+    const region = defineRegion(name, {
+      version: 1,
+      region: {
+        x: (x - b.x) / b.width,
+        y: (y - b.y) / b.height,
+        width: width / b.width,
+        height: height / b.height,
+      },
+      anchor: {
+        coordinateSpace: "window-normalized",
+        window: {
+          app: (active as { app?: string }).app,
+          titleIncludes,
+        },
+      },
+    });
+    return `Defined window-relative region "${name}": ${JSON.stringify(region)}`;
+  }
   const region = defineRegion(name, { x, y, width, height });
   return `Defined region "${name}": ${JSON.stringify(region)}`;
 }
@@ -771,7 +832,12 @@ export async function computerUseRegionContains(
   x: number,
   y: number
 ): Promise<string> {
-  const inside = regionContainsPoint(name, { x, y });
+  const svc = getService(this);
+  const inside = await regionContainsPointAsync(
+    name,
+    { x, y },
+    () => svc.getActiveWindow()
+  );
   return `Point (${x}, ${y}) is ${inside ? "INSIDE" : "OUTSIDE"} region "${name}".`;
 }
 

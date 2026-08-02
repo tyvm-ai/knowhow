@@ -1,4 +1,6 @@
 import {
+  AccessibilityElement,
+  AccessibilityOptions,
   ComputerDriver,
   DriverCapabilities,
   Display,
@@ -118,6 +120,33 @@ export class RustCoreDriver implements ComputerDriver {
           }
         : undefined,
     }));
+  }
+
+  async accessibilityTrusted(): Promise<boolean> {
+    const core = this.ensureCore();
+    return typeof core.accessibilityTrusted === "function" && core.accessibilityTrusted();
+  }
+
+  async accessibilityElements(options?: AccessibilityOptions): Promise<AccessibilityElement[]> {
+    const core = this.ensureCore();
+    if (typeof core.accessibilityElements !== "function") {
+      throw new Error("Native accessibility inspection is unavailable");
+    }
+    return core.accessibilityElements(options);
+  }
+
+  async setAccessibilityValue(id: string, value: string): Promise<void> {
+    const core = this.ensureCore();
+    if (typeof core.setAccessibilityValue !== "function")
+      throw new Error("Native accessibility value setting is unavailable");
+    core.setAccessibilityValue(id, value);
+  }
+
+  async performAccessibilityAction(id: string, action: string): Promise<void> {
+    const core = this.ensureCore();
+    if (typeof core.performAccessibilityAction !== "function")
+      throw new Error("Native accessibility actions are unavailable");
+    core.performAccessibilityAction(id, action);
   }
 
   async getDisplays(): Promise<Display[]> {
