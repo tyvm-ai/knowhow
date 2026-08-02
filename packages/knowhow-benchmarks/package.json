@@ -13,7 +13,11 @@
     "computer:mouse-precision": "ts-node exercises/computer-use/runner.ts --exercise mouse-precision",
     "computer:compare": "ts-node exercises/computer-use/compare.ts",
     "computer:server": "node exercises/computer-use/mouse-precision/server.js",
-    "computer:run": "ts-node exercises/computer-use/runner.ts"
+    "computer:run": "ts-node exercises/computer-use/runner.ts",
+    "computer:form-master": "ts-node exercises/computer-use/runner.ts --exercise form-master",
+    "computer:form-server": "node exercises/computer-use/form-master/server.js",
+    "computer:fruit-ninja": "ts-node exercises/computer-use/runner.ts --exercise fruit-ninja",
+    "computer:fruit-server": "node exercises/computer-use/fruit-ninja/server.js"
   },
   "author": "Micah Riggan",
   "license": "MIT",

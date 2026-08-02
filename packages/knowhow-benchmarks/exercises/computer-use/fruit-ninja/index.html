@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fruit Ninja Benchmark</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+      user-select: none;
+    }
+    #hud {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 60px;
+      background: rgba(13,17,23,0.92);
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 32px;
+      z-index: 100;
+    }
+    .hud-item { display: flex; flex-direction: column; align-items: center; }
+    .hud-label { font-size: 10px; color: #7d8590; text-transform: uppercase; letter-spacing: 1px; }
+    .hud-value { font-size: 20px; font-weight: bold; color: #58a6ff; }
+    #arena {
+      position: fixed;
+      top: 60px; left: 0; right: 0; bottom: 0;
+      cursor: crosshair;
+    }
+    canvas { display: block; width: 100%; height: 100%; }
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(13,17,23,0.92);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      z-index: 200;
+    }
+    #overlay h1 { font-size: 36px; color: #58a6ff; }
+    #overlay p { font-size: 16px; color: #7d8590; max-width: 500px; text-align: center; }
+    #overlay button {
+      padding: 14px 40px;
+      background: #238636;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 18px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    #overlay button:hover { background: #2ea043; }
+    .api-box {
+      font-size: 13px; color: #58a6ff;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 12px;
+      max-width: 480px;
+      text-align: left;
+      line-height: 1.6;
+    }
+    #results-panel {
+      position: fixed;
+      inset: 0;
+      background: rgba(13,17,23,0.95);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      z-index: 300;
+    }
+    #results-panel h1 { font-size: 32px; color: #3fb950; }
+    .result-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px 32px;
+      font-size: 15px;
+    }
+    .result-key { color: #7d8590; }
+    .result-val { color: #e6edf3; font-weight: bold; }
+    #log-panel {
+      position: fixed;
+      bottom: 8px; right: 8px;
+      width: 260px;
+      background: rgba(13,17,23,0.8);
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 11px;
+      color: #7d8590;
+      max-height: 120px;
+      overflow-y: auto;
+      z-index: 50;
+    }
+    .log-entry { margin-bottom: 3px; }
+    .log-hit { color: #3fb950; }
+    .log-miss { color: #f85149; }
+  </style>
+</head>
+<body>
+
+<div id="hud">
+  <div class="hud-item">
+    <span class="hud-label">Score</span>
+    <span class="hud-value" id="score-display">0</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-label">Slashed</span>
+    <span class="hud-value" id="slashed-display">0</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-label">Missed</span>
+    <span class="hud-value" id="missed-display">0</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-label">Accuracy</span>
+    <span class="hud-value" id="acc-display">--</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-label">Combo</span>
+    <span class="hud-value" id="combo-display">0</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-label">Fruit Left</span>
+    <span class="hud-value" id="left-display">--</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-label">Session</span>
+    <span class="hud-value" id="session-display" style="font-size:12px">--</span>
+  </div>
+</div>
+
+<div id="arena">
+  <canvas id="canvas"></canvas>
+</div>
+
+<div id="overlay">
+  <h1>🍉 Fruit Ninja</h1>
+  <p>Slash fruit by clicking and dragging across them. Fruit fly up from the bottom — slash them before they fall off screen!</p>
+  <div class="api-box">
+    <strong>API Endpoints:</strong><br/>
+    POST /api/start — start a session<br/>
+    GET  /api/state?session=id — active fruit positions<br/>
+    POST /api/slash — { sessionId, x1,y1,x2,y2 } slash gesture<br/>
+    GET  /api/results?session=id — final results
+  </div>
+  <button id="start-btn">Start Game</button>
+</div>
+
+<div id="results-panel">
+  <h1>🏆 Game Over!</h1>
+  <div class="result-grid" id="result-grid"></div>
+  <button onclick="location.reload()" style="margin-top:16px;padding:10px 28px;background:#238636;color:white;border:none;border-radius:6px;font-size:15px;cursor:pointer;font-family:inherit;">Play Again</button>
+</div>
+
+<div id="log-panel"></div>
+
+
+
+<script>
+const API_BASE = 'http://localhost:7434';
+const GRAVITY = 980; // px/s^2 — must match server
+
+let sessionId = null;
+let gameState = null;
+let animFrame = null;
+let slashStart = null;
+let slashEnd = null;
+let slashFx = []; // { x1,y1,x2,y2,alpha }
+let burstFx = []; // { x,y,r,alpha,color }
+let isDragging = false;
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const resultsPanel = document.getElementById('results-panel');
+const logPanel = document.getElementById('log-panel');
+
+function resizeCanvas() {
+  canvas.width = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+function log(msg, cls = '') {
+  const el = document.createElement('div');
+  el.className = 'log-entry ' + cls;
+  el.textContent = new Date().toLocaleTimeString('en', {hour12:false}) + ' ' + msg;
+  logPanel.prepend(el);
+  while (logPanel.children.length > 30) logPanel.removeChild(logPanel.lastChild);
+}
+
+function updateHUD(state) {
+  document.getElementById('score-display').textContent = state.score ?? 0;
+  document.getElementById('slashed-display').textContent = state.slashed ?? 0;
+  document.getElementById('missed-display').textContent = state.missed ?? 0;
+  document.getElementById('combo-display').textContent = state.combo ?? 0;
+  const acc = state.accuracy != null ? (state.accuracy * 100).toFixed(0) + '%' : '--';
+  document.getElementById('acc-display').textContent = acc;
+  const resolved = (state.slashed ?? 0) + (state.missed ?? 0);
+  document.getElementById('left-display').textContent = (state.totalFruit ?? 20) - resolved;
+  document.getElementById('session-display').textContent = sessionId ? sessionId.slice(0,8) : '--';
+}
+
+function getFruitPos(f, nowMs) {
+  const t = (nowMs - f.spawnedAt) / 1000;
+  const x = f.x0 + f.vx * t;
+  const y = f.y0 + f.vy * t + 0.5 * GRAVITY * t * t;
+  return { x, y };
+}
+
+function drawFruit(f, nowMs) {
+  const { x, y } = getFruitPos(f, nowMs);
+  const r = f.radius;
+  // Scale to canvas vs arena (1200x700)
+  const sx = (x / 1200) * canvas.width;
+  const sy = (y / 700) * canvas.height + 0; // y is relative to arena top
+  const sr = (r / 1200) * canvas.width;
+
+  if (sy > canvas.height + sr * 2) return; // off screen
+
+  ctx.save();
+  // Shadow glow
+  ctx.shadowColor = f.color;
+  ctx.shadowBlur = 14;
+
+  // Main circle
+  ctx.beginPath();
+  ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+  const grad = ctx.createRadialGradient(sx - sr*0.3, sy - sr*0.3, sr*0.1, sx, sy, sr);
+  grad.addColorStop(0, f.highlight || '#ffffff');
+  grad.addColorStop(1, f.color);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Outline
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawSlashes() {
+  slashFx = slashFx.filter(s => s.alpha > 0.02);
+  for (const s of slashFx) {
+    ctx.save();
+    ctx.globalAlpha = s.alpha;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = '#88ccff';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(s.x1, s.y1);
+    ctx.lineTo(s.x2, s.y2);
+    ctx.stroke();
+    ctx.restore();
+    s.alpha *= 0.82;
+  }
+}
+
+function drawBursts() {
+  burstFx = burstFx.filter(b => b.alpha > 0.02);
+  for (const b of burstFx) {
+    ctx.save();
+    ctx.globalAlpha = b.alpha;
+    ctx.strokeStyle = b.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+    ctx.stroke();
+    // Particles
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      const px = b.x + Math.cos(angle) * b.r;
+      const py = b.y + Math.sin(angle) * b.r;
+      ctx.beginPath();
+      ctx.arc(px, py, 3, 0, Math.PI * 2);
+      ctx.fillStyle = b.color;
+      ctx.fill();
+    }
+    ctx.restore();
+    b.r += 3;
+    b.alpha *= 0.85;
+  }
+}
+
+function drawCurrentSlash() {
+  if (!slashStart || !slashEnd) return;
+  ctx.save();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.shadowColor = '#88ccff';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.moveTo(slashStart.x, slashStart.y);
+  ctx.lineTo(slashEnd.x, slashEnd.y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function animate() {
+  const nowMs = Date.now();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw background grid (subtle)
+  ctx.save();
+  ctx.strokeStyle = 'rgba(48,54,61,0.3)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < canvas.width; x += 80) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+  }
+  for (let y = 0; y < canvas.height; y += 80) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+  }
+  ctx.restore();
+
+  if (gameState && gameState.activeFruits) {
+    for (const f of gameState.activeFruits) {
+      drawFruit(f, nowMs);
+    }
+  }
+
+  drawSlashes();
+  drawBursts();
+  drawCurrentSlash();
+
+  animFrame = requestAnimationFrame(animate);
+}
+
+// Canvas coordinate helpers
+function canvasToArena(cx, cy) {
+  return {
+    x: (cx / canvas.width) * 1200,
+    y: (cy / canvas.height) * 700,
+  };
+}
+function arenaToCanvas(ax, ay) {
+  return {
+    x: (ax / 1200) * canvas.width,
+    y: (ay / 700) * canvas.height,
+  };
+}
+
+// Drag to slash
+canvas.addEventListener('mousedown', (e) => {
+  if (!sessionId || !gameState || gameState.finished) return;
+  const rect = canvas.getBoundingClientRect();
+  slashStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  slashEnd = { ...slashStart };
+  isDragging = true;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!isDragging) return;
+  const rect = canvas.getBoundingClientRect();
+  slashEnd = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+});
+
+canvas.addEventListener('mouseup', async (e) => {
+  if (!isDragging || !slashStart) return;
+  isDragging = false;
+  const rect = canvas.getBoundingClientRect();
+  slashEnd = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+
+  const dx = slashEnd.x - slashStart.x;
+  const dy = slashEnd.y - slashStart.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  if (dist < 10) { slashStart = null; slashEnd = null; return; } // too short
+
+  // Convert canvas coords to arena coords
+  const a1 = canvasToArena(slashStart.x, slashStart.y);
+  const a2 = canvasToArena(slashEnd.x, slashEnd.y);
+
+  // Add slash fx
+  slashFx.push({ x1: slashStart.x, y1: slashStart.y, x2: slashEnd.x, y2: slashEnd.y, alpha: 1.0 });
+
+  slashStart = null; slashEnd = null;
+
+  try {
+    const r = await fetch(`${API_BASE}/api/slash`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, x1: a1.x, y1: a1.y, x2: a2.x, y2: a2.y })
+    });
+    const result = await r.json();
+    gameState = result;
+    updateHUD(result);
+
+    if (result.lastSlash && result.lastSlash.hitCount > 0) {
+      log(`SLASH! Hit ${result.lastSlash.hitCount} fruit`, 'log-hit');
+      for (const hit of result.lastSlash.hits) {
+        const cp = arenaToCanvas(hit.cx, hit.cy);
+        burstFx.push({ x: cp.x, y: cp.y, r: 20, alpha: 1.0, color: hit.color });
+      }
+    } else {
+      log('Miss!', 'log-miss');
+    }
+
+    if (result.finished) {
+      setTimeout(() => showResults(result), 800);
+    }
+  } catch(err) { console.error(err); }
+});
+
+async function pollState() {
+  while (true) {
+    await new Promise(r => setTimeout(r, 200));
+    if (!sessionId) break;
+    try {
+      const r = await fetch(`${API_BASE}/api/state?session=${sessionId}`);
+      const state = await r.json();
+      gameState = state;
+      updateHUD(state);
+      if (state.finished) {
+        setTimeout(() => showResults(state), 800);
+        break;
+      }
+    } catch(e) { /* ignore */ }
+  }
+}
+
+async function startGame() {
+  const r = await fetch(`${API_BASE}/api/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+  const data = await r.json();
+  sessionId = data.sessionId;
+  gameState = data;
+  overlay.style.display = 'none';
+  log('Game started: ' + sessionId.slice(0,8));
+  updateHUD(data);
+  animate();
+  pollState();
+}
+
+function showResults(state) {
+  cancelAnimationFrame(animFrame);
+  resultsPanel.style.display = 'flex';
+  const grid = document.getElementById('result-grid');
+  const items = [
+    ['Final Score', state.score],
+    ['Slashed', state.slashed],
+    ['Missed', state.missed],
+    ['Accuracy', state.accuracy != null ? (state.accuracy * 100).toFixed(1) + '%' : '--'],
+    ['Max Combo', state.maxCombo],
+    ['Total Fruit', state.totalFruit],
+    ['Total Time', state.elapsedMs != null ? (state.elapsedMs / 1000).toFixed(1) + 's' : '--'],
+    ['Session', state.sessionId ? state.sessionId.slice(0,8) : '--'],
+  ];
+  grid.innerHTML = items.map(([k,v]) =>
+    `<span class="result-key">${k}</span><span class="result-val">${v}</span>`
+  ).join('');
+}
+
+document.getElementById('start-btn').addEventListener('click', startGame);
+document.addEventListener('keydown', (e) => {
+  if ((e.key === 's' || e.key === 'S') && overlay.style.display !== 'none') startGame();
+});
+</script>
+</body>
+</html>

@@ -32,6 +32,56 @@ A Fitts's Law-style clicking game. A colored square appears at a random position
 
 ---
 
+### 📋 form-master
+
+A form-filling speed test. A random profile (name, address, employment, etc.) is generated once per session. The agent must fill out 10 rounds of HTML forms — each round shows a different subset of fields from that profile, progressing from simple (one text field) to complex (13 mixed fields including selects, radios, checkboxes, and dates).
+
+**Modes:**
+- **Easy**: Profile data is shown side-by-side with the form (visual reference panel)
+- **Hard**: Data is hidden — agent must call `/api/profile` to retrieve it, then fill from memory
+
+**Files:**
+- `form-master/index.html` — the game UI (dark theme, profile panel + form panel)
+- `form-master/server.js` — scoring backend (Node.js, no dependencies, port 7433)
+- `form-master/prompt.md` — agent instructions
+
+**Scoring:**
+- Correct field: +50 base + speed bonus (up to +100 for fast submissions)
+- Incorrect field: 0 points
+- Accuracy and total score tracked across all rounds
+
+**Field types tested:**
+- `text`, `email`, `number`, `date` — basic inputs
+- `select` — dropdown (state, country, department, subscription plan)
+- `radio` — radio buttons (employment type)
+- `checkbox` — boolean toggle (newsletter)
+- `textarea` — long text (notes)
+
+**Fastest strategy:** Write a script that POSTs `/api/start`, then loops calling `/api/submit` with answers built directly from the profile JSON — completes all 10 rounds in under 1 second via API with 100% accuracy.
+
+**Visual strategy:** Open browser at `http://localhost:7433`, read profile panel (easy mode), type/select values, click Submit.
+
+```bash
+# Start the server
+npm run computer:form-server
+# → Open http://localhost:7433 in browser
+
+# Run with agent
+npm run computer:form-master
+```
+
+**API:**
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/start` | Start session. Body: `{ config?: { easyMode?, totalRounds? } }` |
+| `POST` | `/api/submit` | Submit round answers. Body: `{ sessionId, answers, reactionMs? }` |
+| `GET`  | `/api/state?session=<id>` | Get current state + currentRound fields |
+| `GET`  | `/api/profile?session=<id>` | Get full profile data |
+| `GET`  | `/api/results?session=<id>` | Get final results |
+| `GET`  | `/api/sessions` | List all sessions |
+
+---
+
 ## Running the Benchmark
 
 ### Quick start (manual play)
