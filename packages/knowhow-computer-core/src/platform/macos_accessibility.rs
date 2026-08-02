@@ -9,6 +9,7 @@ use std::ptr;
 use core_foundation::array::{CFArray, CFArrayRef};
 use core_foundation::base::{CFGetTypeID, CFRelease, CFTypeID, CFTypeRef, TCFType};
 use core_foundation::boolean::{CFBoolean, CFBooleanGetTypeID};
+use core_foundation::number::{CFNumber, CFNumberGetTypeID};
 use core_foundation::string::{CFString, CFStringGetTypeID, CFStringRef};
 use napi::{Error, Result, Status};
 
@@ -29,10 +30,19 @@ struct CGPoint {
     y: f64,
 }
 
+#[repr(C)]
+struct ProcessSerialNumber {
+    high_long_of_psn: u32,
+    low_long_of_psn: u32,
+}
+
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
     fn AXIsProcessTrusted() -> bool;
     fn AXUIElementCreateSystemWide() -> AXUIElementRef;
+    fn AXUIElementCreateApplication(pid: i32) -> AXUIElementRef;
+    fn GetFrontProcess(psn: *mut ProcessSerialNumber) -> i32;
+    fn GetProcessPID(psn: *const ProcessSerialNumber, pid: *mut i32) -> i32;
     fn AXUIElementCopyAttributeValue(
         element: AXUIElementRef,
         attribute: CFStringRef,
@@ -125,6 +135,10 @@ fn value_as_string(element: AXUIElementRef) -> Option<String> {
         } else if CFGetTypeID(value) == CFBooleanGetTypeID() {
             let b: bool = CFBoolean::wrap_under_get_rule(value as _).into();
             Some(b.to_string())
+        } else if CFGetTypeID(value) == CFNumberGetTypeID() {
+            CFNumber::wrap_under_get_rule(value as _)
+                .to_i64()
+                .map(|number| number.to_string())
         } else {
             None
         }
@@ -197,6 +211,28 @@ fn children(element: AXUIElementRef) -> Vec<AxOwned> {
         .collect()
 }
 
+fn focused_application() -> Option<AxOwned> {
+    let system = AxOwned(unsafe { AXUIElementCreateSystemWide() });
+    if let Some(app) = copy_element_attr(system.0, "AXFocusedApplication") {
+        return Some(app);
+    }
+
+    // AXFocusedApplication is intermittently absent even when macOS reports a
+    // frontmost process. Resolve that process explicitly instead of making all
+    // accessibility discovery fail for an otherwise focused window.
+    let mut psn = ProcessSerialNumber {
+        high_long_of_psn: 0,
+        low_long_of_psn: 0,
+    };
+    let mut pid = 0;
+    let status = unsafe { GetFrontProcess(&mut psn) };
+    if status != 0 || unsafe { GetProcessPID(&psn, &mut pid) } != 0 || pid <= 0 {
+        return None;
+    }
+    let app = unsafe { AXUIElementCreateApplication(pid) };
+    (!app.is_null()).then_some(AxOwned(app))
+}
+
 fn focused_window() -> Result<AxOwned> {
     if !trusted() {
         return Err(Error::new(
@@ -204,8 +240,7 @@ fn focused_window() -> Result<AxOwned> {
             "macOS Accessibility permission is not granted",
         ));
     }
-    let system = AxOwned(unsafe { AXUIElementCreateSystemWide() });
-    let app = copy_element_attr(system.0, "AXFocusedApplication").ok_or_else(|| {
+    let app = focused_application().ok_or_else(|| {
         Error::new(
             Status::GenericFailure,
             "No focused accessibility application",

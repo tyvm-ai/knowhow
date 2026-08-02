@@ -1140,6 +1140,131 @@ export class ComputerService implements ComputerUseService {
     return driver.setAccessibilityValue(id, value);
   }
 
+  /**
+   * Select an option from a native accessibility pop-up/combo box.
+   *
+   * Some applications expose AXValue as settable, while browsers commonly
+   * require opening the menu and pressing an AXMenuItem. Keep both platform
+   * behaviors behind one operation so automations do not need fragile keyboard
+   * type-ahead sequences.
+   */
+  async selectAccessibilityOption(id: string, option: string): Promise<void> {
+    const wanted = option.trim().toLocaleLowerCase();
+    if (!wanted) throw new Error("Accessibility option must not be empty");
+
+    const inspectOptions: AccessibilityOptions = {
+      maxDepth: 30,
+      maxElements: 2000,
+      interactiveOnly: false,
+    };
+    const current = (await this.accessibilityElements(inspectOptions))
+      .find((element) => element.id === id);
+    if (!current) throw new Error("Accessibility element is stale; inspect the focused window again");
+
+    // AX ids are child-index paths and can change when Chromium inserts or
+    // removes its temporary native menu. Resolve the original control by its
+    // role and bounds as a fallback instead of treating a changed path as a
+    // failed selection.
+    const findCurrentControl = (elements: AccessibilityElement[]) => {
+      const byId = elements.find((element) => element.id === id);
+      if (!current.bounds) return byId?.role === current.role ? byId : undefined;
+      const center = (bounds: Region) => ({
+        x: bounds.x + bounds.width / 2,
+        y: bounds.y + bounds.height / 2,
+      });
+      const origin = center(current.bounds);
+      if (byId?.role === current.role && byId.bounds) {
+        const candidate = center(byId.bounds);
+        if (Math.hypot(candidate.x - origin.x, candidate.y - origin.y) <= 4) return byId;
+      }
+      return elements
+        .filter((element) => element.role === current.role && element.bounds)
+        .map((element) => {
+          const candidate = center(element.bounds!);
+          return { element, distance: Math.hypot(candidate.x - origin.x, candidate.y - origin.y) };
+        })
+        .filter(({ distance }) => distance <= 4)
+        .sort((a, b) => a.distance - b.distance)[0]?.element;
+    };
+
+    // Native controls such as Cocoa combo boxes may support direct AXValue.
+    try {
+      await this.setAccessibilityValue(id, option);
+      const refreshed = await this.accessibilityElements(inspectOptions);
+      const updated = findCurrentControl(refreshed);
+      if (String(updated?.value ?? "").trim().toLocaleLowerCase() === wanted) return;
+    } catch {
+      // Browser pop-up buttons generally reject AXValue and expose menu items
+      // only while their menu is open; continue with that path.
+    }
+
+    // Chromium maps AXShowMenu on an HTML <select> to the browser context
+    // menu. AXPress activates the control itself and exposes its options, so
+    // prefer it whenever both actions are advertised.
+    const openAction = current.actions.includes("AXPress")
+      ? "AXPress"
+      : current.actions.includes("AXShowMenu") ? "AXShowMenu" : null;
+    if (!openAction) throw new Error("Accessibility control cannot open an option menu");
+
+    const findItem = async () => {
+      const opened = await this.accessibilityElements({
+        maxDepth: 40,
+        maxElements: 3000,
+        interactiveOnly: false,
+      });
+      return opened.filter((element) => element.role === "AXMenuItem" &&
+        [element.title, element.description, element.value].some((value) =>
+          String(value ?? "").trim().toLocaleLowerCase() === wanted))
+        // Prefer the temporary native menu item. Chromium also exposes hidden
+        // option children, but those do not advertise AXPick.
+        .sort((a, b) => Number(b.actions.includes("AXPick")) - Number(a.actions.includes("AXPick")))[0];
+    };
+
+    await this.performAccessibilityAction(id, openAction);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    let item = await findItem();
+
+    // Chromium currently reports AX_OK for AXPress on an HTML <select> without
+    // displaying its option menu. A real click at the accessibility-provided
+    // bounds activates the same discovered control without coordinate guessing.
+    if ((!item || !item.actions.includes("AXPick")) && current.bounds) {
+      await this.moveMouse({
+        x: Math.round(current.bounds.x + current.bounds.width / 2),
+        y: Math.round(current.bounds.y + current.bounds.height / 2),
+      });
+      await this.click("left");
+      // Type-ahead brings an off-screen match into the native menu. Keep a
+      // deliberate delay so Chromium preserves the option-search buffer.
+      await this.typeText(option, { delay: 150 });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      item = await findItem();
+    }
+    if (!item) throw new Error(`Accessibility option not found: ${option}`);
+    if (item.actions.includes("AXPick") && item.bounds) {
+      // AXPick currently returns AX_OK in Chromium without committing the HTML
+      // select. Click the exact live menu-item bounds exposed by accessibility.
+      await this.moveMouse({
+        x: Math.round(item.bounds.x + item.bounds.width / 2),
+        y: Math.round(item.bounds.y + item.bounds.height / 2),
+      });
+      await this.click("left");
+    } else {
+      await this.performAccessibilityAction(item.id,
+        item.actions.includes("AXPick") ? "AXPick" : "AXPress");
+    }
+    // Chromium can repaint immediately while its accessibility value trails by
+    // several hundred milliseconds. Poll rather than reporting a false failure.
+    let committed = false;
+    for (let attempt = 0; attempt < 10 && !committed; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const verified = findCurrentControl(await this.accessibilityElements(inspectOptions));
+      committed = String(verified?.value ?? "").trim().toLocaleLowerCase() === wanted;
+    }
+    if (!committed) {
+      throw new Error(`Accessibility option did not commit: ${option}`);
+    }
+  }
+
   async performAccessibilityAction(id: string, action: string): Promise<void> {
     const driver = await this.getDriver();
     if (!driver.performAccessibilityAction)

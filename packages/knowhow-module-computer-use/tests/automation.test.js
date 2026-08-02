@@ -20,7 +20,12 @@ function makeFakeService(overrides = {}) {
     typed: [],
     keys: [],
     focused: [],
+    accessibilitySelections: [],
+    accessibilityValues: [],
+    accessibilityActions: [],
     activeTitle: "Mouse Precision — Chrome",
+    activeApp: "Google Chrome",
+    ocrWindows: [],
     colorResults: [
       [{ color: "ff4444", center: { x: 100, y: 200 }, bounds: {}, sampledPixels: 50 }],
     ],
@@ -32,8 +37,9 @@ function makeFakeService(overrides = {}) {
       return { width: 1920, height: 1080 };
     },
     async getActiveWindow() {
-      return { title: state.activeTitle };
+      return { title: state.activeTitle, app: state.activeApp };
     },
+    async readText() { state.ocrWindows.push(state.activeTitle); return []; },
     async findColorRegions() {
       const i = Math.min(state.colorIdx, state.colorResults.length - 1);
       state.colorIdx++;
@@ -63,6 +69,24 @@ function makeFakeService(overrides = {}) {
     async focusWindow(match) {
       state.focused.push(match);
       return true;
+    },
+    async accessibilityTrusted() {
+      return true;
+    },
+    async accessibilityElements() {
+      return [{
+        id: "ax-1", role: "AXTextField", title: "First name",
+        value: "", actions: [], childCount: 0,
+      }];
+    },
+    async selectAccessibilityOption(id, option) {
+      state.accessibilitySelections.push({ id, option });
+    },
+    async setAccessibilityValue(id, value) {
+      state.accessibilityValues.push({ id, value });
+    },
+    async performAccessibilityAction(id, action) {
+      state.accessibilityActions.push({ id, action });
     },
   };
   return Object.assign(svc, overrides);
@@ -161,6 +185,65 @@ describe("AutomationRunner", () => {
     expect(dryResult.actions[0]).toMatchObject({ kind: "focus", suppressed: true });
   });
 
+  test("discovers and operates accessibility elements live", async () => {
+    const svc = makeFakeService();
+    const script = `
+      const trusted = await sdk.accessibilityTrusted();
+      const elements = await sdk.accessibilityElements({ interactiveOnly: true });
+      await sdk.selectAccessibilityOption(elements[0].id, "Alabama");
+      await sdk.setAccessibilityValue(elements[0].id, "Mia");
+      await sdk.performAccessibilityAction(elements[0].id, "AXConfirm");
+      sdk.log({ trusted });
+    `;
+    const result = await new AutomationRunner(
+      { name: "__test_accessibility", script }, svc, { maxDurationMs: 5000 }
+    ).run();
+    expect(svc._state.accessibilitySelections).toEqual([{ id: "ax-1", option: "Alabama" }]);
+    expect(svc._state.accessibilityValues).toEqual([{ id: "ax-1", value: "Mia" }]);
+    expect(svc._state.accessibilityActions).toEqual([{ id: "ax-1", action: "AXConfirm" }]);
+    expect(result.actions.map((a) => a.kind)).toEqual([
+      "selectAccessibilityOption",
+      "setAccessibilityValue", "performAccessibilityAction",
+    ]);
+    expect(result.logs[0].data).toEqual({ trusted: true });
+  });
+
+  test("accessibility reads remain live but mutations are suppressed in dry-run", async () => {
+    const svc = makeFakeService();
+    const script = `
+      const elements = await sdk.accessibilityElements();
+      sdk.log({ discovered: elements.length });
+      await sdk.setAccessibilityValue(elements[0].id, "Mia");
+      await sdk.performAccessibilityAction(elements[0].id, "AXPress");
+    `;
+    const result = await new AutomationRunner(
+      { name: "__test_accessibility_dry", script }, svc,
+      { maxDurationMs: 5000, dryRun: true }
+    ).run();
+    expect(result.logs[0].data).toEqual({ discovered: 1 });
+    expect(svc._state.accessibilityValues).toEqual([]);
+    expect(svc._state.accessibilityActions).toEqual([]);
+    expect(result.actions.every((a) => a.suppressed)).toBe(true);
+  });
+
+  test("suppresses accessibility mutations while the required-window gate is paused", async () => {
+    const svc = makeFakeService();
+    svc._state.activeTitle = "Some Other App";
+    const script = `
+      await sdk.requiredWindow({ titleIncludes: "Form Master" });
+      await sdk.setAccessibilityValue("ax-1", "Mia");
+      await sdk.performAccessibilityAction("ax-1", "AXPress");
+    `;
+    const result = await new AutomationRunner(
+      { name: "__test_accessibility_gate", script }, svc, { maxDurationMs: 5000 }
+    ).run();
+
+    expect(svc._state.accessibilityValues).toEqual([]);
+    expect(svc._state.accessibilityActions).toEqual([]);
+    expect(result.actions).toHaveLength(2);
+    expect(result.actions.every((action) => action.suppressed)).toBe(true);
+  });
+
   test("auto-pauses (suppresses actions) when the required window loses focus", async () => {
     const svc = makeFakeService();
     svc._state.activeTitle = "Some Other App";
@@ -184,6 +267,42 @@ describe("AutomationRunner", () => {
     expect(svc._state.clicks.length).toBe(0);
     expect(result.actions.length).toBeGreaterThan(0);
     expect(result.actions.every((a) => a.suppressed)).toBe(true);
+  });
+
+  test("runEvery does not invoke perception callbacks until its target window is focused", async () => {
+    const svc = makeFakeService();
+    svc._state.activeTitle = "knowhow:4:cli";
+    svc._state.activeApp = "Ghostty";
+    const switchToWrongChromeWindow = setTimeout(() => {
+      svc._state.activeTitle = "Unrelated tab";
+      svc._state.activeApp = "Google Chrome";
+    }, 40);
+    const switchToTarget = setTimeout(() => {
+      svc._state.activeTitle = "Form Master Benchmark";
+      svc._state.activeApp = "Google Chrome";
+    }, 100);
+    const spec = {
+      name: "__test_perception_gate",
+      script: `
+        await sdk.runEvery(async () => {
+          await sdk.readText();
+          sdk.ctl.stop();
+        }, 0, { requiredWindow: {
+          app: "Google Chrome", titleIncludes: "Form Master Benchmark"
+        }});
+      `,
+    };
+    const result = await new AutomationRunner(spec, svc, {
+      maxDurationMs: 2000,
+      gatePollMs: 20,
+    }).run();
+    clearTimeout(switchToTarget);
+    clearTimeout(switchToWrongChromeWindow);
+
+    expect(result.stopped).toBe("manual");
+    expect(svc._state.ocrWindows).toEqual(["Form Master Benchmark"]);
+    expect(result.logs.some((entry) => entry.data.paused === "window-focus-lost")).toBe(true);
+    expect(result.logs.some((entry) => entry.data.resumed === true)).toBe(true);
   });
 
   test("reports a manual stop when sdk.ctl.stop() is called", async () => {

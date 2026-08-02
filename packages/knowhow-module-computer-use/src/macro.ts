@@ -1,6 +1,16 @@
 import * as fs from "fs";
 import { ComputerUseService, MouseButton } from "@tyvm/knowhow";
 
+export interface AccessibilityTarget {
+  /** A fresh ID from an earlier accessibilityElements step in this same run. */
+  id?: string;
+  role?: string;
+  titleIncludes?: string;
+  descriptionIncludes?: string;
+  /** Zero-based result index when a selector matches more than one element. */
+  index?: number;
+}
+
 /**
  * A single macro step. This is the shorthand automation format — a JSON/YAML
  * list of steps executed in ONE process, so an agent (or a saved demo script)
@@ -20,6 +30,11 @@ export type MacroStep =
   | { action: "key"; key: string }
   | { action: "hotkey"; keys: string[] }
   | { action: "focus"; match: string }
+  | { action: "accessibilityTrusted" }
+  | { action: "accessibilityElements"; maxDepth?: number; maxElements?: number; interactiveOnly?: boolean }
+  | { action: "selectAccessibilityOption"; target: AccessibilityTarget; option: string }
+  | { action: "setAccessibilityValue"; target: AccessibilityTarget; value: string }
+  | { action: "performAccessibilityAction"; target: AccessibilityTarget; accessibilityAction: string }
   | { action: "sleep"; ms: number }
   | { action: "screenshot"; out?: string; displayId?: number; grid?: boolean }
   | { action: "log"; message: string };
@@ -93,6 +108,32 @@ export async function runMacro(
   const results: MacroResult[] = [];
   const stepDelay = opts?.defaultStepDelayMs ?? 0;
   const anySvc = svc as any;
+  let lastAccessibilityElements: Awaited<ReturnType<ComputerUseService["accessibilityElements"]>> = [];
+
+  const resolveAccessibilityTarget = async (target: AccessibilityTarget) => {
+    // Explicit IDs are only valid while the driver's latest traversal cache is
+    // alive. Selector targets deliberately refresh that cache immediately
+    // before acting so declarative macros do not need to know generated IDs.
+    if (target.id) {
+      const found = lastAccessibilityElements.find((element) => element.id === target.id);
+      if (!found) throw new Error(`Unknown or stale accessibility ID: ${target.id}`);
+      return found;
+    }
+    lastAccessibilityElements = await svc.accessibilityElements({
+      interactiveOnly: true,
+      maxElements: 1000,
+    });
+    const title = target.titleIncludes?.toLowerCase();
+    const description = target.descriptionIncludes?.toLowerCase();
+    const matches = lastAccessibilityElements.filter((element) =>
+      (!target.role || element.role === target.role) &&
+      (!title || element.title?.toLowerCase().includes(title)) &&
+      (!description || element.description?.toLowerCase().includes(description))
+    );
+    const found = matches[target.index ?? 0];
+    if (!found) throw new Error(`No accessibility element matched ${JSON.stringify(target)}`);
+    return found;
+  };
 
   for (let i = 0; i < steps.length; i++) {
     const step = steps[i];
@@ -160,6 +201,37 @@ export async function runMacro(
         case "focus": {
           const ok = await svc.focusWindow(step.match);
           rec(ok, step.match);
+          break;
+        }
+        case "accessibilityTrusted": {
+          const trusted = await svc.accessibilityTrusted();
+          rec(true, String(trusted));
+          break;
+        }
+        case "accessibilityElements":
+          lastAccessibilityElements = await svc.accessibilityElements({
+            maxDepth: step.maxDepth,
+            maxElements: step.maxElements,
+            interactiveOnly: step.interactiveOnly,
+          });
+          rec(true, JSON.stringify(lastAccessibilityElements));
+          break;
+        case "selectAccessibilityOption": {
+          const element = await resolveAccessibilityTarget(step.target);
+          await svc.selectAccessibilityOption(element.id, step.option);
+          rec(true, `${element.role} ${element.title || element.description || element.id} = ${step.option}`);
+          break;
+        }
+        case "setAccessibilityValue": {
+          const element = await resolveAccessibilityTarget(step.target);
+          await svc.setAccessibilityValue(element.id, step.value);
+          rec(true, `${element.role} ${element.title || element.description || element.id}`);
+          break;
+        }
+        case "performAccessibilityAction": {
+          const element = await resolveAccessibilityTarget(step.target);
+          await svc.performAccessibilityAction(element.id, step.accessibilityAction);
+          rec(true, `${step.accessibilityAction} on ${element.role} ${element.title || element.description || element.id}`);
           break;
         }
         case "sleep":

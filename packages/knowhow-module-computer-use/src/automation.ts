@@ -1,6 +1,11 @@
 import * as fs from "fs";
 import * as path from "path";
-import { Point, Region } from "@tyvm/knowhow";
+import {
+  AccessibilityElement,
+  AccessibilityOptions,
+  Point,
+  Region,
+} from "@tyvm/knowhow";
 import {
   ComputerService,
   ColorRegion,
@@ -36,10 +41,10 @@ const STORE_DIR = path.join(".knowhow", "automations");
  * the caller requests) so a runaway automation can never hold the mouse hostage
  * for longer than that. Re-launch the automation if you legitimately need more time.
  */
-export const MAX_AUTOMATION_DURATION_MS = 10000;
+export const MAX_AUTOMATION_DURATION_MS = 30000;
 
 /** Default run duration when the caller doesn't specify one. */
-export const DEFAULT_AUTOMATION_DURATION_MS = 10000;
+export const DEFAULT_AUTOMATION_DURATION_MS = 30000;
 
 export interface WindowMatch {
   /** Substring (case-insensitive) that must appear in the active window title. */
@@ -77,7 +82,16 @@ export interface AutomationDoc {
 
 export interface AutomationAction {
   t: number;
-  kind: "clickAt" | "moveMouse" | "type" | "key" | "hotkey" | "focus";
+  kind:
+    | "clickAt"
+    | "moveMouse"
+    | "type"
+    | "key"
+    | "hotkey"
+    | "focus"
+    | "selectAccessibilityOption"
+    | "setAccessibilityValue"
+    | "performAccessibilityAction";
   x?: number;
   y?: number;
   button?: string;
@@ -127,7 +141,13 @@ export interface AutomationSDK {
   // ── perception (real pixels) ──
   screenSize(): Promise<{ width: number; height: number }>;
   /** Return the currently focused window, if one can be identified. */
-  activeWindow(): Promise<{ title: string; app?: string } | null>;
+  activeWindow(): Promise<{ title: string; app?: string; bounds?: Region } | null>;
+  /**
+   * Inspect the focused window's native accessibility tree. Element IDs are
+   * short-lived: discover and use an element before requesting another tree.
+   */
+  accessibilityTrusted(): Promise<boolean>;
+  accessibilityElements(opts?: AccessibilityOptions): Promise<AccessibilityElement[]>;
   findColor(
     colors: string | string[],
     opts?: {
@@ -188,6 +208,12 @@ export interface AutomationSDK {
   hotkey(keys: string[]): Promise<void>;
   /** Focus an app/window. Call before installing requiredWindow. */
   focus(match: string): Promise<boolean>;
+  /** Select a pop-up/combo-box option without keyboard type-ahead. */
+  selectAccessibilityOption(id: string, option: string): Promise<void>;
+  /** Set a settable accessibility element value using a fresh discovered ID. */
+  setAccessibilityValue(id: string, value: string): Promise<void>;
+  /** Perform an allowlisted AX action (for example AXPress or AXShowMenu). */
+  performAccessibilityAction(id: string, action: string): Promise<void>;
 
   // ── control / telemetry ──
   sleep(ms: number): Promise<void>;
@@ -491,15 +517,13 @@ export class AutomationRunner {
     if (!active) return false;
     const title = (active.title || "").toLowerCase();
     const app = (active.app || "").toLowerCase();
-    if (match.titleIncludes) {
-      const t = match.titleIncludes.toLowerCase();
-      if (title.includes(t) || app.includes(t)) return true;
-    }
-    if (match.app) {
-      const a = match.app.toLowerCase();
-      if (app.includes(a) || title.includes(a)) return true;
-    }
-    return false;
+    const titleMatches = !match.titleIncludes ||
+      title.includes(match.titleIncludes.toLowerCase());
+    const appMatches = !match.app || app.includes(match.app.toLowerCase());
+    // When both selectors are supplied they describe one target window, not
+    // alternatives. Requiring both prevents another Chrome tab from opening
+    // the gate merely because its owning application matches.
+    return titleMatches && appMatches;
   }
 
   private async pollGate(): Promise<void> {
@@ -617,6 +641,14 @@ export class AutomationRunner {
             }
             break;
           }
+          // A required-window gate scopes perception as well as input. Do not
+          // start the callback while paused: OCR/screenshot calls are reads and
+          // cannot be suppressed by canAct(), so running them here would capture
+          // the terminal used to launch the automation on another display.
+          if (self.ctl.paused) {
+            await new Promise((resolve) => setTimeout(resolve, 25));
+            continue;
+          }
           await callback();
           if (self.ctl.stopped) break;
           const remaining = intervalMs - (self.now() - iterationStarted);
@@ -640,6 +672,8 @@ export class AutomationRunner {
 
       screenSize: () => svc.screenSize(),
       activeWindow: () => svc.getActiveWindow() as any,
+      accessibilityTrusted: () => svc.accessibilityTrusted(),
+      accessibilityElements: (o = {}) => svc.accessibilityElements(o),
 
       findColor: async (colors, o = {}) =>
         svc.findColorRegions({
@@ -770,6 +804,42 @@ export class AutomationRunner {
         // must call this before requiredWindow/runEvery installs its gate.
         if (!self.canAct()) return false;
         return svc.focusWindow(match);
+      },
+
+      selectAccessibilityOption: async (id, option) => {
+        const act: AutomationAction = {
+          t: self.elapsed(),
+          kind: "selectAccessibilityOption",
+          text: JSON.stringify({ id, option }),
+          suppressed: !self.canAct(),
+        };
+        self.actions.push(act);
+        if (!self.canAct()) return;
+        await svc.selectAccessibilityOption(id, option);
+      },
+
+      setAccessibilityValue: async (id, value) => {
+        const act: AutomationAction = {
+          t: self.elapsed(),
+          kind: "setAccessibilityValue",
+          text: JSON.stringify({ id, value }),
+          suppressed: !self.canAct(),
+        };
+        self.actions.push(act);
+        if (!self.canAct()) return;
+        await svc.setAccessibilityValue(id, value);
+      },
+
+      performAccessibilityAction: async (id, action) => {
+        const act: AutomationAction = {
+          t: self.elapsed(),
+          kind: "performAccessibilityAction",
+          text: JSON.stringify({ id, action }),
+          suppressed: !self.canAct(),
+        };
+        self.actions.push(act);
+        if (!self.canAct()) return;
+        await svc.performAccessibilityAction(id, action);
       },
 
       sleep: (ms) =>

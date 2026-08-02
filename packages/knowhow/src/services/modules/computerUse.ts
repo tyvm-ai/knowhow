@@ -186,6 +186,7 @@ export interface ComputerUseService {
 
   accessibilityTrusted(): Promise<boolean>;
   accessibilityElements(options?: AccessibilityOptions): Promise<AccessibilityElement[]>;
+  selectAccessibilityOption(id: string, option: string): Promise<void>;
   setAccessibilityValue(id: string, value: string): Promise<void>;
   performAccessibilityAction(id: string, action: string): Promise<void>;
 

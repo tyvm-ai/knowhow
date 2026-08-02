@@ -65,6 +65,20 @@ steps:
   - { action: screenshot, out: "/tmp/timeline.jpg" }
 ```
 
+Macros can also inspect native controls or resolve a control selector against a
+fresh accessibility tree immediately before acting:
+
+```yaml
+  - { action: accessibilityTrusted }
+  - { action: setAccessibilityValue, target: { role: AXTextField, titleIncludes: "First name" }, value: "Mia" }
+  - { action: performAccessibilityAction, target: { role: AXButton, titleIncludes: "Submit" }, accessibilityAction: AXPress }
+```
+
+Use an `accessibilityElements` step when the returned tree is itself useful in
+the macro result. The `accessibilityTrusted` result detail is `"true"` or
+`"false"`. Selector-based mutation steps are safer than hard-coded IDs,
+because accessibility IDs are short-lived.
+
 Agents get the same primitives as tools: `smoothScroll`, `screenshotRegion`
 (with `grid`), and `runComputerMacro(steps)` to run a whole sequence in one tool
 call.
@@ -81,29 +95,54 @@ result. The automation equivalent is
 
 ### Named-region coordinate scope
 
-Named regions currently retain their backward-compatible meaning: persisted
-absolute virtual-desktop coordinates. Consequently they are appropriate for a
-fixed display layout, but are not safe anchors for a window that may move or
-resize. Window-relative regions should be persisted as a versioned envelope,
-rather than silently changing the meaning of existing `regions.json` entries:
+Existing plain named regions retain their backward-compatible meaning as
+absolute virtual-desktop coordinates. New regions can instead use a versioned,
+window-relative envelope, so they remain valid when a window moves or resizes:
 
 ```json
 {
+  "version": 1,
   "region": { "x": 0.1, "y": 0.2, "width": 0.8, "height": 0.7 },
   "anchor": {
     "coordinateSpace": "window-normalized",
-    "window": { "app": "Google Chrome", "titleIncludes": "Form Master" },
-    "referenceSize": { "width": 1600, "height": 1000 }
+    "window": { "app": "Google Chrome", "titleIncludes": "Form Master" }
   }
 }
 ```
 
-Resolving that form must be asynchronous: validate the currently focused window
-against `anchor.window`, read its current bounds, then scale and translate the
-relative region. A mismatch must fail closed instead of falling back to stale
-absolute coordinates. This also means the change belongs at the shared region
-resolver boundary (OCR, detectors, shape hit-testing, and automations), not only
-in the region-definition tool.
+OCR, detectors, shape hit-testing, and automations resolve this form against the
+active window bounds. Resolution validates `anchor.window` and fails closed on
+a focus mismatch instead of clicking stale absolute coordinates. Use
+`coordinateSpace: "window-pixels"` when offsets should remain fixed rather than
+scale with the window.
+
+### Accessibility in automations
+
+On macOS, saved TypeScript automations can inspect and operate the focused
+window's native accessibility controls without guessing pixel positions:
+
+```ts
+const controls = await sdk.accessibilityElements({ interactiveOnly: true });
+const firstName = controls.find((e) =>
+  e.role === "AXTextField" && e.title?.toLowerCase().includes("first")
+);
+if (firstName) await sdk.setAccessibilityValue(firstName.id, "Mia");
+
+const submit = controls.find((e) =>
+  e.role === "AXButton" && e.title === "Submit"
+);
+if (submit) await sdk.performAccessibilityAction(submit.id, "AXPress");
+```
+
+IDs are short-lived and scoped to the most recent traversal, so discover and
+use controls together. Accessibility reads remain available in dry-run;
+mutations are recorded but suppressed, just like mouse and keyboard actions.
+Some browser controls expose `AXPress` and return success without dispatching a
+DOM click. For browser automation, verify the expected state change and fall
+back to `sdk.clickAt()` at the element's accessibility `bounds` when needed.
+This still avoids OCR-based target discovery. Window-normalized named regions
+remain useful as the next visual/OCR fallback for canvas controls or browser
+content that does not expose a useful AX node.
 
 ### Computer-use agent config
 
