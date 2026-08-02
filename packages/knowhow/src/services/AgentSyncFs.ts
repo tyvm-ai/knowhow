@@ -133,6 +133,11 @@ export class AgentSyncFs {
    * that call) to usage.json. This is intended for debugging cache-hit
    * issues, where comparing the message chains and usage values between
    * consecutive calls can reveal when a cache prefix was invalidated.
+   *
+   * To prevent exponential file growth, if the new entry's message thread
+   * fully contains the previous entry's thread as a prefix, the previous
+   * thread is replaced with { PREV_CACHE_HIT: true } so only the new
+   * messages (the delta) are stored alongside the new usage data.
    */
   private async appendUsageEntry(entry: any): Promise<void> {
     if (!this.taskPath) return;
@@ -146,6 +151,27 @@ export class AgentSyncFs {
         entries = JSON.parse(existingData);
       } catch {
         // File doesn't exist or is invalid, start fresh
+      }
+
+      // If the new entry's messages are a superset of the last entry's
+      // messages (i.e. the last thread is a prefix of the new thread),
+      // collapse the last entry's messages to { PREV_CACHE_HIT: true }
+      // and store only the new delta — preventing exponential growth.
+      if (entries.length > 0) {
+        const lastEntry = entries[entries.length - 1];
+        const prevMessages: any[] = lastEntry?.messages;
+        const newMessages: any[] = entry?.messages;
+        if (
+          Array.isArray(prevMessages) &&
+          Array.isArray(newMessages) &&
+          prevMessages.length > 0 &&
+          newMessages.length >= prevMessages.length &&
+          JSON.stringify(newMessages.slice(0, prevMessages.length)) ===
+            JSON.stringify(prevMessages)
+        ) {
+          // Replace the previous full thread with a compact sentinel
+          lastEntry.messages = [{ PREV_CACHE_HIT: true }];
+        }
       }
 
       entries.push(entry);
