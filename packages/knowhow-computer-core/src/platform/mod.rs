@@ -9,6 +9,9 @@ pub mod stub;
 #[cfg(target_os = "macos")]
 pub mod macos;
 
+#[cfg(target_os = "macos")]
+pub mod macos_accessibility;
+
 /// Construct the backend for the current platform.
 pub fn create_backend() -> Box<dyn Backend> {
   #[cfg(target_os = "macos")]

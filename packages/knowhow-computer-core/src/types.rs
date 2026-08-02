@@ -44,6 +44,32 @@ pub struct WindowInfo {
   pub active: bool,
 }
 
+/// A focused-window accessibility node with a short-lived structural ID.
+#[napi(object)]
+#[derive(Clone, Debug)]
+pub struct AccessibilityElement {
+  pub id: String,
+  pub role: String,
+  pub subrole: Option<String>,
+  pub title: Option<String>,
+  pub description: Option<String>,
+  pub value: Option<String>,
+  pub enabled: Option<bool>,
+  pub focused: Option<bool>,
+  pub bounds: Option<Region>,
+  pub actions: Vec<String>,
+  pub child_count: u32,
+}
+
+/// Bounds focused-window AX traversal to avoid expensive full application trees.
+#[napi(object)]
+#[derive(Clone, Debug)]
+pub struct AccessibilityOptions {
+  pub max_depth: Option<u32>,
+  pub max_elements: Option<u32>,
+  pub interactive_only: Option<bool>,
+}
+
 /// A single physical/logical display.
 #[napi(object)]
 #[derive(Clone, Debug)]

@@ -22,8 +22,8 @@ use types::*;
 
 // Re-export napi object types so they appear in the generated .d.ts.
 pub use types::{
-  Capabilities, Display, PermissionsStatus, Point, RawImage, Region, ScreenshotOptions, Size,
-  WindowInfo,
+  AccessibilityElement, AccessibilityOptions, Capabilities, Display, PermissionsStatus, Point,
+  RawImage, Region, ScreenshotOptions, Size, WindowInfo,
 };
 
 // Re-export native perception primitives (free functions) + their result types.
@@ -81,6 +81,47 @@ impl ComputerCore {
   #[napi]
   pub fn active_window(&self) -> Result<Option<WindowInfo>> {
     self.backend.active_window()
+  }
+
+  // ── accessibility ──
+
+  #[napi]
+  pub fn accessibility_trusted(&self) -> bool {
+    #[cfg(target_os = "macos")]
+    return platform::macos_accessibility::trusted();
+
+    #[cfg(not(target_os = "macos"))]
+    false
+  }
+
+  #[napi]
+  pub fn accessibility_elements(
+    &self,
+    options: Option<AccessibilityOptions>,
+  ) -> Result<Vec<AccessibilityElement>> {
+    #[cfg(target_os = "macos")]
+    return platform::macos_accessibility::elements(options);
+
+    #[cfg(not(target_os = "macos"))]
+    Err(Error::new(Status::GenericFailure, "Native accessibility inspection is only supported on macOS"))
+  }
+
+  #[napi]
+  pub fn set_accessibility_value(&self, id: String, value: String) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    return platform::macos_accessibility::set_value(&id, &value);
+
+    #[cfg(not(target_os = "macos"))]
+    Err(Error::new(Status::GenericFailure, "Native accessibility value setting is only supported on macOS"))
+  }
+
+  #[napi]
+  pub fn perform_accessibility_action(&self, id: String, action: String) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    return platform::macos_accessibility::perform_action(&id, &action);
+
+    #[cfg(not(target_os = "macos"))]
+    Err(Error::new(Status::GenericFailure, "Native accessibility actions are only supported on macOS"))
   }
 
   // ── screen ──
