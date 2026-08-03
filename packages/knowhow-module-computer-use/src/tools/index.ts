@@ -726,7 +726,8 @@ export async function computerUseFindRegions(
   clusterGap?: number,
   minPixels?: number,
   maxBoxes?: number,
-  displayId?: number
+  displayId?: number,
+  scale?: number
 ): Promise<string> {
   const svc = getService(this) as ComputerService;
   const resolved = await resolveRegionAsync(region as any, () => svc.getActiveWindow());
@@ -739,6 +740,7 @@ export async function computerUseFindRegions(
     minPixels,
     maxBoxes,
     displayId,
+    scale,
   });
   return JSON.stringify(boxes, null, 2);
 }
@@ -887,7 +889,7 @@ export async function computerUseWriteAutomation(
       ? ` Warning: no discoverable header found. Add a leading JSDoc block comment at the top with @description, @useWhen, @startState, @endState, and @window tags so a future agent knows WHEN to use this automation without reading its code.`
       : ` Parsed skill header: ${JSON.stringify(saved.doc)}.`) +
     (!script.includes("sdk.requiredWindow(") && !/requiredWindow\s*:/.test(script)
-      ? " Warning: no required-window gate was found (neither sdk.requiredWindow(...) nor a { requiredWindow } option on sdk.runEvery). Without it, clicking away will NOT auto-pause the automation and a human can't easily reclaim the mouse. Note runs are hard-capped at 10s regardless."
+      ? " Warning: no required-window gate was found (neither sdk.requiredWindow(...) nor a { requiredWindow } option on sdk.runEvery). Without it, clicking away will NOT auto-pause the automation and a human can't easily reclaim the mouse. Note runs are hard-capped at 5 minutes regardless."
       : "")
   );
 }

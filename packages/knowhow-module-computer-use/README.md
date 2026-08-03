@@ -48,6 +48,21 @@ knowhow computer run demo.yaml [--continue-on-error] [--delay-ms 100]
 knowhow computer agent --input "open X and scroll the timeline, tell me what's on it"
 ```
 
+### Fast perception captures
+
+`computerUseFindRegions` and automation `sdk.findRegions()` accept a `scale` in
+`(0, 1]`. For example, `scale: 0.25` captures a requested game region natively
+and downsizes it before transferring pixels to JavaScript. Detector results,
+`minSize`, `minPixels`, `dilate`, and `clusterGap` still use desktop pixels, so
+callers do not need to change coordinates or thresholds. CLI auto-detection uses
+the same option via `show-regions --auto --scale 0.25`.
+
+On macOS, capture deliberately invokes `/usr/sbin/screencapture`. This keeps the
+Screen Recording grant attached to the launching terminal (for example Ghostty)
+rather than requiring a separate grant for Node. If a future direct
+ScreenCaptureKit streaming backend is available but cannot capture because of
+permissions, the command-backed capture remains the compatibility fallback.
+
 ### Macro file (the portable AutoHotKey-style replay format)
 
 `knowhow computer run <file.json|yaml>` executes an ordered list of steps in a
@@ -91,7 +106,11 @@ desktop coordinates, including displays whose origin is not `(0, 0)`. Use
 `--display-id <id>` to limit work to one display, `--active-window` to OCR only
 the focused window, or `--region <name|x,y,w,h>` for the fastest/least noisy
 result. The automation equivalent is
-`sdk.readText({ displayId, activeWindow, region })`.
+`sdk.readText({ displayId, activeWindow, region })`. Full-display tiles are
+recognized concurrently. Use CLI `--fast` or automation option
+`recognitionLevel: "fast"` for latency-sensitive UI detection; retain
+`"accurate"` (the default) when OCR is supplying form values where accuracy is
+more important.
 
 ### Named-region coordinate scope
 
@@ -115,6 +134,34 @@ active window bounds. Resolution validates `anchor.window` and fails closed on
 a focus mismatch instead of clicking stale absolute coordinates. Use
 `coordinateSpace: "window-pixels"` when offsets should remain fixed rather than
 scale with the window.
+
+### Native automation debug overlays (macOS)
+
+Automations can annotate detector results without moving or clicking the mouse:
+
+```ts
+await sdk.showOverlay([
+  { kind: "rect", x: 100, y: 120, width: 240, height: 160,
+    color: "#00ffff80", lineWidth: 2 },
+  { kind: "circle", x: 140, y: 150, width: 60, height: 60,
+    color: "#00ff00ff", lineWidth: 4 },
+  { kind: "line", x: 170, y: 180, x2: 300, y2: 220,
+    color: "#ff00ffff" },
+  { kind: "point", x: 170, y: 180, width: 8, color: "#ffffffff" },
+]);
+```
+
+Coordinates are absolute virtual-desktop pixels with a top-left origin. Colors
+accept `#RRGGBB` or `#RRGGBBAA`. Each call atomically replaces the previous
+annotations; `await sdk.clearOverlay()` removes them. The native panels are
+always-on-top, non-activating, click-through, visible across Spaces/fullscreen,
+and excluded from normal screen capture so detectors do not detect their own
+annotations.
+
+`showOverlay` is intentionally suppressed in dry-run and while a required-window
+gate is paused. `clearOverlay` remains available in those states for cleanup.
+The overlay currently requires the Rust-core driver on macOS; other drivers fail
+with an explicit unsupported-capability error.
 
 ### Accessibility in automations
 

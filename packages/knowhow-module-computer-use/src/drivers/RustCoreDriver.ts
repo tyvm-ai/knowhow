@@ -5,6 +5,7 @@ import {
   DriverCapabilities,
   Display,
   MouseButton,
+  OverlayPrimitive,
   Point,
   ScreenshotOptions,
   Size,
@@ -149,6 +150,20 @@ export class RustCoreDriver implements ComputerDriver {
     core.performAccessibilityAction(id, action);
   }
 
+  async showOverlay(primitives: OverlayPrimitive[]): Promise<void> {
+    const core = this.ensureCore();
+    if (typeof core.showOverlay !== "function")
+      throw new Error("Native debug overlays are unavailable");
+    core.showOverlay(primitives);
+  }
+
+  async clearOverlay(): Promise<void> {
+    const core = this.ensureCore();
+    if (typeof core.clearOverlay !== "function")
+      throw new Error("Native debug overlays are unavailable");
+    core.clearOverlay();
+  }
+
   async getDisplays(): Promise<Display[]> {
     return this.ensureCore().getDisplays().map((d: any) => ({
       id: d.id,
@@ -176,6 +191,7 @@ export class RustCoreDriver implements ComputerDriver {
                 }
               : undefined,
             displayId: opts.displayId,
+            scale: opts.captureScale,
           }
         : undefined
     );

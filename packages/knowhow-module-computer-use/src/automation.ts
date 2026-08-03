@@ -3,6 +3,7 @@ import * as path from "path";
 import {
   AccessibilityElement,
   AccessibilityOptions,
+  OverlayPrimitive,
   Point,
   Region,
 } from "@tyvm/knowhow";
@@ -41,7 +42,7 @@ const STORE_DIR = path.join(".knowhow", "automations");
  * the caller requests) so a runaway automation can never hold the mouse hostage
  * for longer than that. Re-launch the automation if you legitimately need more time.
  */
-export const MAX_AUTOMATION_DURATION_MS = 30000;
+export const MAX_AUTOMATION_DURATION_MS = 300000;
 
 /** Default run duration when the caller doesn't specify one. */
 export const DEFAULT_AUTOMATION_DURATION_MS = 30000;
@@ -85,6 +86,7 @@ export interface AutomationAction {
   kind:
     | "clickAt"
     | "moveMouse"
+    | "dragMouse"
     | "type"
     | "key"
     | "hotkey"
@@ -94,6 +96,9 @@ export interface AutomationAction {
     | "performAccessibilityAction";
   x?: number;
   y?: number;
+  x2?: number;
+  y2?: number;
+  duration?: number;
   button?: string;
   text?: string;
   /** True when the runner suppressed this action (paused / dry-run). */
@@ -190,10 +195,14 @@ export interface AutomationSDK {
    */
   findRegions(opts?: {
     region?: Region | string;
+    /** Native capture scale in (0, 1]. Use 0.25 for fast tracking while all
+     * returned bounds and detector size thresholds remain desktop-relative. */
+    scale?: number;
     mode?: "foreground" | "colors" | "panels";
     minSize?: number;
     colorBits?: number;
     clusterGap?: number;
+    dilate?: number;
     minPixels?: number;
     maxBoxes?: number;
   }): Promise<DesktopBox[]>;
@@ -202,6 +211,13 @@ export interface AutomationSDK {
   // ── action (no-op while paused; recorded in dry-run) ──
   clickAt(x: number, y: number, button?: "left" | "right" | "middle"): Promise<void>;
   moveMouse(x: number, y: number): Promise<void>;
+  dragMouse(
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number,
+    opts?: { button?: "left" | "right" | "middle"; duration?: number }
+  ): Promise<void>;
   type(text: string): Promise<void>;
   key(name: string): Promise<void>;
   /** Press a key chord, e.g. `["command", "a"]`. */
@@ -214,6 +230,12 @@ export interface AutomationSDK {
   setAccessibilityValue(id: string, value: string): Promise<void>;
   /** Perform an allowlisted AX action (for example AXPress or AXShowMenu). */
   performAccessibilityAction(id: string, action: string): Promise<void>;
+
+  // ── click-through visual debugging ──
+  /** Replace native annotations. Suppressed in dry-run and while focus-gated. */
+  showOverlay(primitives: OverlayPrimitive[]): Promise<void>;
+  /** Clear annotations. This remains available while paused/stopped for cleanup. */
+  clearOverlay(): Promise<void>;
 
   // ── control / telemetry ──
   sleep(ms: number): Promise<void>;
@@ -252,6 +274,7 @@ export interface AutomationSDK {
     displayId?: number;
     activeWindow?: boolean;
     minConfidence?: number;
+    recognitionLevel?: "fast" | "accurate";
   }): Promise<OcrResult[]>;
   readonly ctl: AutomationControl;
 }
@@ -709,6 +732,7 @@ export class AutomationRunner {
       findRegions: async (o = {}) =>
         svc.findRegions({
           region: await resolveRegionAsync(o.region as any, () => svc.getActiveWindow()),
+          scale: o.scale,
           // Default to "panels" in automations: it groups foreground content
           // over background surfaces, which is what "find the clickable things
           // that aren't the background" usually means for a game/UI.
@@ -723,6 +747,12 @@ export class AutomationRunner {
       pixelColor: (x, y) => svc.pixelColor({ x, y }),
 
       readText: (o = {}) => svc.readText(o as ReadTextOptions),
+
+      showOverlay: async (primitives) => {
+        if (!self.canAct()) return;
+        await svc.showOverlay(primitives);
+      },
+      clearOverlay: () => svc.clearOverlay(),
 
       clickAt: async (x, y, button = "left") => {
         const act: AutomationAction = {
@@ -753,6 +783,27 @@ export class AutomationRunner {
         self.actions.push(act);
         if (!self.canAct()) return;
         await svc.moveMouse({ x, y });
+      },
+
+      dragMouse: async (fromX, fromY, toX, toY, opts = {}) => {
+        const act: AutomationAction = {
+          t: self.elapsed(),
+          kind: "dragMouse",
+          x: fromX,
+          y: fromY,
+          x2: toX,
+          y2: toY,
+          button: opts.button ?? "left",
+          duration: opts.duration,
+          suppressed: !self.canAct(),
+        };
+        self.actions.push(act);
+        if (!self.canAct()) return;
+        await svc.drag(
+          { x: fromX, y: fromY },
+          { x: toX, y: toY },
+          opts
+        );
       },
 
       type: async (text) => {

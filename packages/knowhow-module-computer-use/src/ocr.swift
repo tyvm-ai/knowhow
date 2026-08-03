@@ -1,7 +1,8 @@
 #!/usr/bin/env swift
 // Vision OCR helper for @tyvm/knowhow-module-computer-use
-// Usage: swift ocr.swift <image_path>
+// Usage: swift ocr.swift <image_path> [fast|accurate]
 // Reads a PNG/JPEG image and outputs JSON array of recognized text regions.
+// Recognition defaults to accurate when the optional mode is omitted.
 // Each region: { text, confidence, x, y, w, h }
 // Coordinates are NORMALIZED (0-1), origin bottom-left (Vision convention).
 // The TS caller converts to absolute pixel coords using image dimensions.
@@ -16,8 +17,9 @@ guard !path.isEmpty, let img = NSImage(contentsOfFile: path),
   exit(1)
 }
 
+let level = CommandLine.arguments.count > 2 ? CommandLine.arguments[2] : "accurate"
 let request = VNRecognizeTextRequest()
-request.recognitionLevel = .accurate
+request.recognitionLevel = level == "fast" ? .fast : .accurate
 request.usesLanguageCorrection = false  // faster, good for UI text
 
 let handler = VNImageRequestHandler(cgImage: cgImg)

@@ -11,24 +11,26 @@ pub mod macos;
 
 #[cfg(target_os = "macos")]
 pub mod macos_accessibility;
+#[cfg(target_os = "macos")]
+pub mod macos_overlay;
 
 /// Construct the backend for the current platform.
 pub fn create_backend() -> Box<dyn Backend> {
-  #[cfg(target_os = "macos")]
-  {
-    return Box::new(macos::MacBackend::new());
-  }
+    #[cfg(target_os = "macos")]
+    {
+        return Box::new(macos::MacBackend::new());
+    }
 
-  #[cfg(target_os = "windows")]
-  {
-    return Box::new(stub::StubBackend::new("windows"));
-  }
+    #[cfg(target_os = "windows")]
+    {
+        return Box::new(stub::StubBackend::new("windows"));
+    }
 
-  #[cfg(target_os = "linux")]
-  {
-    return Box::new(stub::StubBackend::new("linux"));
-  }
+    #[cfg(target_os = "linux")]
+    {
+        return Box::new(stub::StubBackend::new("linux"));
+    }
 
-  #[allow(unreachable_code)]
-  Box::new(stub::StubBackend::new("unknown"))
+    #[allow(unreachable_code)]
+    Box::new(stub::StubBackend::new("unknown"))
 }

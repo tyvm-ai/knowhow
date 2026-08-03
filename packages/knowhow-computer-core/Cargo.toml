@@ -33,6 +33,7 @@ x11rb = { version = "0.13", features = ["xtest"] }
 
 [build-dependencies]
 napi-build = "2"
+cc = "1"
 
 [profile.release]
 lto = true

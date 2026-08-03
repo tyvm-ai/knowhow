@@ -263,6 +263,7 @@ export function registerComputerCli(
     .option("--region <name>", "Named region to restrict OCR to (e.g. profilePanel)")
     .option("--display-id <id>", "Restrict OCR to one display id (from `computer displays`)", parseInt)
     .option("--active-window", "Restrict OCR to the currently focused window")
+    .option("--fast", "Use faster, less accurate Vision recognition")
     .option("--min-confidence <n>", "Minimum confidence threshold 0-1 (default 0.3)", parseFloat)
     .option("--json", "Output full JSON (text, confidence, bounds, center)")
     .action(async (opts) => {
@@ -272,6 +273,7 @@ export function registerComputerCli(
         displayId: opts.displayId,
         activeWindow: opts.activeWindow,
         minConfidence: opts.minConfidence ?? 0.3,
+        recognitionLevel: opts.fast ? "fast" : "accurate",
       });
       if (opts.json) {
         console.log(JSON.stringify(results, null, 2));
@@ -400,6 +402,7 @@ export function registerComputerCli(
         // view of the auto-detection.
         const findOpts: any = {};
         if (opts.display !== undefined) findOpts.displayId = Number(opts.display);
+        if (opts.scale) findOpts.scale = Number(opts.scale);
         if (opts.minSize) findOpts.minSize = Number(opts.minSize);
         if (opts.edgeThreshold)
           findOpts.edgeThreshold = Number(opts.edgeThreshold);
@@ -681,7 +684,7 @@ export function registerComputerCli(
     .option("--driver <name>", "Pin a driver by name")
     .option(
       "--max-ms <ms>",
-      "Max run duration in ms (default 10000, HARD-CAPPED at 10000 so a human can always reclaim the mouse)"
+      "Max run duration in ms (default 30000, HARD-CAPPED at 300000 so a human can always reclaim the mouse)"
     )
     .action((name, opts) => runAutomationCli(name, opts));
 

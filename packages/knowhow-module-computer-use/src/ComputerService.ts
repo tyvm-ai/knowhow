@@ -8,6 +8,7 @@ import {
   DriverCapabilities,
   Display,
   MouseButton,
+  OverlayPrimitive,
   Point,
   Region,
   ScreenshotOptions,
@@ -74,6 +75,23 @@ export interface DesktopShape {
   score: number;
 }
 
+/** Convert desktop-space detector thresholds to capture-image pixels. */
+export function scaleFindRegionsOptions(
+  opts: FindRegionsOptions,
+  scaleX: number,
+  scaleY: number
+): FindRegionsOptions {
+  const linearScale = Math.min(scaleX, scaleY);
+  const areaScale = scaleX * scaleY;
+  return {
+    ...opts,
+    minSize: opts.minSize === undefined ? undefined : Math.max(1, Math.round(opts.minSize * linearScale)),
+    minPixels: opts.minPixels === undefined ? undefined : Math.max(1, Math.round(opts.minPixels * areaScale)),
+    dilate: opts.dilate === undefined ? undefined : Math.max(0, Math.round(opts.dilate * linearScale)),
+    clusterGap: opts.clusterGap === undefined ? undefined : Math.max(0, Math.round(opts.clusterGap * linearScale)),
+  };
+}
+
 export interface FindColorRegionsOptions {
   colors: string[];
   displayId?: number;
@@ -128,6 +146,8 @@ export interface ReadTextOptions {
   activeWindow?: boolean;
   /** Minimum confidence threshold (0–1, default 0.3). */
   minConfidence?: number;
+  /** Vision recognition mode. `accurate` is the compatibility default. */
+  recognitionLevel?: "fast" | "accurate";
 }
 
 /**
@@ -230,6 +250,7 @@ export class ComputerService implements ComputerUseService {
   }
 
   async screenshot(opts?: ScreenshotOptions): Promise<Buffer> {
+    this.validateCaptureScale(opts?.captureScale);
     const driver = await this.getDriver();
     const result = await driver.screenshot(opts);
     return this.encode(result, opts);
@@ -241,8 +262,11 @@ export class ComputerService implements ComputerUseService {
    * be clicked without another model/tool round trip. CSS benchmark targets,
    * status indicators, and other flat-color controls are the primary use case.
    */
-  async findColorRegions(opts: FindColorRegionsOptions): Promise<ColorRegion[]> {
-    if (!opts.colors?.length) throw new Error("At least one color is required.");
+  async findColorRegions(
+    opts: FindColorRegionsOptions
+  ): Promise<ColorRegion[]> {
+    if (!opts.colors?.length)
+      throw new Error("At least one color is required.");
     const grabbed = await this.grabRawFrame(opts.displayId);
     const desktop = grabbed.desktop;
     const scaleX = grabbed.scaleX;
@@ -254,7 +278,13 @@ export class ComputerService implements ComputerUseService {
     let regionOffsetX = 0;
     let regionOffsetY = 0;
     if (opts.region) {
-      const cropped = this.cropFrame(grabbed.raw, opts.region, desktop, scaleX, scaleY);
+      const cropped = this.cropFrame(
+        grabbed.raw,
+        opts.region,
+        desktop,
+        scaleX,
+        scaleY
+      );
       raw = {
         __raw: true,
         width: cropped.frame.width,
@@ -264,7 +294,10 @@ export class ComputerService implements ComputerUseService {
       regionOffsetX = cropped.offsetX;
       regionOffsetY = cropped.offsetY;
     }
-    const tolerance = Math.max(0, Math.min(255, Math.round(opts.tolerance ?? 12)));
+    const tolerance = Math.max(
+      0,
+      Math.min(255, Math.round(opts.tolerance ?? 12))
+    );
     const step = Math.max(1, Math.round(opts.sampleStep ?? 2));
     const minPixels = Math.max(1, Math.round(opts.minPixels ?? 20));
     const nativeRegions = nativeFindColorRegions(
@@ -288,7 +321,8 @@ export class ComputerService implements ComputerUseService {
     }
     const parsed = opts.colors.map((color) => {
       const hex = color.replace(/^#/, "");
-      if (!/^[0-9a-f]{6}$/i.test(hex)) throw new Error(`Invalid color: ${color}`);
+      if (!/^[0-9a-f]{6}$/i.test(hex))
+        throw new Error(`Invalid color: ${color}`);
       return {
         color: `#${hex.toUpperCase()}`,
         r: parseInt(hex.slice(0, 2), 16),
@@ -339,13 +373,18 @@ export class ComputerService implements ComputerUseService {
         return {
           color: c.color,
           bounds,
-          center: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 },
+          center: {
+            x: bounds.x + bounds.width / 2,
+            y: bounds.y + bounds.height / 2,
+          },
           sampledPixels: c.count,
         };
       })
       .filter((r) => {
         const size = Math.max(r.bounds.width, r.bounds.height);
-        return size >= (opts.minSize ?? 1) && size <= (opts.maxSize ?? Infinity);
+        return (
+          size >= (opts.minSize ?? 1) && size <= (opts.maxSize ?? Infinity)
+        );
       });
   }
 
@@ -382,18 +421,25 @@ export class ComputerService implements ComputerUseService {
         return {
           color: c.color,
           bounds,
-          center: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 },
+          center: {
+            x: bounds.x + bounds.width / 2,
+            y: bounds.y + bounds.height / 2,
+          },
           sampledPixels: c.count,
         };
       })
       .filter((r) => {
         const size = Math.max(r.bounds.width, r.bounds.height);
-        return size >= (opts.minSize ?? 1) && size <= (opts.maxSize ?? Infinity);
+        return (
+          size >= (opts.minSize ?? 1) && size <= (opts.maxSize ?? Infinity)
+        );
       });
   }
 
   /** Repeatedly detect and click changing flat-color targets in one tool call. */
-  async clickColorSequence(opts: ClickColorSequenceOptions): Promise<ClickColorSequenceResult> {
+  async clickColorSequence(
+    opts: ClickColorSequenceOptions
+  ): Promise<ClickColorSequenceResult> {
     const started = Date.now();
     const maxClicks = Math.max(1, Math.round(opts.maxClicks ?? 20));
     const timeoutMs = Math.max(1, Math.round(opts.timeoutMs ?? 30_000));
@@ -404,9 +450,13 @@ export class ComputerService implements ComputerUseService {
       const regions = await this.findColorRegions(opts);
       // Prefer compact regions; a duplicate color elsewhere tends to produce an
       // implausibly large aggregate bounding box and is filtered by maxSize.
-      const target = regions.sort((a, b) => b.sampledPixels - a.sampledPixels)[0];
+      const target = regions.sort(
+        (a, b) => b.sampledPixels - a.sampledPixels
+      )[0];
       const signature = target
-        ? `${target.color}:${Math.round(target.center.x)}:${Math.round(target.center.y)}:${Math.round(target.bounds.width)}`
+        ? `${target.color}:${Math.round(target.center.x)}:${Math.round(
+            target.center.y
+          )}:${Math.round(target.bounds.width)}`
         : "";
       if (target && signature !== previous) {
         await this.moveMouse(target.center);
@@ -433,11 +483,23 @@ export class ComputerService implements ComputerUseService {
    * perception detectors (boxes/shapes/blobs).
    */
   private async grabRawFrame(
-    displayId?: number
-  ): Promise<{ raw: RawScreenshot; desktop: Region; scaleX: number; scaleY: number }> {
+    displayId?: number,
+    region?: Region,
+    captureScale?: number
+  ): Promise<{
+    raw: RawScreenshot;
+    desktop: Region;
+    scaleX: number;
+    scaleY: number;
+  }> {
+    this.validateCaptureScale(captureScale);
     const driver = await this.getDriver();
+    // Native region capture avoids copying and segmenting an entire HiDPI
+    // display when a detector only needs a bounded game arena.
     const shot = await driver.screenshot(
-      displayId === undefined ? undefined : { displayId }
+      displayId === undefined && !region && captureScale === undefined
+        ? undefined
+        : { displayId, region, captureScale }
     );
     let raw = shot as unknown as RawScreenshot;
     if (!raw || (raw as any).__raw !== true) {
@@ -458,15 +520,24 @@ export class ComputerService implements ComputerUseService {
       displays.find((d) => displayId !== undefined && d.id === displayId) ??
       displays.find((d) => d.primary) ??
       displays[0];
-    const desktop = display?.bounds ?? {
+    const fullDesktop = display?.bounds ?? {
       x: 0,
       y: 0,
       width: raw.width,
       height: raw.height,
     };
+    const desktop = region ?? fullDesktop;
     const scaleX = raw.width / Math.max(1, desktop.width);
     const scaleY = raw.height / Math.max(1, desktop.height);
     return { raw, desktop, scaleX, scaleY };
+  }
+
+  private validateCaptureScale(scale?: number): void {
+    if (scale !== undefined && (!Number.isFinite(scale) || scale <= 0 || scale > 1)) {
+      throw new Error(
+        `Capture scale must be a finite number greater than 0 and at most 1; received ${scale}.`
+      );
+    }
   }
 
   /** Crop a raw RGBA frame to a desktop-space region, returning a new Frame. */
@@ -479,8 +550,14 @@ export class ComputerService implements ComputerUseService {
   ): { frame: Frame; offsetX: number; offsetY: number } {
     const ix = Math.max(0, Math.round((region.x - desktop.x) * scaleX));
     const iy = Math.max(0, Math.round((region.y - desktop.y) * scaleY));
-    const iw = Math.min(raw.width - ix, Math.max(1, Math.round(region.width * scaleX)));
-    const ih = Math.min(raw.height - iy, Math.max(1, Math.round(region.height * scaleY)));
+    const iw = Math.min(
+      raw.width - ix,
+      Math.max(1, Math.round(region.width * scaleX))
+    );
+    const ih = Math.min(
+      raw.height - iy,
+      Math.max(1, Math.round(region.height * scaleY))
+    );
     const out = Buffer.allocUnsafe(iw * ih * 4);
     for (let y = 0; y < ih; y++) {
       const srcStart = ((iy + y) * raw.width + ix) * 4;
@@ -519,8 +596,14 @@ export class ComputerService implements ComputerUseService {
   async findBoxes(
     opts: FindBoxesOptions & { displayId?: number; region?: Region } = {}
   ): Promise<DesktopBox[]> {
-    const { raw, desktop, scaleX, scaleY } = await this.grabRawFrame(opts.displayId);
-    let frame: Frame = { width: raw.width, height: raw.height, data: raw.data as Buffer };
+    const { raw, desktop, scaleX, scaleY } = await this.grabRawFrame(
+      opts.displayId
+    );
+    let frame: Frame = {
+      width: raw.width,
+      height: raw.height,
+      data: raw.data as Buffer,
+    };
     let offsetX = 0;
     let offsetY = 0;
     if (opts.region) {
@@ -532,14 +615,27 @@ export class ComputerService implements ComputerUseService {
     const mapBounds = (b: Region) =>
       this.imgRegionToDesktop(b, desktop, scaleX, scaleY, offsetX, offsetY);
 
-    const native = nativeFindBoxes(frame.data as Buffer, frame.width, frame.height, opts);
+    const native = nativeFindBoxes(
+      frame.data as Buffer,
+      frame.width,
+      frame.height,
+      opts
+    );
     if (native) {
       // Rebuild the tree from the flat native list (parent = index).
       const nodes: DesktopBox[] = native.map((b) => {
-        const bounds = mapBounds({ x: b.x, y: b.y, width: b.width, height: b.height });
+        const bounds = mapBounds({
+          x: b.x,
+          y: b.y,
+          width: b.width,
+          height: b.height,
+        });
         return {
           bounds,
-          center: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 },
+          center: {
+            x: bounds.x + bounds.width / 2,
+            y: bounds.y + bounds.height / 2,
+          },
           area: bounds.width * bounds.height,
           edgeScore: Number(b.edgeScore.toFixed(4)),
           depth: b.depth,
@@ -548,7 +644,8 @@ export class ComputerService implements ComputerUseService {
       });
       const roots: DesktopBox[] = [];
       native.forEach((b, i) => {
-        if (b.parent >= 0 && native[b.parent]) nodes[b.parent].children.push(nodes[i]);
+        if (b.parent >= 0 && native[b.parent])
+          nodes[b.parent].children.push(nodes[i]);
         else roots.push(nodes[i]);
       });
       return roots;
@@ -560,7 +657,10 @@ export class ComputerService implements ComputerUseService {
       const bounds = mapBounds(n.bounds);
       return {
         bounds,
-        center: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 },
+        center: {
+          x: bounds.x + bounds.width / 2,
+          y: bounds.y + bounds.height / 2,
+        },
         area: bounds.width * bounds.height,
         edgeScore: Number(n.edgeScore.toFixed(4)),
         depth: n.depth,
@@ -578,46 +678,57 @@ export class ComputerService implements ComputerUseService {
    * and with mode:"colors" nests same-color areas by containment.
    */
   async findRegions(
-    opts: FindRegionsOptions & { displayId?: number; region?: Region } = {}
+    opts: FindRegionsOptions & { displayId?: number; region?: Region; scale?: number } = {}
   ): Promise<DesktopBox[]> {
-    const { raw, desktop, scaleX, scaleY } = await this.grabRawFrame(opts.displayId);
-    let frame: Frame = { width: raw.width, height: raw.height, data: raw.data as Buffer };
-    let offsetX = 0;
-    let offsetY = 0;
-    if (opts.region) {
-      const cropped = this.cropFrame(raw, opts.region, desktop, scaleX, scaleY);
-      frame = cropped.frame;
-      offsetX = cropped.offsetX;
-      offsetY = cropped.offsetY;
-    }
+    const { raw, desktop, scaleX, scaleY } = await this.grabRawFrame(
+      opts.displayId,
+      opts.region,
+      opts.scale
+    );
+    const frame: Frame = {
+      width: raw.width,
+      height: raw.height,
+      data: raw.data as Buffer,
+    };
     const mapBounds = (b: Region) =>
-      this.imgRegionToDesktop(b, desktop, scaleX, scaleY, offsetX, offsetY);
+      this.imgRegionToDesktop(b, desktop, scaleX, scaleY);
     // Prefer the native (Rust) segmentation detector; it returns a flattened
     // box list (parent index + depth) that we rebuild into a tree — identical
     // shape to findBoxes native path. Falls back to pure-TS below.
+    // Detector thresholds are public desktop-space values; convert them to the
+    // pixels of a potentially downscaled native capture.
+    const scaledOpts = scaleFindRegionsOptions(opts, scaleX, scaleY);
     const nativeRegionBoxes = nativeFindRegions(
       frame.data as Buffer,
       frame.width,
       frame.height,
       {
-        mode: opts.mode,
-        bgTolerance: opts.bgTolerance,
-        minSize: opts.minSize,
-        maxSizeFrac: opts.maxSizeFrac,
-        minPixels: opts.minPixels,
-        maxBoxes: opts.maxBoxes,
-        dilate: opts.dilate,
-        colorBits: opts.colorBits,
-        clusterGap: opts.clusterGap,
-        bgAreaFrac: opts.bgAreaFrac,
+        mode: scaledOpts.mode,
+        bgTolerance: scaledOpts.bgTolerance,
+        minSize: scaledOpts.minSize,
+        maxSizeFrac: scaledOpts.maxSizeFrac,
+        minPixels: scaledOpts.minPixels,
+        maxBoxes: scaledOpts.maxBoxes,
+        dilate: scaledOpts.dilate,
+        colorBits: scaledOpts.colorBits,
+        clusterGap: scaledOpts.clusterGap,
+        bgAreaFrac: scaledOpts.bgAreaFrac,
       }
     );
     if (nativeRegionBoxes) {
       const nodes: DesktopBox[] = nativeRegionBoxes.map((b) => {
-        const bounds = mapBounds({ x: b.x, y: b.y, width: b.width, height: b.height });
+        const bounds = mapBounds({
+          x: b.x,
+          y: b.y,
+          width: b.width,
+          height: b.height,
+        });
         return {
           bounds,
-          center: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 },
+          center: {
+            x: bounds.x + bounds.width / 2,
+            y: bounds.y + bounds.height / 2,
+          },
           area: bounds.width * bounds.height,
           edgeScore: Number(b.edgeScore.toFixed(4)),
           depth: b.depth,
@@ -633,12 +744,15 @@ export class ComputerService implements ComputerUseService {
       return roots;
     }
 
-    const tree = tsFindRegions(frame, opts);
+    const tree = tsFindRegions(frame, scaledOpts);
     const remap = (n: BoxNode): DesktopBox => {
       const bounds = mapBounds(n.bounds);
       return {
         bounds,
-        center: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 },
+        center: {
+          x: bounds.x + bounds.width / 2,
+          y: bounds.y + bounds.height / 2,
+        },
         area: bounds.width * bounds.height,
         edgeScore: Number(n.edgeScore.toFixed(4)),
         depth: n.depth,
@@ -655,8 +769,14 @@ export class ComputerService implements ComputerUseService {
   async findShapes(
     opts: FindShapesOptions & { displayId?: number; region?: Region }
   ): Promise<DesktopShape[]> {
-    const { raw, desktop, scaleX, scaleY } = await this.grabRawFrame(opts.displayId);
-    let frame: Frame = { width: raw.width, height: raw.height, data: raw.data as Buffer };
+    const { raw, desktop, scaleX, scaleY } = await this.grabRawFrame(
+      opts.displayId
+    );
+    let frame: Frame = {
+      width: raw.width,
+      height: raw.height,
+      data: raw.data as Buffer,
+    };
     let offsetX = 0;
     let offsetY = 0;
     if (opts.region) {
@@ -666,11 +786,21 @@ export class ComputerService implements ComputerUseService {
       offsetY = cropped.offsetY;
     }
     return tsFindShapes(frame, opts).map((s: ShapeMatch) => {
-      const bounds = this.imgRegionToDesktop(s.bounds, desktop, scaleX, scaleY, offsetX, offsetY);
+      const bounds = this.imgRegionToDesktop(
+        s.bounds,
+        desktop,
+        scaleX,
+        scaleY,
+        offsetX,
+        offsetY
+      );
       return {
         kind: s.kind,
         bounds,
-        center: { x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 },
+        center: {
+          x: bounds.x + bounds.width / 2,
+          y: bounds.y + bounds.height / 2,
+        },
         area: s.area,
         score: s.score,
       };
@@ -707,10 +837,22 @@ export class ComputerService implements ComputerUseService {
     // returns the full display, so we crop here via sharp. Clamp to bounds so
     // an out-of-range region doesn't throw.
     if (opts?.region) {
-      const rx = Math.max(0, Math.min(Math.round(opts.region.x), raw.width - 1));
-      const ry = Math.max(0, Math.min(Math.round(opts.region.y), raw.height - 1));
-      const rw = Math.max(1, Math.min(Math.round(opts.region.width), raw.width - rx));
-      const rh = Math.max(1, Math.min(Math.round(opts.region.height), raw.height - ry));
+      const rx = Math.max(
+        0,
+        Math.min(Math.round(opts.region.x), raw.width - 1)
+      );
+      const ry = Math.max(
+        0,
+        Math.min(Math.round(opts.region.y), raw.height - 1)
+      );
+      const rw = Math.max(
+        1,
+        Math.min(Math.round(opts.region.width), raw.width - rx)
+      );
+      const rh = Math.max(
+        1,
+        Math.min(Math.round(opts.region.height), raw.height - ry)
+      );
       pipeline = pipeline.extract({ left: rx, top: ry, width: rw, height: rh });
     }
     if (scale && scale !== 1) {
@@ -805,7 +947,9 @@ export class ComputerService implements ComputerUseService {
       for (let x = step; x < w; x += step) {
         parts.push(
           `<line x1="${x}" y1="0" x2="${x}" y2="${h}" stroke="rgba(255,0,80,0.35)" stroke-width="1"/>` +
-            `<text x="${x + 2}" y="14" fill="rgba(255,0,80,0.9)" font-size="12" font-family="monospace">${toDesktopX(
+            `<text x="${
+              x + 2
+            }" y="14" fill="rgba(255,0,80,0.9)" font-size="12" font-family="monospace">${toDesktopX(
               x
             )}</text>`
         );
@@ -813,7 +957,9 @@ export class ComputerService implements ComputerUseService {
       for (let y = step; y < h; y += step) {
         parts.push(
           `<line x1="0" y1="${y}" x2="${w}" y2="${y}" stroke="rgba(255,0,80,0.35)" stroke-width="1"/>` +
-            `<text x="2" y="${y - 2}" fill="rgba(255,0,80,0.9)" font-size="12" font-family="monospace">${toDesktopY(
+            `<text x="2" y="${
+              y - 2
+            }" fill="rgba(255,0,80,0.9)" font-size="12" font-family="monospace">${toDesktopY(
               y
             )}</text>`
         );
@@ -830,7 +976,9 @@ export class ComputerService implements ComputerUseService {
         `<line x1="${cx}" y1="0" x2="${cx}" y2="${h}" stroke="rgba(0,180,255,0.9)" stroke-width="2"/>` +
           `<line x1="0" y1="${cy}" x2="${w}" y2="${cy}" stroke="rgba(0,180,255,0.9)" stroke-width="2"/>` +
           `<circle cx="${cx}" cy="${cy}" r="6" fill="none" stroke="rgba(0,180,255,1)" stroke-width="2"/>` +
-          `<text x="${cx + 8}" y="${cy - 8}" fill="rgba(0,180,255,1)" font-size="13" font-family="monospace">${desktopX},${desktopY}</text>`
+          `<text x="${cx + 8}" y="${
+            cy - 8
+          }" fill="rgba(0,180,255,1)" font-size="13" font-family="monospace">${desktopX},${desktopY}</text>`
       );
     }
     if (opts.regions?.length) {
@@ -857,9 +1005,9 @@ export class ComputerService implements ComputerUseService {
               labelY + 15
             }" fill="rgba(255,230,0,0.85)" font-size="10" font-family="monospace">${Math.round(
               region.x
-            )},${Math.round(region.y)} ${Math.round(
-              region.width
-            )}x${Math.round(region.height)}</text>`
+            )},${Math.round(region.y)} ${Math.round(region.width)}x${Math.round(
+              region.height
+            )}</text>`
         );
       }
     }
@@ -963,12 +1111,16 @@ export class ComputerService implements ComputerUseService {
     if (process.platform !== "darwin") return [];
     const { resolveRegionAsync } = await import("./regions");
     let requested = opts?.region
-      ? await resolveRegionAsync(opts.region as any, () => this.getActiveWindow())
+      ? await resolveRegionAsync(opts.region as any, () =>
+          this.getActiveWindow()
+        )
       : undefined;
     if (opts?.activeWindow) {
       const active = await this.getActiveWindow();
       if (!active?.bounds) return [];
-      requested = requested ? this.intersection(requested, active.bounds) : active.bounds;
+      requested = requested
+        ? this.intersection(requested, active.bounds)
+        : active.bounds;
       if (!requested) return [];
     }
     const displays = (await this.getDisplays()).filter(
@@ -976,70 +1128,137 @@ export class ComputerService implements ComputerUseService {
     );
     const results: OcrResult[] = [];
     for (const display of displays) {
-      const area = requested ? this.intersection(display.bounds, requested) : display.bounds;
+      const area = requested
+        ? this.intersection(display.bounds, requested)
+        : display.bounds;
       if (!area) continue;
       const grabbed = await this.grabRawFrame(display.id);
       // Vision can return no observations for a dense full-display image. OCR
       // bounded tiles instead; per-display capture also handles mixed DPI safely.
+      // Tiles are independent, so run them concurrently. A 4K display normally
+      // needs two tiles; awaiting each one serially doubled OCR latency.
+      const tiles: Region[] = [];
       for (let top = area.y; top < area.y + area.height; top += 1176) {
-        const tile = { x: area.x, y: top, width: area.width,
-          height: Math.min(1200, area.y + area.height - top) };
-        results.push(...await this.ocrTile(grabbed, tile, opts?.minConfidence ?? 0.3));
+        tiles.push({
+          x: area.x,
+          y: top,
+          width: area.width,
+          height: Math.min(1200, area.y + area.height - top),
+        });
       }
+      const tileResults = await Promise.all(
+        tiles.map((tile) =>
+          this.ocrTile(
+            grabbed,
+            tile,
+            opts?.minConfidence ?? 0.3,
+            opts?.recognitionLevel ?? "accurate"
+          )
+        )
+      );
+      results.push(...tileResults.flat());
     }
-    const unique = results.filter((r, i, all) => !all.slice(0, i).some(
-      (old) => old.text === r.text && Math.hypot(old.center.x-r.center.x, old.center.y-r.center.y) < 20
-    ));
-    return unique.sort((a, b) => a.bounds.y - b.bounds.y || a.bounds.x - b.bounds.x);
+    const unique = results.filter(
+      (r, i, all) =>
+        !all
+          .slice(0, i)
+          .some(
+            (old) =>
+              old.text === r.text &&
+              Math.hypot(old.center.x - r.center.x, old.center.y - r.center.y) <
+                20
+          )
+    );
+    return unique.sort(
+      (a, b) => a.bounds.y - b.bounds.y || a.bounds.x - b.bounds.x
+    );
   }
 
   private intersection(a: Region, b: Region): Region | undefined {
-    const x = Math.max(a.x, b.x), y = Math.max(a.y, b.y);
+    const x = Math.max(a.x, b.x),
+      y = Math.max(a.y, b.y);
     const right = Math.min(a.x + a.width, b.x + b.width);
     const bottom = Math.min(a.y + a.height, b.y + b.height);
-    return right > x && bottom > y ? { x, y, width: right-x, height: bottom-y } : undefined;
+    return right > x && bottom > y
+      ? { x, y, width: right - x, height: bottom - y }
+      : undefined;
   }
 
   private async ocrTile(
-    grabbed: { raw: RawScreenshot; desktop: Region; scaleX: number; scaleY: number },
+    grabbed: {
+      raw: RawScreenshot;
+      desktop: Region;
+      scaleX: number;
+      scaleY: number;
+    },
     tile: Region,
-    minConfidence: number
+    minConfidence: number,
+    recognitionLevel: "fast" | "accurate"
   ): Promise<OcrResult[]> {
     const crop = this.cropFrame(
-      grabbed.raw, tile, grabbed.desktop, grabbed.scaleX, grabbed.scaleY
+      grabbed.raw,
+      tile,
+      grabbed.desktop,
+      grabbed.scaleX,
+      grabbed.scaleY
     );
     const sharp = (await import("sharp")).default;
     const png = await sharp(crop.frame.data, {
       raw: { width: crop.frame.width, height: crop.frame.height, channels: 4 },
-    }).png().toBuffer();
+    })
+      .png()
+      .toBuffer();
     const os = await import("os");
     const fs = await import("fs");
     const tmp = path.join(
-      os.tmpdir(), `knowhow_ocr_${process.pid}_${Date.now()}_${tile.y}.png`
+      os.tmpdir(),
+      `knowhow_ocr_${process.pid}_${Date.now()}_${tile.y}.png`
     );
     fs.writeFileSync(tmp, png);
     let observations: any[] = [];
     try {
       const helper = path.join(__dirname, "..", "src", "ocr.swift");
-      const { stdout } = await execFileAsync("swift", [helper, tmp], { timeout: 15000 });
+      const { stdout } = await execFileAsync(
+        "swift",
+        [helper, tmp, recognitionLevel],
+        { timeout: 15000 }
+      );
       const parsed = JSON.parse(stdout);
-      if (Array.isArray(parsed)) observations = parsed;
-    } catch {
+      if (!Array.isArray(parsed)) {
+        throw new Error("OCR helper returned a non-array response");
+      }
+      observations = parsed;
+    } catch (error) {
+      // Preserve the historical empty-result behavior, but distinguish helper
+      // and capture-pipeline failures from a legitimate no-text result.
+      const detail = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `[computer-use] OCR failed for tile ${tile.x},${tile.y} ${tile.width}x${tile.height}: ${detail}`
+      );
       return [];
     } finally {
-      try { fs.unlinkSync(tmp); } catch {}
+      try {
+        fs.unlinkSync(tmp);
+      } catch {}
     }
     return observations
       .filter((r) => r.confidence >= minConfidence && r.text?.trim())
       .map((r) => {
         const bounds: Region = {
           x: tile.x + r.x * tile.width,
-          y: tile.y + (1-r.y-r.h) * tile.height,
+          y: tile.y + (1 - r.y - r.h) * tile.height,
           width: r.w * tile.width,
           height: r.h * tile.height,
         };
-        return { text: r.text, confidence: r.confidence, bounds,
-          center: { x: bounds.x+bounds.width/2, y: bounds.y+bounds.height/2 } };
+        return {
+          text: r.text,
+          confidence: r.confidence,
+          bounds,
+          center: {
+            x: bounds.x + bounds.width / 2,
+            y: bounds.y + bounds.height / 2,
+          },
+        };
       });
   }
 
@@ -1051,7 +1270,10 @@ export class ComputerService implements ComputerUseService {
     return (await this.getDriver()).moveMouse(await this.clamp(p), opts);
   }
 
-  async click(button: MouseButton = "left", opts?: { double?: boolean }): Promise<void> {
+  async click(
+    button: MouseButton = "left",
+    opts?: { double?: boolean }
+  ): Promise<void> {
     return (await this.getDriver()).click(button, opts);
   }
 
@@ -1129,14 +1351,18 @@ export class ComputerService implements ComputerUseService {
   ): Promise<AccessibilityElement[]> {
     const driver = await this.getDriver();
     if (!driver.accessibilityElements)
-      throw new Error(`Driver ${driver.name} does not support native accessibility`);
+      throw new Error(
+        `Driver ${driver.name} does not support native accessibility`
+      );
     return driver.accessibilityElements(options);
   }
 
   async setAccessibilityValue(id: string, value: string): Promise<void> {
     const driver = await this.getDriver();
     if (!driver.setAccessibilityValue)
-      throw new Error(`Driver ${driver.name} does not support accessibility value setting`);
+      throw new Error(
+        `Driver ${driver.name} does not support accessibility value setting`
+      );
     return driver.setAccessibilityValue(id, value);
   }
 
@@ -1157,9 +1383,24 @@ export class ComputerService implements ComputerUseService {
       maxElements: 2000,
       interactiveOnly: false,
     };
-    const current = (await this.accessibilityElements(inspectOptions))
-      .find((element) => element.id === id);
-    if (!current) throw new Error("Accessibility element is stale; inspect the focused window again");
+    const current = (await this.accessibilityElements(inspectOptions)).find(
+      (element) => element.id === id
+    );
+    if (!current)
+      throw new Error(
+        "Accessibility element is stale; inspect the focused window again"
+      );
+
+    // Selection is idempotent. In particular, do not open a native select and
+    // run type-ahead when the requested option is already selected: Chromium's
+    // type-ahead advances to the next matching option (for example, from
+    // "United States" to "United Kingdom").
+    if (
+      String(current.value ?? "")
+        .trim()
+        .toLocaleLowerCase() === wanted
+    )
+      return;
 
     // AX ids are child-index paths and can change when Chromium inserts or
     // removes its temporary native menu. Resolve the original control by its
@@ -1167,7 +1408,8 @@ export class ComputerService implements ComputerUseService {
     // failed selection.
     const findCurrentControl = (elements: AccessibilityElement[]) => {
       const byId = elements.find((element) => element.id === id);
-      if (!current.bounds) return byId?.role === current.role ? byId : undefined;
+      if (!current.bounds)
+        return byId?.role === current.role ? byId : undefined;
       const center = (bounds: Region) => ({
         x: bounds.x + bounds.width / 2,
         y: bounds.y + bounds.height / 2,
@@ -1175,13 +1417,20 @@ export class ComputerService implements ComputerUseService {
       const origin = center(current.bounds);
       if (byId?.role === current.role && byId.bounds) {
         const candidate = center(byId.bounds);
-        if (Math.hypot(candidate.x - origin.x, candidate.y - origin.y) <= 4) return byId;
+        if (Math.hypot(candidate.x - origin.x, candidate.y - origin.y) <= 4)
+          return byId;
       }
       return elements
         .filter((element) => element.role === current.role && element.bounds)
         .map((element) => {
           const candidate = center(element.bounds!);
-          return { element, distance: Math.hypot(candidate.x - origin.x, candidate.y - origin.y) };
+          return {
+            element,
+            distance: Math.hypot(
+              candidate.x - origin.x,
+              candidate.y - origin.y
+            ),
+          };
         })
         .filter(({ distance }) => distance <= 4)
         .sort((a, b) => a.distance - b.distance)[0]?.element;
@@ -1192,7 +1441,12 @@ export class ComputerService implements ComputerUseService {
       await this.setAccessibilityValue(id, option);
       const refreshed = await this.accessibilityElements(inspectOptions);
       const updated = findCurrentControl(refreshed);
-      if (String(updated?.value ?? "").trim().toLocaleLowerCase() === wanted) return;
+      if (
+        String(updated?.value ?? "")
+          .trim()
+          .toLocaleLowerCase() === wanted
+      )
+        return;
     } catch {
       // Browser pop-up buttons generally reject AXValue and expose menu items
       // only while their menu is open; continue with that path.
@@ -1203,8 +1457,11 @@ export class ComputerService implements ComputerUseService {
     // prefer it whenever both actions are advertised.
     const openAction = current.actions.includes("AXPress")
       ? "AXPress"
-      : current.actions.includes("AXShowMenu") ? "AXShowMenu" : null;
-    if (!openAction) throw new Error("Accessibility control cannot open an option menu");
+      : current.actions.includes("AXShowMenu")
+      ? "AXShowMenu"
+      : null;
+    if (!openAction)
+      throw new Error("Accessibility control cannot open an option menu");
 
     const findItem = async () => {
       const opened = await this.accessibilityElements({
@@ -1212,12 +1469,26 @@ export class ComputerService implements ComputerUseService {
         maxElements: 3000,
         interactiveOnly: false,
       });
-      return opened.filter((element) => element.role === "AXMenuItem" &&
-        [element.title, element.description, element.value].some((value) =>
-          String(value ?? "").trim().toLocaleLowerCase() === wanted))
-        // Prefer the temporary native menu item. Chromium also exposes hidden
-        // option children, but those do not advertise AXPick.
-        .sort((a, b) => Number(b.actions.includes("AXPick")) - Number(a.actions.includes("AXPick")))[0];
+      return (
+        opened
+          .filter(
+            (element) =>
+              element.role === "AXMenuItem" &&
+              [element.title, element.description, element.value].some(
+                (value) =>
+                  String(value ?? "")
+                    .trim()
+                    .toLocaleLowerCase() === wanted
+              )
+          )
+          // Prefer the temporary native menu item. Chromium also exposes hidden
+          // option children, but those do not advertise AXPick.
+          .sort(
+            (a, b) =>
+              Number(b.actions.includes("AXPick")) -
+              Number(a.actions.includes("AXPick"))
+          )[0]
+      );
     };
 
     await this.performAccessibilityAction(id, openAction);
@@ -1249,16 +1520,23 @@ export class ComputerService implements ComputerUseService {
       });
       await this.click("left");
     } else {
-      await this.performAccessibilityAction(item.id,
-        item.actions.includes("AXPick") ? "AXPick" : "AXPress");
+      await this.performAccessibilityAction(
+        item.id,
+        item.actions.includes("AXPick") ? "AXPick" : "AXPress"
+      );
     }
     // Chromium can repaint immediately while its accessibility value trails by
     // several hundred milliseconds. Poll rather than reporting a false failure.
     let committed = false;
     for (let attempt = 0; attempt < 10 && !committed; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 100));
-      const verified = findCurrentControl(await this.accessibilityElements(inspectOptions));
-      committed = String(verified?.value ?? "").trim().toLocaleLowerCase() === wanted;
+      const verified = findCurrentControl(
+        await this.accessibilityElements(inspectOptions)
+      );
+      committed =
+        String(verified?.value ?? "")
+          .trim()
+          .toLocaleLowerCase() === wanted;
     }
     if (!committed) {
       throw new Error(`Accessibility option did not commit: ${option}`);
@@ -1268,8 +1546,28 @@ export class ComputerService implements ComputerUseService {
   async performAccessibilityAction(id: string, action: string): Promise<void> {
     const driver = await this.getDriver();
     if (!driver.performAccessibilityAction)
-      throw new Error(`Driver ${driver.name} does not support accessibility actions`);
+      throw new Error(
+        `Driver ${driver.name} does not support accessibility actions`
+      );
     return driver.performAccessibilityAction(id, action);
+  }
+
+  /** Replace the native click-through debug overlay. */
+  async showOverlay(primitives: OverlayPrimitive[]): Promise<void> {
+    const driver = await this.getDriver();
+    if (!driver.showOverlay) {
+      throw new Error(`Driver ${driver.name} does not support native overlays`);
+    }
+    await driver.showOverlay(primitives);
+  }
+
+  /** Remove every native debug annotation immediately. */
+  async clearOverlay(): Promise<void> {
+    const driver = await this.getDriver();
+    if (!driver.clearOverlay) {
+      throw new Error(`Driver ${driver.name} does not support native overlays`);
+    }
+    await driver.clearOverlay();
   }
 
   private async getActiveWindowMac(): Promise<{
@@ -1308,7 +1606,12 @@ export class ComputerService implements ComputerUseService {
         .split(",")
         .map((n) => parseInt(n, 10));
       if (parts.length === 4 && parts.every((n) => Number.isFinite(n))) {
-        bounds = { x: parts[0], y: parts[1], width: parts[2], height: parts[3] };
+        bounds = {
+          x: parts[0],
+          y: parts[1],
+          width: parts[2],
+          height: parts[3],
+        };
       }
       const title = winName.trim() || appName;
       return { title, app: appName, bounds };
@@ -1361,7 +1664,10 @@ export class ComputerService implements ComputerUseService {
         .filter(Boolean)
         .map((l) => {
           const [app, ...rest] = l.split("\t");
-          return { app: app?.trim(), title: rest.join(" ").trim() || app?.trim() };
+          return {
+            app: app?.trim(),
+            title: rest.join(" ").trim() || app?.trim(),
+          };
         });
     } catch (e: any) {
       throw new Error(

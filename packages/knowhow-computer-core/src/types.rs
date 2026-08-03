@@ -8,26 +8,43 @@ use napi_derive::napi;
 #[napi(object)]
 #[derive(Clone, Copy, Debug)]
 pub struct Point {
-  pub x: f64,
-  pub y: f64,
+    pub x: f64,
+    pub y: f64,
 }
 
 /// A width/height pair in pixels.
 #[napi(object)]
 #[derive(Clone, Copy, Debug)]
 pub struct Size {
-  pub width: f64,
-  pub height: f64,
+    pub width: f64,
+    pub height: f64,
 }
 
 /// A rectangular region in virtual-desktop space.
 #[napi(object)]
 #[derive(Clone, Copy, Debug)]
 pub struct Region {
-  pub x: f64,
-  pub y: f64,
-  pub width: f64,
-  pub height: f64,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// A click-through debug annotation rendered in virtual-desktop coordinates.
+/// Rect/circle use x/y/width/height, line uses x/y/x2/y2, and point uses x/y.
+#[napi(object)]
+#[derive(Clone, Debug)]
+pub struct OverlayPrimitive {
+    pub kind: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+    pub x2: Option<f64>,
+    pub y2: Option<f64>,
+    /// Hex color in #RRGGBB or #RRGGBBAA form. Defaults to yellow.
+    pub color: Option<String>,
+    pub line_width: Option<f64>,
 }
 
 /// A window on the desktop. `bounds` is in virtual-desktop coords (top-left
@@ -35,53 +52,53 @@ pub struct Region {
 #[napi(object)]
 #[derive(Clone, Debug)]
 pub struct WindowInfo {
-  /// Window title (may be empty; the TS layer falls back to `app`).
-  pub title: String,
-  /// Owning application / process name.
-  pub app: String,
-  pub bounds: Region,
-  /// True for the frontmost window of the frontmost app.
-  pub active: bool,
+    /// Window title (may be empty; the TS layer falls back to `app`).
+    pub title: String,
+    /// Owning application / process name.
+    pub app: String,
+    pub bounds: Region,
+    /// True for the frontmost window of the frontmost app.
+    pub active: bool,
 }
 
 /// A focused-window accessibility node with a short-lived structural ID.
 #[napi(object)]
 #[derive(Clone, Debug)]
 pub struct AccessibilityElement {
-  pub id: String,
-  pub role: String,
-  pub subrole: Option<String>,
-  pub title: Option<String>,
-  pub description: Option<String>,
-  pub value: Option<String>,
-  pub enabled: Option<bool>,
-  pub focused: Option<bool>,
-  pub bounds: Option<Region>,
-  pub actions: Vec<String>,
-  pub child_count: u32,
+    pub id: String,
+    pub role: String,
+    pub subrole: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub value: Option<String>,
+    pub enabled: Option<bool>,
+    pub focused: Option<bool>,
+    pub bounds: Option<Region>,
+    pub actions: Vec<String>,
+    pub child_count: u32,
 }
 
 /// Bounds focused-window AX traversal to avoid expensive full application trees.
 #[napi(object)]
 #[derive(Clone, Debug)]
 pub struct AccessibilityOptions {
-  pub max_depth: Option<u32>,
-  pub max_elements: Option<u32>,
-  pub interactive_only: Option<bool>,
+    pub max_depth: Option<u32>,
+    pub max_elements: Option<u32>,
+    pub interactive_only: Option<bool>,
 }
 
 /// A single physical/logical display.
 #[napi(object)]
 #[derive(Clone, Debug)]
 pub struct Display {
-  pub id: f64,
-  pub x: f64,
-  pub y: f64,
-  pub width: f64,
-  pub height: f64,
-  /// HiDPI / Retina scale factor (device pixels per logical pixel).
-  pub scale_factor: f64,
-  pub primary: bool,
+    pub id: f64,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    /// HiDPI / Retina scale factor (device pixels per logical pixel).
+    pub scale_factor: f64,
+    pub primary: bool,
 }
 
 /// What this backend can actually do on the current session. The TS layer turns
@@ -89,26 +106,26 @@ pub struct Display {
 #[napi(object)]
 #[derive(Clone, Debug)]
 pub struct Capabilities {
-  pub input: bool,
-  pub capture: bool,
-  pub windows: bool,
-  /// Human-readable explanation when a capability is unavailable
-  /// (e.g. "macOS: Accessibility permission not granted").
-  pub reason: Option<String>,
+    pub input: bool,
+    pub capture: bool,
+    pub windows: bool,
+    /// Human-readable explanation when a capability is unavailable
+    /// (e.g. "macOS: Accessibility permission not granted").
+    pub reason: Option<String>,
 }
 
 /// Structured permission report used by `knowhow computer doctor`.
 #[napi(object)]
 #[derive(Clone, Debug)]
 pub struct PermissionsStatus {
-  /// e.g. "macos" | "windows" | "linux-x11" | "linux-wayland"
-  pub platform: String,
-  /// Can we synthesize input (mouse/keyboard) right now?
-  pub input_ok: bool,
-  /// Can we capture the screen right now?
-  pub capture_ok: bool,
-  /// Actionable remediation text when something is not ok.
-  pub fix: Option<String>,
+    /// e.g. "macos" | "windows" | "linux-x11" | "linux-wayland"
+    pub platform: String,
+    /// Can we synthesize input (mouse/keyboard) right now?
+    pub input_ok: bool,
+    /// Can we capture the screen right now?
+    pub capture_ok: bool,
+    /// Actionable remediation text when something is not ok.
+    pub fix: Option<String>,
 }
 
 /// Options for a screen capture. All fields optional; defaults to the full
@@ -116,10 +133,13 @@ pub struct PermissionsStatus {
 #[napi(object)]
 #[derive(Clone, Debug, Default)]
 pub struct ScreenshotOptions {
-  /// Capture only this region (virtual-desktop coords).
-  pub region: Option<Region>,
-  /// Capture a single display by id.
-  pub display_id: Option<f64>,
+    /// Capture only this region (virtual-desktop coords).
+    pub region: Option<Region>,
+    /// Capture a single display by id.
+    pub display_id: Option<f64>,
+    /// Resize the captured pixels before crossing the napi boundary. 1 is native
+    /// resolution; 0.25 is useful for high-frequency visual detection.
+    pub scale: Option<f64>,
 }
 
 /// Raw capture result. We return RGBA bytes + dimensions and let the TS layer
@@ -127,28 +147,28 @@ pub struct ScreenshotOptions {
 /// small and we don't bundle an image codec per platform.
 #[napi(object)]
 pub struct RawImage {
-  pub width: u32,
-  pub height: u32,
-  /// Tightly-packed RGBA8 pixels, row-major, length == width*height*4.
-  pub data: napi::bindgen_prelude::Buffer,
+    pub width: u32,
+    pub height: u32,
+    /// Tightly-packed RGBA8 pixels, row-major, length == width*height*4.
+    pub data: napi::bindgen_prelude::Buffer,
 }
 
 /// Mouse buttons.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Button {
-  Left,
-  Right,
-  Middle,
+    Left,
+    Right,
+    Middle,
 }
 
 impl Button {
-  /// Parse a JS-facing button string. Defaults to Left on unknown input so a
-  /// missing/typo'd button never throws in the hot path.
-  pub fn parse(s: &str) -> Button {
-    match s.to_ascii_lowercase().as_str() {
-      "right" => Button::Right,
-      "middle" => Button::Middle,
-      _ => Button::Left,
+    /// Parse a JS-facing button string. Defaults to Left on unknown input so a
+    /// missing/typo'd button never throws in the hot path.
+    pub fn parse(s: &str) -> Button {
+        match s.to_ascii_lowercase().as_str() {
+            "right" => Button::Right,
+            "middle" => Button::Middle,
+            _ => Button::Left,
+        }
     }
-  }
 }

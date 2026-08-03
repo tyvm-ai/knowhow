@@ -25,6 +25,18 @@ export interface Region extends Point, Size {}
 
 export type MouseButton = "left" | "right" | "middle";
 
+export interface OverlayPrimitive {
+  kind: "rect" | "circle" | "line" | "point";
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  x2?: number;
+  y2?: number;
+  color?: string;
+  lineWidth?: number;
+}
+
 export interface Display {
   id: number;
   bounds: Region;
@@ -37,6 +49,9 @@ export interface ScreenshotOptions {
   displayId?: number;
   format?: "png" | "jpeg";
   scale?: number;
+  /** Native capture downscale. Unlike output encoding scale, drivers may apply
+   * this before raw pixels cross the process boundary. */
+  captureScale?: number;
 }
 
 export interface DriverCapabilities {
@@ -117,6 +132,10 @@ export interface ComputerDriver {
   setAccessibilityValue?(id: string, value: string): Promise<void>;
   performAccessibilityAction?(id: string, action: string): Promise<void>;
 
+  // click-through visual debugging (optional / platform capability-gated)
+  showOverlay?(primitives: OverlayPrimitive[]): Promise<void>;
+  clearOverlay?(): Promise<void>;
+
   dispose?(): Promise<void>;
 }
 
@@ -189,6 +208,9 @@ export interface ComputerUseService {
   selectAccessibilityOption(id: string, option: string): Promise<void>;
   setAccessibilityValue(id: string, value: string): Promise<void>;
   performAccessibilityAction(id: string, action: string): Promise<void>;
+
+  showOverlay(primitives: OverlayPrimitive[]): Promise<void>;
+  clearOverlay(): Promise<void>;
 
   dispose(): Promise<void>;
 }

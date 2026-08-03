@@ -17,6 +17,7 @@ function makeFakeService(overrides = {}) {
   const state = {
     clicks: [],
     moves: [],
+    drags: [],
     typed: [],
     keys: [],
     focused: [],
@@ -24,6 +25,8 @@ function makeFakeService(overrides = {}) {
     accessibilityValues: [],
     accessibilityActions: [],
     activeTitle: "Mouse Precision — Chrome",
+    overlays: [],
+    overlayClears: 0,
     activeApp: "Google Chrome",
     ocrWindows: [],
     colorResults: [
@@ -60,6 +63,9 @@ function makeFakeService(overrides = {}) {
     async click(button) {
       state.clicks.push({ button, at: state.moves[state.moves.length - 1] });
     },
+    async drag(from, to, opts) {
+      state.drags.push({ from, to, opts });
+    },
     async typeText(t) {
       state.typed.push(t);
     },
@@ -87,6 +93,12 @@ function makeFakeService(overrides = {}) {
     },
     async performAccessibilityAction(id, action) {
       state.accessibilityActions.push({ id, action });
+    },
+    async showOverlay(primitives) {
+      state.overlays.push(primitives);
+    },
+    async clearOverlay() {
+      state.overlayClears++;
     },
   };
   return Object.assign(svc, overrides);
@@ -142,6 +154,104 @@ describe("AutomationRunner", () => {
     expect(result.actions.every((a) => !a.suppressed)).toBe(true);
     const lastLog = result.logs[result.logs.length - 1];
     expect(lastLog.data.done).toBe(3);
+  });
+
+  test("forwards drag gestures and records their complete telemetry", async () => {
+    const svc = makeFakeService();
+    const result = await new AutomationRunner(
+      {
+        name: "__test_drag",
+        script: `await sdk.dragMouse(10, 20, 30, 40, { button: "right", duration: 35 });`,
+      },
+      svc,
+      { maxDurationMs: 5000 }
+    ).run();
+
+    expect(svc._state.drags).toEqual([{
+      from: { x: 10, y: 20 },
+      to: { x: 30, y: 40 },
+      opts: { button: "right", duration: 35 },
+    }]);
+    expect(result.actions[0]).toMatchObject({
+      kind: "dragMouse", x: 10, y: 20, x2: 30, y2: 40,
+      button: "right", duration: 35, suppressed: false,
+    });
+  });
+
+  test("suppresses drag gestures during a dry run", async () => {
+    const svc = makeFakeService();
+    const result = await new AutomationRunner(
+      { name: "__test_drag_dry", script: `await sdk.dragMouse(1, 2, 3, 4);` },
+      svc,
+      { maxDurationMs: 5000, dryRun: true }
+    ).run();
+
+    expect(svc._state.drags).toEqual([]);
+    expect(result.actions[0]).toMatchObject({
+      kind: "dragMouse", x: 1, y: 2, x2: 3, y2: 4,
+      button: "left", suppressed: true,
+    });
+  });
+
+  test("suppresses drag gestures when the required window loses focus", async () => {
+    let windowReads = 0;
+    const svc = makeFakeService({
+      async getActiveWindow() {
+        windowReads++;
+        return {
+          title: windowReads === 1 ? "Fruit Ninja Benchmark" : "Terminal",
+          app: windowReads === 1 ? "Google Chrome" : "Terminal",
+        };
+      },
+    });
+    const result = await new AutomationRunner(
+      {
+        name: "__test_drag_gate",
+        script: `
+          await sdk.runEvery(async () => {
+            await sdk.sleep(80);
+            await sdk.dragMouse(5, 6, 7, 8, { duration: 15 });
+            sdk.ctl.stop();
+          }, 0, { requiredWindow: { titleIncludes: "Fruit Ninja" } });
+        `,
+      },
+      svc,
+      { maxDurationMs: 500, gatePollMs: 50 }
+    ).run();
+
+    expect(svc._state.drags).toEqual([]);
+    expect(result.actions[0]).toMatchObject({
+      kind: "dragMouse", x: 5, y: 6, x2: 7, y2: 8,
+      duration: 15, suppressed: true,
+    });
+  });
+
+  test("renders overlays live but suppresses them in dry-run", async () => {
+    const script = `await sdk.showOverlay([{ kind: "circle", x: 1, y: 2, width: 3, height: 3 }]);`;
+    const live = makeFakeService();
+    await new AutomationRunner(
+      { name: "__test_overlay", script }, live, { maxDurationMs: 5000 }
+    ).run();
+    expect(live._state.overlays).toEqual([[
+      { kind: "circle", x: 1, y: 2, width: 3, height: 3 },
+    ]]);
+
+    const dry = makeFakeService();
+    await new AutomationRunner(
+      { name: "__test_overlay_dry", script }, dry,
+      { maxDurationMs: 5000, dryRun: true }
+    ).run();
+    expect(dry._state.overlays).toEqual([]);
+  });
+
+  test("allows overlay cleanup during dry-run", async () => {
+    const svc = makeFakeService();
+    await new AutomationRunner(
+      { name: "__test_overlay_clear", script: `await sdk.clearOverlay();` },
+      svc,
+      { maxDurationMs: 5000, dryRun: true }
+    ).run();
+    expect(svc._state.overlayClears).toBe(1);
   });
 
   test("dry-run records intended actions but performs none", async () => {
@@ -395,7 +505,7 @@ describe("AutomationRunner", () => {
     expect(result.stopped).toBe("manual");
   });
 
-  test("hard-caps maxDurationMs at 10s so a human can always reclaim the mouse", async () => {
+  test("hard-caps maxDurationMs at five minutes", async () => {
     const svc = makeFakeService();
     const spec = {
       name: "__test_cap",
@@ -404,15 +514,12 @@ describe("AutomationRunner", () => {
         while (!sdk.ctl.stopped) { await sdk.sleep(1); }
       `,
     };
-    // Ask for 5 minutes; the runner must clamp to 10s.
+    // Stop before running so the test verifies the cap without waiting.
     const runner = new AutomationRunner(spec, svc, { maxDurationMs: 5 * 60 * 1000 });
-    expect(runner.maxDurationMs).toBeLessThanOrEqual(10000);
-    // Sanity-check the resolved value is exactly the cap after run() resolves it.
-    // (We don't actually wait 10s here; asserting the clamp field is enough.)
     runner.ctl.stop();
     const result = await runner.run();
-    expect(runner.maxDurationMs).toBe(10000);
-    expect(result.elapsedMs).toBeLessThan(10000);
+    expect(runner.maxDurationMs).toBe(300000);
+    expect(result.elapsedMs).toBeLessThan(1000);
   });
 
   test("flags a live run that moved the mouse WITHOUT a required-window gate", async () => {
