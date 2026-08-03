@@ -1016,9 +1016,32 @@ export async function patchFile(
       originalContent = await readFile(filePath, "utf8"); // Use async read
     }
 
-    let updatedContent = applyPatch(originalContent, patch);
-    let appliedPatch = patch; // Keep track of which patch succeeded
     const patchHunks = parseHunks(patch);
+    // `diff.applyPatch` can report success for malformed hunks whose declared
+    // line counts disagree with their bodies. In that case it consumes the
+    // wrong number of lines and can move additions across scope boundaries.
+    // Send those hunks through our re-anchoring logic instead of trusting the
+    // library's successful-but-corrupt result.
+    const hasInvalidHunkCounts = patchHunks.some((hunk) => {
+      const originalBodyCount = hunk.lines.filter(
+        (line) =>
+          !line.startsWith("+") &&
+          line !== "\\ No newline at end of file"
+      ).length;
+      const newBodyCount = hunk.lines.filter(
+        (line) =>
+          !line.startsWith("-") &&
+          line !== "\\ No newline at end of file"
+      ).length;
+      return (
+        originalBodyCount !== hunk.originalLineCount ||
+        newBodyCount !== hunk.newLineCount
+      );
+    });
+    let updatedContent = hasInvalidHunkCounts
+      ? false
+      : applyPatch(originalContent, patch);
+    let appliedPatch = patch; // Keep track of which patch succeeded
     const patchHasAdditions = patchHunks.some((h) => h.additions.length > 0);
     const patchHasDeletions = patchHunks.some((h) => h.subtractions.length > 0);
 
