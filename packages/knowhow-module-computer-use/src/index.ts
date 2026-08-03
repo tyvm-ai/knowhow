@@ -12,6 +12,7 @@ import * as computerTools from "./tools";
 export { ComputerService } from "./ComputerService";
 export { RustCoreDriver } from "./drivers/RustCoreDriver";
 export * from "./tools";
+export * from "./tracking";
 export { computerToolDefinitions } from "./tools/definitions";
 // `sdk` is an editor/type binding for .knowhow/automations/*.ts files; the
 // automation runner replaces its import with the live SDK at execution time.

@@ -8,6 +8,7 @@ type Fixture = {
   sourceBefore: string;
   patch: string;
   observedAfter: string;
+  expectedAfter?: string;
   agentStatement: string;
 };
 
@@ -99,4 +100,26 @@ describe("patchFile transcript-derived mangling regressions", () => {
       expectedAutomation
     );
   });
+
+  // Regression from task 1785784065: the malformed final hunk's declared
+  // counts omit the remainder of sdk.log. The current autofix reconstructs
+  // the intended edit exactly instead of crossing the two adjacent blocks.
+  it(
+    "fruit-ninja confirmed-retirement patch applies exactly",
+    async () => {
+      const fixture = loadFixture("fruit-ninja-confirmed-retirement");
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "patch-transcript-"));
+      const testFile = path.join(dir, "fruitNinjaPrecision.ts");
+      fs.writeFileSync(testFile, fixture.sourceBefore);
+
+      try {
+        const result = await boundPatch(testFile, fixture.patch);
+        expect(result).not.toContain("❌ Patch failed");
+        const actual = fs.readFileSync(testFile, "utf8");
+        expect(actual).toBe(fixture.expectedAfter);
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  );
 });

@@ -32,6 +32,28 @@ export interface RawScreenshot {
   data: Buffer;
 }
 
+export interface NativeScreenStreamOptions {
+  region?: { x: number; y: number; width: number; height: number };
+  displayId?: number;
+  scale?: number;
+  fps?: number;
+  framesToKeep?: number;
+}
+
+export interface NativeScreenFrame {
+  sequence: number;
+  /** Monotonic capture timestamp in milliseconds. */
+  capturedAt: number;
+  width: number;
+  height: number;
+  data: Buffer;
+}
+
+export interface NativeScreenStream {
+  latest(afterSequence?: number): NativeScreenFrame | null;
+  stop(): void;
+}
+
 function loadCore(): any {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const mod = require("@tyvm/knowhow-computer-core");
@@ -205,8 +227,37 @@ export class RustCoreDriver implements ComputerDriver {
     return envelope as unknown as Buffer;
   }
 
+  /** Start a persistent, latest-frame native capture stream when supported. */
+  startScreenStream(options: NativeScreenStreamOptions): NativeScreenStream {
+    const core = this.ensureCore();
+    if (typeof core.startScreenStream !== "function") {
+      throw new Error("Native real-time screen streaming is unavailable on this build");
+    }
+    const id = core.startScreenStream(options);
+    let stopped = false;
+    return {
+      latest: (afterSequence?: number) => {
+        if (stopped) return null;
+        const frame = core.latestScreenFrame(id, afterSequence);
+        if (!frame) return null;
+        return {
+          sequence: frame.sequence,
+          capturedAt: frame.capturedAt,
+          width: frame.width,
+          height: frame.height,
+          data: Buffer.from(frame.data),
+        };
+      },
+      stop: () => {
+        if (stopped) return;
+        stopped = true;
+        core.stopScreenStream(id);
+      },
+    };
+  }
   async pixelColor(p: Point): Promise<string> {
     // Delegate to the native core. Note: on Retina/HiDPI displays the native
+
     // pixelColor now scales the logical point by the display pixel ratio before
     // indexing the raw screenshot buffer (fixed in Rust). The screencapture is
     // done fresh per call — fast enough for occasional sampling.

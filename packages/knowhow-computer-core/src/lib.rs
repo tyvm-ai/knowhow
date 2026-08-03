@@ -26,6 +26,9 @@ pub use types::{
     PermissionsStatus, Point, RawImage, Region, ScreenshotOptions, Size, WindowInfo,
 };
 
+// Re-export stream types so they appear in the generated .d.ts.
+pub use types::{ScreenFrame, ScreenStreamOptions};
+
 // Re-export native perception primitives (free functions) + their result types.
 pub use perception::{
     find_boxes_raw, find_color_regions_raw, find_regions_raw, BoxNative, ColorRegionNative,
@@ -239,6 +242,70 @@ impl ComputerCore {
     pub fn hotkey(&self, keys: Vec<String>) -> Result<()> {
         let parsed = Key::parse_many(&keys).map_err(|e| Error::new(Status::InvalidArg, e))?;
         self.backend.hotkey(&parsed)
+    }
+
+    // ── Persistent screen stream ─────────────────────────────────────────────
+
+    /// Start a persistent ScreenCaptureKit stream (macOS only).
+    ///
+    /// Returns a numeric stream id. Use `latestScreenFrame(id)` to poll frames
+    /// and `stopScreenStream(id)` to tear down the stream.
+    ///
+    /// Options:
+    ///   region        – capture sub-region in virtual-desktop coords
+    ///   displayId     – CGDirectDisplayID (0 = main display)
+    ///   scale         – downsample factor 0 < scale ≤ 1 (default 1.0)
+    ///   fps           – desired frames per second 1..60 (default 10)
+    ///   framesToKeep  – ring-buffer capacity 1..256 (default 4)
+    #[napi]
+    pub fn start_screen_stream(
+        &self,
+        options: Option<ScreenStreamOptions>,
+    ) -> Result<f64> {
+        #[cfg(target_os = "macos")]
+        return platform::macos_stream::start_stream(options);
+
+        #[cfg(not(target_os = "macos"))]
+        Err(Error::new(
+            Status::GenericFailure,
+            "startScreenStream is only supported on macOS",
+        ))
+    }
+
+    /// Poll for the latest captured frame with sequence > afterSequence.
+    ///
+    /// Pass `afterSequence: frame.sequence` on subsequent calls to receive only
+    /// new frames. Returns null when no new frame is available yet.
+    #[napi]
+    pub fn latest_screen_frame(
+        &self,
+        stream_id: f64,
+        after_sequence: Option<f64>,
+    ) -> Result<Option<ScreenFrame>> {
+        #[cfg(target_os = "macos")]
+        return platform::macos_stream::latest_frame(stream_id, after_sequence);
+
+        #[cfg(not(target_os = "macos"))]
+        Err(Error::new(
+            Status::GenericFailure,
+            "latestScreenFrame is only supported on macOS",
+        ))
+    }
+
+    /// Stop a running stream and free its resources.
+    #[napi]
+    pub fn stop_screen_stream(&self, stream_id: f64) -> Result<()> {
+        #[cfg(target_os = "macos")]
+        {
+            platform::macos_stream::stop_stream(stream_id);
+            return Ok(());
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        Err(Error::new(
+            Status::GenericFailure,
+            "stopScreenStream is only supported on macOS",
+        ))
     }
 }
 

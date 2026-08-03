@@ -13,6 +13,8 @@ pub mod macos;
 pub mod macos_accessibility;
 #[cfg(target_os = "macos")]
 pub mod macos_overlay;
+#[cfg(target_os = "macos")]
+pub mod macos_stream;
 
 /// Construct the backend for the current platform.
 pub fn create_backend() -> Box<dyn Backend> {

@@ -172,3 +172,34 @@ impl Button {
         }
     }
 }
+
+/// Options for `startScreenStream`. All fields optional.
+#[napi(object)]
+#[derive(Clone, Debug, Default)]
+pub struct ScreenStreamOptions {
+    /// Capture only this sub-region in virtual-desktop coords. Whole display if absent.
+    pub region: Option<Region>,
+    /// Which display to capture (CGDirectDisplayID). Main display if absent.
+    pub display_id: Option<f64>,
+    /// Downsample factor applied to every frame before storing (0 < scale ≤ 1).
+    pub scale: Option<f64>,
+    /// Desired capture frame rate (1..60). Default 10.
+    pub fps: Option<f64>,
+    /// Number of frames kept in the ring buffer (1..256). Default 4.
+    pub frames_to_keep: Option<u32>,
+}
+
+/// A single captured frame returned by `latestScreenFrame`.
+#[napi(object)]
+pub struct ScreenFrame {
+    /// Monotonically increasing counter. Pass as `afterSequence` to receive only new frames.
+    pub sequence: f64,
+    /// Monotonic ScreenCaptureKit presentation timestamp in milliseconds.
+    pub captured_at: f64,
+    /// Frame width in pixels (after scale is applied).
+    pub width: u32,
+    /// Frame height in pixels (after scale is applied).
+    pub height: u32,
+    /// Tightly-packed RGBA8 pixels, row-major, length == width * height * 4.
+    pub data: napi::bindgen_prelude::Buffer,
+}

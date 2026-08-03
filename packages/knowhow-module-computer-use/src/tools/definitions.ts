@@ -780,7 +780,7 @@ export const computerToolDefinitions: Tool[] = [
     function: {
       name: "computerUseListAutomations",
       description:
-        "List saved automations with their FULL filepath, running state, size, and their parsed skill header (doc: @description/@useWhen/@startState/@endState/@window). ALWAYS check this before deciding whether to solve a task manually — an existing automation may already do the job. Read the `doc.useWhen` to know when each applies and `doc.startState` to know what the screen must look like first. `documented:false` means the automation lacks a header; read its file before trusting it.",
+        "List saved automations with their FULL filepath, running state, size, and their parsed skill header (doc: @description/@useWhen/@startState/@endState/@window). ALWAYS check this before solving a repetitive or real-time task or creating an automation. Enable readFile and inspect the full source of every plausible match, including documented entries; metadata is only for discovery. Reuse or incrementally update a match rather than creating a duplicate. `documented:false` means the source has no usable discovery header.",
       parameters: noArgs,
     },
   },

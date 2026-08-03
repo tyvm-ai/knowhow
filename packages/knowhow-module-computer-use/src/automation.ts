@@ -16,6 +16,15 @@ import {
   ReadTextOptions,
 } from "./ComputerService";
 import { resolveRegionAsync } from "./regions";
+import { RustCoreDriver } from "./drivers/RustCoreDriver";
+import {
+  createObjectTracker,
+  createScreenWatcher,
+  ObjectTracker,
+  ObjectTrackingOptions,
+  ScreenWatcher,
+  WatchScreenOptions,
+} from "./tracking";
 
 /**
  * Automations — a locally-run perception→action loop that the LLM authors once
@@ -207,6 +216,32 @@ export interface AutomationSDK {
     maxBoxes?: number;
   }): Promise<DesktopBox[]>;
   pixelColor(x: number, y: number): Promise<string>;
+  /**
+   * Start a persistent ScreenCaptureKit latest-frame stream. Unlike screenshot
+   * polling this pays capture setup once and normally receives frames at display
+   * refresh speed. Always call stop(); the runner also stops leaked streams.
+   */
+  watchScreen(opts?: Omit<WatchScreenOptions, "region"> & {
+    region?: Region | string;
+  }): Promise<ScreenWatcher>;
+  /**
+   * High-level motion perception: stream -> region detection -> temporal object
+   * association. Tracks expose stable IDs, paths, velocity, acceleration,
+   * prediction and vertical-apex estimates in desktop coordinates.
+   * @example
+   * const tracker = await sdk.trackObjects({ region: arena, scale: 0.25, fps: 60 });
+   * const seen = new Set<number>();
+   * const observation = await tracker.nextFrame();
+   * for (const object of observation?.objects ?? []) {
+   *   if (seen.has(object.id)) continue; // one action per stable object
+   *   seen.add(object.id);
+   *   const target = object.apex?.point ?? object.predict(30);
+   *   await sdk.clickAt(target.x, target.y);
+   * }
+   */
+  trackObjects(opts?: Omit<ObjectTrackingOptions, "region"> & {
+    region?: Region | string;
+  }): Promise<ObjectTracker>;
 
   // ── action (no-op while paused; recorded in dry-run) ──
   clickAt(x: number, y: number, button?: "left" | "right" | "middle"): Promise<void>;
@@ -505,6 +540,7 @@ export class AutomationRunner {
   private everGatedWindow = false;
   /** Resolved max run duration (ms). Set at the start of run(). */
   maxDurationMs = DEFAULT_AUTOMATION_DURATION_MS;
+  private streamDisposers = new Set<() => void>();
   private stopReason: "duration" | "manual" | "completed" | "error" | null =
     null;
 
@@ -748,6 +784,37 @@ export class AutomationRunner {
 
       readText: (o = {}) => svc.readText(o as ReadTextOptions),
 
+      watchScreen: async (o = {}) => {
+        const driver = await svc.getDriver();
+        if (!(driver instanceof RustCoreDriver)) {
+          throw new Error("sdk.watchScreen requires the native Rust computer driver");
+        }
+        const resolved = await resolveRegionAsync(o.region as any, () => svc.getActiveWindow());
+        const region = resolved ?? { x: 0, y: 0, ...(await svc.screenSize()) };
+        const watcher = createScreenWatcher(driver, { ...o, region });
+        const stop = watcher.stop.bind(watcher);
+        const dispose = () => { stop(); self.streamDisposers.delete(dispose); };
+        watcher.stop = dispose;
+        self.streamDisposers.add(dispose);
+        return watcher;
+      },
+
+      trackObjects: async (o = {}) => {
+        const driver = await svc.getDriver();
+        if (!(driver instanceof RustCoreDriver)) {
+          throw new Error("sdk.trackObjects requires the native Rust computer driver");
+        }
+        const resolved = await resolveRegionAsync(o.region as any, () => svc.getActiveWindow());
+        const region = resolved ?? { x: 0, y: 0, ...(await svc.screenSize()) };
+        const watcher = createScreenWatcher(driver, { ...o, region });
+        const tracker = createObjectTracker(watcher, { ...o, region });
+        const stop = tracker.stop.bind(tracker);
+        const dispose = () => { stop(); self.streamDisposers.delete(dispose); };
+        tracker.stop = dispose;
+        self.streamDisposers.add(dispose);
+        return tracker;
+      },
+
       showOverlay: async (primitives) => {
         if (!self.canAct()) return;
         await svc.showOverlay(primitives);
@@ -953,6 +1020,8 @@ export class AutomationRunner {
         this.pausedAccumMs += this.now() - this.pauseStartedAt;
         this.pauseStartedAt = 0;
       }
+      for (const stop of [...this.streamDisposers]) stop();
+      this.streamDisposers.clear();
       running.delete(this.spec.name);
     }
 
