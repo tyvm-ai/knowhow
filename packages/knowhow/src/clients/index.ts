@@ -58,6 +58,7 @@ import { GitHubCopilotClient } from "./copilot";
 import { GenericLlamaClient } from "./llama";
 import { GenericFireworksClient } from "./fireworks";
 import { GenericMetaClient } from "./meta";
+import { GenericQwenClient } from "./qwen";
 export {
   OpenAiTextPricing,
   AnthropicTextPricing,
@@ -103,6 +104,7 @@ const BUILT_IN_PROVIDER_REGISTRY: Record<string, ProviderRegistryEntry> = {
   llama: { clientClass: GenericLlamaClient },
   fireworks: { clientClass: GenericFireworksClient },
   meta: { clientClass: GenericMetaClient },
+  qwen: { clientClass: GenericQwenClient },
   knowhow: {
     createClient: (entry: ModelProvider) => {
       const jwt = loadKnowhowJwt();
@@ -134,6 +136,7 @@ const DEFAULT_PROVIDERS: ModelProvider[] = [
   { provider: "llama", envKey: "LLAMA_API_KEY" },
   { provider: "fireworks", envKey: "FIREWORKS_API_KEY" },
   { provider: "meta", envKey: "META_API_KEY" },
+  { provider: "qwen", envKey: "QWEN_CLOUD_API_KEY" },
 ];
 
 export class AIClient {
@@ -1075,3 +1078,4 @@ export * from "./llama";
 export * from "./copilot";
 export * from "./fireworks";
 export * from "./meta";
+export * from "./qwen";
