@@ -391,6 +391,12 @@ export class GenericOpenAiClient implements GenericClient {
 
     // Convert chat messages to Responses API input items
     // The Responses API accepts: user/assistant/system messages and function_call_output items
+    // OpenAI Responses API hard limit: 10,485,760 chars per function_call_output.output
+    const MAX_TOOL_OUTPUT = 10_485_000;
+    const truncateToolOutput = (s: string) =>
+      s.length > MAX_TOOL_OUTPUT
+        ? s.slice(0, MAX_TOOL_OUTPUT) + "\n\n[TRUNCATED: output exceeded 10MB API limit]"
+        : s;
     const input: any[] = nonSystemMessages.map((msg) => {
       if (msg.role === "tool") {
         // OpenAI function outputs cannot directly contain image content. Send
@@ -404,9 +410,9 @@ export class GenericOpenAiClient implements GenericClient {
         const toolOutput = {
           type: "function_call_output",
           call_id: msg.tool_call_id,
-          output: typeof msg.content === "string"
+          output: truncateToolOutput(typeof msg.content === "string"
             ? msg.content
-            : text || "Image output attached in the following user message.",
+            : text || "Image output attached in the following user message."),
         };
         if (!imageParts.length) return toolOutput;
         return [

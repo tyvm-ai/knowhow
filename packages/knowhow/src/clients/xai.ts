@@ -147,12 +147,18 @@ export class GenericXAIClient implements GenericClient {
       .trim() || undefined;
 
     // Convert chat messages to Responses API input items
+    // Responses API hard limit: 10,485,760 chars per function_call_output.output
+    const MAX_TOOL_OUTPUT = 10_485_000;
+    const truncateToolOutput = (s: string) =>
+      s.length > MAX_TOOL_OUTPUT
+        ? s.slice(0, MAX_TOOL_OUTPUT) + "\n\n[TRUNCATED: output exceeded 10MB API limit]"
+        : s;
     const input: any[] = nonSystemMessages.map((msg) => {
       if (msg.role === "tool") {
         return {
           type: "function_call_output",
           call_id: msg.tool_call_id,
-          output: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+          output: truncateToolOutput(typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)),
         };
       }
       if (msg.role === "assistant" && msg.tool_calls?.length) {
