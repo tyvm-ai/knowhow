@@ -19,6 +19,7 @@ export async function setupServices() {
     Events,
     MediaProcessor,
     Behaviors,
+    RuntimeReload,
   } = services();
 
   // cli uses LazyTools to keep context slim
@@ -80,7 +81,7 @@ export async function setupServices() {
 
   console.log("📦 Loading modules from config...");
   const modulesService = new ModulesService();
-  await modulesService.loadModulesFromConfig({
+  const moduleContext = {
     Agents,
     Embeddings,
     Plugins,
@@ -90,7 +91,7 @@ export async function setupServices() {
     Behaviors,
     Events,
     Tracing: TracingService,
-  });
+  };
 
   // Call destroy() on all modules when the process is shutting down so they
   // can flush buffers (e.g. OTEL spans), close connections, etc.
@@ -101,6 +102,33 @@ export async function setupServices() {
   process.on("SIGINT", async () => {
     await destroyAll();
     process.exit(0);
+  });
+  await modulesService.loadModulesFromConfig(moduleContext);
+
+  RuntimeReload.configure(async () => {
+    await modulesService.destroyModules();
+    await Mcp.closeAll();
+
+    Tools.resetTools();
+    Tools.defineTools(includedTools, allTools);
+    try {
+      const agentCallDef = AllTools.getTool?.("agentCall");
+      const agentCallFn = AllTools.getFunction?.("agentCall");
+      if (agentCallDef) Tools.addTool(agentCallDef);
+      if (agentCallFn) Tools.setFunction("agentCall", agentCallFn);
+    } catch (_) {}
+
+    await Behaviors.initFromConfig();
+    await Mcp.connectToConfigured(Tools);
+    await Clients.registerConfiguredModels();
+    await modulesService.loadModulesFromConfig(moduleContext);
+
+    const config = await getConfig();
+    return {
+      tools: Tools.getTools().length,
+      mcps: (config.mcps || []).length,
+      modules: (config.modules || []).length,
+    };
   });
   process.on("SIGTERM", async () => {
     await destroyAll();

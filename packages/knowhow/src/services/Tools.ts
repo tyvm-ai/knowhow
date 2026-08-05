@@ -79,6 +79,17 @@ export class ToolsService {
     }
   }
 
+  /**
+   * Remove every registered tool and handler while retaining service context,
+   * wrappers, and overrides. Runtime reload uses this before rebuilding the
+   * catalog from built-ins, MCP servers, and configured modules.
+   */
+  resetTools(): void {
+    this.tools = [];
+    this.functions = {};
+    this.originalFunctions = {};
+  }
+
   getContext(): ToolContext {
     return this.context;
   }

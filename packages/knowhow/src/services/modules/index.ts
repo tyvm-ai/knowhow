@@ -39,7 +39,12 @@ function globalResolvePaths(): string[] {
 }
 
 export class ModulesService {
-  private _loadedModules: { modulePath: string; module: KnowhowModule; params: any }[] = [];
+  private _loadedModules: {
+    modulePath: string;
+    resolvedPath: string;
+    module: KnowhowModule;
+    params: any;
+  }[] = [];
 
   async getDefaultContext() {
     return { ...services() };
@@ -89,6 +94,7 @@ export class ModulesService {
     //     best driver during phase 2.
     const loadedModules: {
       modulePath: string;
+      resolvedPath: string;
       module: KnowhowModule;
     }[] = [];
 
@@ -130,6 +136,7 @@ export class ModulesService {
       // global install).
       let importedModule: KnowhowModule;
       let loaded = false;
+      let selectedResolvedPath = modulePath;
       const errors: { candidate: string; error: Error }[] = [];
       for (const resolvedPath of candidates) {
         try {
@@ -149,6 +156,7 @@ export class ModulesService {
               context: context as ModuleContext,
             });
           }
+          selectedResolvedPath = resolvedPath;
           loaded = true;
           break;
         } catch (err: any) {
@@ -170,12 +178,16 @@ export class ModulesService {
         );
         continue;
       }
-      loadedModules.push({ modulePath, module: importedModule });
+      loadedModules.push({
+        modulePath,
+        resolvedPath: selectedResolvedPath,
+        module: importedModule,
+      });
     }
 
     // Phase 2: init every successfully-loaded module now that all `register`
     // phases have run and injected their services into `context`.
-    for (const { modulePath, module: importedModule } of loadedModules) {
+    for (const { modulePath, resolvedPath, module: importedModule } of loadedModules) {
       const initParams = { config, cwd: process.cwd(), context: context as ModuleContext };
       try {
         await importedModule.init({
@@ -193,7 +205,7 @@ export class ModulesService {
         );
         continue;
       }
-      this._loadedModules.push({ modulePath, module: importedModule, params: initParams });
+      this._loadedModules.push({ modulePath, resolvedPath, module: importedModule, params: initParams });
 
       // Only register tools/agents/plugins/clients if the relevant services
       // are available in context (they may not be during early CLI command registration)
@@ -238,7 +250,9 @@ export class ModulesService {
    */
   async destroyModules() {
     const toDestroy = [...this._loadedModules].reverse();
-    for (const { modulePath, module: mod, params } of toDestroy) {
+    // Clear first so repeated shutdown/reload attempts cannot destroy twice.
+    this._loadedModules = [];
+    for (const { modulePath, resolvedPath, module: mod, params } of toDestroy) {
       if (typeof mod.destroy === "function") {
         try {
           await mod.destroy(params);
@@ -247,6 +261,10 @@ export class ModulesService {
             `\n⚠️  Error in module destroy "${modulePath}": ${err?.message || err}\n\n`
           );
         }
+      }
+      // Re-require the entry point so source/configuration changes are visible.
+      if (require.cache[resolvedPath]) {
+        delete require.cache[resolvedPath];
       }
     }
   }

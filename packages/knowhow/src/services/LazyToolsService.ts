@@ -80,6 +80,13 @@ export class LazyToolsService extends ToolsService {
     return this.tools; // Returns filtered subset
   }
 
+  /** Rebuild the lazy catalog while preserving enable/disable preferences. */
+  resetTools(): void {
+    this.allTools = [];
+    super.resetTools();
+    this.registerLazyTools();
+  }
+
   // Enable tools matching glob patterns
   enableTools(patterns: string[]) {
     for (const pattern of patterns) {

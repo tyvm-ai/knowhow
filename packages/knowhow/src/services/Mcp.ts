@@ -388,8 +388,15 @@ export class McpService {
   }
 
   async closeAll() {
-    await this.closeTransports();
-    await this.closeClients();
+    await Promise.allSettled([this.closeTransports()]);
+    await Promise.allSettled([this.closeClients()]);
+    // Connections are recreated from freshly-read configuration after reload.
+    this.clients = [];
+    this.transports = [];
+    this.connected = [];
+    this.config = [];
+    this.tools = [];
+    this.toolAliases = {};
   }
 
   getClientIndex(clientName: string) {

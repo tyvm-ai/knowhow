@@ -43,6 +43,22 @@ export class CliChatService implements ChatService {
       chatHistory: this.chatHistory,
       plugins,
     };
+    this.registerCommand({
+      name: "reload",
+      description: "Reload configuration, tools, MCP connections, and modules",
+      handler: async () => {
+        try {
+          console.log("Reloading configuration...");
+          const result = await services().RuntimeReload.reload();
+          console.log(
+            `✓ Reloaded ${result.tools} tools, ${result.mcps} MCP servers, and ${result.modules} modules`
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`⚠ Reload failed: ${message}`);
+        }
+      },
+    });
     this.loadInputHistory();
 
     // Set up callback to add entries to inputHistory immediately when user presses Enter
