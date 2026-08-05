@@ -23,8 +23,9 @@ export function addLoginCommand(program: Command): void {
     .command("login")
     .description("Login to knowhow")
     .option("--jwt", "Use manual JWT input instead of browser login")
-    .action(async (opts) => {
-      await login(opts.jwt);
+    .option("-i, --identity <path>", "Ed25519 private key to use for public-key login")
+    .action(async (options: { jwt?: boolean; identity?: string }) => {
+      await login(options.jwt, options.identity);
     });
 }
 
