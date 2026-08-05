@@ -17,6 +17,7 @@ import { MediaProcessorService } from "./MediaProcessorService";
 import { BehaviorsService } from "./BehaviorsService";
 
 import { ConversionService } from "./conversion/ConversionService";
+import { TracingService } from "./TracingService";
 
 export * from "./AgentService";
 export * from "./EventService";
@@ -38,6 +39,9 @@ export * from "./SyncedAgentWatcher";
 export * from "./SyncerService";
 export * from "./watchers";
 export { Clients } from "../clients";
+export * from "../util/Trace";
+export { TracingService } from "./TracingService";
+export type { TracerImpl, SpanHandle } from "./TracingService";
 export * from "./conversion";
 export { BehaviorsService } from "./BehaviorsService";
 

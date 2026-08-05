@@ -214,7 +214,6 @@ export class SessionsModule extends BaseChatModule {
     // ── Case 1: in-memory running task ──────────────────────────────────────
     if (taskRegistry.has(id)) {
       const taskInfo = taskRegistry.get(id)!;
-      const renderer = this.agentModule.getRenderer();
       const context = this.chatService?.getContext();
       const selectedAgent = taskInfo.agent;
 
@@ -222,13 +221,9 @@ export class SessionsModule extends BaseChatModule {
         context.selectedAgent = selectedAgent;
         context.agentMode = true;
         context.currentAgent = taskInfo.agentName;
-        context.activeAgentTaskId = id;
         context.currentModel = selectedAgent.getModel();
         context.currentProvider = selectedAgent.getProvider();
       }
-      this.agentModule.setActiveAgentTaskId(id);
-      renderer.setActiveTaskId(id);
-      if (this.chatService) this.chatService.setMode("agent:attached");
 
       console.log(`🔄 Attached to running task: ${id}`);
       console.log(`   Agent : ${taskInfo.agentName}`);
@@ -237,6 +232,13 @@ export class SessionsModule extends BaseChatModule {
       console.log(
         `   Type /logs to see recent messages, or /detach to detach.`
       );
+
+      // Route through attachedAgentChatLoop so that:
+      // 1. wireAgentRendering is called (new output becomes visible)
+      // 2. attachedAgent is set (so /poke, /kill, /compact work)
+      // 3. a done listener is registered (mode resets when agent finishes)
+      // Do NOT pass initialInput — agent is already running, no need to call it again.
+      await this.agentModule.attachedAgentChatLoop(id, selectedAgent as any);
       return;
     }
 

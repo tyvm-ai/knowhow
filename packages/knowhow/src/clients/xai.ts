@@ -52,6 +52,15 @@ export class GenericXAIClient implements GenericClient {
     });
   }
 
+  resolveLegacyReasoningEffort(
+    effort: CompletionOptions["reasoning_effort"]
+  ): "low" | "medium" | "high" | undefined {
+    if (effort === undefined || effort === "none") return undefined;
+    if (effort === "minimal") return "low";
+    if (effort === "xhigh" || effort === "max") return "high";
+    return effort;
+  }
+
   async createChatCompletion(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
@@ -72,13 +81,14 @@ export class GenericXAIClient implements GenericClient {
       return msg as ChatCompletionMessageParam;
     });
 
+    const reasoningEffort = this.resolveLegacyReasoningEffort(options.reasoning_effort);
     const response = await this.client.chat.completions.create({
       model: options.model,
       messages: xaiMessages,
       max_tokens: options.max_tokens,
-      ...(XaiReasoningModels.includes(options.model) && options.reasoning_effort && options.reasoning_effort !== "none" && {
+      ...(XaiReasoningModels.includes(options.model) && reasoningEffort && {
         // grok-3-mini models support reasoning_effort: "low" | "medium" | "high"
-        reasoning_effort: options.reasoning_effort as "low" | "medium" | "high",
+        reasoning_effort: reasoningEffort,
       }),
       ...(options.tools && {
         tools: options.tools,
@@ -206,8 +216,17 @@ export class GenericXAIClient implements GenericClient {
     // Resolve reasoning effort, clamping to supported levels if defined in pricing
     const pricing = XaiTextPricing[options.model];
     const supportedLevels = pricing?.reasoningLevels;
-    let reasoningEffort: string | undefined = options.reasoning_effort;
-    if (supportedLevels?.length) {
+    const requestedEffort = options.reasoning_effort;
+    let reasoningEffort: string | undefined;
+    if (requestedEffort !== "none") {
+      reasoningEffort =
+        requestedEffort === "minimal"
+          ? "low"
+          : requestedEffort === "max"
+            ? "xhigh"
+            : requestedEffort;
+    }
+    if (requestedEffort !== "none" && supportedLevels?.length) {
       if (!reasoningEffort || !supportedLevels.includes(reasoningEffort)) {
         reasoningEffort = supportedLevels[0];
       }

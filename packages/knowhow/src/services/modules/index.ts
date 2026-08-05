@@ -39,6 +39,8 @@ function globalResolvePaths(): string[] {
 }
 
 export class ModulesService {
+  private _loadedModules: { modulePath: string; module: KnowhowModule; params: any }[] = [];
+
   async getDefaultContext() {
     return { ...services() };
   }
@@ -174,6 +176,7 @@ export class ModulesService {
     // Phase 2: init every successfully-loaded module now that all `register`
     // phases have run and injected their services into `context`.
     for (const { modulePath, module: importedModule } of loadedModules) {
+      const initParams = { config, cwd: process.cwd(), context: context as ModuleContext };
       try {
         await importedModule.init({
           config,
@@ -190,6 +193,8 @@ export class ModulesService {
         );
         continue;
       }
+      this._loadedModules.push({ modulePath, module: importedModule, params: initParams });
+
       // Only register tools/agents/plugins/clients if the relevant services
       // are available in context (they may not be during early CLI command registration)
       if (context.Agents) {
@@ -221,6 +226,26 @@ export class ModulesService {
         for (const client of importedModule.clients) {
           context.Clients.registerClient(client.provider, client.client);
           context.Clients.registerModels(client.provider, client.models);
+        }
+      }
+    }
+  }
+
+  /**
+   * Call `destroy()` on every successfully-initialized module, in reverse
+   * initialization order (last-in, first-out). Errors are caught and logged
+   * so one broken module does not prevent others from cleaning up.
+   */
+  async destroyModules() {
+    const toDestroy = [...this._loadedModules].reverse();
+    for (const { modulePath, module: mod, params } of toDestroy) {
+      if (typeof mod.destroy === "function") {
+        try {
+          await mod.destroy(params);
+        } catch (err: any) {
+          process.stderr.write(
+            `\n⚠️  Error in module destroy "${modulePath}": ${err?.message || err}\n\n`
+          );
         }
       }
     }

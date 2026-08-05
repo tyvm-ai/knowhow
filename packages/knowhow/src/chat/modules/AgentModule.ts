@@ -18,7 +18,12 @@ import { BaseChatModule } from "./BaseChatModule";
 import { services } from "../../services/index";
 import { BaseAgent } from "../../agents/index";
 import { ChatCommand, ChatMode, ChatContext, ChatService } from "../types";
-import { Message, CompletionOptions } from "../../clients/types";
+import {
+  Message,
+  CompletionOptions,
+  REASONING_EFFORTS,
+  isReasoningEffort,
+} from "../../clients/types";
 import { ChatInteraction } from "../../types";
 import { Marked } from "../../utils/index";
 import { TokenCompressor } from "../../processors/TokenCompressor";
@@ -173,21 +178,15 @@ export class AgentModule extends BaseChatModule {
       {
         name: "reasoning_effort",
         description:
-          "Set the reasoning effort for the agent (none, low, medium, high). Use 'none' to disable thinking on models that support it.",
+          `Set the reasoning effort for the agent (${REASONING_EFFORTS.join(", ")}). Individual models support different subsets.`,
         handler: async (args: string[]): Promise<void> => {
-          const validEfforts: CompletionOptions["reasoning_effort"][] = [
-            "none",
-            "low",
-            "medium",
-            "high",
-          ];
-          const effort = args[0] as CompletionOptions["reasoning_effort"];
-          if (!effort || !validEfforts.includes(effort)) {
+          const effort = args[0];
+          if (!isReasoningEffort(effort)) {
             console.log(
               `Current reasoning effort: ${this.reasoningEffort ?? "(not set — model default)"}`
             );
             console.log(
-              `Usage: /reasoning_effort <${validEfforts.join("|")}>`
+              `Usage: /reasoning_effort <${REASONING_EFFORTS.join("|")}>`
             );
             return;
           }
@@ -201,19 +200,13 @@ export class AgentModule extends BaseChatModule {
         name: "effort",
         description: "Alias for /reasoning_effort",
         handler: async (args: string[]): Promise<void> => {
-          const validEfforts: CompletionOptions["reasoning_effort"][] = [
-            "none",
-            "low",
-            "medium",
-            "high",
-          ];
-          const effort = args[0] as CompletionOptions["reasoning_effort"];
-          if (!effort || !validEfforts.includes(effort)) {
+          const effort = args[0];
+          if (!isReasoningEffort(effort)) {
             console.log(
               `Current reasoning effort: ${this.reasoningEffort ?? "(not set — model default)"}`
             );
             console.log(
-              `Usage: /effort <${validEfforts.join("|")}>`
+              `Usage: /effort <${REASONING_EFFORTS.join("|")}>`
             );
             return;
           }
@@ -247,8 +240,15 @@ export class AgentModule extends BaseChatModule {
         description: "Detach from the currently attached agent",
         modes: ["agent:attached"],
         handler: async (_args: string[]): Promise<void> => {
+          const agent = this.attachedAgent;
           console.log("Detached from agent");
-          this.detachFromAgent();
+          // Only detach if we are still attached to THIS agent. If the user
+          // killed this agent and started a new one while this agent was
+          // finishing a long tool call, detachFromAgent() would rip out the
+          // new agent's rendering and reset the mode.
+          if (agent && this.attachedAgent === agent) {
+            this.detachFromAgent();
+          }
         },
       },
       {
@@ -1468,8 +1468,15 @@ export class AgentModule extends BaseChatModule {
           }
 
           resolve("done");
-          // Exit agent:attached mode so the prompt resets back to the default
-          this.detachFromAgent();
+          // Exit agent:attached mode so the prompt resets back to the default.
+          // Only detach if we are still attached to THIS agent. If the user
+          // killed this agent and started a new one (or /attached to a different
+          // one) while this agent was finishing a long tool call, calling
+          // detachFromAgent() unconditionally would rip out the new agent's
+          // rendering listeners and reset the mode, making new output invisible.
+          if (this.attachedAgent === agent) {
+            this.detachFromAgent();
+          }
         });
       });
 

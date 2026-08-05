@@ -112,9 +112,10 @@ export class GenericOpenAiClient implements GenericClient {
 
   resolveReasoningEffort(options: CompletionOptions): "low" | "medium" | "high" {
     const effort = options.reasoning_effort ?? this.detectReasoningEffort(options.messages);
-    // "none" is not a valid SDK ReasoningEffort — callers that need "none" should
-    // check isReasoningDisabled() separately and skip the reasoning params.
-    if (effort === "none") return "low";
+    // Chat Completions only accepts low/medium/high. Preserve newer values on
+    // the Responses API, but map them to the nearest legacy level here.
+    if (effort === "none" || effort === "minimal") return "low";
+    if (effort === "xhigh" || effort === "max") return "high";
     return effort;
   }
 
@@ -125,7 +126,9 @@ export class GenericOpenAiClient implements GenericClient {
    */
   resolveReasoningEffortForModel(options: CompletionOptions): string {
     const raw = options.reasoning_effort ?? this.detectReasoningEffort(options.messages);
-    const requested = raw === "none" ? "none" : raw;
+    // Anthropic calls its highest level `max`; OpenAI calls it `xhigh`.
+    // Accept both provider-neutral CLI spellings.
+    const requested = raw === "max" ? "xhigh" : raw;
     const pricing = OpenAiTextPricing[options.model];
     const supportedLevels = pricing?.reasoningLevels;
     if (!supportedLevels || supportedLevels.length === 0) {

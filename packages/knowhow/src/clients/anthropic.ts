@@ -88,6 +88,25 @@ export class GenericAnthropicClient implements GenericClient {
     return undefined;
   }
 
+  /** Map provider-neutral effort names to Anthropic's output_config.effort. */
+  getEffortOutputConfig(
+    model: string,
+    reasoningEffort?: CompletionOptions["reasoning_effort"]
+  ): Anthropic.OutputConfig | undefined {
+    if (
+      reasoningEffort === undefined ||
+      reasoningEffort === "none" ||
+      (!alwaysOnModels.includes(model) && !optInModels.includes(model))
+    ) {
+      return undefined;
+    }
+
+    return {
+      // Anthropic uses `low` for the provider-neutral `minimal` level.
+      effort: reasoningEffort === "minimal" ? "low" : reasoningEffort,
+    };
+  }
+
   /**
    * Clean JSON Schema for Anthropic API compatibility.
    * Removes unsupported fields like additionalProperties, $ref, $defs, positional.
@@ -423,6 +442,10 @@ export class GenericAnthropicClient implements GenericClient {
       options.reasoning_effort,
       options.reasoning_summary,
     );
+    const effortOutputConfig = this.getEffortOutputConfig(
+      options.model,
+      options.reasoning_effort
+    );
 
     const systemMessage = options.messages
       .filter((msg) => msg.role === "system")
@@ -447,6 +470,7 @@ export class GenericAnthropicClient implements GenericClient {
           : undefined,
         max_tokens: options.max_tokens || 8000,
         ...(thinkingParam && { thinking: thinkingParam }),
+        ...(effortOutputConfig && { output_config: effortOutputConfig }),
         ...(tools.length && {
           tool_choice: { type: "auto" },
           tools,

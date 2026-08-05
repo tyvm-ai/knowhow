@@ -434,9 +434,13 @@ export class GenericGeminiClient implements GenericClient {
     // Gemini 3.x — use thinkingLevel
     if (GoogleThinkingLevelModels.includes(model)) {
       const levelMap: Record<string, string> = {
+        none: "minimal",
+        minimal: "minimal",
         low: "low",
         medium: "medium",
         high: "high",
+        xhigh: "high",
+        max: "high",
       };
       return {
         thinkingLevel: levelMap[effort] ?? "low",
@@ -447,9 +451,13 @@ export class GenericGeminiClient implements GenericClient {
     if (GoogleThinkingBudgetModels.includes(model)) {
       // Map effort to token budget
       const budgetMap: Record<string, number> = {
+        none: 0,
+        minimal: 512,
         low: 1024,
         medium: 8192,
         high: -1, // dynamic
+        xhigh: -1,
+        max: -1,
       };
       return {
         thinkingBudget: budgetMap[effort] ?? 1024,

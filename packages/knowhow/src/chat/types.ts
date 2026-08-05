@@ -3,6 +3,7 @@
  */
 import { ChatInteraction, Config } from "../types";
 import { BaseAgent } from "../agents/base/base";
+import { ReasoningEffort } from "../clients/types";
 import { ToolsService } from "../services";
 import { AgentRenderer } from "./renderer/types";
 
@@ -101,7 +102,7 @@ export interface TaskInfo {
   // restore the exact configuration instead of falling back to agent defaults.
   model?: string;
   provider?: string;
-  reasoningEffort?: "none" | "low" | "medium" | "high";
+  reasoningEffort?: ReasoningEffort;
   summarizeReasoning?: boolean;
 }
 
@@ -123,7 +124,7 @@ export interface ChatSession {
   // Persisted run configuration for exact resume restoration.
   model?: string;
   provider?: string;
-  reasoningEffort?: "none" | "low" | "medium" | "high";
+  reasoningEffort?: ReasoningEffort;
   summarizeReasoning?: boolean;
 }
 

@@ -4,7 +4,10 @@
   "description": "",
   "main": "./packages/core/ts_build/src/index.js",
   "bin": "./packages/core/ts_build/src/cli.js",
-  "scripts": {},
+  "scripts": {
+    "prepare": "node scripts/install-git-hooks.mjs",
+    "scan:secrets": "node scripts/scan-staged-secrets.mjs"
+  },
   "keywords": [],
   "author": "Micah Riggan",
   "license": "MIT",

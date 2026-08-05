@@ -16,6 +16,7 @@ import { ConversionService } from "../conversion/ConversionService";
 import { BehaviorsService } from "../BehaviorsService";
 import { ComputerUseService } from "./computerUse";
 
+import { TracingService as TracingServiceType } from "../TracingService";
 /*
  *
  * A a module should allow the dynamic composition of npm modules that are installed globally by referencing an array of config
@@ -66,6 +67,7 @@ export interface ModuleContext {
   Behaviors?: BehaviorsService;
   ComputerUse?: ComputerUseService;
   [key: string]: any;
+  Tracing?: typeof TracingServiceType;
 }
 
 export interface KnowhowModule {
@@ -89,6 +91,12 @@ export interface KnowhowModule {
    * services registered by other modules' `register` phase, etc.).
    */
   init: (params: InitParams) => Promise<void>;
+  /**
+   * Phase 3 (optional): called when the CLI is shutting down. Use this to
+   * cleanly release resources — close connections, flush buffers, stop
+   * watchers, etc. Mirror of `init`.
+   */
+  destroy?: (params: InitParams) => Promise<void>;
   commands: ModuleChatCommand[];
   tools: ModuleTool[];
   agents: ModuleAgent[];

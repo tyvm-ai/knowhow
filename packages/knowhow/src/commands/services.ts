@@ -1,6 +1,6 @@
 import { includedTools } from "../agents/tools/list";
 import * as allTools from "../agents/tools";
-import { LazyToolsService, services, MinimalToolsService } from "../services";
+import { LazyToolsService, services, MinimalToolsService, TracingService } from "../services";
 import { agents } from "../agents";
 import { ModulesService } from "../services/modules";
 import { getConfig } from "../config";
@@ -89,7 +89,23 @@ export async function setupServices() {
     MediaProcessor,
     Behaviors,
     Events,
+    Tracing: TracingService,
   });
 
-  return { Tools, Clients };
+  // Call destroy() on all modules when the process is shutting down so they
+  // can flush buffers (e.g. OTEL spans), close connections, etc.
+  const destroyAll = async () => {
+    await modulesService.destroyModules();
+  };
+  process.on("beforeExit", destroyAll);
+  process.on("SIGINT", async () => {
+    await destroyAll();
+    process.exit(0);
+  });
+  process.on("SIGTERM", async () => {
+    await destroyAll();
+    process.exit(0);
+  });
+
+  return { Tools, Clients, modulesService };
 }

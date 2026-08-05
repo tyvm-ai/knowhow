@@ -8,6 +8,7 @@ import { SessionsModule } from "../chat/modules/SessionsModule";
 import { SetupModule } from "../chat/modules/SetupModule";
 import { PlainRenderer } from "../chat/renderer/PlainRenderer";
 import { loadRenderer } from "../chat/renderer/loadRenderer";
+import { isReasoningEffort, REASONING_EFFORTS } from "../clients/types";
 import { getConfig } from "../config";
 
 async function setupRenderer(chatService: any, rendererSpecifier: string): Promise<void> {
@@ -57,7 +58,7 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
     .option("--agent-name <name>", "Which agent to use", "Patcher")
     .option(
       "--reasoning-effort <effort>",
-      "Reasoning effort: none, low, medium, or high. Use 'none' to disable thinking on models that support it (e.g. for faster computer-use)."
+      `Reasoning effort: ${REASONING_EFFORTS.join(", ")}. Individual models support different subsets.`
     )
     .option(
       "--max-time-limit <minutes>",
@@ -103,6 +104,14 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
     )
     .action(async (options) => {
       try {
+        if (
+          options.reasoningEffort !== undefined &&
+          !isReasoningEffort(options.reasoningEffort)
+        ) {
+          throw new Error(
+            `Invalid reasoning effort "${options.reasoningEffort}". Expected one of: ${REASONING_EFFORTS.join(", ")}.`
+          );
+        }
         const { setupServices } = await import("./services");
         await setupServices();
         const chatService = getChatService();

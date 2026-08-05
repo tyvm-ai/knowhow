@@ -136,6 +136,26 @@ export interface RetryOptions {
   signal?: AbortSignal;
 }
 
+/**
+ * Every reasoning-effort spelling currently exposed by a supported provider.
+ * Individual models may support only a subset; provider clients are responsible
+ * for translating or clamping values where their APIs require it.
+ */
+export const REASONING_EFFORTS = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+
+export function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return typeof value === "string" && REASONING_EFFORTS.includes(value as ReasoningEffort);
+}
+
 export interface CompletionOptions extends RetryOptions {
   model: string;
   messages: Message[];
@@ -147,14 +167,17 @@ export interface CompletionOptions extends RetryOptions {
    * Maps to: OpenAI reasoning_effort/reasoning.effort, xAI reasoning.effort,
    *          Gemini thinkingLevel/thinkingBudget, Anthropic thinking mode.
    *
-   * "none"   = disable thinking entirely (Anthropic: thinking.type="disabled",
-   *            OpenAI: reasoning.effort="none").  Only supported by models that
-   *            allow disabling thinking (e.g. claude-sonnet-5).
-   * "low"    = minimal thinking
-   * "medium" = balanced (default for most models)
-   * "high"   = maximum reasoning
+   * "none"    = disable thinking where supported
+   * "minimal" = provider-defined minimum (for example Gemini/OpenAI)
+   * "low"     = low reasoning
+   * "medium"  = balanced reasoning
+   * "high"    = high reasoning
+   * "xhigh"   = extra-high reasoning (for example OpenAI/xAI/Anthropic)
+   * "max"     = maximum reasoning (Anthropic)
+   *
+   * A model may support only a subset of these provider-level values.
    */
-  reasoning_effort?: "none" | "low" | "medium" | "high";
+  reasoning_effort?: ReasoningEffort;
   /**
    * When true, request a summarized view of the model's thinking process.
    * - Anthropic: thinking.display = "summarized"
