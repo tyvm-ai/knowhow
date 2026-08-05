@@ -1,6 +1,7 @@
 import http from "../utils/http";
 import { exec } from "child_process";
 import { promisify } from "util";
+import crypto from "crypto";
 import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
@@ -28,6 +29,8 @@ interface RetrieveTokenResponse {
 
 export class BrowserLoginService {
   private baseUrl: string;
+  /** PKCE verifier — generated once per login attempt, never sent in a URL */
+  private verifier: string = crypto.randomBytes(32).toString("hex");
 
   constructor(baseUrl: string = KNOWHOW_API_URL, private orgId?: string) {
     if (!baseUrl) {
@@ -100,9 +103,10 @@ export class BrowserLoginService {
             spinner.stop();
             spinner.start("Authentication successful! Retrieving token");
 
-            // Step 4: Retrieve JWT token
+            // Step 4: Redeem session using PKCE verifier (never sent in URL)
             const tokenResponse = await http.post(
-              `${this.baseUrl}/api/cli-login/session/${sessionData.sessionId}/token`
+              `${this.baseUrl}/api/cli-login/session/${sessionData.sessionId}/redeem`,
+              { verifier: this.verifier }
             );
 
             const tokenData = tokenResponse.data as RetrieveTokenResponse;
@@ -170,9 +174,11 @@ export class BrowserLoginService {
    */
   private async createSession(): Promise<CreateSessionResponse> {
     try {
+      // Compute the PKCE challenge (sha256 of verifier) to store server-side
+      const challenge = crypto.createHash("sha256").update(this.verifier, "utf8").digest("hex");
       const response = await http.post<CreateSessionResponse>(
         `${this.baseUrl}/api/cli-login/session`,
-        {},
+        { challenge },
         { headers: { "User-Agent": getCliUserAgent() } }
       );
       return response.data;
