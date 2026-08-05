@@ -7,6 +7,7 @@ import {
   CompressionMetadata,
   JsonCompressorStorage,
 } from "./JsonCompressor";
+import { paginateToolResponse } from "./tools/boundedToolResponse";
 
 export interface KeyInfo {
   key: string;
@@ -419,15 +420,25 @@ export class TokenCompressor implements JsonCompressorStorage {
     if (toolsService) {
       toolsService.addTools([expandTokensDefinition]);
       toolsService.addFunctions({
-        [this.toolName]: (key: string, fromLine?: number, toLine?: number) => {
+        [this.toolName]: (
+          key: string,
+          fromLine?: number,
+          toLine?: number,
+          characterOffset?: number,
+          maxCharacters?: number
+        ) => {
           // Auto-stitch: follow any NEXT_CHUNK_KEY chain and return the full,
           // reassembled content so the agent never has to chase nested keys.
           const data = this.retrieveFullString(key);
 
           if (data === null) {
-            return `Error: No data found for key "${key}". Available keys: ${this.getStorageKeys().join(
-              ", "
-            )}`;
+            return paginateToolResponse(
+              `Error: No data found for key "${key}". Available keys: ${this.getStorageKeys().join(
+                ", "
+              )}`,
+              { characterOffset, maxCharacters },
+              "available-key list"
+            );
           }
 
           // Optional ranged read: return only the requested 1-based, inclusive
@@ -435,7 +446,11 @@ export class TokenCompressor implements JsonCompressorStorage {
           const hasRange =
             typeof fromLine === "number" || typeof toLine === "number";
           if (!hasRange) {
-            return data;
+            return paginateToolResponse(
+              data,
+              { characterOffset, maxCharacters },
+              `expanded value for ${key}`
+            );
           }
 
           const lines = data.split("\n");
@@ -447,14 +462,22 @@ export class TokenCompressor implements JsonCompressorStorage {
           );
 
           if (start > end) {
-            return `Error: Invalid line range for key "${key}": fromLine (${start}) is greater than toLine (${end}). Content has ${totalLines} lines.`;
+            return paginateToolResponse(
+              `Error: Invalid line range for key "${key}": fromLine (${start}) is greater than toLine (${end}). Content has ${totalLines} lines.`,
+              { characterOffset, maxCharacters },
+              "line-range error"
+            );
           }
 
           const numbered: string[] = [];
           for (let i = start; i <= end; i++) {
             numbered.push(`${i}: ${lines[i - 1]}`);
           }
-          return numbered.join("\n");
+          return paginateToolResponse(
+            numbered.join("\n"),
+            { characterOffset, maxCharacters },
+            `expanded lines ${start}-${end} for ${key}`
+          );
         },
       });
     }
@@ -559,7 +582,7 @@ export const expandTokensDefinition: Tool = {
   function: {
     name: "expandTokens",
     description:
-      "Retrieve compressed data that was stored during message processing. The full content is automatically reassembled (any chunk chain is followed for you, so you never need to chase NEXT_CHUNK_KEY references). Optionally pass fromLine/toLine (1-based, inclusive) to return just a range of lines, prefixed with real line numbers. NOTE: Can also use jqToolResponse, grepToolResponse, tailToolResponse to access/filter/search compressed content without needing to expand all tokens.",
+      "Retrieve a bounded page of compressed data. Chunk chains are automatically reassembled, but output is limited to 20,000 characters by default. Use characterOffset to continue, or fromLine/toLine for line-based selection. Prefer jqToolResponse, grepToolResponse, or tailToolResponse when possible.",
     parameters: {
       type: "object",
       positional: true,
@@ -577,6 +600,15 @@ export const expandTokensDefinition: Tool = {
           type: "number",
           description:
             "Optional 1-based end line (inclusive). Defaults to the end of the content when omitted.",
+        },
+        characterOffset: {
+          type: "number",
+          description:
+            "Optional zero-based character offset within the expanded value or selected line range.",
+        },
+        maxCharacters: {
+          type: "number",
+          description: "Response size (default 20000, hard maximum 50000).",
         },
       },
       required: ["key"],
