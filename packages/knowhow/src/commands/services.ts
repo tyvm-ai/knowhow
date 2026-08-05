@@ -22,6 +22,7 @@ export async function setupServices() {
     RuntimeReload,
   } = services();
 
+  await Plugins.refreshConfiguredState();
   // cli uses LazyTools to keep context slim
   const Tools = new LazyToolsService();
   await Behaviors.initFromConfig();
@@ -107,6 +108,7 @@ export async function setupServices() {
 
   RuntimeReload.configure(async () => {
     await modulesService.destroyModules();
+    await Plugins.refreshConfiguredState();
     await Mcp.closeAll();
 
     Tools.resetTools();

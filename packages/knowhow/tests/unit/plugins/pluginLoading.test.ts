@@ -1,5 +1,6 @@
 import { PluginService } from "../../../src/plugins/plugins";
 import { PluginContext } from "../../../src/plugins/types";
+import * as configModule from "../../../src/config";
 
 // Minimal mock context for PluginService construction
 // EmbeddingPlugin calls context.Events.on() in its constructor, so we must mock it.
@@ -62,5 +63,35 @@ describe("PluginService.loadPlugin", () => {
     const plugin = service.getPlugin(mockKey);
     expect(plugin).toBeDefined();
     expect(plugin!.meta.key).toBe(mockKey);
+  });
+
+  it("applies disabled plugins from config and re-enables removed entries", async () => {
+    const service = new PluginService(makeContext());
+    const plugin = {
+      meta: { key: "git", name: "Git Plugin" },
+      isEnabled: jest.fn(() => true),
+      enable: jest.fn(),
+      disable: jest.fn(),
+      call: jest.fn(async () => ""),
+      callMany: jest.fn(async () => ""),
+    };
+    service.registerPlugin("git", plugin);
+
+    const configSpy = jest.spyOn(configModule, "getConfig");
+    configSpy.mockResolvedValueOnce({
+      plugins: { enabled: [], disabled: ["git"] },
+    } as any);
+    await service.refreshConfiguredState();
+
+    expect(plugin.disable).toHaveBeenCalledTimes(1);
+    expect(plugin.enable).not.toHaveBeenCalled();
+
+    configSpy.mockResolvedValueOnce({
+      plugins: { enabled: ["git"], disabled: [] },
+    } as any);
+    await service.refreshConfiguredState();
+
+    expect(plugin.enable).toHaveBeenCalledTimes(1);
+    configSpy.mockRestore();
   });
 });
