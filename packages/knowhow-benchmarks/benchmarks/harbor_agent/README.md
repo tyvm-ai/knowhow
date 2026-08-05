@@ -7,7 +7,11 @@ Runs the Knowhow CLI agent inside Harbor environments to solve Terminal-Bench 2.
 1. Install Harbor: `pip install harbor`
 2. Docker running locally
 3. Login: `harbor auth login`
-4. Set API key: `export OPENAI_API_KEY=sk-...`
+4. Export the API key used by the selected Knowhow provider. For example:
+   - OpenAI: `export OPENAI_API_KEY=...`
+   - Fireworks: `export FIREWORKS_API_KEY=...`
+
+The adapter passes only the selected provider's credential into each task container.
 
 ## Running the Pilot Subset (5 tasks, 3 trials each)
 
@@ -49,6 +53,45 @@ PYTHONPATH=. harbor run \
   -k 1 \
   -i terminal-bench/fix-git
 ```
+
+To benchmark DeepSeek V4 Flash through Fireworks, first export
+`FIREWORKS_API_KEY`, then use the full Fireworks model identifier. Start with a
+single-task smoke test before launching all 89 tasks:
+
+```bash
+export FIREWORKS_API_KEY=...
+
+PYTHONPATH=. harbor run \
+  -d terminal-bench/terminal-bench-2-1 \
+  --jobs-dir jobs/terminal-bench/terminal-bench-2-1 \
+  -a "harbor_agent.knowhow_agent:KnowhowAgent" \
+  -m "fireworks/accounts/fireworks/models/deepseek-v4-flash" \
+  --ak max_spend_limit=5 \
+  -k 1 \
+  -i terminal-bench/fix-git
+```
+
+After the smoke test passes, run all 89 Terminal-Bench 2.1 tasks once with:
+
+```bash
+export KNOWHOW_VERSION=0.0.146 # Replace with the release being evaluated.
+
+PYTHONPATH=. harbor run \
+  -d terminal-bench/terminal-bench-2-1 \
+  --jobs-dir jobs/terminal-bench/terminal-bench-2-1 \
+  -a "harbor_agent.knowhow_agent:KnowhowAgent" \
+  -m "fireworks/accounts/fireworks/models/deepseek-v4-flash" \
+  --ak knowhow_version="$KNOWHOW_VERSION" \
+  --ak agent_name=Patcher \
+  --ak max_spend_limit=25 \
+  -k 3
+```
+
+`-k 3` allows three concurrent task trials; lower it if the Fireworks account's
+rate limit requires less concurrency. Omit `reasoning_effort` for this model
+unless Fireworks documents a supported value. Set `knowhow_version` to the
+release being evaluated; Fireworks support requires a release containing the
+request-sanitization fix rather than an in-container patch.
 
 Adapter arguments passed with `--ak`:
 

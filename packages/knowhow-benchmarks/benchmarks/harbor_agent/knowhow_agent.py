@@ -118,6 +118,7 @@ class KnowhowAgent(BaseAgent):
         provider_env_keys = {
             "openai": "OPENAI_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY",
+            "fireworks": "FIREWORKS_API_KEY",
             "qwen": "QWEN_CLOUD_API_KEY",
             "google": "GEMINI_API_KEY",
             "xai": "XAI_API_KEY",
