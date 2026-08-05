@@ -158,9 +158,38 @@ export const TBENCH_PRICE_ADJUSTMENTS: Record<string, number> = {
   'openai/gpt-5.6-terra': 0.80, // 20% price reduction
 };
 
-// Official leaderboard submissions parsed from
+// Published benchmark results. Most entries are official Harbor leaderboard
+// submissions parsed from the repository below. Entries from another source
+// identify that source explicitly in prUrl/prLabel.
 // https://github.com/harbor-framework/terminal-bench-2-1/tree/main/leaderboard/submissions
 export const TBENCH_SUBMISSIONS: TBenchSubmission[] = [
+  {
+    // Artificial Analysis runs every task three times with Terminus 2 in an
+    // E2B sandbox and reports mean pass@1. This is independent of DeepSeek's
+    // separately published 82.7% result using its unreleased minimal harness.
+    id: '2026-08-04-deepseek-v4-flash-0731-max-terminus-2-artificial-analysis',
+    date: '2026-08-04',
+    displayDate: 'Aug 4, 2026',
+    agent: 'terminus-2',
+    agentDisplay: 'Terminus 2',
+    agentUrl: 'https://github.com/harbor-framework/harbor/tree/main/harbor/agents/terminus_2',
+    model: 'deepseek/deepseek-v4-flash-0731',
+    modelDisplay: 'DeepSeek V4 Flash 0731',
+    reasoningEffort: 'max',
+    accuracy: 78.6516853932584,
+    accuracyStderr: 2.51,
+    nTrials: 267,
+    // Artificial Analysis publishes an average cost breakdown per trial.
+    totalCostUsd: 8.723797905417182,
+    avgTrialDurationSec: 450.77029373973346,
+    uncachedInputTokens: 0,
+    cachedInputTokens: 0,
+    outputTokens: 0,
+    rewardHacks: 0,
+    sourceJobId: '',
+    prUrl: 'https://artificialanalysis.ai/evaluations/terminalbench-v2-1',
+    prLabel: 'Artificial Analysis',
+  },
   {
     id: '2026-05-01-openai-gpt-5-5-xhigh-codex',
     date: '2026-05-01',
