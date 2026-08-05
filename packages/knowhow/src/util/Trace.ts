@@ -141,7 +141,7 @@ export interface TraceAllOptions {
 export function TraceAll(options: TraceAllOptions = {}) {
   const skip = new Set(options.skip ?? []);
 
-  return function <T extends { new (...args: unknown[]): object }>(
+  return function <T extends abstract new (...args: unknown[]) => object>(
     constructor: T
   ): T {
     const className = constructor.name;
