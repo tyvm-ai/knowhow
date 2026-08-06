@@ -3,6 +3,7 @@
  * Hides complexity of choosing and managing sync backends.
  */
 import { BaseAgent } from "../agents/base/base";
+import { TraceAll } from "../util/Trace";
 import { AgentSyncFs } from "./AgentSyncFs";
 import { AgentSyncKnowhowWeb } from "./AgentSyncKnowhowWeb";
 
@@ -47,6 +48,7 @@ export interface AgentSyncer {
  *   - If syncRemote is set (and no messageId) → attaches to the remote task identified by taskId
  */
 export class SyncerService implements AgentSyncer {
+@TraceAll()
   private fsSync: AgentSyncFs;
   private webSync: AgentSyncKnowhowWeb;
   private active: boolean = false;

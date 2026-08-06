@@ -41,7 +41,9 @@ import { createAgent, agentConstructors, AgentName } from "../../agents";
 import { ToolCallEvent } from "../../agents/base/base";
 import { KnowhowSimpleClient } from "../../services/KnowhowClient";
 
+import { TraceAll } from "../../util/Trace";
 export class AgentModule extends BaseChatModule {
+@TraceAll()
   name = "agent";
   description = "Agent interaction functionality";
 

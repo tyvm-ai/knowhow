@@ -10,6 +10,7 @@ import {
 } from "./KnowhowClient";
 import { BaseAgent } from "../agents/base/base";
 import { wait } from "../utils";
+import { TraceAll } from "../util/Trace";
 
 export interface SyncOptions {
   messageId?: string;
@@ -27,6 +28,7 @@ export interface TaskSyncState {
  * AgentSynchronization handles all communication with the Knowhow API
  * for task creation, updates, status polling, and message synchronization
  */
+@TraceAll()
 export class AgentSyncKnowhowWeb {
   private client: KnowhowSimpleClient;
   private baseUrl: string;

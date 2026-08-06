@@ -11,6 +11,7 @@
  */
 import { BaseChatModule } from "./BaseChatModule";
 import { ChatCommand, ChatMode, ChatContext } from "../types";
+import { TraceAll } from "../../util/Trace";
 import { AgentModule } from "./AgentModule";
 import {
   FsSyncedAgentWatcher,
@@ -25,6 +26,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 export class SessionsModule extends BaseChatModule {
+@TraceAll()
   name = "sessions";
   description = "Session and attachment management";
 

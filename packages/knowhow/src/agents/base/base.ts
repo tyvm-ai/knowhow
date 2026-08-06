@@ -22,6 +22,7 @@ import { Models } from "../../ai";
 import { MessageProcessor } from "../../services/MessageProcessor";
 import { DEFAULT_CONTEXT_LIMIT } from "../../clients/contextLimits";
 import { Marked } from "../../utils";
+import { TraceAll } from "../../util/Trace";
 
 export { Message, Tool, ToolCall };
 export interface ModelPreference {
@@ -83,6 +84,7 @@ interface ActiveObservation {
   expiry?: NodeJS.Timeout;
 }
 
+@TraceAll()
 export abstract class BaseAgent implements IAgent {
   abstract name: string;
   abstract description: string;

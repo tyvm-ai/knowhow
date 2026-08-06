@@ -3,6 +3,7 @@
  * Handles synchronization via filesystem files in .knowhow/processes/agents/taskId/
  */
 import { BaseAgent } from "../agents/base/base";
+import { TraceAll } from "../util/Trace";
 import { promises as fs } from "fs";
 import * as path from "path";
 import { watch } from "fs";
@@ -19,6 +20,7 @@ export interface FsSyncOptions {
  * AgentSyncFs handles filesystem-based synchronization for agent tasks
  * Creates files in .knowhow/processes/agents/{taskId}/ for status and input
  */
+@TraceAll()
 export class AgentSyncFs {
   /** Shared cleanup interval across all instances to avoid duplicate cleanup runs */
   private static sharedCleanupInterval: NodeJS.Timeout | null = null;

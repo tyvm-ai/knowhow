@@ -59,6 +59,7 @@ import { GenericLlamaClient } from "./llama";
 import { GenericFireworksClient } from "./fireworks";
 import { GenericMetaClient } from "./meta";
 import { GenericQwenClient } from "./qwen";
+import { TraceAll } from "../util/Trace";
 export {
   OpenAiTextPricing,
   AnthropicTextPricing,
@@ -139,6 +140,7 @@ const DEFAULT_PROVIDERS: ModelProvider[] = [
   { provider: "qwen", envKey: "QWEN_CLOUD_API_KEY" },
 ];
 
+@TraceAll()
 export class AIClient {
   clients: Record<string, GenericClient> = {};
 

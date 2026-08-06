@@ -3,6 +3,7 @@
  * Allows CLI users to push agent tasks to the remote KnowHow web app.
  */
 import { BaseChatModule } from "./BaseChatModule";
+import { TraceAll } from "../../util/Trace";
 import { ChatCommand, ChatContext, ChatService } from "../types";
 import {
   KnowhowSimpleClient,
@@ -14,6 +15,7 @@ import { TaskInfo } from "../types";
 import { getConfig, updateConfig } from "../../config";
 
 export class RemoteSyncModule extends BaseChatModule {
+@TraceAll()
   name = "remote-sync";
   description = "Remote sync functionality (/sync:remote, /sync:status)";
 

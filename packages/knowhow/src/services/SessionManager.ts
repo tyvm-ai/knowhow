@@ -5,10 +5,12 @@ import * as fs from "fs";
 import * as fsPromises from "fs/promises";
 import * as path from "path";
 import { TaskInfo, ChatSession } from "../chat/types";
+import { TraceAll } from "../util/Trace";
 
 /**
  * SessionManager handles saving, loading, and managing agent sessions
  */
+@TraceAll()
 export class SessionManager {
   private sessionsDir: string;
 

@@ -1,4 +1,5 @@
 import { ChatCompletionTool } from "openai/resources/chat";
+import { TraceAll } from "../util/Trace";
 import { replaceEscapedNewLines, restoreEscapedNewLines } from "../utils";
 import { includedTools } from "../agents/tools/list";
 import { AgentService } from "./AgentService";
@@ -61,6 +62,7 @@ export interface ToolContext {
  * larger context bloat from having every tool defined in system prompt
  *
  */
+@TraceAll()
 export class ToolsService {
   private context: ToolContext = {};
 

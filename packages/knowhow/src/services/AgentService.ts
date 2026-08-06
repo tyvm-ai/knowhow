@@ -3,8 +3,10 @@ import { IAgent } from "../agents/interface";
 import { EventService } from "./EventService";
 import { ToolsService } from "./Tools";
 import { ConfigAgent } from "../agents/configurable/ConfigAgent";
+import { TraceAll } from "../util/Trace";
 import { AgentContext } from "../agents/base/base";
 
+@TraceAll()
 export class AgentService {
   private agents: Map<string, IAgent> = new Map();
   private agentContext: AgentContext | null = null;

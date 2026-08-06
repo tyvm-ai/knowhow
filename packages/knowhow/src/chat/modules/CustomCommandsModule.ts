@@ -1,12 +1,14 @@
 import { BaseChatModule } from "./BaseChatModule";
 import { ChatCommand, ChatService, CommandResult } from "../types";
 import { getLanguageConfig } from "../../config";
+import { TraceAll } from "../../util/Trace";
 
 /**
  * CustomCommandsModule - Loads `/command`-style keys from the language config
  * and registers them as chat commands. When invoked, the resolved language
  * sources are sent to the active agent via addPendingUserMessage.
  */
+@TraceAll()
 export class CustomCommandsModule extends BaseChatModule {
   name = "custom-commands";
   description =

@@ -1,4 +1,5 @@
 import { minimatch } from "minimatch";
+import { TraceAll } from "../util/Trace";
 import { ToolsService, ToolContext, ToolCallContext } from "./Tools";
 import { Tool } from "../clients/types";
 import { ToolCall } from "../clients/types";
@@ -21,6 +22,7 @@ import { definitions } from "../agents/tools/lazy/definitions";
  * In web sessions where you get a new ToolService each interaction, then the cache busting is going to happen with each enable
  *
  */
+@TraceAll()
 export class LazyToolsService extends ToolsService {
   private allTools: Tool[] = [];
   // Start with lazy tools enabled by default

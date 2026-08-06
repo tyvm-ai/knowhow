@@ -1,4 +1,5 @@
 import { createHash } from "crypto";
+import { TraceAll } from "../util/Trace";
 import http from "../utils/http";
 import fs from "fs";
 import { Message } from "../clients/types";
@@ -141,6 +142,7 @@ export function loadKnowhowJwt(): string {
 export const KNOWHOW_API_URL =
   process.env.KNOWHOW_API_URL || "https://api.knowhow.tyvm.ai";
 
+@TraceAll()
 export class KnowhowSimpleClient {
   headers: Record<string, string> = {};
   jwtValidated = false;

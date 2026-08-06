@@ -4,6 +4,7 @@ import * as os from "os";
 import { Config } from "../types";
 import { updateConfig } from "../config";
 import * as crypto from "crypto";
+import { TraceAll } from "../util/Trace";
 
 export interface DockerWorkerOptions {
   workspaceDir: string;
@@ -14,6 +15,7 @@ export interface DockerWorkerOptions {
   unshare?: boolean;
 }
 
+@TraceAll()
 export class DockerService {
   private static readonly IMAGE_NAME = "knowhow-worker";
   private static readonly CONTAINER_PREFIX = "knowhow-worker";

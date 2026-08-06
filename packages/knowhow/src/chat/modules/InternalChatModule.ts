@@ -1,4 +1,5 @@
 import { ChatModule } from "../types";
+import { TraceAll } from "../../util/Trace";
 import { CliChatService } from "../CliChatService";
 import { AgentModule } from "./AgentModule";
 import { ChatCommand, ChatMode, ChatContext } from "../types";
@@ -14,6 +15,7 @@ import { SessionsModule } from "./SessionsModule";
 import { RemoteSyncModule } from "./RemoteSyncModule";
 import { ClipboardImageModule } from "./ClipboardImageModule";
 
+@TraceAll()
 export class InternalChatModule implements ChatModule {
   private clipboardImageModule = new ClipboardImageModule();
   private chatService?: CliChatService;

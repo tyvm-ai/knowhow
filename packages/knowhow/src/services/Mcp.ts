@@ -6,6 +6,7 @@ import fs from "fs";
 import { McpConfig } from "../types";
 import { Tool } from "../clients";
 import { getConfig } from "../config";
+import { TraceAll } from "../util/Trace";
 import { ToolsService } from "./Tools";
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -36,6 +37,7 @@ export * from "./McpWebsocketTransport";
  * Each of the tools are namespaced with a prefix: mcp_index_servername_toolName
  * This services handles calls made to the namespaced function name, and finds the proper client to call the tool on.
  */
+@TraceAll()
 export class McpService {
   connected = [];
   transports: Transport[] = [];
