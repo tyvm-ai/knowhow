@@ -19,6 +19,8 @@ export interface TracerConfig {
   username?: string;
   /** Basic-auth password / API token (Grafana Cloud) */
   password?: string;
+  /** Arbitrary extra headers to pass to the OTLP exporter (e.g. pre-built Authorization) */
+  headers?: Record<string, string>;
 }
 
 let _tracer: Tracer | null = null;
@@ -54,9 +56,17 @@ export async function initTracer(config: TracerConfig): Promise<void> {
     ).toString("base64");
     headers["Authorization"] = `Basic ${token}`;
   }
+  // Merge any explicitly-supplied headers (e.g. pre-built Authorization from config)
+  Object.assign(headers, config.headers);
+
+  // Ensure the endpoint includes the /v1/traces path — newer versions of the
+  // OTLPTraceExporter no longer auto-append it when a url is explicitly provided.
+  const traceEndpoint = config.endpoint.endsWith("/v1/traces")
+    ? config.endpoint
+    : `${config.endpoint.replace(/\/$/, "")}/v1/traces`;
 
   const exporter = new OTLPTraceExporter({
-    url: config.endpoint,
+    url: traceEndpoint,
     headers,
   });
 
@@ -67,12 +77,49 @@ export async function initTracer(config: TracerConfig): Promise<void> {
   });
 
   const provider = new NodeTracerProvider({ resource });
-  provider.addSpanProcessor(new BatchSpanProcessor(exporter));
+  // Use a short scheduledDelayMillis so spans are exported every 2s during the
+  // agent run rather than being batched for 5s (the default). This means traces
+  // appear in Grafana almost immediately without waiting for process exit.
+  provider.addSpanProcessor(new BatchSpanProcessor(exporter, {
+    scheduledDelayMillis: 2000,
+    maxExportBatchSize: 20,
+  }));
   provider.register();
 
   const { trace } = await import("@opentelemetry/api");
   _tracer = trace.getTracer(config.serviceName ?? "knowhow-cli", "1.0.0");
   _sdk = provider;
+
+  // Ensure spans are flushed even when the CLI calls process.exit() directly.
+  // SimpleSpanProcessor exports synchronously on span.end(), but we still
+  // need the provider to shut down cleanly (drains any in-flight HTTP exports).
+  const flushAndExit = (code: number) => {
+    if (_sdk) {
+      _sdk.shutdown()
+        .catch(() => {/* best-effort */})
+        .finally(() => process.exit(code));
+    } else {
+      process.exit(code);
+    }
+  };
+
+  // Intercept SIGINT / SIGTERM so Ctrl-C or kill still flushes.
+  process.once("SIGINT", () => flushAndExit(130));
+  process.once("SIGTERM", () => flushAndExit(143));
+
+  // Override process.exit so any call (including from agent.ts) flushes first.
+  const originalExit = process.exit.bind(process);
+  (process as any).exit = (code?: number) => {
+    if (_sdk) {
+      const sdk = _sdk;
+      _sdk = null;
+      sdk.forceFlush()
+        .catch(() => {/* best-effort */})
+        .finally(() => sdk.shutdown().catch(() => {}).finally(() => originalExit(code ?? 0)));
+    } else {
+      originalExit(code ?? 0);
+    }
+  };
 }
 
 export function getTracer(): Tracer | null {

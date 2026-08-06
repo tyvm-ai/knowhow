@@ -69,6 +69,7 @@ const tracingModule: KnowhowModule = {
         resourceAttributes: tracingConfig.resourceAttributes,
         username: tracingConfig.username,
         password: tracingConfig.password,
+        headers: tracingConfig.headers,
       });
 
       params.context?.Events?.log(
