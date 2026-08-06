@@ -284,9 +284,12 @@ export class ModulesService {
 
     // Load global-config modules resolving against the global install's
     // node_modules (~/.knowhow/node_modules) first.
+    // Pass a merged config so that keys defined in the global config (e.g.
+    // `tracing`) are visible to globally-declared modules during init().
+    // Local config keys take precedence so that local overrides still work.
     if (globalModules.length > 0) {
       await this.loadModulesFrom(
-        { ...config, modules: globalModules },
+        { ...globalConfig, ...config, modules: globalModules },
         context,
         globalResolvePaths()
       );

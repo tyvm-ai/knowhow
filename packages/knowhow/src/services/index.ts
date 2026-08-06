@@ -51,6 +51,7 @@ let Singletons = {} as {
   Tools: ToolsService;
   Events: EventService;
   Agents: AgentService;
+  Tracing: typeof TracingService;
   Embeddings: EmbeddingsService;
   Flags: FlagsService;
   Mcp: McpService;
@@ -83,6 +84,7 @@ export const services = (): typeof Singletons => {
     Singletons = {
       Agents,
       AwsS3: new S3Service(),
+      Tracing: TracingService,
       Clients,
       Docker: new DockerService(),
       Events,
