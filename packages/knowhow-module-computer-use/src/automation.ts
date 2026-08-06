@@ -216,6 +216,8 @@ export interface AutomationSDK {
     maxBoxes?: number;
   }): Promise<DesktopBox[]>;
   pixelColor(x: number, y: number): Promise<string>;
+  /** Sample many points from a single frame, preserving input order. */
+  pixelColors(points: Point[]): Promise<string[]>;
   /**
    * Start a persistent ScreenCaptureKit latest-frame stream. Unlike screenshot
    * polling this pays capture setup once and normally receives frames at display
@@ -796,6 +798,7 @@ export class AutomationRunner {
         } as any),
 
       pixelColor: (x, y) => svc.pixelColor({ x, y }),
+      pixelColors: (points) => svc.pixelColors(points),
 
       readText: (o = {}) => svc.readText(o as ReadTextOptions),
 

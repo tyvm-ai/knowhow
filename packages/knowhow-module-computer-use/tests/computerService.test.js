@@ -64,6 +64,43 @@ describe("ComputerService scaled capture", () => {
   );
 });
 
+describe("ComputerService batch pixel sampling", () => {
+  test("samples desktop points from one frame with offset and scale mapping", async () => {
+    const service = new ComputerService();
+    const data = Buffer.from([
+      0x11, 0x22, 0x33, 0xff, 0x44, 0x55, 0x66, 0xff, 0x77, 0x88, 0x99, 0xff,
+      0xaa, 0xbb, 0xcc, 0xff, 0xdd, 0xee, 0xff, 0xff, 0x01, 0x02, 0x03, 0xff,
+    ]);
+    service.grabRawFrame = jest.fn().mockResolvedValue({
+      raw: { __raw: true, width: 3, height: 2, data },
+      desktop: { x: 100, y: 50, width: 6, height: 4 },
+      scaleX: 0.5,
+      scaleY: 0.5,
+    });
+
+    await expect(service.pixelColors([
+      { x: 100, y: 50 },
+      { x: 102, y: 50 },
+      { x: 104, y: 52 },
+      { x: -100, y: 999 },
+    ])).resolves.toEqual([
+      "#112233",
+      "#445566",
+      "#010203",
+      "#AABBCC",
+    ]);
+    expect(service.grabRawFrame).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not capture a frame for an empty point list", async () => {
+    const service = new ComputerService();
+    service.grabRawFrame = jest.fn();
+
+    await expect(service.pixelColors([])).resolves.toEqual([]);
+    expect(service.grabRawFrame).not.toHaveBeenCalled();
+  });
+});
+
 describe("ComputerService accessibility selection", () => {
   test("does nothing when the requested option is already selected", async () => {
     const service = new ComputerService();

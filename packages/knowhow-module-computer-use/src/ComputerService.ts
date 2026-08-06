@@ -1093,6 +1093,23 @@ export class ComputerService implements ComputerUseService {
     return `#${r}${g}${b}`.toUpperCase();
   }
 
+  /** Sample many desktop points from one captured frame. This is substantially
+   * faster (and temporally consistent) than calling pixelColor repeatedly. */
+  async pixelColors(points: Point[]): Promise<string[]> {
+    if (!points.length) return [];
+    const { raw, desktop, scaleX, scaleY } = await this.grabRawFrame();
+    const buf = raw.data as Buffer;
+    return points.map((point) => {
+      const px = Math.max(0, Math.min(raw.width - 1,
+        Math.round((point.x - desktop.x) * scaleX)));
+      const py = Math.max(0, Math.min(raw.height - 1,
+        Math.round((point.y - desktop.y) * scaleY)));
+      const idx = (py * raw.width + px) * 4;
+      const hex = (value: number) => value.toString(16).padStart(2, "0");
+      return `#${hex(buf[idx])}${hex(buf[idx + 1])}${hex(buf[idx + 2])}`.toUpperCase();
+    });
+  }
+
   /**
    * Read text from the screen (or a region) using macOS Vision OCR.
    * Returns an array of recognized text regions in ABSOLUTE DESKTOP coordinates,
