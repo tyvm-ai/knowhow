@@ -626,12 +626,21 @@ export function registerComputerCli(
 
   const runAutomationCli = async (
     name: string,
-    opts: { maxMs?: string; dryRun?: boolean; driver?: string }
+    opts: { maxMs?: string; dryRun?: boolean; driver?: string; paramsJson?: string }
   ) => {
     const svc = buildService(opts.driver);
     const spec = loadAutomation(name);
+    let params: Record<string, unknown> | undefined;
+    if (opts.paramsJson) {
+      const parsed = JSON.parse(opts.paramsJson);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("--params-json must be a JSON object.");
+      }
+      params = parsed;
+    }
     const runner = new AutomationRunner(spec, svc, {
       maxDurationMs: opts.maxMs ? Number(opts.maxMs) : undefined,
+      params,
       dryRun: !!opts.dryRun,
       onLog: (e) => console.log(`t+${e.t}ms ${JSON.stringify(e.data)}`),
     });
@@ -682,6 +691,7 @@ export function registerComputerCli(
     .command("run-automation <name>")
     .description("Run a saved automation LIVE (real mouse/keyboard).")
     .option("--driver <name>", "Pin a driver by name")
+    .option("--params-json <json>", "JSON object exposed read-only as sdk.params")
     .option(
       "--max-ms <ms>",
       "Max run duration in ms (default 30000, HARD-CAPPED at 300000 so a human can always reclaim the mouse)"
@@ -694,6 +704,7 @@ export function registerComputerCli(
       "DRY-RUN a saved automation against LIVE perception without moving the mouse — prints what it WOULD click."
     )
     .option("--driver <name>", "Pin a driver by name")
+    .option("--params-json <json>", "JSON object exposed read-only as sdk.params")
     .option("--max-ms <ms>", "How long to observe in ms (default 8000)")
     .action((name, opts) =>
       runAutomationCli(name, {

@@ -156,6 +156,29 @@ describe("AutomationRunner", () => {
     expect(lastLog.data.done).toBe(3);
   });
 
+  test("exposes an isolated, deeply immutable sdk.params object", async () => {
+    const svc = makeFakeService();
+    const supplied = { mode: "explore", nested: { attempts: 2 }, order: [1, 2] };
+    const result = await new AutomationRunner(
+      {
+        name: "__test_params",
+        script: `
+          sdk.params.mode = "changed";
+          sdk.params.nested.attempts = 99;
+          try { sdk.params.order.push(3); } catch {}
+          sdk.log({ params: sdk.params });
+        `,
+      },
+      svc,
+      { maxDurationMs: 5000, params: supplied }
+    ).run();
+
+    expect(result.logs[0].data.params).toEqual(supplied);
+    expect(result.logs[0].data.params).not.toBe(supplied);
+    expect(Object.isFrozen(result.logs[0].data.params)).toBe(true);
+    expect(Object.isFrozen(result.logs[0].data.params.nested)).toBe(true);
+  });
+
   test("forwards drag gestures and records their complete telemetry", async () => {
     const svc = makeFakeService();
     const result = await new AutomationRunner(

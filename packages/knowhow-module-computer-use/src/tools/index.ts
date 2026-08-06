@@ -953,14 +953,15 @@ function summarizeRun(result: any): string {
 export async function computerUseRunAutomation(
   this: ToolsService,
   name: string,
-  maxDurationMs?: number
+  maxDurationMs?: number,
+  params?: Record<string, unknown>
 ): Promise<string> {
   const svc = getService(this) as ComputerService;
   const spec = loadAutomation(name);
   if (getRunning(name)) {
     return `Automation "${name}" is already running. Stop it first with computerUseStopAutomation("${name}").`;
   }
-  const runner = new AutomationRunner(spec, svc, { maxDurationMs });
+  const runner = new AutomationRunner(spec, svc, { maxDurationMs, params });
   const result = await runner.run();
   return summarizeRun(result);
 }
@@ -975,12 +976,14 @@ export async function computerUseRunAutomation(
 export async function computerUseTestAutomation(
   this: ToolsService,
   name: string,
-  maxDurationMs?: number
+  maxDurationMs?: number,
+  params?: Record<string, unknown>
 ): Promise<string> {
   const svc = getService(this) as ComputerService;
   const spec = loadAutomation(name);
   const runner = new AutomationRunner(spec, svc, {
     maxDurationMs: maxDurationMs ?? 8000,
+    params,
     dryRun: true,
   });
   const result = await runner.run();

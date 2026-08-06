@@ -799,6 +799,10 @@ export const computerToolDefinitions: Tool[] = [
             type: "number",
             description: "Requested run time in ms (default 30000). HARD-CAPPED at 300000 regardless of value.",
           },
+          params: {
+            type: "object",
+            description: "JSON values exposed to the automation as immutable sdk.params.",
+          },
         },
         required: ["name"],
       },
@@ -818,6 +822,10 @@ export const computerToolDefinitions: Tool[] = [
           maxDurationMs: {
             type: "number",
             description: "How long to observe (default 8000).",
+          },
+          params: {
+            type: "object",
+            description: "JSON values exposed to the automation as immutable sdk.params.",
           },
         },
         required: ["name"],

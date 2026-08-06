@@ -311,6 +311,8 @@ export interface AutomationSDK {
     minConfidence?: number;
     recognitionLevel?: "fast" | "accurate";
   }): Promise<OcrResult[]>;
+  /** Immutable JSON parameters supplied by the caller for this run. */
+  readonly params: Readonly<Record<string, unknown>>;
   readonly ctl: AutomationControl;
 }
 
@@ -506,6 +508,8 @@ const AsyncFunction = Object.getPrototypeOf(async function () {})
 
 export interface RunOptions {
   maxDurationMs?: number;
+  /** Immutable JSON-compatible values exposed to the script as sdk.params. */
+  params?: Record<string, unknown>;
   /** When true, action methods record intent but do NOT move the real mouse. */
   dryRun?: boolean;
   /** Poll interval for the window-focus gate (default 200ms). */
@@ -661,8 +665,19 @@ export class AutomationRunner {
   private buildSDK(): AutomationSDK {
     const svc = this.svc;
     const self = this;
+    const freezeJson = (value: any): any => {
+      if (Array.isArray(value)) return Object.freeze(value.map(freezeJson));
+      if (value && typeof value === "object") {
+        return Object.freeze(Object.fromEntries(
+          Object.entries(value).map(([key, child]) => [key, freezeJson(child)])
+        ));
+      }
+      return value;
+    };
+    const params = freezeJson(this.opts.params ?? {});
     const clickSettleMs = Math.max(0, this.opts.clickSettleMs ?? 40);
     const sdk: AutomationSDK = {
+      params,
       ctl: this.ctl,
       runEvery: async (callback, intervalMs, opts) => {
         if (typeof callback !== "function") {
