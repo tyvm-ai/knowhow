@@ -38,6 +38,7 @@ export class AgentSyncKnowhowWeb {
   private agent: BaseAgent | undefined;
   private threadUpdateHandler: ((...args: any[]) => void) | undefined;
   private doneHandler: ((...args: any[]) => void) | undefined;
+  private syncErrorLogged = false;
   /**
    * Tracks the most recent in-flight thread update API call.
    * The done handler awaits this before sending the finalization call,
@@ -48,6 +49,17 @@ export class AgentSyncKnowhowWeb {
   constructor(baseUrl: string = KNOWHOW_API_URL) {
     this.baseUrl = baseUrl;
     this.client = new KnowhowSimpleClient(baseUrl);
+  }
+
+  /**
+   * Remote outages can make both the update and pending-message requests fail
+   * on every thread event. Report the first failure for this task, then stay
+   * quiet so an unavailable optional sync service does not flood the chat.
+   */
+  private reportSyncErrorOnce(message: string, error: unknown): void {
+    if (this.syncErrorLogged) return;
+    this.syncErrorLogged = true;
+    console.error(message, error);
   }
 
   /**
@@ -70,7 +82,7 @@ export class AgentSyncKnowhowWeb {
       console.log(`✅ Created Knowhow chat task: ${knowhowTaskId}`);
       return knowhowTaskId;
     } catch (error) {
-      console.error(`❌ Failed to create Knowhow chat task:`, error);
+      this.reportSyncErrorOnce(`❌ Failed to create Knowhow chat task:`, error);
       return undefined;
     }
   }
@@ -97,7 +109,7 @@ export class AgentSyncKnowhowWeb {
       });
       console.log(`✅ Updated Knowhow chat task: ${knowhowTaskId}`);
     } catch (error) {
-      console.error(`❌ Failed to update Knowhow chat task:`, error);
+      this.reportSyncErrorOnce(`❌ Failed to update Knowhow chat task:`, error);
     }
   }
 
@@ -169,7 +181,10 @@ export class AgentSyncKnowhowWeb {
       await this.client.markMessagesAsProcessed(knowhowTaskId, messageIds);
       console.log(`✅ Marked ${messageIds.length} message(s) as processed`);
     } catch (error) {
-      console.error(`❌ Error checking/processing pending messages:`, error);
+      this.reportSyncErrorOnce(
+        `❌ Error checking/processing pending messages:`,
+        error
+      );
       // Continue execution even if synchronization fails
     }
   }
@@ -228,7 +243,7 @@ export class AgentSyncKnowhowWeb {
         }
         // Still paused, continue waiting
       } catch (error) {
-        console.error(`❌ Error polling task status:`, error);
+        this.reportSyncErrorOnce(`❌ Error polling task status:`, error);
         // Continue polling even on errors
       }
     }
@@ -352,6 +367,7 @@ export class AgentSyncKnowhowWeb {
     this.eventHandlersSetup = false;
     this.finalizationPromise = null;
     this.pendingThreadUpdatePromise = null;
+    this.syncErrorLogged = false;
   }
 
   /**
