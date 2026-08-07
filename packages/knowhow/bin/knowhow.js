@@ -1,12 +1,14 @@
-#!/usr/bin/env node --no-node-snapshot
+#!/usr/bin/env node
 
 // knowhow CLI entry point.
 //
-// --no-node-snapshot is required for isolated-vm (used by executeScript).
-// It is declared in the shebang above so that Node starts with it directly —
-// no re-exec needed. This means the process stays as a direct child of the
-// terminal (e.g. Ghostty) and inherits its macOS TCC (Screen Recording /
-// Accessibility) permissions without needing to grant them to node itself.
+// --no-node-snapshot is NOT needed here. The script module (knowhow-module-script)
+// forks a child process with --no-node-snapshot only when executeScript is actually
+// called. This means:
+//   - The shebang works on Linux (GNU env) and macOS without any argument-splitting tricks.
+//   - Ghostty (or whichever terminal launched knowhow) remains the TCC subject for
+//     macOS Screen Recording / Accessibility permissions — computer-use features work
+//     without having to grant those permissions to the node binary itself.
 
 const path = require("node:path");
 const cliJs = path.join(__dirname, "../ts_build/src/cli.js");
