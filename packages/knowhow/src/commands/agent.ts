@@ -55,7 +55,7 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
       "AI provider (openai, anthropic, google, xai)"
     )
     .option("--model <model>", "Specific model for the provider")
-    .option("--agent-name <name>", "Which agent to use", "Patcher")
+    .option("--agent-name <name>", "Which agent to use (default: Patcher)")
     .option(
       "--reasoning-effort <effort>",
       `Reasoning effort: ${REASONING_EFFORTS.join(", ")}. Individual models support different subsets.`
@@ -95,10 +95,6 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
     .option("--prompt-file <path>", "Custom prompt template file with {text}")
     .option("--input <text>", "Task input (fallback to stdin if not provided)")
     .option(
-      "--resume",
-      "Resume a previously started task using the --task-id (local FS or remote)"
-    )
-    .option(
       "--renderer <name>",
       "Renderer to use: basic, compact, fancy, or a path/package (default: from config or basic)"
     )
@@ -123,39 +119,6 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
         await setupRenderer(chatService, rendererSpecifier);
 
         const agentModule = new AgentModule();
-
-        if (options.resume) {
-          const threads = await agentModule.loadThreadsForTask(
-            options.taskId,
-            options.messageId
-          );
-          // Restore the exact model/provider/reasoning the original run used
-          // (falls back to agent defaults when not persisted / remote-only).
-          const savedSettings = await agentModule.loadTaskSettings(
-            options.taskId,
-            options.messageId
-          );
-          const resumeInput =
-            options.input || "Please continue from where you left off.";
-
-          await agentModule.initialize(chatService);
-          const { taskCompleted: resumed } =
-            await agentModule.resumeFromMessages({
-              agentName:
-                options.agentName || savedSettings.agentName || "Patcher",
-              input: resumeInput,
-              threads,
-              messageId: options.messageId,
-              taskId: options.taskId,
-              // CLI-provided model/provider still win over persisted ones.
-              model: options.model || savedSettings.model,
-              provider: options.provider || savedSettings.provider,
-              reasoningEffort: savedSettings.reasoningEffort,
-              summarizeReasoning: savedSettings.summarizeReasoning,
-            });
-          await resumed;
-          return;
-        }
 
         let input = options.input;
 

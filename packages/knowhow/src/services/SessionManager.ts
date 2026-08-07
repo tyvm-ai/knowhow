@@ -71,6 +71,7 @@ export class SessionManager {
         provider: taskInfo.provider,
         reasoningEffort: taskInfo.reasoningEffort,
         summarizeReasoning: taskInfo.summarizeReasoning,
+        enabledTools: taskInfo.enabledTools,
       };
 
       fs.writeFileSync(sessionPath, JSON.stringify(session, null, 2));
@@ -117,6 +118,8 @@ export class SessionManager {
             session.reasoningEffort = taskInfo.reasoningEffort;
           if (taskInfo.summarizeReasoning !== undefined)
             session.summarizeReasoning = taskInfo.summarizeReasoning;
+          if (taskInfo.enabledTools !== undefined)
+            session.enabledTools = taskInfo.enabledTools;
         }
 
         fs.writeFileSync(sessionPath, JSON.stringify(session, null, 2));

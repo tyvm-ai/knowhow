@@ -10,12 +10,13 @@ import {
   KNOWHOW_API_URL,
 } from "../../services/KnowhowClient";
 import { AgentSyncKnowhowWeb } from "../../services/AgentSyncKnowhowWeb";
+import { AgentSyncFs } from "../../services/AgentSyncFs";
 import { AgentModule } from "./AgentModule";
 import { TaskInfo } from "../types";
 import { getConfig, updateConfig } from "../../config";
 
-export class RemoteSyncModule extends BaseChatModule {
 @TraceAll()
+export class RemoteSyncModule extends BaseChatModule {
   name = "remote-sync";
   description = "Remote sync functionality (/sync:remote, /sync:status)";
 
@@ -312,6 +313,7 @@ export class RemoteSyncModule extends BaseChatModule {
       taskInfo.knowhowMessageId = messageId;
       taskInfo.knowhowTaskId = knowhowTaskId;
       taskInfo.chatSessionId = sessionId;
+      await AgentSyncFs.persistRemoteIdentity(taskId, knowhowTaskId, messageId);
 
       // Update session manager
       const sessionManager = this.agentModule.getSessionManager();

@@ -8,6 +8,8 @@ export interface StartAgentTaskParams {
   syncFs?: boolean;
   taskId?: string;
   resume?: boolean;
+  forkTaskId?: string;
+  rollback?: number;
   prompt: string;
   /**
    * Push this agent's work to a remote Knowhow task identified by taskId.
@@ -104,6 +106,8 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
     prompt,
     taskId: providedTaskId,
     resume,
+    forkTaskId,
+    rollback = 0,
     syncFs,
     syncRemote,
     provider,
@@ -117,6 +121,18 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
   } = params;
   if (!prompt) {
     throw new Error("prompt is required to create a chat task");
+  }
+  if (resume && forkTaskId) {
+    throw new Error("resume and forkTaskId are mutually exclusive");
+  }
+  if (resume && !providedTaskId) {
+    throw new Error("taskId is required when resuming");
+  }
+  if (!Number.isInteger(rollback) || rollback < 0) {
+    throw new Error("rollback must be a non-negative integer");
+  }
+  if (rollback > 0 && !resume && !forkTaskId) {
+    throw new Error("rollback requires resume or forkTaskId");
   }
 
   // Default filesystem synchronization ON unless the caller explicitly opts out
@@ -134,7 +150,14 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
     explicitParentTaskId ?? _ctx?.taskId ?? (_ctx?.caller as any)?.currentTaskId;
 
   // Build args array (no shell escaping needed - args are passed directly)
-  const args: string[] = ["agent"];
+  const isHistoryRun = !!resume || !!forkTaskId;
+  const args: string[] = resume
+    ? ["agents", "resume", providedTaskId!]
+    : forkTaskId
+      ? ["agents", "fork", forkTaskId]
+      : ["agent"];
+
+  if (forkTaskId) args.push("--task-id", taskId);
 
   if (messageId) {
     args.push("--message-id", messageId);
@@ -144,11 +167,11 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
   // When syncRemote is requested, pass it through so the spawned agent pushes
   // its work to the remote task identified by --task-id rather than staying
   // local-only.
-  if (syncRemote) {
+  if (syncRemote && !isHistoryRun) {
     args.push("--sync-remote");
   }
 
-  if (useSyncFs || providedTaskId) {
+  if (!isHistoryRun && (useSyncFs || providedTaskId)) {
     // Pass --task-id whenever we have a known taskId (syncFs or explicit taskId)
     args.push("--task-id", taskId);
   }
@@ -165,20 +188,19 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
     args.push("--agent-name", agentName);
   }
 
-  if (maxTimeLimit !== undefined) {
+  if (maxTimeLimit !== undefined && !isHistoryRun) {
     args.push("--max-time-limit", String(maxTimeLimit));
   }
 
-  if (maxSpendLimit !== undefined) {
+  if (maxSpendLimit !== undefined && !isHistoryRun) {
     args.push("--max-spend-limit", String(maxSpendLimit));
   }
-  if (parentTaskId) {
+  if (parentTaskId && !isHistoryRun) {
     // Tell the child who spawned it so it can report back to the parent.
     args.push("--parent-task-id", parentTaskId);
   }
-  if (resume) {
-    // --resume is a boolean flag; task ID is already passed via --task-id above
-    args.push("--resume");
+  if (rollback > 0) {
+    args.push("--rollback", String(rollback));
   }
 
   const timeoutMs = maxTimeLimit ? maxTimeLimit * 60 * 1000 : 60 * 60 * 1000;
@@ -319,6 +341,16 @@ export const startAgentTaskDefinition: Tool = {
           type: "boolean",
           description:
             "Resume a previously started task from where it left off. Must be used together with taskId which identifies the task to resume.",
+        },
+        forkTaskId: {
+          type: "string",
+          description:
+            "Fork this existing task into a new task. The source remains unchanged; taskId optionally selects the new task ID.",
+        },
+        rollback: {
+          type: "number",
+          description:
+            "Discard this many newest agent interactions before resuming or forking. Must be a non-negative integer.",
         },
         parentTaskId: {
           type: "string",

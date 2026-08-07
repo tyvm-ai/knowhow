@@ -39,11 +39,12 @@ import {
 import { TaskInfo } from "../types";
 import { createAgent, agentConstructors, AgentName } from "../../agents";
 import { ToolCallEvent } from "../../agents/base/base";
+import { rollbackAgentInteractions } from "../../agents/historyRollback";
 import { KnowhowSimpleClient } from "../../services/KnowhowClient";
-
 import { TraceAll } from "../../util/Trace";
-export class AgentModule extends BaseChatModule {
+
 @TraceAll()
+export class AgentModule extends BaseChatModule {
   name = "agent";
   description = "Agent interaction functionality";
 
@@ -372,6 +373,7 @@ export class AgentModule extends BaseChatModule {
     }
   }
 
+
   async handleAgentCommand(args: string[]): Promise<void> {
     const context = this.chatService?.getContext();
 
@@ -641,7 +643,8 @@ export class AgentModule extends BaseChatModule {
    */
   public async resumeSession(
     sessionId: string,
-    resumeReason?: string
+    resumeReason?: string,
+    rollback: number = 0
   ): Promise<void> {
     try {
       const session = this.sessionManager.loadSession(sessionId);
@@ -672,21 +675,18 @@ export class AgentModule extends BaseChatModule {
         threads.length > 0 && !Array.isArray(threads[0])
           ? [threads as unknown as Message[]]
           : (threads as Message[][]);
-      const lastThread =
-        normalizedThreads.length > 0
-          ? normalizedThreads[normalizedThreads.length - 1]
-          : [];
-      const resumeMessages = [...lastThread];
+      const rolledBackThreads = rollbackAgentInteractions(normalizedThreads, rollback);
+      const resumeMessages = rolledBackThreads[rolledBackThreads.length - 1] || [];
 
       // Append the resume prompt to the last user message (or add a new one)
-      const reversedIndex = [...lastThread]
+      const reversedIndex = [...resumeMessages]
         .reverse()
         .findIndex((e) => e.role === "user" && typeof e.content === "string");
 
       if (reversedIndex === -1) {
         resumeMessages.push({ role: "user", content: resumePrompt });
       } else {
-        const actualIndex = lastThread.length - 1 - reversedIndex;
+        const actualIndex = resumeMessages.length - 1 - reversedIndex;
         resumeMessages[actualIndex] = {
           ...resumeMessages[actualIndex],
           content:
@@ -706,10 +706,17 @@ export class AgentModule extends BaseChatModule {
       }
 
       // Start agent with Knowhow task context and restored message history
+      const remoteTaskId = asRemoteTaskId(session.knowhowTaskId);
       const { agent, taskId } = await this.setupAgent({
         agentName,
         input: resumePrompt,
-        messageId: session.knowhowMessageId,
+        // Resume attaches to the persisted remote task; it must not create a
+        // new task from the original message placeholder.
+        remoteTaskId,
+        remoteMessageId: session.knowhowMessageId,
+        chatSessionId: session.chatSessionId,
+        syncRemote: !!remoteTaskId,
+        taskId: session.taskId || sessionId,
         chatHistory: [],
         run: false, // Don't run yet, we need to set up event listeners first
         // Restore the exact model/provider/reasoning the original run used.
@@ -717,7 +724,14 @@ export class AgentModule extends BaseChatModule {
         provider: session.provider,
         reasoningEffort: session.reasoningEffort,
         summarizeReasoning: session.summarizeReasoning,
+        enabledTools: session.enabledTools,
       });
+
+      // Match new interactive threads: local-only sessions get a fresh remote
+      // task when auto-sync is enabled.
+      if (!remoteTaskId && this.remoteSyncModule?.isAutoSyncEnabled()) {
+        await this.remoteSyncModule.syncTask(taskId);
+      }
 
       // After resume finishes, revert to normal chat (non-agent mode) so the
       // user can start a fresh conversation instead of staying locked in agent mode.
@@ -782,6 +796,9 @@ export class AgentModule extends BaseChatModule {
   public async setupAgent(options: {
     agentName: string;
     input: string;
+    remoteTaskId?: string;
+    remoteMessageId?: string;
+    chatSessionId?: string;
     messageId?: string;
     syncFs?: boolean;
     syncRemote?: boolean;
@@ -797,6 +814,7 @@ export class AgentModule extends BaseChatModule {
     // precedence over the module-level CLI defaults.
     reasoningEffort?: CompletionOptions["reasoning_effort"];
     summarizeReasoning?: boolean;
+    enabledTools?: string[];
   }) {
     const { input, chatHistory = [], agentName } = options;
     const agentContext = services().Agents.getAgentContext();
@@ -817,9 +835,18 @@ export class AgentModule extends BaseChatModule {
       }
     }
 
+    if (options.enabledTools) {
+      agent.restoreEnabledTools(options.enabledTools);
+    }
+
     let done = false;
     let output = "Done";
     const taskId = options.taskId || this.sessionManager.generateTaskId(input);
+    // Backwards compatibility for callers that historically supplied a remote
+    // UUID as taskId with syncRemote. Timestamped local slugs never qualify.
+    const remoteTaskId =
+      asRemoteTaskId(options.remoteTaskId) ||
+      (options.syncRemote ? asRemoteTaskId(taskId) : undefined);
     let knowhowTaskId: string | undefined;
 
     try {
@@ -837,10 +864,9 @@ export class AgentModule extends BaseChatModule {
       // Create task info object
       let taskInfo: TaskInfo = {
         taskId,
-        knowhowMessageId: options.messageId,
-        // When pushing to a remote task via --sync-remote, the taskId IS the
-        // remote task ID. Otherwise it will be set after creating a chat task.
-        knowhowTaskId: options.syncRemote ? taskId : undefined,
+        knowhowMessageId: options.remoteMessageId || options.messageId,
+        knowhowTaskId: remoteTaskId,
+        chatSessionId: options.chatSessionId,
         agentName,
         agent,
         initialInput: input,
@@ -848,6 +874,7 @@ export class AgentModule extends BaseChatModule {
         status: "running",
         startTime: Date.now(),
         totalCost: 0,
+        enabledTools: agent.getEnabledToolNames(),
       };
 
       // Add to task registry
@@ -864,6 +891,7 @@ export class AgentModule extends BaseChatModule {
       const syncTaskId = await syncer.createTask({
         taskId,
         prompt: input,
+        remoteTaskId,
         messageId: options.messageId,
         syncFs: options.syncFs,
         syncRemote: options.syncRemote,
@@ -872,8 +900,7 @@ export class AgentModule extends BaseChatModule {
       });
 
       const webTaskId = syncer.getCreatedWebTaskId();
-      knowhowTaskId = webTaskId;
-      taskInfo.knowhowTaskId = webTaskId || syncTaskId;
+      taskInfo.knowhowTaskId = webTaskId;
       this.taskRegistry.register(taskId, taskInfo);
 
       await syncer.setupAgentSync(agent, syncTaskId);
@@ -887,6 +914,7 @@ export class AgentModule extends BaseChatModule {
         taskInfo.provider = agent.getProvider();
         taskInfo.reasoningEffort = agent.getReasoningEffort?.();
         taskInfo.summarizeReasoning = agent.getSummarizeReasoning?.();
+        taskInfo.enabledTools = agent.getEnabledToolNames();
         // updateSession pulls the (mutated) taskInfo from the registry.
         this.updateSession(taskId, agent.getThreads());
       };
@@ -1205,6 +1233,8 @@ export class AgentModule extends BaseChatModule {
     reasoningEffort?: CompletionOptions["reasoning_effort"];
     summarizeReasoning?: boolean;
     agentName?: string;
+    remoteTaskId?: string;
+    enabledTools?: string[];
   }> {
     const localMetadataPath = path.join(
       ".knowhow",
@@ -1224,6 +1254,12 @@ export class AgentModule extends BaseChatModule {
           reasoningEffort: metadata.reasoningEffort,
           summarizeReasoning: metadata.summarizeReasoning,
           agentName: metadata.agentName,
+          remoteTaskId: asRemoteTaskId(
+            metadata.remoteTaskId || metadata.knowhowTaskId
+          ),
+          enabledTools: Array.isArray(metadata.enabledTools)
+            ? metadata.enabledTools
+            : undefined,
         };
       } catch (e) {
         console.warn(`⚠️ Failed to parse local metadata for settings: ${e.message}`);
@@ -1235,7 +1271,7 @@ export class AgentModule extends BaseChatModule {
 
   /**
    * Resume an agent from a set of existing message threads
-   * Used by the CLI --resume flag to continue crashed/failed tasks
+   * Used by `knowhow agents resume` and interactive history commands.
    */
   public async resumeFromMessages(options: {
     agentName: string;
@@ -1243,15 +1279,22 @@ export class AgentModule extends BaseChatModule {
     threads: Message[][];
     messageId?: string;
     taskId?: string;
+    remoteTaskId?: string;
+    syncFs?: boolean;
     interactive?: boolean;
-    // Restore the exact model/provider/reasoning the original run used.
+    // Restore the exact model/provider/reasoning/tools the original run used.
     model?: string;
     provider?: string;
     reasoningEffort?: CompletionOptions["reasoning_effort"];
     summarizeReasoning?: boolean;
-  }): Promise<{ taskCompleted: Promise<string> }> {
+    enabledTools?: string[];
+    rollback?: number;
+    fork?: boolean;
+  }): Promise<{ taskCompleted: Promise<string>; taskId: string }> {
     const { agentName, input, threads, messageId, taskId } = options;
+    const action = options.fork ? "forking" : "resuming";
 
+    const remoteTaskId = asRemoteTaskId(options.remoteTaskId);
     // Try to extract the original request from the first user message in threads
     let originalRequest = "";
     if (threads && threads.length > 0) {
@@ -1271,7 +1314,7 @@ export class AgentModule extends BaseChatModule {
 
     // Build the resume prompt
     const resumePrompt = [
-      "You are resuming a previously started task.",
+      `You are ${action} a previously started task.`,
       originalRequest ? `ORIGINAL REQUEST: ${originalRequest}` : "",
       "Please continue from where you left off.",
       input ? input : "",
@@ -1279,13 +1322,20 @@ export class AgentModule extends BaseChatModule {
       .filter(Boolean)
       .join("\n");
 
-    // Flatten threads into a single messages array for the agent
+    // Roll back at assistant boundaries so tool calls and their results are
+    // removed together, never leaving an invalid orphaned tool message.
+    const rolledBackThreads = rollbackAgentInteractions(
+      threads || [],
+      options.rollback || 0
+    );
     const lastThread =
-      threads && threads.length > 0 ? threads[threads.length - 1] : [];
+      rolledBackThreads.length > 0
+        ? rolledBackThreads[rolledBackThreads.length - 1]
+        : [];
     const resumeMessages = [...lastThread];
 
     // find last user message index
-    const resumeIndex = lastThread
+    const resumeIndex = [...lastThread]
       .reverse()
       .findIndex((e) => e.role === "user" && typeof e.content === "string");
 
@@ -1295,41 +1345,60 @@ export class AgentModule extends BaseChatModule {
         content: resumePrompt,
       });
     } else {
-      const actualIndex = lastThread.length - 1 - resumeIndex;
-      const lastUserMessage = resumeMessages[actualIndex];
-      lastUserMessage.content += `\n\n<Workflow>[RESUME CONTEXT]: ${resumePrompt}</Workflow>`;
+      const actualIndex = resumeMessages.length - 1 - resumeIndex;
+      resumeMessages[actualIndex] = {
+        ...resumeMessages[actualIndex],
+        content: `${resumeMessages[actualIndex].content}\n\n<Workflow>[RESUME CONTEXT]: ${resumePrompt}</Workflow>`,
+      };
     }
 
     const result = await this.setupAgent({
       agentName,
       input: resumePrompt,
-      messageId,
+      // An existing task UUID always wins. messageId is only the create-new
+      // path when there is no remote task to reattach to.
+      messageId: remoteTaskId ? undefined : messageId,
+      remoteMessageId: remoteTaskId ? messageId : undefined,
       taskId,
-      // When resuming a remote task (no messageId), keep pushing work to the
-      // remote task identified by taskId.
-      syncRemote: !messageId && !!taskId,
+      syncFs: options.syncFs,
+      remoteTaskId,
       run: false,
-      // Restore the model/provider/reasoning captured from the task metadata.
+      syncRemote: !options.fork && !!remoteTaskId,
       model: options.model,
       provider: options.provider,
       reasoningEffort: options.reasoningEffort,
       summarizeReasoning: options.summarizeReasoning,
+      enabledTools: options.enabledTools,
     });
 
     // Interactive (chat REPL) resume: route through the attached chat loop so the
     // renderer is wired the same way as a normal chat interaction / /attach, and
     // the user gets agent:attached mode commands (/poke, /detach, /kill, /logs).
     if (options.interactive) {
+      // A local-only historical task has no remote UUID to reattach to. When
+      // auto-sync is enabled, create the remote task through the exact same
+      // path used for a newly started interactive thread.
+      if (
+        !options.fork &&
+        !remoteTaskId &&
+        this.remoteSyncModule?.isAutoSyncEnabled()
+      ) {
+        await this.remoteSyncModule.syncTask(result.taskId);
+      }
+
       await this.attachedAgentChatLoop(
         result.taskId,
         result.agent,
         resumePrompt,
         resumeMessages
       );
-      return { taskCompleted: result.taskCompleted };
+      return {
+        taskCompleted: result.taskCompleted,
+        taskId: result.taskId,
+      };
     }
 
-    // Non-interactive (headless CLI `knowhow agent --resume`) path: setupAgent was
+    // Non-interactive (headless CLI `knowhow agents resume`) path: setupAgent was
     // called with run:false, so no inline render listeners were registered. Wire
     // rendering here (same keyed listeners as attachedAgentChatLoop) so the CLI
     // still shows the agent's messages / tool calls, then start the agent.
@@ -1341,7 +1410,7 @@ export class AgentModule extends BaseChatModule {
     );
     result.agent.call(resumePrompt, resumeMessages);
 
-    return { taskCompleted: result.taskCompleted };
+    return { taskCompleted: result.taskCompleted, taskId: result.taskId };
   }
 
   /**
@@ -1494,4 +1563,14 @@ export class AgentModule extends BaseChatModule {
       console.error("Agent execution failed:", error);
     }
   }
+}
+
+/** Accept only backend task UUIDs; local task slugs intentionally fail. */
+function asRemoteTaskId(value: string | undefined): string | undefined {
+  return value &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value
+    )
+    ? value
+    : undefined;
 }

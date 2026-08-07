@@ -106,6 +106,13 @@ export class LazyToolsService extends ToolsService {
     };
   }
 
+  /** Replace glob state with an exact persisted request-visible tool list. */
+  restoreEnabledTools(names: string[]): void {
+    this.enabledPatterns = [...new Set(names)];
+    this.disabledPatterns = [];
+    this.updateVisibleTools();
+  }
+
   // Disable tools matching glob patterns
   disableTools(patterns: string[]) {
     for (const pattern of patterns) {

@@ -104,6 +104,7 @@ export interface TaskInfo {
   provider?: string;
   reasoningEffort?: ReasoningEffort;
   summarizeReasoning?: boolean;
+  enabledTools?: string[];
 }
 
 export interface ChatSession {
@@ -126,6 +127,7 @@ export interface ChatSession {
   provider?: string;
   reasoningEffort?: ReasoningEffort;
   summarizeReasoning?: boolean;
+  enabledTools?: string[];
 }
 
 export interface ChatHistory {

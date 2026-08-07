@@ -131,6 +131,66 @@ export class AgentSyncFs {
   }
 
   /**
+   * Persist the remote identity alongside the local task. Keeping the local
+   * slug and remote UUID as separate fields lets resume reconnect without ever
+   * mistaking one for the other.
+   */
+  static async persistRemoteIdentity(
+    taskId: string,
+    remoteTaskId: string,
+    remoteMessageId?: string
+  ): Promise<void> {
+    const taskPath = path.join(AgentSyncFs.sharedBasePath, taskId);
+    await AgentSyncFs.writeRemoteIdentity(
+      taskPath,
+      remoteTaskId,
+      remoteMessageId
+    );
+  }
+
+  async setRemoteIdentity(
+    remoteTaskId: string,
+    remoteMessageId?: string
+  ): Promise<void> {
+    if (!this.taskPath) return;
+    await AgentSyncFs.writeRemoteIdentity(this.taskPath, remoteTaskId, remoteMessageId);
+  }
+
+  private static async writeRemoteIdentity(
+    taskPath: string,
+    remoteTaskId: string,
+    remoteMessageId?: string
+  ): Promise<void> {
+    try {
+      const metadataPath = path.join(taskPath, "metadata.json");
+      let metadata: any = {};
+      try {
+        metadata = JSON.parse(await fs.readFile(metadataPath, "utf8"));
+      } catch {
+        // The normal path already created metadata, but recover if it was
+        // removed or malformed while the task was running.
+      }
+
+      metadata.remoteTaskId = remoteTaskId;
+      // Preserve the established session field name for compatibility with
+      // callers that already read knowhowTaskId.
+      metadata.knowhowTaskId = remoteTaskId;
+      if (remoteMessageId) {
+        metadata.remoteMessageId = remoteMessageId;
+        metadata.knowhowMessageId = remoteMessageId;
+      }
+
+      await fs.writeFile(
+        metadataPath,
+        JSON.stringify(metadata, null, 2),
+        "utf8"
+      );
+    } catch (error) {
+      console.error(`❌ Failed to persist remote task identity:`, error);
+    }
+  }
+
+  /**
    * Append a token usage entry (including the full message chain sent for
    * that call) to usage.json. This is intended for debugging cache-hit
    * issues, where comparing the message chains and usage values between
@@ -219,6 +279,9 @@ export class AgentSyncFs {
       // thread messages via `_reasoning_details` / `reasoning_summary`.)
       metadata.reasoningEffort = agent.getReasoningEffort?.();
       metadata.summarizeReasoning = agent.getSummarizeReasoning?.();
+      // Tool schemas are part of the provider cache prefix. Preserve the exact
+      // request-visible list so resume/fork can recreate the same request.
+      metadata.enabledTools = agent.getEnabledToolNames();
       metadata.inProgress = inProgress;
       metadata.lastUpdate = new Date().toISOString();
 

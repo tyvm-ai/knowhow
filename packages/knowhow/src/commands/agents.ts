@@ -6,6 +6,8 @@
  *   knowhow agents status <taskId> — one-line summary (status, last tool, cost, elapsed)
  *   knowhow agents tail <taskId>   — print last N messages; without -f behaves like read-only attach
  *   knowhow agents attach <taskId> — open the full knowhow chat interface attached to the agent
+ *   knowhow agents resume <taskId> — resume a task, optionally rolling back interactions
+ *   knowhow agents fork <taskId>   — branch a task's history into a new task
  *
  * Both `status` and `tail` accept:
  *   - A full task ID
@@ -19,7 +21,16 @@
 import { Command } from "commander";
 import * as fs from "fs";
 import * as path from "path";
+import { AgentModule } from "../chat/modules/AgentModule";
 import { startChat } from "../chat";
+import { PlainRenderer } from "../chat/renderer/PlainRenderer";
+import { loadRenderer } from "../chat/renderer/loadRenderer";
+import {
+  CompletionOptions,
+  isReasoningEffort,
+  REASONING_EFFORTS,
+} from "../clients/types";
+import { getConfig } from "../config";
 
 const AGENTS_DIR = path.join(".knowhow", "processes", "agents");
 const SESSIONS_DIR = path.join(".knowhow", "chats", "sessions");
@@ -70,8 +81,11 @@ function elapsedStr(startIso: string | undefined, endIso?: string): string {
   const end = endIso ? new Date(endIso).getTime() : Date.now();
   const ms = end - start;
   if (ms < 60_000) return `${Math.floor(ms / 1000)}s`;
-  if (ms < 3_600_000) return `${Math.floor(ms / 60_000)}m ${Math.floor((ms % 60_000) / 1000)}s`;
-  return `${Math.floor(ms / 3_600_000)}h ${Math.floor((ms % 3_600_000) / 60_000)}m`;
+  if (ms < 3_600_000)
+    return `${Math.floor(ms / 60_000)}m ${Math.floor((ms % 60_000) / 1000)}s`;
+  return `${Math.floor(ms / 3_600_000)}h ${Math.floor(
+    (ms % 3_600_000) / 60_000
+  )}m`;
 }
 
 function shortId(taskId: string, maxLen = 52): string {
@@ -103,7 +117,11 @@ function lastAssistantMessage(thread: any[]): string | undefined {
 function lastToolCall(thread: any[]): string | undefined {
   for (let i = thread.length - 1; i >= 0; i--) {
     const msg = thread[i];
-    if (msg.role === "assistant" && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+    if (
+      msg.role === "assistant" &&
+      Array.isArray(msg.tool_calls) &&
+      msg.tool_calls.length > 0
+    ) {
       const last = msg.tool_calls[msg.tool_calls.length - 1];
       return last?.function?.name;
     }
@@ -126,25 +144,40 @@ function formatMessage(msg: any, index: number): string {
       .join(" | ");
   }
 
-  if (msg.role === "assistant" && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+  if (
+    msg.role === "assistant" &&
+    Array.isArray(msg.tool_calls) &&
+    msg.tool_calls.length > 0
+  ) {
     const tools = msg.tool_calls.map((tc: any) => {
       const name = tc?.function?.name ?? "?";
       let args = "";
       try {
         const parsed = JSON.parse(tc?.function?.arguments ?? "{}");
         const entries = Object.entries(parsed).slice(0, 2);
-        args = entries.map(([k, v]) => `${k}=${String(v).slice(0, 40)}`).join(", ");
+        args = entries
+          .map(([k, v]) => `${k}=${String(v).slice(0, 40)}`)
+          .join(", ");
       } catch {
         args = (tc?.function?.arguments ?? "").slice(0, 80);
       }
       return `[TOOL] ${name}(${args})`;
     });
-    content = content ? content + "\n         " + tools.join("\n         ") : tools.join("\n         ");
+    content = content
+      ? content + "\n         " + tools.join("\n         ")
+      : tools.join("\n         ");
   }
 
   if (msg.role === "tool") {
-    const result = typeof msg.content === "string" ? msg.content.slice(0, 200) : JSON.stringify(msg.content).slice(0, 200);
-    content = `[RESULT] ${result}${(typeof msg.content === "string" ? msg.content : "").length > 200 ? "…" : ""}`;
+    const result =
+      typeof msg.content === "string"
+        ? msg.content.slice(0, 200)
+        : JSON.stringify(msg.content).slice(0, 200);
+    content = `[RESULT] ${result}${
+      (typeof msg.content === "string" ? msg.content : "").length > 200
+        ? "…"
+        : ""
+    }`;
   }
 
   return `  #${String(index).padStart(3)} [${role}] ${content}`;
@@ -155,8 +188,8 @@ function formatMessage(msg: any, index: number): string {
 // ---------------------------------------------------------------------------
 
 type Row = {
-  taskId: string;      // full task ID (not truncated)
-  displayId: string;   // truncated for display
+  taskId: string; // full task ID (not truncated)
+  displayId: string; // truncated for display
   agentName: string;
   status: string;
   cost: string;
@@ -182,9 +215,17 @@ function buildRows(includeAll: boolean): Row[] {
       }
     }
 
-    const cost = meta?.totalCostUsd != null ? `$${(meta.totalCostUsd as number).toFixed(3)}` : "";
-    const elapsed = elapsedStr(meta?.startTime, meta?.status === "completed" ? meta?.lastUpdate : undefined);
-    const lastUpdate = meta?.lastUpdate ? new Date(meta.lastUpdate).toLocaleString() : "?";
+    const cost =
+      meta?.totalCostUsd != null
+        ? `$${(meta.totalCostUsd as number).toFixed(3)}`
+        : "";
+    const elapsed = elapsedStr(
+      meta?.startTime,
+      meta?.status === "completed" ? meta?.lastUpdate : undefined
+    );
+    const lastUpdate = meta?.lastUpdate
+      ? new Date(meta.lastUpdate).toLocaleString()
+      : "?";
 
     rows.push({
       taskId,
@@ -221,7 +262,6 @@ function resolveTaskId(value: string, includeAll = false): string | null {
   return all.find((id) => id.includes(value)) ?? null;
 }
 
-
 // ---------------------------------------------------------------------------
 // Command handlers
 // ---------------------------------------------------------------------------
@@ -233,15 +273,30 @@ async function cmdList(opts: { all: boolean; json: boolean }): Promise<void> {
     if (agentTaskIds().length === 0) {
       console.log("No agent task directories found under", AGENTS_DIR);
     } else {
-      console.log("No active agent tasks. Use --all to include completed tasks.");
+      console.log(
+        "No active agent tasks. Use --all to include completed tasks."
+      );
     }
     return;
   }
 
   if (opts.json) {
-    console.log(JSON.stringify(rows.map(({ taskId, agentName, status, cost, elapsed, lastUpdate }) => ({
-      taskId, agentName, status, cost, elapsed, lastUpdate,
-    })), null, 2));
+    console.log(
+      JSON.stringify(
+        rows.map(
+          ({ taskId, agentName, status, cost, elapsed, lastUpdate }) => ({
+            taskId,
+            agentName,
+            status,
+            cost,
+            elapsed,
+            lastUpdate,
+          })
+        ),
+        null,
+        2
+      )
+    );
     return;
   }
 
@@ -277,12 +332,15 @@ async function cmdList(opts: { all: boolean; json: boolean }): Promise<void> {
         "\n"
     );
   });
-  console.log("\nTip: use -i <#> with tail/status/attach to select by row number, e.g. knowhow agents attach -i 1\n");
+  console.log(
+    "\nTip: use -i <#> with tail/status/attach to select by row number, e.g. knowhow agents attach -i 1\n"
+  );
 }
 
-
-
-async function cmdStatus(taskIdOrIndex: string | undefined, opts: { index?: string }): Promise<void> {
+async function cmdStatus(
+  taskIdOrIndex: string | undefined,
+  opts: { index?: string }
+): Promise<void> {
   const value = opts.index ?? taskIdOrIndex;
   if (!value) {
     console.error("Provide a task ID or use -i <number> to select by index.");
@@ -312,9 +370,23 @@ async function cmdStatus(taskIdOrIndex: string | undefined, opts: { index?: stri
   console.log(`Task ID:    ${resolvedId}`);
   console.log(`Agent:      ${meta?.agentName ?? "?"}`);
   console.log(`Status:     ${status}`);
-  console.log(`Cost:       ${meta?.totalCostUsd != null ? "$" + (meta.totalCostUsd as number).toFixed(4) : "?"}`);
-  console.log(`Started:    ${meta?.startTime ? new Date(meta.startTime).toLocaleString() : "?"}`);
-  console.log(`Last update:${meta?.lastUpdate ? " " + new Date(meta.lastUpdate).toLocaleString() : " ?"}`);
+  console.log(
+    `Cost:       ${
+      meta?.totalCostUsd != null
+        ? "$" + (meta.totalCostUsd as number).toFixed(4)
+        : "?"
+    }`
+  );
+  console.log(
+    `Started:    ${
+      meta?.startTime ? new Date(meta.startTime).toLocaleString() : "?"
+    }`
+  );
+  console.log(
+    `Last update:${
+      meta?.lastUpdate ? " " + new Date(meta.lastUpdate).toLocaleString() : " ?"
+    }`
+  );
   console.log(`Elapsed:    ${elapsedStr(meta?.startTime)}`);
 
   const threads: any[][] = meta?.threads ?? [];
@@ -342,7 +414,10 @@ async function cmdStatus(taskIdOrIndex: string | undefined, opts: { index?: stri
   console.log("─".repeat(60));
 }
 
-async function cmdTail(taskIdOrIndex: string | undefined, opts: { count: number; raw: boolean; follow: boolean; index?: string }): Promise<void> {
+async function cmdTail(
+  taskIdOrIndex: string | undefined,
+  opts: { count: number; raw: boolean; follow: boolean; index?: string }
+): Promise<void> {
   const value = opts.index ?? taskIdOrIndex;
   if (!value) {
     console.error("Provide a task ID or use -i <number> to select by index.");
@@ -373,7 +448,9 @@ async function cmdTail(taskIdOrIndex: string | undefined, opts: { count: number;
 
   const threads: any[][] = meta.threads ?? [];
   if (threads.length === 0) {
-    console.log("No thread data found in metadata.json (agent may not have started yet).");
+    console.log(
+      "No thread data found in metadata.json (agent may not have started yet)."
+    );
     return;
   }
 
@@ -389,7 +466,11 @@ async function cmdTail(taskIdOrIndex: string | undefined, opts: { count: number;
   const startIndex = lastThread.length - slice.length;
 
   console.log(`\n📜 Last ${slice.length} messages for task: ${resolvedId}`);
-  console.log(`   Agent: ${meta.agentName}  |  Status: ${meta.status ?? loadStatus(resolvedId)}  |  Total messages: ${lastThread.length}`);
+  console.log(
+    `   Agent: ${meta.agentName}  |  Status: ${
+      meta.status ?? loadStatus(resolvedId)
+    }  |  Total messages: ${lastThread.length}`
+  );
   console.log("─".repeat(80));
 
   for (let i = 0; i < slice.length; i++) {
@@ -398,12 +479,20 @@ async function cmdTail(taskIdOrIndex: string | undefined, opts: { count: number;
 
   console.log("─".repeat(80));
 
-  const cost = meta.totalCostUsd != null ? `$${(meta.totalCostUsd as number).toFixed(4)}` : "?";
+  const cost =
+    meta.totalCostUsd != null
+      ? `$${(meta.totalCostUsd as number).toFixed(4)}`
+      : "?";
   const elapsed = elapsedStr(meta.startTime);
   const status = getStatus(resolvedId, meta);
-  console.log(`Cost: ${cost}  |  Elapsed: ${elapsed}  |  Last update: ${meta.lastUpdate ? new Date(meta.lastUpdate).toLocaleString() : "?"}`);
+  console.log(
+    `Cost: ${cost}  |  Elapsed: ${elapsed}  |  Last update: ${
+      meta.lastUpdate ? new Date(meta.lastUpdate).toLocaleString() : "?"
+    }`
+  );
 
-  const isDone = status === "completed" || status === "failed" || status === "killed";
+  const isDone =
+    status === "completed" || status === "failed" || status === "killed";
 
   if (opts.follow) {
     if (isDone) {
@@ -423,13 +512,20 @@ async function cmdTail(taskIdOrIndex: string | undefined, opts: { count: number;
  * Poll metadata.json every second, printing any new messages as they arrive.
  * Exits when the agent status becomes completed/failed/killed.
  */
-async function followTask(resolvedId: string, seenCount: number): Promise<void> {
+async function followTask(
+  resolvedId: string,
+  seenCount: number
+): Promise<void> {
   console.log(`\n👁  Following agent output… (Ctrl+C to stop)\n`);
 
   // Check upfront — if already done, exit immediately
   const initialMeta = loadMeta(resolvedId);
   const initialStatus = getStatus(resolvedId, initialMeta);
-  if (initialStatus === "completed" || initialStatus === "failed" || initialStatus === "killed") {
+  if (
+    initialStatus === "completed" ||
+    initialStatus === "failed" ||
+    initialStatus === "killed"
+  ) {
     console.log(`✅ Agent already ${initialStatus}. Nothing to follow.\n`);
     return;
   }
@@ -452,9 +548,19 @@ async function followTask(resolvedId: string, seenCount: number): Promise<void> 
     }
     const status = getStatus(resolvedId, meta);
     if (status === "completed" || status === "failed" || status === "killed") {
-      const cost = meta.totalCostUsd != null ? `$${(meta.totalCostUsd as number).toFixed(4)}` : "?";
-      console.log(`\n─────────────────────────────────────────────────────────────────────────────────`);
-      console.log(`✅ Agent ${status}. Cost: ${cost}  |  Elapsed: ${elapsedStr(meta.startTime, meta.lastUpdate)}`);
+      const cost =
+        meta.totalCostUsd != null
+          ? `$${(meta.totalCostUsd as number).toFixed(4)}`
+          : "?";
+      console.log(
+        `\n─────────────────────────────────────────────────────────────────────────────────`
+      );
+      console.log(
+        `✅ Agent ${status}. Cost: ${cost}  |  Elapsed: ${elapsedStr(
+          meta.startTime,
+          meta.lastUpdate
+        )}`
+      );
       clearInterval(interval);
       process.exit(0);
     }
@@ -464,7 +570,10 @@ async function followTask(resolvedId: string, seenCount: number): Promise<void> 
   await new Promise<void>(() => {});
 }
 
-async function cmdAttach(taskIdOrIndex: string | undefined, opts: { index?: string }): Promise<void> {
+async function cmdAttach(
+  taskIdOrIndex: string | undefined,
+  opts: { index?: string }
+): Promise<void> {
   const value = opts.index ?? taskIdOrIndex;
   if (!value) {
     console.error("Provide a task ID or use -i <number> to select by index.");
@@ -551,28 +660,189 @@ async function cmdAnswer(
     console.log(`\n📭 No final answer available for task: ${resolvedId}`);
     console.log(`   Status: ${status}`);
     if (status !== "completed") {
-      console.log(`   The agent hasn't finished yet — attach with 'knowhow agents attach' to follow it.`);
+      console.log(
+        `   The agent hasn't finished yet — attach with 'knowhow agents attach' to follow it.`
+      );
     }
     return;
   }
 
   console.log(`\n💬 Final answer for task: ${resolvedId}`);
-  console.log(`   Agent: ${meta.agentName ?? "?"}  |  Status: ${status}  |  Cost: ${meta.totalCostUsd != null ? "$" + (meta.totalCostUsd as number).toFixed(4) : "?"}`);
+  console.log(
+    `   Agent: ${meta.agentName ?? "?"}  |  Status: ${status}  |  Cost: ${
+      meta.totalCostUsd != null
+        ? "$" + (meta.totalCostUsd as number).toFixed(4)
+        : "?"
+    }`
+  );
   console.log("─".repeat(80));
   console.log(answer);
   console.log("─".repeat(80) + "\n");
 }
 
+interface HistoryRunOptions {
+  rollback: string;
+  input?: string;
+  taskId?: string;
+  messageId?: string;
+  syncFs?: boolean;
+  provider?: string;
+  model?: string;
+  agentName?: string;
+  reasoningEffort?: string;
+  renderer?: string;
+  index?: string;
+  headless?: boolean;
+}
 
+async function runFromHistory(
+  sourceTaskId: string,
+  options: HistoryRunOptions,
+  fork: boolean,
+  getChatService: () => any
+): Promise<void> {
+  const rollback = Number(options.rollback);
+  if (!Number.isInteger(rollback) || rollback < 0) {
+    throw new Error("--rollback must be a non-negative integer");
+  }
+  const hasHeadlessOverrides = !!(
+    options.input || options.messageId || options.syncFs || options.provider ||
+    options.model || options.agentName || options.reasoningEffort ||
+    options.renderer || options.taskId
+  );
+  if (process.stdin.isTTY && !options.headless && !hasHeadlessOverrides) {
+    const command = fork ? "/fork" : "/resume";
+    const { setupServices } = await import("./services");
+    await setupServices();
+    await startChat(`${command} ${sourceTaskId} --rollback ${rollback}`);
+    return;
+  }
+  const requestedReasoningEffortValue = options.reasoningEffort;
+  if (
+    requestedReasoningEffortValue !== undefined &&
+    !isReasoningEffort(requestedReasoningEffortValue)
+  ) {
+    throw new Error(
+      `Invalid reasoning effort "${requestedReasoningEffortValue}". Expected one of: ${REASONING_EFFORTS.join(
+        ", "
+      )}.`
+    );
+  }
+  const requestedReasoningEffort =
+    requestedReasoningEffortValue as CompletionOptions["reasoning_effort"];
+
+  const { setupServices } = await import("./services");
+  await setupServices();
+  const chatService = getChatService();
+  let config: any = {};
+  try {
+    config = await getConfig();
+  } catch (_) {}
+  const rendererSpecifier =
+    options.renderer ?? config.chat?.renderer ?? "basic";
+  const resolvedRenderer =
+    rendererSpecifier === "basic" && !process.stdout.isTTY
+      ? "plain"
+      : rendererSpecifier;
+  try {
+    chatService.setContext({ renderer: await loadRenderer(resolvedRenderer) });
+  } catch (err: any) {
+    console.warn(
+      `⚠ Could not load renderer "${resolvedRenderer}": ${err.message}`
+    );
+    chatService.setContext({
+      renderer: !process.stdout.isTTY
+        ? new PlainRenderer()
+        : await loadRenderer("basic"),
+    });
+  }
+
+  const agentModule = new AgentModule();
+  const threads = await agentModule.loadThreadsForTask(
+    sourceTaskId,
+    options.messageId
+  );
+  const savedSettings = await agentModule.loadTaskSettings(
+    sourceTaskId,
+    options.messageId
+  );
+  await agentModule.initialize(chatService);
+  const { taskCompleted } = await agentModule.resumeFromMessages({
+    agentName: options.agentName || savedSettings.agentName || "Patcher",
+    input: options.input || "Please continue from where you left off.",
+    threads,
+    messageId: fork ? undefined : options.messageId,
+    taskId: fork ? options.taskId : sourceTaskId,
+    // sourceTaskId may itself be a remote UUID when there is no local metadata;
+    // AgentModule validates it and rejects filesystem slugs.
+    remoteTaskId: fork ? undefined : savedSettings.remoteTaskId || sourceTaskId,
+    syncFs: options.syncFs,
+    rollback,
+    fork,
+    model: options.model || savedSettings.model,
+    provider: options.provider || savedSettings.provider,
+    reasoningEffort: requestedReasoningEffort || savedSettings.reasoningEffort,
+    summarizeReasoning: savedSettings.summarizeReasoning,
+    enabledTools: savedSettings.enabledTools,
+  });
+  await taskCompleted;
+}
+
+function addHistoryRunOptions(
+  command: Command,
+  includeDestinationTaskId: boolean
+): Command {
+  command
+    .option(
+      "-i, --index <number>",
+      "Select task by row number from 'agents list'"
+    )
+    .option(
+      "--rollback <count>",
+      "Discard the newest N agent interactions before continuing",
+      "0"
+    )
+    .option("--input <text>", "Message to send after restoring history")
+    .option(
+      "--message-id <messageId>",
+      "Knowhow message ID for remote task lookup"
+    )
+    .option("--sync-fs", "Enable filesystem-based synchronization")
+    .option("--provider <provider>", "Override the saved AI provider")
+    .option("--model <model>", "Override the saved model")
+    .option("--agent-name <name>", "Override the saved agent")
+    .option(
+      "--reasoning-effort <effort>",
+      `Reasoning effort: ${REASONING_EFFORTS.join(", ")}`
+    )
+    .option(
+      "--renderer <name>",
+      "Renderer to use (default: from config or basic)"
+    )
+    .option(
+      "--headless",
+      "Run to completion without opening the attached chat interface"
+    );
+  if (includeDestinationTaskId) {
+    command.option(
+      "--task-id <taskId>",
+      "Explicit task ID for the newly forked task"
+    );
+  }
+  return command;
+}
 
 // ---------------------------------------------------------------------------
 // Command registration
 // ---------------------------------------------------------------------------
 
-export function addAgentsCommand(program: Command): void {
+export function addAgentsCommand(
+  program: Command,
+  getChatService: () => any
+): void {
   const agents = program
     .command("agents")
-    .description("Inspect running and recent agent tasks");
+    .description("Manage running, recent, and historical agent tasks");
 
   agents
     .command("list")
@@ -592,7 +862,10 @@ export function addAgentsCommand(program: Command): void {
       "Show a summary for a specific agent task: status, last tool, cost, elapsed. " +
         "Accepts a full task ID, partial substring, or -i <number> for row index from 'agents list'."
     )
-    .option("-i, --index <number>", "Select task by row number from 'agents list'")
+    .option(
+      "-i, --index <number>",
+      "Select task by row number from 'agents list'"
+    )
     .action(async (taskId: string | undefined, opts: { index?: string }) => {
       await cmdStatus(taskId, opts);
     });
@@ -604,13 +877,26 @@ export function addAgentsCommand(program: Command): void {
         "Accepts a full task ID, partial substring, or -i <number> for row index from 'agents list'. " +
         "Use -f to follow live output."
     )
-    .option("-i, --index <number>", "Select task by row number from 'agents list'")
-    .option("-n, --count <number>", "Number of messages to show", (v) => parseInt(v, 10), 20)
+    .option(
+      "-i, --index <number>",
+      "Select task by row number from 'agents list'"
+    )
+    .option(
+      "-n, --count <number>",
+      "Number of messages to show",
+      (v) => parseInt(v, 10),
+      20
+    )
     .option("--raw", "Output raw JSON of messages", false)
     .option("-f, --follow", "Follow live output (poll for new messages)", false)
-    .action(async (taskId: string | undefined, opts: { count: number; raw: boolean; follow: boolean; index?: string }) => {
-      await cmdTail(taskId, opts);
-    });
+    .action(
+      async (
+        taskId: string | undefined,
+        opts: { count: number; raw: boolean; follow: boolean; index?: string }
+      ) => {
+        await cmdTail(taskId, opts);
+      }
+    );
 
   agents
     .command("attach [taskId]")
@@ -619,7 +905,10 @@ export function addAgentsCommand(program: Command): void {
         "Shows recent history then streams new messages as they arrive. " +
         "Accepts a full task ID, partial substring, or -i <number> for row index from 'agents list'."
     )
-    .option("-i, --index <number>", "Select task by row number from 'agents list'")
+    .option(
+      "-i, --index <number>",
+      "Select task by row number from 'agents list'"
+    )
     .action(async (taskId: string | undefined, opts: { index?: string }) => {
       await cmdAttach(taskId, opts);
     });
@@ -631,9 +920,70 @@ export function addAgentsCommand(program: Command): void {
         "Reads metadata.result, falling back to the last assistant message. " +
         "Accepts a full task ID, partial substring, or -i <number> for row index from 'agents list'."
     )
-    .option("-i, --index <number>", "Select task by row number from 'agents list'")
-    .option("--raw", "Print only the raw answer text (no header/formatting)", false)
-    .action(async (taskId: string | undefined, opts: { index?: string; raw: boolean }) => {
-      await cmdAnswer(taskId, opts);
-    });
+    .option(
+      "-i, --index <number>",
+      "Select task by row number from 'agents list'"
+    )
+    .option(
+      "--raw",
+      "Print only the raw answer text (no header/formatting)",
+      false
+    )
+    .action(
+      async (
+        taskId: string | undefined,
+        opts: { index?: string; raw: boolean }
+      ) => {
+        await cmdAnswer(taskId, opts);
+      }
+    );
+  addHistoryRunOptions(
+    agents
+      .command("resume [taskId]")
+      .description(
+        "Resume an existing agent task. Accepts a task ID, partial substring, or -i <number> for row index from 'agents list'."
+      ),
+    false
+  ).action(async (taskId: string | undefined, opts: HistoryRunOptions) => {
+    try {
+      const value = opts.index ?? taskId;
+      if (!value) {
+        throw new Error("Provide a task ID or use -i <number> to select by index.");
+      }
+      const resolvedId = resolveTaskId(value);
+      if (!resolvedId) {
+        throw new Error(`Task not found: ${value}`);
+      }
+      await runFromHistory(resolvedId, opts, false, getChatService);
+    } catch (error) {
+      console.error("Error resuming agent:", error);
+      process.exitCode = 1;
+    }
+  });
+
+  addHistoryRunOptions(
+    agents
+      .command("fork [sourceTaskId]")
+      .description(
+        "Fork an existing agent task into a new task. Accepts a task ID, partial substring, or -i <number> for row index from 'agents list'."
+      ),
+    true
+  ).action(async (sourceTaskId: string | undefined, opts: HistoryRunOptions) => {
+    try {
+      const value = opts.index ?? sourceTaskId;
+      if (!value) {
+        throw new Error(
+          "Provide a task ID or use -i <number> to select by index."
+        );
+      }
+      const resolvedId = resolveTaskId(value);
+      if (!resolvedId) {
+        throw new Error(`Task not found: ${value}`);
+      }
+      await runFromHistory(resolvedId, opts, true, getChatService);
+    } catch (error) {
+      console.error("Error forking agent:", error);
+      process.exitCode = 1;
+    }
+  });
 }

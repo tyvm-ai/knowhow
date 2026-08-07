@@ -128,7 +128,7 @@ async function main() {
   addReplayCommand(program);
   addBehaviorsCommand(program);
   addSkillsCommand(program);
-  addAgentsCommand(program);
+  addAgentsCommand(program, getChatService);
   addHashCommand(program);
   addSandboxCommand(program);
 

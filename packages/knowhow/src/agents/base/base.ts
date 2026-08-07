@@ -473,6 +473,28 @@ export abstract class BaseAgent implements IAgent {
     return this.getEnabledTools().map((t) => t.function.name);
   }
 
+  /** Restore the exact request-visible tool list persisted for a prior run. */
+  restoreEnabledTools(names: string[]) {
+    const uniqueNames = [...new Set(names)];
+    const lazyTools = this.tools as ToolsService & {
+      enableTools?: (patterns: string[]) => unknown;
+      restoreEnabledTools?: (names: string[]) => void;
+    };
+
+    // LazyToolsService only exposes explicitly enabled tools. Materialize the
+    // saved concrete names before applying the agent-level exact-set filter.
+    if (lazyTools.restoreEnabledTools) {
+      lazyTools.restoreEnabledTools(uniqueNames);
+    } else {
+      lazyTools.enableTools?.(uniqueNames);
+    }
+    const savedNames = new Set(uniqueNames);
+    this.disabledTools = this.tools
+      .getTools()
+      .map((tool) => tool.function.name)
+      .filter((name) => !savedNames.has(name));
+  }
+
   disableTool(toolName: string) {
     this.disabledTools.push(toolName);
   }
