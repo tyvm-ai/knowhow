@@ -75,6 +75,8 @@ export type Config = {
   promptsDir: string;
   lintCommands?: { [fileExtension: string]: string };
   orgId?: string;
+  /** Private Ed25519 identity selected with `knowhow login --identity`. */
+  cliIdentityPath?: string;
   syncRemote?: boolean;
   micCommand?: string;
   defaultMic?: string;
