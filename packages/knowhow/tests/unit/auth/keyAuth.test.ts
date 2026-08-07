@@ -25,6 +25,7 @@ jest.mock("../../../src/auth/browserLogin", () => ({
 
 import {
   authenticateWithKey,
+  exchangePublicKeyJwt,
   hasKeyPair,
   registerPublicKey,
 } from "../../../src/auth/keyAuth";
@@ -45,12 +46,12 @@ describe("keyAuth", () => {
         },
         status: 201,
       })
-      .mockResolvedValueOnce({ data: {}, status: 200 });
+      .mockResolvedValueOnce({ data: { jwt: "renewed-jwt" }, status: 200 });
 
     expect(hasKeyPair("/keys/work")).toBe(true);
     await expect(
-      authenticateWithKey("org-1", "https://work.example", "/keys/work")
-    ).resolves.toBe(false);
+      exchangePublicKeyJwt("org-1", "https://work.example", "/keys/work")
+    ).resolves.toBe("renewed-jwt");
 
     expect(loadKeyPair).toHaveBeenCalledWith("/keys/work");
     expect(signMessage).toHaveBeenCalledWith("exact message from server", "/keys/work");
