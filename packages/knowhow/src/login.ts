@@ -51,7 +51,7 @@ export async function login(jwtFlag?: boolean, identityPath?: string): Promise<v
         const success = await authenticateWithKey(orgId, KNOWHOW_API_URL, identityPath);
         if (success) {
           console.log("✅ Successfully authenticated via public key!");
-          return await postLoginConfigUpdate();
+          return await postLoginConfigUpdate(identityPath);
         }
         console.warn("Key authentication returned no JWT, falling back to browser login...");
       } catch (error: unknown) {
@@ -64,7 +64,7 @@ export async function login(jwtFlag?: boolean, identityPath?: string): Promise<v
     await doBrowserLogin(identityPath);
   }
 
-  await postLoginConfigUpdate();
+  await postLoginConfigUpdate(identityPath);
 }
 
 /** Complete browser PKCE, then best-effort bootstrap the selected identity. */
@@ -102,7 +102,7 @@ async function doBrowserLogin(identityPath?: string): Promise<void> {
 }
 
 /** After any successful login, update the local config with the current user/org. */
-async function postLoginConfigUpdate(): Promise<void> {
+async function postLoginConfigUpdate(identityPath?: string): Promise<void> {
   try {
     const storedJwt = await loadJwt();
     const { user, currentOrg } = await checkJwt(storedJwt);
@@ -127,6 +127,10 @@ async function postLoginConfigUpdate(): Promise<void> {
 
     if (orgId) {
       config.orgId = orgId;
+    }
+
+    if (identityPath) {
+      config.cliIdentityPath = path.resolve(identityPath);
     }
 
     await updateConfig(config);
