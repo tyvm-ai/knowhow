@@ -10,6 +10,7 @@ import { SystemModule } from "./SystemModule";
 import { SetupModule } from "./SetupModule";
 import { CustomCommandsModule } from "./CustomCommandsModule";
 import { ShellCommandModule } from "./ShellCommandModule";
+import { ToolCommandModule } from "./ToolCommandModule";
 import { RendererModule } from "./RendererModule";
 import { SessionsModule } from "./SessionsModule";
 import { RemoteSyncModule } from "./RemoteSyncModule";
@@ -32,6 +33,7 @@ export class InternalChatModule implements ChatModule {
   private setupModule: SetupModule;
   private customCommandsModule = new CustomCommandsModule();
   private shellCommandModule = new ShellCommandModule();
+  private toolCommandModule = new ToolCommandModule();
   private rendererModule: RendererModule;
   private remoteSyncModule: RemoteSyncModule;
 
@@ -61,6 +63,7 @@ export class InternalChatModule implements ChatModule {
     await this.customCommandsModule.initialize(chatService);
     await this.remoteSyncModule.initialize(chatService);
     await this.shellCommandModule.initialize(chatService);
+    await this.toolCommandModule.initialize(chatService);
     await this.clipboardImageModule.initialize(chatService);
     
     // Register our own commands (exit and multi) - not duplicated by BaseChatModule
@@ -93,6 +96,7 @@ export class InternalChatModule implements ChatModule {
       ...this.setupModule.getCommands(),
       ...this.customCommandsModule.getCommands(),
       ...this.shellCommandModule.getCommands(),
+      ...this.toolCommandModule.getCommands(),
       ...this.rendererModule.getCommands(),
       ...this.remoteSyncModule.getCommands(),
       {
@@ -120,6 +124,7 @@ export class InternalChatModule implements ChatModule {
       ...this.setupModule.getModes(),
       ...this.customCommandsModule.getModes(),
       ...this.shellCommandModule.getModes(),
+      ...this.toolCommandModule.getModes(),
       ...this.rendererModule.getModes(),
     ];
   }

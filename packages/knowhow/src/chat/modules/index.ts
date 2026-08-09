@@ -4,4 +4,5 @@ export { AgentModule } from './AgentModule';
 export { VoiceModule } from './VoiceModule';
 export { InternalChatModule } from './InternalChatModule';
 export { ShellCommandModule } from './ShellCommandModule';
+export { ToolCommandModule } from './ToolCommandModule';
 export { RendererModule } from './RendererModule';
