@@ -528,12 +528,14 @@ export class AIClient {
   }
 
   providerHasModel(provider: string, model: string): boolean {
+    if (!provider) return false;
     const models = this.clientModels[provider];
     if (!models) return false;
     return models.includes(model);
   }
 
   findModel(modelPrefix: string) {
+    if (!modelPrefix) return undefined;
     for (const provider of Object.keys(this.clientModels)) {
       const models = this.clientModels[provider] as string[];
       const foundModel = models.find((m) => m.startsWith(modelPrefix));

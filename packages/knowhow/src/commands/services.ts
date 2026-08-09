@@ -3,7 +3,8 @@ import * as allTools from "../agents/tools";
 import { LazyToolsService, services, MinimalToolsService, TracingService } from "../services";
 import { agents } from "../agents";
 import { ModulesService } from "../services/modules";
-import { getConfig } from "../config";
+import { getConfig, getConfigSync } from "../config";
+import { authenticateWithKey } from "../auth/keyAuth";
 
 /**
  * Shared service setup used by commands that need full services (chat, agent, worker, etc.)
@@ -76,6 +77,25 @@ export async function setupServices() {
       `⚠ Some MCP servers failed to connect (continuing without them): ${msg}`
     );
   }
+  // Attempt silent JWT refresh via SSH identity before registering models.
+  // This handles the case where the JWT has expired but the user has a valid
+  // SSH identity registered — they shouldn't need to run `knowhow login` again
+  // unless they want to switch organizations.
+  try {
+    const startupConfig = getConfigSync();
+    if (startupConfig.orgId && !process.env.KNOWHOW_JWT) {
+      await authenticateWithKey(
+        startupConfig.orgId,
+        process.env.KNOWHOW_API_URL || "https://api.knowhow.tyvm.ai",
+        startupConfig.cliIdentityPath
+      );
+    }
+  } catch (_err) {
+    // Non-fatal: if SSH refresh fails (no key, revoked, network issue), we
+    // continue with the existing JWT (or no JWT). The user will see model
+    // warnings if no valid JWT is available.
+  }
+
   console.log("Connecting to clients...");
   await Clients.registerConfiguredModels();
   console.log("✓ Services are set up and ready to go!");

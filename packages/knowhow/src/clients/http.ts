@@ -1,4 +1,4 @@
-import http from "../utils/http";
+import http, { HTTP_UNAUTHORIZED_HANDLER, RefreshableHeaders } from "../utils/http";
 import {
   GenericClient,
   CompletionOptions,
@@ -17,16 +17,72 @@ export interface HttpClientOptions {
   extra_body?: Record<string, any>;
 }
 
+/**
+ * Optional callback that, when set, is called whenever a 401 is received
+ * (reactive refresh) or whenever `needsRefresh()` returns true before a
+ * request (proactive refresh).  Override this in a subclass or set it
+ * directly on an instance:
+ *
+ *   client.refreshToken = async () => { const newJwt = await ...; client.setJwt(newJwt); };
+ */
+export type RefreshTokenFn = () => Promise<void>;
+
 export class HttpClient implements GenericClient {
   /** Timeout in milliseconds for HTTP requests. Default: 30000 (30s). Use 0 to disable. */
   private timeout: number;
-  private headers: Record<string, string>;
+  private headers: RefreshableHeaders;
   private extra_body: Record<string, any>;
   /** Optional pricing table: model id → per-million-token prices */
   private pricingMap: Record<string, ModelPricing> = {};
 
+  /**
+   * Override this to provide automatic token refresh.  Called reactively on
+   * 401 responses (via HTTP_UNAUTHORIZED_HANDLER) and proactively before
+   * each request when `needsRefresh()` returns true.
+   *
+   * The implementation should obtain a new token and call `this.setJwt()`
+   * (or `this.setKey()`) before returning.
+   */
+  refreshToken: RefreshTokenFn | undefined = undefined;
+
+  /**
+   * Override this to provide proactive expiry detection.  When it returns
+   * `true`, `refreshToken()` is called before the next outgoing request.
+   * The default implementation decodes the JWT `exp` claim (< 5 min window).
+   */
+  needsRefresh(): boolean {
+    const authHeader = (this.headers as Record<string, string>)["Authorization"];
+    if (!authHeader) return false;
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+    try {
+      const parts = token.split(".");
+      if (parts.length !== 3) return false;
+      const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+      return typeof payload.exp === "number" && payload.exp * 1000 - Date.now() < 5 * 60 * 1000;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Call before each outgoing request to proactively refresh an expiring
+   * token.  No-ops when no `refreshToken` hook is set.
+   */
+  private async refreshIfNeeded(): Promise<void> {
+    if (this.refreshToken && this.needsRefresh()) {
+      await this.refreshToken();
+    }
+  }
+
   constructor(private baseUrl: string, options: HttpClientOptions = {}) {
     this.headers = options.headers ?? {};
+    // Wire the reactive 401 handler so the low-level http util can retry once
+    // after a token refresh without callers needing to do anything extra.
+    Object.defineProperty(this.headers, HTTP_UNAUTHORIZED_HANDLER, {
+      enumerable: false,
+      configurable: true,
+      get: () => this.refreshToken ? () => this.refreshToken!() : undefined,
+    });
     this.timeout = options.timeout ?? 30000;
     this.extra_body = options.extra_body ?? {};
   }
@@ -69,10 +125,8 @@ export class HttpClient implements GenericClient {
   }
 
   setJwt(jwt: string) {
-    this.headers = {
-      ...this.headers,
-      Authorization: `Bearer ${jwt}`,
-    };
+    // Mutate in-place to preserve the HTTP_UNAUTHORIZED_HANDLER symbol property.
+    this.headers.Authorization = `Bearer ${jwt}`;
   }
 
   setBaseUrl(baseUrl: string) {
@@ -163,7 +217,8 @@ export class HttpClient implements GenericClient {
     if (options.timeout !== undefined) this.timeout = options.timeout;
     if (options.extra_body !== undefined) this.extra_body = options.extra_body;
     if (options.headers) {
-      this.headers = { ...this.headers, ...options.headers };
+      // Mutate in-place to preserve the HTTP_UNAUTHORIZED_HANDLER symbol property.
+      Object.assign(this.headers, options.headers);
     }
   }
 
@@ -183,6 +238,7 @@ export class HttpClient implements GenericClient {
   async createChatCompletion(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
+    await this.refreshIfNeeded();
     return this.withRetry(async () => {
       const body = {
         ...options,
@@ -232,6 +288,7 @@ export class HttpClient implements GenericClient {
   async *createChatCompletionStream(
     options: CompletionOptions
   ): AsyncGenerator<StreamChunk> {
+    await this.refreshIfNeeded();
     const body = {
       ...options,
       model: options.model,
@@ -316,6 +373,7 @@ export class HttpClient implements GenericClient {
     options: CompletionOptions,
     store = false
   ): Promise<CompletionResponse> {
+    await this.refreshIfNeeded();
     return this.withRetry(async () => {
       // Extract system messages as instructions
       const systemMessages = options.messages.filter((m) => m.role === "system");
@@ -484,6 +542,7 @@ export class HttpClient implements GenericClient {
   }
 
   async createEmbedding(options: EmbeddingOptions): Promise<EmbeddingResponse> {
+    await this.refreshIfNeeded();
     return this.withRetry(async () => {
       const response = await http.post(
         `${this.baseUrl}/v1/embeddings`,
@@ -511,6 +570,7 @@ export class HttpClient implements GenericClient {
   }
 
   async getModels(type = "all") {
+    await this.refreshIfNeeded();
     return this.withRetry(async () => {
       const response = await http.get(`${this.baseUrl}/v1/models?type=${type}`, {
         headers: this.headers as Record<string, string>,
