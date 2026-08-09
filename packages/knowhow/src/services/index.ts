@@ -16,6 +16,7 @@ import { TaskRegistry } from "./TaskRegistry";
 import { MediaProcessorService } from "./MediaProcessorService";
 import { BehaviorsService } from "./BehaviorsService";
 import { RuntimeReloadService } from "./RuntimeReloadService";
+import { ExtensionsService } from "./ExtensionsService";
 
 import { ConversionService } from "./conversion/ConversionService";
 import { TracingService } from "./TracingService";
@@ -45,6 +46,7 @@ export { TracingService } from "./TracingService";
 export type { TracerImpl, SpanHandle } from "./TracingService";
 export * from "./conversion";
 export * from "./RuntimeReloadService";
+export * from "./ExtensionsService";
 export { BehaviorsService } from "./BehaviorsService";
 
 let Singletons = {} as {
@@ -64,6 +66,7 @@ let Singletons = {} as {
   Conversion: ConversionService;
   Behaviors: BehaviorsService;
   RuntimeReload: RuntimeReloadService;
+  Extensions: ExtensionsService;
 };
 
 export const services = (): typeof Singletons => {
@@ -98,6 +101,7 @@ export const services = (): typeof Singletons => {
       knowhowApiClient: new KnowhowSimpleClient(),
       Behaviors,
       RuntimeReload: new RuntimeReloadService(),
+      Extensions: new ExtensionsService(),
     };
 
     Singletons.Tools.setContext({

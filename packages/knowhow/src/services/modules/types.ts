@@ -15,6 +15,7 @@ import { EventService } from "../EventService";
 import { ConversionService } from "../conversion/ConversionService";
 import { BehaviorsService } from "../BehaviorsService";
 import { ComputerUseService } from "./computerUse";
+import { ExtensionsService, ModuleExtension } from "../ExtensionsService";
 
 import { TracingService as TracingServiceType } from "../TracingService";
 /*
@@ -66,6 +67,7 @@ export interface ModuleContext {
   Program?: Command;
   Behaviors?: BehaviorsService;
   ComputerUse?: ComputerUseService;
+  Extensions?: ExtensionsService;
   [key: string]: any;
   Tracing?: typeof TracingServiceType;
 }
@@ -98,6 +100,8 @@ export interface KnowhowModule {
    */
   destroy?: (params: InitParams) => Promise<void>;
   commands: ModuleChatCommand[];
+  /** Optional capabilities consumed by core or third-party services. */
+  extensions?: ModuleExtension[];
   tools: ModuleTool[];
   agents: ModuleAgent[];
   plugins: ModulePlugin[];

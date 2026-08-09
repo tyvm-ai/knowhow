@@ -207,6 +207,11 @@ export class ModulesService {
       }
       this._loadedModules.push({ modulePath, resolvedPath, module: importedModule, params: initParams });
 
+      context.Extensions?.removeOwner(modulePath);
+      for (const extension of importedModule.extensions ?? []) {
+        context.Extensions?.register(modulePath, extension);
+      }
+
       // Only register tools/agents/plugins/clients if the relevant services
       // are available in context (they may not be during early CLI command registration)
       if (context.Agents) {
@@ -253,6 +258,7 @@ export class ModulesService {
     // Clear first so repeated shutdown/reload attempts cannot destroy twice.
     this._loadedModules = [];
     for (const { modulePath, resolvedPath, module: mod, params } of toDestroy) {
+      params.context?.Extensions?.removeOwner(modulePath);
       if (typeof mod.destroy === "function") {
         try {
           await mod.destroy(params);

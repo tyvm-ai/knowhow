@@ -20,6 +20,12 @@ import fs from "fs";
 import path from "path";
 import { services } from "../services";
 import { logger } from "../logger";
+import { ModuleExtension } from "../services/ExtensionsService";
+
+export interface ChatExtension extends ModuleExtension {
+  type: "chat";
+  commands: ChatCommand[];
+}
 
 export class CliChatService implements ChatService {
   private context: ChatContext;
@@ -59,6 +65,7 @@ export class CliChatService implements ChatService {
         }
       },
     });
+    this.refreshExtensions();
     this.loadInputHistory();
 
     // Set up callback to add entries to inputHistory immediately when user presses Enter
@@ -151,7 +158,12 @@ export class CliChatService implements ChatService {
   }
 
   registerCommand(command: ChatCommand): void {
-    this.commands.push(command);
+    const existing = this.commands.findIndex((item) => item.name === command.name);
+    if (existing >= 0) {
+      this.commands[existing] = command;
+    } else {
+      this.commands.push(command);
+    }
   }
 
   registerMode(mode: ChatMode): void {
@@ -163,7 +175,15 @@ export class CliChatService implements ChatService {
   }
 
   getCommands(): ChatCommand[] {
+    this.refreshExtensions();
     return this.commands;
+  }
+
+  /** Re-read the registry so services created before module setup still work. */
+  refreshExtensions(): void {
+    for (const extension of services().Extensions.list<ChatExtension>("chat")) {
+      for (const command of extension.commands ?? []) this.registerCommand(command);
+    }
   }
 
   /**
@@ -176,6 +196,7 @@ export class CliChatService implements ChatService {
   }
 
   getCommandsForActiveModes(): ChatCommand[] {
+    this.refreshExtensions();
     const activeModes = this.modes
       .filter((mode) => mode.active)
       .map((mode) => mode.name);
@@ -216,7 +237,7 @@ export class CliChatService implements ChatService {
       const command = availableCommands.find((cmd) => cmd.name === commandName);
 
       if (command) {
-        const result = await command.handler(args);
+        const result = await command.handler(args, this);
 
         // If handler returns a CommandResult and it's not handled, pass to modules
         if (result && typeof result === "object" && "handled" in result) {

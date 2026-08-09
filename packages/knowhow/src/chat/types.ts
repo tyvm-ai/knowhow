@@ -45,7 +45,7 @@ export interface CommandResult {
 export interface ChatCommand {
   name: string;
   description: string;
-  handler: (args: string[]) => Promise<void | CommandResult>;
+  handler: (args: string[], chatService?: ChatService) => Promise<void | CommandResult>;
   modes?: string[]; // Commands can specify which modes they're available in
 }
 

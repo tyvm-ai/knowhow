@@ -21,6 +21,7 @@ export async function setupServices() {
     MediaProcessor,
     Behaviors,
     RuntimeReload,
+    Extensions,
   } = services();
 
   await Plugins.refreshConfiguredState();
@@ -112,6 +113,7 @@ export async function setupServices() {
     Behaviors,
     Events,
     Tracing: TracingService,
+    Extensions,
   };
 
   // Call destroy() on all modules when the process is shutting down so they
