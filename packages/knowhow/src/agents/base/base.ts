@@ -1035,9 +1035,6 @@ export abstract class BaseAgent implements IAgent {
       this.updateCurrentThread(messages);
       const isMissingTool = this.isRequiredToolMissing();
 
-      const startIndex = 0;
-      const endIndex = messages.length;
-
       // Process messages before each AI call
       messages = await this.messageProcessor.processMessages(
         messages,
@@ -1283,14 +1280,14 @@ export abstract class BaseAgent implements IAgent {
             : `Compressing messages: ${contextTokens} tokens exceeds ${this.getCompressThreshold()}`
         );
         this._forceCompact = false;
-        messages = await this.compressMessages(messages, startIndex, endIndex);
+        messages = await this.compressMessages(messages);
         this.startNewThread(messages);
         // Reset the real-token tracker. compressMessages() ran a completion over
-        // the FULL (pre-compression) thread, so lastPromptTokens now reflects
-        // that large context — not the small compressed thread. Zeroing it makes
-        // getContextTokenCount() fall back to the whitespace estimate of the new
-        // (small) thread until the next real completion reports fresh usage,
-        // preventing an immediate false re-compaction on the following iteration.
+        // the older history, so lastPromptTokens reflects the compression input
+        // rather than the newly reconstructed thread. Zeroing it makes
+        // getContextTokenCount() estimate the new thread until the next regular
+        // completion reports fresh usage, preventing an immediate false
+        // re-compaction on the following iteration.
         this.lastPromptTokens = 0;
       }
 
@@ -1689,15 +1686,24 @@ export abstract class BaseAgent implements IAgent {
     return this.taskBreakdown;
   }
 
-  async compressMessages(
-    messages: Message[],
-    startIndex: number,
-    endIndex: number
-  ) {
+  async compressMessages(messages: Message[]) {
+    // Preserve the latest agent interaction exactly. Starting the resumed thread
+    // at the final assistant message keeps its tool calls, every tool response,
+    // and any subsequent user messages together as one protocol-valid unit.
+    let resumeIndex = messages.length - 1;
+    while (
+      resumeIndex >= 0 &&
+      messages[resumeIndex].role !== "assistant"
+    ) {
+      resumeIndex--;
+    }
+    const compressionEnd = resumeIndex === -1 ? messages.length : resumeIndex;
+    const toCompress = messages.slice(0, compressionEnd);
+    const resumeMessages = messages.slice(compressionEnd);
+
     this.log(
-      `Compressing messages from ${startIndex} to ${endIndex}, total messages: ${messages.length}`
+      `Compressing messages from 0 to ${compressionEnd}, resuming from ${resumeIndex}, total messages: ${messages.length}`
     );
-    const toCompress = messages.slice(startIndex, endIndex);
     const toCompressPrompt = `We are compressing our conversation to save memory.
     Please summarize the conversation so far, so that we may continue the original task with a smaller context
 
@@ -1709,14 +1715,12 @@ export abstract class BaseAgent implements IAgent {
 
     Our initial task breakdown: ${this.taskBreakdown}
 
-    This summary will become the agent's only memory of the past, all other messages will be dropped:
+    This summary will replace the older history. The latest agent interaction will remain verbatim:
 
       `;
 
-    const model = this.getModel();
-
     const compressMessagesPayload = [
-      ...messages,
+      ...toCompress,
       {
         role: "user",
         content: toCompressPrompt,
@@ -1744,12 +1748,12 @@ export abstract class BaseAgent implements IAgent {
         `,
       },
     ] as Message[];
-    const systemMesasges = toCompress.filter((m) => m.role === "system");
+    const systemMessages = toCompress.filter((m) => m.role === "system");
 
     const newMessages = [
-      ...systemMesasges,
+      ...systemMessages,
       ...startMessages,
-      ...messages.slice(endIndex),
+      ...resumeMessages,
     ];
 
     const oldLength = this.getMessagesLength(messages);
