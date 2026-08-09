@@ -124,7 +124,18 @@ export class AgentSyncFs {
 
     try {
       const metadataPath = path.join(this.taskPath, "metadata.json");
-      await fs.writeFile(metadataPath, JSON.stringify(data, null, 2), "utf8");
+      // Thread/status updates are partial snapshots. Merge them so stable
+      // orchestration identity written by createTask (taskId, pid and parent)
+      // is never discarded by a later update.
+      let existing: Record<string, unknown> = {};
+      try {
+        existing = JSON.parse(await fs.readFile(metadataPath, "utf8"));
+      } catch { /* first write or an interrupted legacy write */ }
+      await fs.writeFile(
+        metadataPath,
+        JSON.stringify({ ...existing, ...data }, null, 2),
+        "utf8"
+      );
     } catch (error) {
       console.error(`❌ Failed to write metadata:`, error);
     }

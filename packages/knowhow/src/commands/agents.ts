@@ -35,6 +35,18 @@ import { getConfig } from "../config";
 const AGENTS_DIR = path.join(".knowhow", "processes", "agents");
 const SESSIONS_DIR = path.join(".knowhow", "chats", "sessions");
 
+const TERMINAL_STATUSES = new Set([
+  "completed",
+  "failed",
+  "killed",
+  "error",
+  "done",
+]);
+const ACTIVE_STATUSES = new Set(["running", "paused"]);
+// Older task records did not persist a pid. After this grace period, report
+// them as unverifiable rather than continuing to claim they are running.
+const UNVERIFIED_TASK_GRACE_MS = 5 * 60 * 1000;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -68,11 +80,42 @@ function loadStatus(taskId: string): string {
   }
 }
 
-/** Get the canonical status — meta.status is live/preferred; status.txt is fallback */
-function getStatus(taskId: string, meta: any | null): string {
-  if (meta?.status) return meta.status;
-  const fromFile = loadStatus(taskId);
-  return fromFile ?? "unknown";
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error: any) {
+    // EPERM means the process exists but cannot be signalled by this user.
+    return error?.code === "EPERM";
+  }
+}
+
+/**
+ * Get the effective status, reconciling persisted state with process liveness.
+ * An agent can be terminated before AgentSyncFs gets a chance to finalize its
+ * files; those records must not remain "running" forever.
+ */
+export function getStatus(taskId: string, meta: any | null): string {
+  const persisted = meta?.status || loadStatus(taskId) || "unknown";
+  if (TERMINAL_STATUSES.has(persisted)) return persisted;
+  if (meta?.inProgress === false) return "completed";
+  if (!ACTIVE_STATUSES.has(persisted)) return persisted;
+
+  const pid = meta?.pid ?? meta?.processId;
+  if (typeof pid === "number") {
+    return pidAlive(pid) ? persisted : "failed";
+  }
+
+  const lastKnownTime = meta?.lastUpdate ?? meta?.startTime;
+  const lastKnownMs = lastKnownTime ? new Date(lastKnownTime).getTime() : NaN;
+  if (
+    !Number.isFinite(lastKnownMs) ||
+    Date.now() - lastKnownMs > UNVERIFIED_TASK_GRACE_MS
+  ) {
+    return "stale";
+  }
+
+  return persisted;
 }
 
 function elapsedStr(startIso: string | undefined, endIso?: string): string {
@@ -203,9 +246,9 @@ function buildRows(includeAll: boolean): Row[] {
 
   for (const taskId of taskIds) {
     const meta = loadMeta(taskId);
-    const status = meta?.status ?? loadStatus(taskId);
+    const status = getStatus(taskId, meta);
 
-    if (!includeAll && (status === "completed" || status === "killed")) {
+    if (!includeAll && (TERMINAL_STATUSES.has(status) || status === "stale")) {
       const lastUpdate = meta?.lastUpdate ?? "";
       if (lastUpdate) {
         const age = Date.now() - new Date(lastUpdate).getTime();
@@ -221,7 +264,9 @@ function buildRows(includeAll: boolean): Row[] {
         : "";
     const elapsed = elapsedStr(
       meta?.startTime,
-      meta?.status === "completed" ? meta?.lastUpdate : undefined
+      TERMINAL_STATUSES.has(status) || status === "stale"
+        ? meta?.lastUpdate
+        : undefined
     );
     const lastUpdate = meta?.lastUpdate
       ? new Date(meta.lastUpdate).toLocaleString()

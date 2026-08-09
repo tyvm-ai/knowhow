@@ -34,6 +34,20 @@ export interface StartAgentTaskParams {
   _ctx?: { caller?: any; taskId?: string; [key: string]: any };
 }
 
+export interface StartAgentTaskResult {
+  success: boolean;
+  status: "started" | "completed" | "failed";
+  taskId: string;
+  pid?: number;
+  syncFs: boolean;
+  syncReady: boolean;
+  agentDir?: string;
+  logPath: string;
+  parentTaskId?: string;
+  exitCode?: number | null;
+  error?: string;
+}
+
 const PROCESSES_DIR = path.join(process.cwd(), ".knowhow", "processes");
 const AGENTS_DIR = path.join(process.cwd(), ".knowhow", "processes", "agents");
 
@@ -100,7 +114,7 @@ function subagentCapabilitiesNote(): string {
  *   .knowhow/processes/agents/{taskId}/input.txt
  * The agent will pick up the new content and process it as a new message.
  */
-export async function startAgentTask(params: StartAgentTaskParams): Promise<string> {
+export async function startAgentTask(params: StartAgentTaskParams): Promise<StartAgentTaskResult> {
   const {
     messageId,
     prompt,
@@ -235,43 +249,54 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
   child.stdin!.write(promptWithCaps, "utf8");
   child.stdin!.end();
 
-  return new Promise<string>((resolve) => {
+  return new Promise<StartAgentTaskResult>((resolve) => {
     let settled = false;
-    const done = (msg: string) => {
+    let exited = false;
+    const done = (result: StartAgentTaskResult) => {
       if (settled) return;
       settled = true;
       try { fs.closeSync(fd); } catch {}
-      resolve(msg);
+      resolve(result);
     };
 
     child.once("error", (e) => {
-      done(`Failed to start agent: ${String(e)}\nLogs: ${logPath}`);
+      done({
+        success: false, status: "failed", taskId, pid, syncFs: useSyncFs,
+        syncReady: false, agentDir: useSyncFs ? agentTaskDir : undefined,
+        logPath, parentTaskId, error: String(e),
+      });
     });
 
-    const syncFsNote = useSyncFs
-      ? `\nTask ID: ${taskId}\nAgent dir: ${agentTaskDir}\n` +
-        `To send agent messages, write to: ${agentTaskDir}/input.txt\n` +
-        `To check status, read: ${agentTaskDir}/status.txt\n`
-      : "";
-
     child.once("exit", (code) => {
-      done(
-        `Agent finished with exit code ${code}.\nLogs: ${logPath}\n` +
-        syncFsNote
-      );
+      exited = true;
+      done({
+        success: code === 0, status: code === 0 ? "completed" : "failed",
+        taskId, pid, syncFs: useSyncFs,
+        syncReady: useSyncFs && fs.existsSync(path.join(agentTaskDir, "metadata.json")),
+        agentDir: useSyncFs ? agentTaskDir : undefined, logPath, parentTaskId,
+        exitCode: code, ...(code === 0 ? {} : { error: `Agent exited with code ${code}` }),
+      });
     });
 
     if (!waitForCompletion) {
-      // Give the agent 5 seconds to finish before detaching (fire-and-forget mode)
-      const detachTime = 5 * 1000;
-      setTimeout(() => {
-        try { child.unref(); } catch {}
-        done(
-          `Agent started (pid=${pid}), running in background.\n` +
-          `Logs: ${logPath}\n` +
-          syncFsNote
-        );
-      }, detachTime);
+      // A spawn is not the same as an initialized fs-sync agent. Poll briefly
+      // so callers can distinguish those states without parsing log prose.
+      const deadline = Date.now() + (useSyncFs ? 5000 : 100);
+      const acknowledge = () => {
+        if (settled || exited) return;
+        const syncReady = useSyncFs && fs.existsSync(path.join(agentTaskDir, "metadata.json"));
+        if (!useSyncFs || syncReady || Date.now() >= deadline) {
+          try { child.unref(); } catch {}
+          done({
+            success: true, status: "started", taskId, pid, syncFs: useSyncFs,
+            syncReady, agentDir: useSyncFs ? agentTaskDir : undefined,
+            logPath, parentTaskId,
+          });
+          return;
+        }
+        setTimeout(acknowledge, 100);
+      };
+      setTimeout(acknowledge, 50);
     }
   });
 }
