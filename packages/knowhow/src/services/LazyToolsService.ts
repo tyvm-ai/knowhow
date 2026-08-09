@@ -82,6 +82,15 @@ export class LazyToolsService extends ToolsService {
     return this.tools; // Returns filtered subset
   }
 
+  // Definitions remain resolvable even when omitted from the model prompt.
+  getTool(name: string): Tool {
+    return this.allTools.find(
+      (tool) =>
+        name &&
+        (tool.function.name === name || tool.function.name.endsWith(name))
+    );
+  }
+
   /** Rebuild the lazy catalog while preserving enable/disable preferences. */
   resetTools(): void {
     this.allTools = [];
@@ -155,32 +164,18 @@ export class LazyToolsService extends ToolsService {
     };
   }
 
-  // Override callTool to auto-enable tools that are in allTools but not yet enabled
+  // Prompt visibility is not authorization. Registered functions remain
+  // callable without changing which definitions are sent to the model.
   async callTool(
     toolCall: ToolCall,
     enabledTools?: string[],
     callContext?: ToolCallContext
   ) {
-    const functionName = toolCall.function.name;
-
-    // If the tool isn't currently visible but exists in allTools, auto-enable it.
-    // This handles the case where the agent explicitly calls a tool without first
-    // enabling it via listAvailableTools/enableTools.
-    const isCurrentlyEnabled = this.tools.some(
-      (t) => t.function.name === functionName
+    return super.callTool(
+      toolCall,
+      enabledTools ?? this.getFunctionNames(),
+      callContext
     );
-    const existsInAll = this.allTools.some(
-      (t) => t.function.name === functionName
-    );
-
-    if (!isCurrentlyEnabled && existsInAll) {
-      // Auto-enable by adding the tool name as an exact pattern
-      this.enableTools([functionName]);
-    }
-
-    // Always use the current enabled tool names after any auto-enable above,
-    // so the base class check sees the freshly-enabled tool in the allowed list.
-    return super.callTool(toolCall, this.getToolNames(), callContext);
   }
 
   // Internal: Update visible tools based on patterns

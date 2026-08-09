@@ -26,4 +26,28 @@ describe("LazyToolsService persisted tool restoration", () => {
       "finalAnswer",
     ]);
   });
+
+  test("calls a registered hidden tool without making it prompt-visible", async () => {
+    const tools = new LazyToolsService();
+    tools.addTools([tool("hiddenTool")]);
+    tools.setFunction("hiddenTool", ({ value }: { value: string }) => `got:${value}`);
+
+    expect(tools.getToolNames()).not.toContain("hiddenTool");
+    expect(tools.getFunctionNames()).toContain("hiddenTool");
+
+    const result = await tools.callTool({
+      id: "hidden-call",
+      type: "function",
+      function: {
+        name: "hiddenTool",
+        arguments: JSON.stringify({ value: "test" }),
+      },
+    });
+
+    expect(result.functionResp).toBe("got:test");
+    expect(tools.getToolNames()).not.toContain("hiddenTool");
+    expect(tools.listAvailableTools()).toMatchObject({
+      disabled: expect.arrayContaining(["hiddenTool"]),
+    });
+  });
 });

@@ -135,6 +135,16 @@ export class ToolsService {
     return this.tools.map((tool) => tool.function.name);
   }
 
+  /**
+   * Return every registered function implementation. Unlike getToolNames(),
+   * this is not a prompt-visibility list; lazy tool services may intentionally
+   * hide definitions from the model while keeping their functions callable by
+   * trusted programmatic consumers such as the script runtime.
+   */
+  getFunctionNames(): string[] {
+    return Object.keys(this.functions).filter((name) => typeof this.functions[name] === "function");
+  }
+
   getTool(name: string): Tool {
     return this.tools.find(
       (tool) =>
