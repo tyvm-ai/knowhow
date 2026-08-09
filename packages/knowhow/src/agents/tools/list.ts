@@ -88,7 +88,7 @@ export const includedTools = [
     function: {
       name: "execCommand",
       description:
-        "Execute a command in the system's command line interface. Use this to run tests and things in the terminal. Supports timeout functionality. Use timeout: -1 to wait indefinitely. Commands ending with '&' or with continueInBackground=true will run in the background and write logs to .knowhow/processes/<command_name>.txt with PID in the first line for cleanup. You can optionally specify a custom log file name for background tasks.",
+        "Execute a command as a durable managed process. Use this to run tests and terminal tasks. Use timeout: -1 to wait indefinitely. Commands ending with '&' or with continueInBackground=true survive the calling agent and return a process ID plus a .knowhow/processes/<process-id>/ directory containing status, stdin, and output logs. Use `knowhow processes` to list, inspect, send input, attach, or stop them.",
       parameters: {
         type: "object",
         positional: true,
@@ -110,7 +110,7 @@ export const includedTools = [
           logFileName: {
             type: "string",
             description:
-              "Optional custom log file name for background tasks (without path or extension). If not provided, a sanitized version of the command will be used. If the file already exists, epoch seconds will be appended to ensure uniqueness.",
+              "Optional preferred managed process ID (sanitized for use as a directory name). If it already exists, a timestamp suffix is added.",
           },
         },
         required: ["command"],

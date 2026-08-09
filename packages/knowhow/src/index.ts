@@ -65,6 +65,7 @@ export * as embeddings from "./embeddings";
 export * as types from "./types";
 export * as processors from "./processors";
 export * as ai from "./ai";
+export * from "./processes/ProcessManager";
 
 // Export module system types for external modules
 export * from "./services/modules/types";
