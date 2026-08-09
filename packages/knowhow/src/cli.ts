@@ -137,9 +137,14 @@ async function main() {
   // Each module's command action is responsible for calling setupServices() as needed.
   try {
     const globalConfig = await getGlobalConfig();
+    const globalModules = [...new Set(globalConfig.modules || [])];
+    const localModules = [...new Set(config.modules || [])];
+    // Local modules take precedence: if a module appears in both global and
+    // local configs, use the local version so it resolves against local
+    // node_modules first. This prevents duplicate command registration errors.
     const allModulePaths = [
-      ...(globalConfig.modules || []),
-      ...(config.modules || []),
+      ...globalModules.filter((m) => !localModules.includes(m)),
+      ...localModules,
     ];
     if (allModulePaths.length) {
       const earlyModulesService = new ModulesService();
