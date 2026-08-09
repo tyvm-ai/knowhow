@@ -7,6 +7,9 @@ import {
   TunnelPtyData,
   TunnelPtyResize,
   TunnelPtyClose,
+  TunnelPtyList,
+  TunnelPtyDetach,
+  TunnelPtySessionInfo,
 } from "@tyvm/knowhow-tunnel";
 import * as pty from "node-pty";
 import { execSync } from "child_process";
@@ -18,7 +21,7 @@ import * as path from "path";
 try {
   const ptyDir = path.dirname(require.resolve("node-pty/package.json"));
   execSync(
-    `find ${JSON.stringify(path.join(ptyDir, "prebuilds"))} -name spawn-helper -exec chmod +x {} ;`,
+    `find ${JSON.stringify(path.join(ptyDir, "prebuilds"))} -name spawn-helper -exec chmod +x {} \\;`,
     { stdio: "ignore" }
   );
 } catch {
@@ -27,7 +30,32 @@ try {
 
 interface PtySession {
   pty: pty.IPty;
-  streamId: string;
+  terminalId: string;
+  activeStreamId: string;
+  command: string;
+  createdAt: Date;
+  cols: number;
+  rows: number;
+  output: Buffer;
+  ctx: TunnelAddonContext | null;
+}
+
+// Sessions deliberately live at module scope rather than on an addon instance.
+// TunnelHandler instances are replaced whenever the worker WebSocket reconnects;
+// the worker process and its PTYs are not. Keeping this registry here gives PTYs
+// tmux-like lifetime: explicit termination, natural process exit, or worker exit.
+const sessions = new Map<string, PtySession>();
+const MAX_REPLAY_BYTES = 1024 * 1024;
+const MAX_TERMINATED_IDS = 1000;
+const terminatedSessions = new Map<string, number>();
+
+function markTerminated(terminalId: string, exitCode: number): void {
+  terminatedSessions.delete(terminalId);
+  terminatedSessions.set(terminalId, exitCode);
+  if (terminatedSessions.size > MAX_TERMINATED_IDS) {
+    const oldest = terminatedSessions.keys().next().value;
+    if (oldest !== undefined) terminatedSessions.delete(oldest);
+  }
 }
 
 /**
@@ -49,22 +77,18 @@ export class TunnelTerminalAddon implements TunnelAddon {
 
   // Handle all TUNNEL_PTY_* messages via prefix matching
   handles = ["TUNNEL_PTY_"];
-
-  private sessions = new Map<string, PtySession>();
+  private context: TunnelAddonContext | null = null;
 
   onDisconnect(): void {
-    // Kill all active PTY sessions when the tunnel disconnects
-    for (const [streamId, session] of this.sessions) {
-      try {
-        session.pty.kill();
-      } catch {
-        // ignore
-      }
-      this.sessions.delete(streamId);
+    // A transport disconnect is only a detach. PTYs intentionally keep running.
+    for (const session of sessions.values()) {
+      if (session.ctx === this.context) session.ctx = null;
     }
+    this.context = null;
   }
 
   async onMessage(message: AnyTunnelMessage, ctx: TunnelAddonContext): Promise<void> {
+    this.context = ctx;
     switch (message.type) {
       case TunnelMessageType.PTY_OPEN:
         this.handleOpen(message as TunnelPtyOpen, ctx);
@@ -78,14 +102,34 @@ export class TunnelTerminalAddon implements TunnelAddon {
       case TunnelMessageType.PTY_CLOSE:
         this.handleClose(message as TunnelPtyClose, ctx);
         break;
+      case TunnelMessageType.PTY_LIST:
+        this.handleList(message as TunnelPtyList, ctx);
+        break;
+      case TunnelMessageType.PTY_DETACH:
+        this.handleDetach(message as TunnelPtyDetach);
+        break;
     }
   }
 
   private handleOpen(msg: TunnelPtyOpen, ctx: TunnelAddonContext): void {
     const { streamId, command, args = [], cols = 80, rows = 24, env = {} } = msg;
+    const terminalId = msg.terminalId || streamId;
 
-    if (this.sessions.has(streamId)) {
-      console.warn(`[terminal] PTY session already exists for streamId=${streamId}`);
+    // A stable ID that has already exited must not silently spawn a replacement
+    // when a detached browser or CLI reconnects later.
+    const priorExitCode = terminatedSessions.get(terminalId);
+    if (priorExitCode !== undefined) {
+      ctx.send({
+        type: TunnelMessageType.PTY_EXIT,
+        streamId,
+        exitCode: priorExitCode,
+      });
+      return;
+    }
+
+    const existing = sessions.get(terminalId);
+    if (existing) {
+      this.attach(existing, streamId, ctx, cols, rows);
       return;
     }
 
@@ -129,56 +173,133 @@ export class TunnelTerminalAddon implements TunnelAddon {
       return;
     }
 
-    const session: PtySession = { pty: shell, streamId };
-    this.sessions.set(streamId, session);
+    const session: PtySession = {
+      pty: shell, terminalId, activeStreamId: streamId,
+      command: [command, ...args].join(" "), createdAt: new Date(),
+      cols, rows, output: Buffer.alloc(0), ctx,
+    };
+    sessions.set(terminalId, session);
+    ctx.send({
+      type: TunnelMessageType.PTY_ATTACHED,
+      streamId,
+      terminalId,
+      existing: false,
+    });
 
     // Forward PTY output back through the tunnel
     shell.onData((data: string) => {
-      ctx.send({
-        type: TunnelMessageType.PTY_DATA,
-        streamId,
-        data: Buffer.from(data).toString("base64"),
-      });
+      const chunk = Buffer.from(data);
+      session.output = Buffer.concat([session.output, chunk]);
+      if (session.output.length > MAX_REPLAY_BYTES) {
+        session.output = session.output.subarray(session.output.length - MAX_REPLAY_BYTES);
+      }
+      if (session.ctx) {
+        session.ctx.send({
+          type: TunnelMessageType.PTY_DATA,
+          streamId: session.activeStreamId,
+          data: chunk.toString("base64"),
+        });
+      }
     });
 
     shell.onExit(({ exitCode }) => {
-      console.log(`[terminal] PTY exited streamId=${streamId} code=${exitCode}`);
-      this.sessions.delete(streamId);
-      ctx.send({
-        type: TunnelMessageType.PTY_EXIT,
-        streamId,
-        exitCode,
-      });
+      console.log(`[terminal] PTY exited terminalId=${terminalId} code=${exitCode}`);
+      markTerminated(terminalId, exitCode);
+      sessions.delete(terminalId);
+      if (session.ctx) {
+        session.ctx.send({
+          type: TunnelMessageType.PTY_EXIT,
+          streamId: session.activeStreamId,
+          exitCode,
+        });
+      }
     });
   }
 
+  private handleDetach(msg: TunnelPtyDetach): void {
+    const session = this.findByStream(msg.streamId);
+    if (!session) return;
+    // Only the currently attached stream may detach this session. An old browser
+    // closing after a newer one attached must not detach the replacement.
+    session.ctx = null;
+  }
+
   private handleInput(msg: TunnelPtyData): void {
-    const session = this.sessions.get(msg.streamId);
+    const session = this.findByStream(msg.streamId);
     if (!session) return;
     const text = Buffer.from(msg.data, "base64").toString("utf8");
     session.pty.write(text);
   }
 
   private handleResize(msg: TunnelPtyResize): void {
-    const session = this.sessions.get(msg.streamId);
+    const session = this.findByStream(msg.streamId);
     if (!session) return;
+    session.cols = msg.cols;
+    session.rows = msg.rows;
     session.pty.resize(msg.cols, msg.rows);
   }
 
   private handleClose(msg: TunnelPtyClose, ctx: TunnelAddonContext): void {
-    const session = this.sessions.get(msg.streamId);
+    const session = msg.terminalId
+      ? sessions.get(msg.terminalId)
+      : this.findByStream(msg.streamId);
     if (!session) return;
     try {
       session.pty.kill();
     } catch {
       // ignore
     }
-    this.sessions.delete(msg.streamId);
+    markTerminated(session.terminalId, 0);
+    sessions.delete(session.terminalId);
     ctx.send({
       type: TunnelMessageType.PTY_EXIT,
       streamId: msg.streamId,
       exitCode: 0,
     });
+  }
+
+  private attach(session: PtySession, streamId: string, ctx: TunnelAddonContext, cols: number, rows: number): void {
+    session.activeStreamId = streamId;
+    session.ctx = ctx;
+    session.cols = cols;
+    session.rows = rows;
+    session.pty.resize(cols, rows);
+    ctx.send({
+      type: TunnelMessageType.PTY_ATTACHED,
+      streamId,
+      terminalId: session.terminalId,
+      existing: true,
+    });
+    if (session.output.length) {
+      ctx.send({
+        type: TunnelMessageType.PTY_DATA,
+        streamId,
+        data: session.output.toString("base64"),
+      });
+    }
+  }
+
+  private handleList(msg: TunnelPtyList, ctx: TunnelAddonContext): void {
+    const result: TunnelPtySessionInfo[] = Array.from(sessions.values()).map((session) => ({
+      terminalId: session.terminalId,
+      pid: session.pty.pid,
+      command: session.command,
+      createdAt: session.createdAt.toISOString(),
+      cols: session.cols,
+      rows: session.rows,
+    }));
+    ctx.send({
+      type: TunnelMessageType.PTY_LIST_RESPONSE,
+      streamId: msg.streamId,
+      sessions: result,
+    });
+  }
+
+  private findByStream(streamId: string): PtySession | undefined {
+    for (const session of sessions.values()) {
+      if (session.activeStreamId === streamId) return session;
+    }
+    return undefined;
   }
 }
 

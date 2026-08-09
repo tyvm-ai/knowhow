@@ -18,6 +18,10 @@ export enum TunnelMessageType {
   PTY_DATA = "TUNNEL_PTY_DATA",
   PTY_RESIZE = "TUNNEL_PTY_RESIZE",
   PTY_CLOSE = "TUNNEL_PTY_CLOSE",
+  PTY_LIST = "TUNNEL_PTY_LIST",
+  PTY_ATTACHED = "TUNNEL_PTY_ATTACHED",
+  PTY_DETACH = "TUNNEL_PTY_DETACH",
+  PTY_LIST_RESPONSE = "TUNNEL_PTY_LIST_RESPONSE",
   PTY_EXIT = "TUNNEL_PTY_EXIT",
 }
 
@@ -184,6 +188,8 @@ export interface StreamState {
 export interface TunnelPtyOpen {
   type: TunnelMessageType.PTY_OPEN;
   streamId: string;
+  /** Stable PTY identity. Unlike streamId, this survives browser reconnects. */
+  terminalId?: string;
   command: string;
   args?: string[];
   cols: number;
@@ -216,6 +222,39 @@ export interface TunnelPtyResize {
 export interface TunnelPtyClose {
   type: TunnelMessageType.PTY_CLOSE;
   streamId: string;
+  terminalId?: string;
+}
+
+export interface TunnelPtyList {
+  type: TunnelMessageType.PTY_LIST;
+  streamId: string;
+}
+
+export interface TunnelPtySessionInfo {
+  terminalId: string;
+  pid: number;
+  command: string;
+  createdAt: string;
+  cols: number;
+  rows: number;
+}
+
+export interface TunnelPtyAttached {
+  type: TunnelMessageType.PTY_ATTACHED;
+  streamId: string;
+  terminalId: string;
+  existing: boolean;
+}
+
+export interface TunnelPtyDetach {
+  type: TunnelMessageType.PTY_DETACH;
+  streamId: string;
+}
+
+export interface TunnelPtyListResponse {
+  type: TunnelMessageType.PTY_LIST_RESPONSE;
+  streamId: string;
+  sessions: TunnelPtySessionInfo[];
 }
 
 /**
@@ -232,6 +271,10 @@ export type TunnelPtyMessage =
   | TunnelPtyData
   | TunnelPtyResize
   | TunnelPtyClose
+  | TunnelPtyList
+  | TunnelPtyAttached
+  | TunnelPtyDetach
+  | TunnelPtyListResponse
   | TunnelPtyExit;
 
 // ─── Addon Interface ──────────────────────────────────────────────────────────
