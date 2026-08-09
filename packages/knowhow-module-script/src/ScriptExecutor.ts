@@ -99,10 +99,7 @@ import {
  */
 export class ScriptExecutor {
   private defaultQuotas: ResourceQuotas = {
-    maxToolCalls: 50,
-    maxTokens: 10000,
-    maxExecutionTimeMs: 30000, // 30 seconds
-    maxCostUsd: 1.0,
+    // isolated-vm requires a memory limit; caller-facing usage limits are opt-in.
     maxMemoryMb: 100,
   };
 
@@ -133,17 +130,19 @@ export class ScriptExecutor {
     let unsubscribe: (() => void) | undefined;
     if (request.onEvent) {
       unsubscribe = tracer.onEvent(request.onEvent);
+    }
+
     // If --no-node-snapshot is not set (e.g. knowhow runs directly as a
     // Ghostty child for TCC permission inheritance), fork a worker that
     // carries the flag so isolated-vm can load, and bridge tool/llm/agent
-    // calls back to this process's live ToolsService.
+    // calls back to this process's live ToolsService. This applies to every
+    // execution path, including programmatic executeScript tool calls that do
+    // not provide an onEvent listener.
     const needsWorker =
       parseInt(process.version.slice(1).split(".")[0], 10) >= 20 &&
       !process.execArgv.includes("--no-node-snapshot");
     if (needsWorker) {
       return this.executeViaWorker(request);
-    }
-
     }
 
     const quotas = { ...this.defaultQuotas, ...request.quotas };
@@ -191,13 +190,10 @@ export class ScriptExecutor {
         policyEnforcer
       );
 
-      // Execute script with timeout
-      const timeoutMs = quotas.maxExecutionTimeMs;
-
       const result = await this.executeWithTimeout(
         request.script,
         context,
-        timeoutMs,
+        quotas.maxExecutionTimeMs,
         tracer,
         policyEnforcer
       );
@@ -238,15 +234,19 @@ export class ScriptExecutor {
   }
 
   /**
-   * Execute script with timeout protection
+   * Execute a script, adding timeout protection only when explicitly requested.
    */
   private async executeWithTimeout(
     script: string,
     context: SandboxContext,
-    timeoutMs: number,
+    timeoutMs: number | undefined,
     tracer: ScriptTracer,
     policyEnforcer: ScriptPolicyEnforcer
   ): Promise<any> {
+    if (timeoutMs === undefined || timeoutMs <= 0) {
+      return this.executeScriptSecure(script, context, tracer, policyEnforcer);
+    }
+
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         tracer.emitEvent("execution_timeout", { timeoutMs });
@@ -544,6 +544,7 @@ export class ScriptExecutor {
           child.send({
             type: "run",
             script: request.script,
+            args: request.args ?? {},
             quotas,
             policy,
             availableTools,

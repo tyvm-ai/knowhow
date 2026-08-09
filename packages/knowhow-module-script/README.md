@@ -207,10 +207,12 @@ return { success: true };  // SyntaxError: Unexpected token 'return'
 
 By default scripts:
 - Cannot call `executeScript`, `execCommand`, `writeFileChunk`, `patchFile`
-- Have a 30-second execution timeout through the `executeScript` tool
-- Have a 30-minute execution timeout through the local `knowhow script` CLI
-- Max 50 tool calls
-- Max 10,000 tokens
-- Max $1.00 cost
+- Have no wall-clock deadline
+- Have no tool-call, token, or cost limit
 - No network access (use `--allow-network` to enable)
+
+Resource limits are opt-in. Only pass `maxExecutionTimeMs` when a known
+completion deadline exists, and only pass `maxToolCalls`, `maxTokens`, or
+`maxCostUsd` when the run is intentionally bounded. This avoids guessing limits
+for multi-agent workflows and training runs whose required usage is unknown.
 
