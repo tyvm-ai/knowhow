@@ -147,6 +147,8 @@ await sdk.showOverlay([
     color: "#00ff00ff", lineWidth: 4 },
   { kind: "line", x: 170, y: 180, x2: 300, y2: 220,
     color: "#ff00ffff" },
+  { kind: "text", x: 100, y: 300, text: "ENERGY 9",
+    fontSize: 18, color: "#ffe04dff" },
   { kind: "point", x: 170, y: 180, width: 8, color: "#ffffffff" },
 ]);
 ```
@@ -162,6 +164,66 @@ annotations.
 gate is paused. `clearOverlay` remains available in those states for cleanup.
 The overlay currently requires the Rust-core driver on macOS; other drivers fail
 with an explicit unsupported-capability error.
+
+### Action-aligned streamed screenshots
+
+`sdk.watchScreen()` frames can be retained as evidence without taking a second,
+later screenshot. Call `watcher.logAction()` after an action, optionally passing
+the exact frame used to make the decision:
+
+```ts
+const watcher = await sdk.watchScreen({ region: "board", scale: 0.5, fps: 30 });
+const before = await watcher.nextFrame();
+if (before) {
+  await sdk.clickAt(640, 420);
+  const artifact = await watcher.logAction("entered-shape-station", {
+    frame: before,
+    format: "png",
+  });
+  sdk.log({ observation, screenshot: artifact?.path });
+}
+watcher.stop();
+```
+
+The frame is encoded from its existing RGBA buffer, so animation timing stays
+aligned with the automation's observation. Artifacts include the nearest prior
+action index/kind, frame sequence, capture timestamp, desktop region, and an
+absolute file path. `computerUseRunAutomation` returns all artifact metadata,
+allowing an agent to load the listed image paths after the automation completes.
+Files are kept under `.knowhow/artifacts/automations/`, with a limit of 100 per
+run.
+
+Artifact writes are suppressed while the required-window gate is paused and in
+dry-runs. To deliberately capture evidence during a dry-run, pass
+`captureInDryRun: true` to `logAction()`.
+
+### Evidence-backed worldline transitions
+
+For state exploration, open a generic graph with `sdk.worldlines.open(...)` and use
+`watcher.logTransition()` instead of coordinating screenshots and transition JSON
+manually:
+
+```ts
+const world = sdk.worldlines.open({
+  namespace: "arc-ls20",
+  environment: { level: 4, buildFingerprint },
+  stateSchema: "ls20-state@3",
+  actionSchema: "ls20-action@1",
+  observationSchema: "ls20-vision@2",
+});
+
+const result = await watcher.logTransition("move-right", {
+  frame: afterFrame,
+  worldline: world,
+  transition: { from: beforeState, action: { direction: "right" }, to: afterState },
+});
+```
+
+The frame artifact is indexed as evidence on the append-only edge. Use
+`world.replay(initialState, actions)` to replay known observed edges; unknown edges
+return a partial frontier and multiple outcomes return a conflict. Dry-runs can
+still capture images, but never create observed transitions. See
+`@tyvm/knowhow-module-worldlines` for evidence reparsing and graph APIs.
 
 ### Accessibility in automations
 
@@ -256,3 +318,86 @@ This module relies on the two-phase module contract in `@tyvm/knowhow`:
 Grant the host process **Accessibility** (input) and **Screen Recording**
 (capture) under System Settings → Privacy & Security. `knowhow computer doctor`
 reports capability status.
+
+
+
+### Grid and sprite vision
+
+Use `sdk.analyzeGrid(frame, options)` when a game or canvas has known logical
+cells. Unlike `findRegions`, it analyzes an already-captured `ScreenFrame`, so
+the resulting JSON and a subsequent `watcher.logAction(..., { frame })` refer to
+exactly the same pixels. It returns per-cell palette ratios, semantic pattern
+matches, and same-palette connected components in desktop coordinates.
+
+```ts
+const frame = await watcher.nextFrame();
+const observation = sdk.analyzeGrid(frame, {
+  region: board,
+  columns: 12,
+  rows: 12,
+  palette: [
+    { name: "wall", color: "#303030", tolerance: 20 },
+    { name: "floor", color: "#707070", tolerance: 20 },
+    { name: "blue", color: "#318cff", tolerance: 60 },
+    { name: "orange", color: "#f48b38", tolerance: 60 },
+  ],
+  // Relearn capture-dependent neutral shades from frequent clusters.
+  adaptivePalette: { names: ["wall", "floor"] },
+  patterns: [{
+    name: "player",
+    priority: 100,
+    requirements: [
+      { palette: "blue", minRatio: 0.08 },
+      { palette: "orange", minRatio: 0.025 },
+    ],
+  }],
+});
+```
+
+Patterns can additionally provide normalized palette masks (`mask: string[]`)
+for sprites that share the same color composition but have different shapes.
+Mask tokens are palette names, `*` is a wildcard, and `.` requires an
+unclassified block. `resolvedPalette` records the effective learned colors so
+observations remain reproducible and suitable for symbolic/Prolog models.
+Each cell also exposes `meanColor` and per-label `paletteMeanColors`, allowing a
+normalized mini-sprite grid to preserve both occupied/empty positions and the
+actual observed RGB color instead of only the nearest palette name.
+
+Connected components also include `orientation` (`horizontal`, `vertical`, or
+`square`), `orientationConfidence`, their center `cell`, normalized
+`cellOffset`, and—for edge-mounted bars—a repelling `facing` direction (away
+from the cell center, toward the mounted edge) with `facingConfidence`. This
+lets an automation define a bumper as a thin component
+of a dedicated palette and consume its direction without hard-coding pixels:
+
+```ts
+const bumpers = observation.components.filter(component =>
+  component.palette === "bumper" &&
+  component.orientation !== "square" &&
+  component.facingConfidence! >= 0.5
+);
+// A horizontal bar near the cell's bottom edge pushes down: facing === "down".
+```
+
+### Sharp rendering in automations
+
+`Sharp` is available as `sdk.sharp(...)` without an import or filesystem read. It
+accepts an in-memory `Buffer` or an SDK `ScreenFrame`; frames are automatically
+interpreted as raw RGBA. This lets an automation draw detected objects, candidate
+plans, uncertainty, and resource budgets over the exact observed frame.
+
+```ts
+const svg = `<svg width="${frame.width}" height="${frame.height}">
+  <path d="M 20 20 L 100 80" fill="none" stroke="#00e5ff" stroke-width="4"/>
+  <text x="20" y="18" fill="white">plan: 8 moves, energy 3</text>
+</svg>`;
+const data = await sdk.sharp(frame)
+  .composite([{ input: Buffer.from(svg) }])
+  .raw()
+  .toBuffer();
+const renderedFrame = { ...frame, data };
+await watcher.logAction("rendered-plan", { frame: renderedFrame, captureInDryRun: true });
+```
+
+Keep rendering in memory and persist it through `watcher.logAction` so the image
+is attached to the automation run and uses its bounded artifact policy.

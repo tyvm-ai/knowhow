@@ -544,14 +544,17 @@ export class AIClient {
       }
 
       // Handle the case when model prefix is gpt-5 and the provider is knowhow, and the actual model is openai/gpt-5
+      // Also handles deep prefixes like "accounts/fireworks/models/kimi-k3" matched by "kimi-k3"
       const inferredFound = models.find((m) => {
         const split = m.split("/");
         if (split.length < 2) return false;
         const inferredModel = split.slice(1).join("/");
+        const lastSegment = split[split.length - 1];
         return (
           m === modelPrefix ||
           inferredModel === modelPrefix ||
-          inferredModel.startsWith(modelPrefix)
+          inferredModel.startsWith(modelPrefix) ||
+          lastSegment === modelPrefix
         );
       });
       if (inferredFound) {
@@ -624,6 +627,36 @@ export class AIClient {
   detectProviderModel(provider: string, model?: string) {
     if (this.providerHasModel(provider, model)) {
       return { provider, model };
+    }
+
+    // When an explicit provider is given and the model contains slashes (e.g.
+    // provider="knowhow", model="anthropic/claude-sonnet-4-6"), check if the
+    // explicit provider has a model that matches by ignoring the leading
+    // provider prefix segments. Also handle deep prefixes like
+    // "accounts/fireworks/models/kimi-k3" → search for "kimi-k3".
+    if (provider && model) {
+      const providerModels = this.clientModels[provider] ?? [];
+      if (model.includes("/")) {
+        // Model has slashes: try progressively stripping leading prefix segments
+        const modelParts = model.split("/");
+        for (let i = 1; i < modelParts.length; i++) {
+          const suffix = modelParts.slice(i).join("/");
+          // Exact match within the explicit provider
+          if (this.providerHasModel(provider, suffix)) {
+            return { provider, model: suffix };
+          }
+        }
+      }
+      // For any model (with or without slashes): check if a registered model's
+      // last path segment matches the requested model name.
+      // e.g. provider="fireworks", model="kimi-k3" matches
+      //      "accounts/fireworks/models/kimi-k3"
+      const lastSegmentMatch = providerModels.find(
+        (m) => m.split("/").pop() === model
+      );
+      if (lastSegmentMatch) {
+        return { provider, model: lastSegmentMatch };
+      }
     }
 
     // If an explicit provider was given, don't fall through to fuzzy cross-provider

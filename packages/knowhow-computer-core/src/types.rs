@@ -42,6 +42,9 @@ pub struct OverlayPrimitive {
     pub height: Option<f64>,
     pub x2: Option<f64>,
     pub y2: Option<f64>,
+    /// Text content and font size are used by the `text` primitive.
+    pub text: Option<String>,
+    pub font_size: Option<f64>,
     /// Hex color in #RRGGBB or #RRGGBBAA form. Defaults to yellow.
     pub color: Option<String>,
     pub line_width: Option<f64>,

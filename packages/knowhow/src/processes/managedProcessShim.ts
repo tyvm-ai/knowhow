@@ -70,12 +70,11 @@ export async function runManagedProcessShim(configPath: string): Promise<void> {
   fs.writeFileSync(path.join(dir, "pid"), child.pid ? `${child.pid}\n` : "");
   writeStatus();
 
-  let fifoFd: number | undefined;
   let fifoStream: fs.ReadStream | undefined;
   if (process.platform !== "win32") {
     // O_RDWR prevents transient writers disconnecting from delivering EOF to the shim.
-    fifoFd = fs.openSync(fifoPath, fs.constants.O_RDWR);
-    fifoStream = fs.createReadStream("", { fd: fifoFd, autoClose: false });
+    const fifoFd = fs.openSync(fifoPath, fs.constants.O_RDWR);
+    fifoStream = fs.createReadStream("", { fd: fifoFd, autoClose: true });
     fifoStream.on("data", (chunk) => {
       fs.appendFileSync(inputLogPath, chunk);
       if (child.stdin?.writable) child.stdin.write(chunk);
@@ -110,6 +109,19 @@ export async function runManagedProcessShim(configPath: string): Promise<void> {
     });
   });
   if (parentTimer) clearInterval(parentTimer);
-  fifoStream?.destroy();
-  if (fifoFd !== undefined) try { fs.closeSync(fifoFd); } catch {}
+  if (fifoStream && !fifoStream.closed) {
+    // A FIFO read cannot always be cancelled by closing its descriptor (notably
+    // on macOS). Wake the pending read before asking ReadStream to close it;
+    // otherwise each completed command can leave its shim wedged in close(2).
+    const wakeFd = fs.openSync(fifoPath, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK);
+    try {
+      fs.writeSync(wakeFd, Buffer.from([0]));
+    } finally {
+      fs.closeSync(wakeFd);
+    }
+    await new Promise<void>((resolve) => {
+      fifoStream!.once("close", resolve);
+      fifoStream!.destroy();
+    });
+  }
 }

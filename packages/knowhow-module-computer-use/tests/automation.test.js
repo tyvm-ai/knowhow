@@ -6,6 +6,7 @@ const {
   deleteAutomation,
   parseAutomationDoc,
 } = require("../ts_build/automation");
+const fs = require("fs");
 
 /**
  * A minimal fake ComputerService that satisfies the surface the AutomationSDK
@@ -154,6 +155,83 @@ describe("AutomationRunner", () => {
     expect(result.actions.every((a) => !a.suppressed)).toBe(true);
     const lastLog = result.logs[result.logs.length - 1];
     expect(lastLog.data.done).toBe(3);
+  });
+
+  test("exposes registered tools by name and through sdk.callTool", async () => {
+    const svc = makeFakeService();
+    const calls = [];
+    const toolsService = {
+      getFunctionNames: () => ["prologQuery"],
+      async callTool(toolCall, enabledTools) {
+        const args = JSON.parse(toolCall.function.arguments);
+        calls.push({ name: toolCall.function.name, args, enabledTools });
+        return {
+          functionResp: { success: true, query: args.query },
+          toolMessages: [],
+        };
+      },
+    };
+    const result = await new AutomationRunner(
+      {
+        name: "__test_tools",
+        script: `
+          const named = await prologQuery({ program: "ok.", query: "ok" });
+          const generic = await sdk.callTool("prologQuery", {
+            program: "goal.", query: "goal"
+          });
+          sdk.log({ named, generic });
+        `,
+      },
+      svc,
+      { maxDurationMs: 5000, toolsService }
+    ).run();
+
+    expect(result.stopped).toBe("completed");
+    expect(calls.map((call) => call.name)).toEqual(["prologQuery", "prologQuery"]);
+    expect(calls[0].enabledTools).toEqual(["prologQuery"]);
+    expect(result.logs[result.logs.length - 1].data).toEqual({
+      named: { success: true, query: "ok" },
+      generic: { success: true, query: "goal" },
+    });
+  });
+
+  test("persists streamed RGBA evidence and associates it with the latest action", async () => {
+    const runner = new AutomationRunner(
+      { name: "__test_frame_artifact", script: "" },
+      makeFakeService(),
+      { maxDurationMs: 5000 }
+    );
+    runner.actions.push({ t: 5, kind: "clickAt", x: 10, y: 20, suppressed: false });
+    const artifact = await runner.recordFrame({
+      sequence: 9,
+      capturedAt: 1234,
+      receivedAt: Date.now(),
+      width: 2,
+      height: 1,
+      data: Buffer.from([
+        255, 0, 0, 255,
+        0, 255, 0, 255,
+      ]),
+      region: { x: 100, y: 200, width: 4, height: 2 },
+      scaleX: 0.5,
+      scaleY: 0.5,
+    }, "clicked-station");
+
+    try {
+      expect(artifact).toMatchObject({
+        label: "clicked-station",
+        sequence: 9,
+        actionIndex: 0,
+        actionKind: "clickAt",
+        region: { x: 100, y: 200, width: 4, height: 2 },
+      });
+      expect(fs.existsSync(artifact.path)).toBe(true);
+      expect(fs.readFileSync(artifact.path).subarray(0, 8)).toEqual(
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+      );
+    } finally {
+      fs.rmSync(artifact.path, { force: true });
+    }
   });
 
   test("exposes an isolated, deeply immutable sdk.params object", async () => {
@@ -660,5 +738,32 @@ describe("parseAutomationDoc (discoverable skill header)", () => {
     const loaded = loadAutomationSafe("__test_doc");
     expect(loaded.doc.description).toBe("round-trip doc test.");
     expect(deleteAutomation("__test_doc")).toBe(true);
+  });
+});
+
+describe("AutomationSDK Sharp rendering", () => {
+  test("exposes sdk.sharp for in-memory plan overlays", async () => {
+    const svc = makeFakeService();
+    const result = await new AutomationRunner({
+      name: "__test_sharp",
+      script: `
+        const svg = '<svg width="24" height="16" xmlns="http://www.w3.org/2000/svg"><path d="M 1 14 L 22 2" stroke="cyan" stroke-width="2"/></svg>';
+        const rendered = await sdk.sharp(Buffer.from(svg)).png().toBuffer({ resolveWithObject: true });
+        sdk.log({ width: rendered.info.width, height: rendered.info.height, bytes: rendered.data.length });
+      `,
+    }, svc, { maxDurationMs: 5000 }).run();
+    expect(result.stopped).toBe("completed");
+    expect(result.logs[result.logs.length - 1].data).toMatchObject({ width: 24, height: 16 });
+    expect(result.logs[result.logs.length - 1].data.bytes).toBeGreaterThan(0);
+  });
+
+  test("rejects filesystem path inputs", async () => {
+    const svc = makeFakeService();
+    const result = await new AutomationRunner({
+      name: "__test_sharp_path",
+      script: `await sdk.sharp('/tmp/not-allowed.png').toBuffer();`,
+    }, svc, { maxDurationMs: 5000 }).run();
+    expect(result.stopped).toBe("error");
+    expect(result.error).toMatch(/in-memory Buffer or ScreenFrame/);
   });
 });

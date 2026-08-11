@@ -415,6 +415,24 @@ describe("TokenCompressor", () => {
     });
   });
 
+  describe("image content compression", () => {
+    it("keeps image URLs intact when expanded", () => {
+      const imageUrl = `data:image/png;base64,${"A".repeat(20_000)}`;
+      const content = JSON.stringify({
+        type: "image_url",
+        image_url: { url: imageUrl, detail: "high" },
+      });
+
+      const compressed = tokenCompressor.compressContent(content);
+      const key = compressed.match(/Key:\s*(\S+)/)?.[1];
+
+      expect(key).toBeDefined();
+      const expanded = tokenCompressor.retrieveFullString(key!);
+      expect(expanded).toBe(content);
+      expect(expanded).not.toContain("[COMPRESSED_JSON_PROPERTY");
+    });
+  });
+
   describe("tool function integration", () => {
     it("should register expandTokens function correctly", () => {
       const toolsServiceCalls = mockToolsService.addFunctions.mock.calls;

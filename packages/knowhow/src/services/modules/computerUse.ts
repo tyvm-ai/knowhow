@@ -26,13 +26,15 @@ export interface Region extends Point, Size {}
 export type MouseButton = "left" | "right" | "middle";
 
 export interface OverlayPrimitive {
-  kind: "rect" | "circle" | "line" | "point";
+  kind: "rect" | "circle" | "line" | "point" | "text";
   x: number;
   y: number;
   width?: number;
   height?: number;
   x2?: number;
   y2?: number;
+  text?: string;
+  fontSize?: number;
   color?: string;
   lineWidth?: number;
 }

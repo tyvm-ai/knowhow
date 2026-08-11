@@ -152,7 +152,9 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<Star
   // Default filesystem synchronization ON unless the caller explicitly opts out
   // (syncFs: false) or is using a messageId-based web sync. This ensures spawned
   // subagents always appear in `knowhow agents list` and can be attached/tailed.
-  const useSyncFs = syncFs !== false && !messageId;
+  // If the caller explicitly passes syncFs: true, honor it even when a messageId
+  // is also provided (messageId handles remote sync; syncFs handles local fs sync).
+  const useSyncFs = syncFs === true ? true : (syncFs !== false && !messageId);
 
   // Use provided taskId if given, otherwise generate one from the prompt
   const taskId = providedTaskId ?? generateTaskId(prompt);
@@ -175,7 +177,8 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<Star
 
   if (messageId) {
     args.push("--message-id", messageId);
-  } else if (useSyncFs) {
+  }
+  if (useSyncFs) {
     args.push("--sync-fs");
   }
   // When syncRemote is requested, pass it through so the spawned agent pushes

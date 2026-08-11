@@ -8,8 +8,23 @@ import {
 import { runManagedProcessShim } from "../processes/managedProcessShim";
 
 const terminal = new Set(["exited", "failed", "stopped"]);
-function resolveProcess(value: string): ManagedProcess {
+function resolveProcess(value?: string, index?: string, options: any = {}): ManagedProcess {
   const root = getProcessesDir();
+  if (index !== undefined) {
+    const parsed = Number(index);
+    if (!Number.isInteger(parsed) || parsed < 0) {
+      throw new Error(`Invalid process index '${index}'. Use the index shown by 'knowhow processes list'.`);
+    }
+    const items = filtered(options);
+    const item = items[parsed];
+    if (!item) {
+      throw new Error(`Managed process index ${parsed} not found. Run 'knowhow processes list${options.all ? " --all" : ""}' to see valid indices.`);
+    }
+    return new ManagedProcess(item.id, item.directory);
+  }
+  if (!value) {
+    throw new Error("Provide a process id, or use -i <index> from 'knowhow processes list'.");
+  }
   const matches = listManagedProcesses(root).filter((p) => p.id === value || p.id.includes(value));
   if (!matches.length) throw new Error(`Managed process not found: ${value}`);
   const exact = matches.find((p) => p.id === value);
@@ -30,13 +45,55 @@ function filtered(options: any): ManagedProcessInfo[] {
     return true;
   });
 }
+function truncate(value: string, width: number): string {
+  if (value.length <= width) return value;
+  if (width <= 1) return "…";
+  return `${value.slice(0, width - 1)}…`;
+}
+function truncateMiddle(value: string, width: number): string {
+  if (value.length <= width) return value;
+  if (width <= 1) return "…";
+  const left = Math.ceil((width - 1) / 2);
+  return `${value.slice(0, left)}…${value.slice(value.length - (width - left - 1))}`;
+}
+function printProcessTable(rows: Array<Record<string, string | number>>): void {
+  const terminalWidth = process.stdout.columns || 120;
+  const available = Math.max(80, Math.min(terminalWidth, 180));
+  const widths = {
+    index: Math.max(1, String(rows.length - 1).length),
+    state: Math.max(5, ...rows.map((row) => String(row.state).length)),
+    pid: Math.max(3, ...rows.map((row) => String(row.pid).length)),
+    background: 2,
+    id: Math.min(38, Math.max(12, ...rows.map((row) => String(row.id).length))),
+    parent: Math.min(20, Math.max(6, ...rows.map((row) => String(row.parent).length))),
+  };
+  const fixedWidth = widths.index + widths.state + widths.pid + widths.background
+    + widths.id + widths.parent + 12;
+  const commandWidth = Math.max(20, available - fixedWidth);
+  const header = ["#".padEnd(widths.index), "STATE".padEnd(widths.state),
+    "PID".padEnd(widths.pid), "BG".padEnd(widths.background),
+    "ID".padEnd(widths.id), "PARENT".padEnd(widths.parent), "COMMAND"];
+  console.log(header.join("  "));
+  console.log("─".repeat(Math.min(available, fixedWidth + commandWidth)));
+  for (const row of rows) {
+    console.log([
+      String(row.index).padEnd(widths.index),
+      String(row.state).padEnd(widths.state),
+      String(row.pid).padEnd(widths.pid),
+      String(row.background).padEnd(widths.background),
+      truncateMiddle(String(row.id), widths.id).padEnd(widths.id),
+      truncateMiddle(String(row.parent), widths.parent).padEnd(widths.parent),
+      truncate(String(row.command).replace(/\s+/g, " "), commandWidth),
+    ].join("  "));
+  }
+}
 function printList(options: any): void {
-  const rows = filtered(options).map(({ id, status }) => ({
-    id, state: status.state, pid: status.pid || "-", background: status.background ? "yes" : "no",
+  const rows = filtered(options).map(({ id, status }, index) => ({
+    index, id, state: status.state, pid: status.pid || "-", background: status.background ? "yes" : "no",
     parent: status.parentProcessId || "-", command: [status.command, ...status.args].join(" "),
   }));
   if (options.json) console.log(JSON.stringify(rows, null, 2));
-  else if (rows.length) console.table(rows);
+  else if (rows.length) printProcessTable(rows);
   else console.log("No managed processes.");
 }
 function addFilters(command: Command): Command {
@@ -80,11 +137,19 @@ export function addProcessesCommand(program: Command): void {
   processes.command("run").description("internal managed process shim").requiredOption("--config <path>")
     .action(async ({ config }) => runManagedProcessShim(path.resolve(config)));
 
-  processes.command("logs <id>").alias("tail").option("-n, --lines <number>", "lines to show", "100")
+  // Avoid Commander's built-in help exit here. The optional tracing module
+  // flushes asynchronously on process.exit, while Commander expects it never
+  // to return, which can otherwise produce a spurious "unknown option" error.
+  addFilters(processes.command("logs [id]").alias("tail"))
+    .helpOption(false)
+    .option("-h, --help", "display help for command")
+    .option("-i, --index <number>", "select by the zero-based index shown by processes list")
+    .option("-n, --lines <number>", "lines to show", "100")
     .option("-f, --follow", "follow output").option("--stderr", "show stderr instead of stdout")
     .option("--both", "show stdout and stderr").action(async (id, rawOptions, command) => {
       const options = commandOptions(rawOptions, command);
-      const managed = resolveProcess(id);
+      if (options.help) { command.outputHelp(); return; }
+      const managed = resolveProcess(id, options.index, options);
       const files = options.both ? [managed.stdoutPath, managed.stderrPath] : [options.stderr ? managed.stderrPath : managed.stdoutPath];
       for (const file of files) process.stdout.write(tailText(file, Math.max(0, Number(options.lines) || 100)));
       if (options.follow) await followFiles(files);

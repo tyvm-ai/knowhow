@@ -220,6 +220,27 @@ describe("Base64ImageDetector", () => {
       expect(content[0].image_url.url).toBe(imageDataUrl);
     });
 
+    it("should not promote a compressed image URL placeholder to image content", () => {
+      const toolResponseJson = JSON.stringify({
+        type: "image_url",
+        image_url: {
+          url: "[COMPRESSED_JSON_PROPERTY - 24614 tokens]\nKey: compressed_image_url",
+          detail: "high",
+        },
+      });
+      const modifiedMessages: Message[] = [
+        {
+          role: "tool",
+          content: toolResponseJson,
+          tool_call_id: "call_compressed_image",
+        },
+      ];
+
+      detector.createProcessor()([], modifiedMessages);
+
+      expect(modifiedMessages[0].content).toBe(toolResponseJson);
+    });
+
     it("should process tool messages with plain base64 string", () => {
       const validPngBase64 =
         "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";

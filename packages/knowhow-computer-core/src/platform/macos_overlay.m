@@ -3,7 +3,7 @@
 
 // Keep this ABI in sync with NativeOverlayPrimitive in macos_overlay.rs.
 typedef struct {
-  int32_t kind; // 0 rect, 1 circle, 2 line, 3 point
+  int32_t kind; // 0 rect, 1 circle, 2 line, 3 point, 4 text
   double x;
   double y;
   double width;
@@ -15,6 +15,8 @@ typedef struct {
   double blue;
   double alpha;
   double line_width;
+  const char *text;
+  double font_size;
 } KnowhowOverlayPrimitive;
 
 @interface KnowhowOverlayView : NSView
@@ -67,11 +69,21 @@ typedef struct {
       CGContextMoveToPoint(context, from.x, from.y);
       CGContextAddLineToPoint(context, to.x, to.y);
       CGContextStrokePath(context);
-    } else {
+    } else if (kind == 3) {
       NSPoint center = NSMakePoint(x - self.screenOrigin.x, cocoaY - self.screenOrigin.y);
       const CGFloat radius = MAX(2.0, width > 0 ? width / 2.0 : lineWidth * 1.5);
       CGContextFillEllipseInRect(context, CGRectMake(center.x - radius, center.y - radius,
                                                       radius * 2.0, radius * 2.0));
+    } else if (kind == 4) {
+      NSString *text = item[@"text"];
+      const CGFloat fontSize = MAX(8.0, [item[@"fontSize"] doubleValue]);
+      NSDictionary *attributes = @{NSFontAttributeName: [NSFont monospacedSystemFontOfSize:fontSize weight:NSFontWeightBold],
+                                    NSForegroundColorAttributeName: color,
+                                    NSStrokeColorAttributeName: NSColor.blackColor,
+                                    NSStrokeWidthAttributeName: @(-3.0)};
+      NSPoint point = NSMakePoint(x - self.screenOrigin.x,
+                                 cocoaY - fontSize - self.screenOrigin.y);
+      [text drawAtPoint:point withAttributes:attributes];
     }
   }
 }
@@ -101,7 +113,9 @@ void knowhow_overlay_show(const KnowhowOverlayPrimitive *items, size_t count) {
       @"width": @(p.width), @"height": @(p.height),
       @"x2": @(p.x2), @"y2": @(p.y2),
       @"red": @(p.red), @"green": @(p.green), @"blue": @(p.blue),
-      @"alpha": @(p.alpha), @"lineWidth": @(p.line_width)
+      @"alpha": @(p.alpha), @"lineWidth": @(p.line_width),
+      @"text": p.text ? [NSString stringWithUTF8String:p.text] : @"",
+      @"fontSize": @(p.font_size)
     }];
   }
 
@@ -110,7 +124,16 @@ void knowhow_overlay_show(const KnowhowOverlayPrimitive *items, size_t count) {
     knowhow_clear_panels();
     if (primitives.count == 0) return;
 
-    [NSApplication sharedApplication];
+    NSApplication *application = [NSApplication sharedApplication];
+    // Command-line processes default to the prohibited activation policy,
+    // under which orderFrontRegardless does not register visible windows with
+    // WindowServer. Accessory mode permits panels without adding a Dock icon
+    // or taking focus from the automation's required window.
+    [application setActivationPolicy:NSApplicationActivationPolicyAccessory];
+    // sharedApplication alone does not complete AppKit initialization in a
+    // command-line executable. Finish launching so ordered panels are handed
+    // to WindowServer even though we deliberately do not enter NSApp.run.
+    if (!application.isRunning) [application finishLaunching];
     NSArray<NSScreen *> *screens = NSScreen.screens;
     NSScreen *primary = NSScreen.mainScreen ?: screens.firstObject;
     const CGFloat desktopTop = NSMaxY(primary.frame);
@@ -140,9 +163,27 @@ void knowhow_overlay_show(const KnowhowOverlayPrimitive *items, size_t count) {
       view.screenOrigin = screen.frame.origin;
       panel.contentView = view;
       [panel orderFrontRegardless];
-      [view setNeedsDisplay:YES];
+      // The computer-use CLI is not an AppKit application and does not run an
+      // NSApplication event loop. setNeedsDisplay: only schedules a future
+      // draw on that absent loop, leaving the transparent panel blank. Render
+      // synchronously while we are on the main thread instead.
+      [view display];
       [knowhowPanels addObject:panel];
     }
+
+    // Node/libuv does not pump NSApplication's event queue. Drain the initial
+    // ordering/display work explicitly; the overlay is static after this, so
+    // no continuously running AppKit loop is required.
+    NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:0.02];
+    NSEvent *event = nil;
+    do {
+      event = [application nextEventMatchingMask:NSEventMaskAny
+                                       untilDate:deadline
+                                          inMode:NSDefaultRunLoopMode
+                                         dequeue:YES];
+      if (event) [application sendEvent:event];
+    } while (event);
+    [application updateWindows];
   });
 }
 

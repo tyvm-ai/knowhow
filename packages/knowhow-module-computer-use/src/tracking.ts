@@ -2,6 +2,7 @@ import { Point, Region } from "@tyvm/knowhow";
 import { DesktopBox, scaleFindRegionsOptions } from "./ComputerService";
 import { nativeFindRegions } from "./nativePerception";
 import { NativeScreenStream, RustCoreDriver } from "./drivers/RustCoreDriver";
+import type { TransitionInput, TransitionRecord, Worldline } from "@tyvm/knowhow-module-worldlines";
 
 export interface WatchScreenOptions {
   region: Region;
@@ -28,18 +29,74 @@ export interface ScreenFrame {
   scaleY: number;
 }
 
+export interface ScreenFrameArtifact {
+  id: string;
+  path: string;
+  label: string;
+  /** Automation-relative time at which logAction was called. */
+  t: number;
+  sequence: number;
+  capturedAt: number;
+  region: Region;
+  width: number;
+  height: number;
+  scaleX: number;
+  scaleY: number;
+  format: "png" | "jpeg";
+  /** Zero-based action index when the frame was recorded, if an action existed. */
+  actionIndex?: number;
+  actionKind?: string;
+}
+
+export interface LogScreenActionOptions {
+  /** Record a previously returned frame instead of the watcher's latest frame. */
+  frame?: ScreenFrame;
+  /** Automation dry-runs suppress artifacts unless this is explicitly true. */
+  captureInDryRun?: boolean;
+  format?: "png" | "jpeg";
+}
+
+export interface LoggedWorldlineTransition<Action = unknown> {
+  artifact: ScreenFrameArtifact;
+  transition: TransitionRecord<Action> | null;
+}
+
+export interface LogWorldlineTransitionOptions<State, Action, Observation = unknown>
+  extends LogScreenActionOptions {
+  worldline: Worldline<State, Action, Observation>;
+  transition: TransitionInput<State, Action, Observation>;
+}
+
 export interface ScreenWatcher {
   readonly region: Region;
   /** Return the newest frame immediately, or null if no newer frame exists. */
   latest(afterSequence?: number): ScreenFrame | null;
   /** Wait asynchronously for a frame newer than afterSequence. */
   nextFrame(afterSequence?: number, timeoutMs?: number): Promise<ScreenFrame | null>;
+  /** Persist a streamed frame as action-aligned evidence in the automation run. */
+  logAction(label: string, options?: LogScreenActionOptions): Promise<ScreenFrameArtifact | null>;
+  /** Persist the frame and index it as evidence for a worldline edge. */
+  logTransition<State, Action, Observation = unknown>(
+    label: string,
+    options: LogWorldlineTransitionOptions<State, Action, Observation>
+  ): Promise<LoggedWorldlineTransition<Action> | null>;
   stop(): void;
+}
+
+
+function arrayEvidence<T>(value?: T | T[]): T[] {
+  return value === undefined ? [] : Array.isArray(value) ? value : [value];
 }
 
 export function createScreenWatcher(
   driver: RustCoreDriver,
-  options: WatchScreenOptions
+  options: WatchScreenOptions,
+  recordFrame?: (
+    frame: ScreenFrame,
+    label: string,
+    options?: LogScreenActionOptions
+  ) => Promise<ScreenFrameArtifact | null>,
+  canRecordTransition: () => boolean = () => true
 ): ScreenWatcher {
   const scale = options.scale ?? 0.25;
   const fps = options.fps ?? 60;
@@ -61,9 +118,11 @@ export function createScreenWatcher(
       scaleY: f.height / options.region.height,
     };
   };
+  const latest = (afterSequence?: number): ScreenFrame | null =>
+    stopped ? null : map(native.latest(afterSequence));
   return {
     region: { ...options.region },
-    latest: (afterSequence) => stopped ? null : map(native.latest(afterSequence)),
+    latest,
     nextFrame: async (afterSequence = 0, timeoutMs = 1000) => {
       const deadline = Date.now() + Math.max(0, timeoutMs);
       while (!stopped) {
@@ -73,6 +132,49 @@ export function createScreenWatcher(
         await new Promise((resolve) => setTimeout(resolve, 2));
       }
       return null;
+    },
+    logAction: async (label, logOptions = {}) => {
+      if (!recordFrame) {
+        throw new Error("ScreenWatcher.logAction is only available inside an automation run");
+      }
+      if (typeof label !== "string" || !label.trim()) {
+        throw new Error("ScreenWatcher.logAction requires a non-empty label");
+      }
+      const frame = logOptions.frame ?? latest();
+      if (!frame) throw new Error("ScreenWatcher.logAction has no frame to record yet");
+      return recordFrame(frame, label.trim(), logOptions);
+    },
+    logTransition: async (label, logOptions) => {
+      if (!logOptions?.worldline || !logOptions.transition) {
+        throw new Error("ScreenWatcher.logTransition requires a worldline and transition");
+      }
+      const { worldline, transition, ...frameOptions } = logOptions;
+      if (!recordFrame) {
+        throw new Error("ScreenWatcher.logTransition is only available inside an automation run");
+      }
+      if (typeof label !== "string" || !label.trim()) {
+        throw new Error("ScreenWatcher.logTransition requires a non-empty label");
+      }
+      const frame = frameOptions.frame ?? latest();
+      if (!frame) throw new Error("ScreenWatcher.logTransition has no frame to record yet");
+      const artifact = await recordFrame(frame, label.trim(), frameOptions);
+      if (!artifact) return null;
+      // A captured dry-run frame is useful visual evidence, but no transition
+      // occurred and it must never enter the observed graph.
+      if (!canRecordTransition()) return { artifact, transition: null };
+      const recorded = worldline.recordTransition({
+        ...transition,
+        evidence: [
+          ...arrayEvidence(transition.evidence),
+          {
+            kind: "computer-use/screen-frame",
+            path: artifact.path,
+            mimeType: artifact.format === "jpeg" ? "image/jpeg" : "image/png",
+            metadata: { ...artifact },
+          },
+        ],
+      });
+      return { artifact, transition: recorded };
     },
     stop: () => {
       if (stopped) return;

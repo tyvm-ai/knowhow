@@ -292,12 +292,15 @@ function buildRows(includeAll: boolean): Row[] {
  *   - A numeric index string ("1", "2", …) — 1-based row from `agents list`
  *   - An exact task ID
  *   - A partial task ID (substring match)
+ *
+ * NOTE: numeric index always uses the same row set as `agents list` (includeAll=false)
+ * so that index numbers are consistent across all subcommands.
  */
 function resolveTaskId(value: string, includeAll = false): string | null {
   const n = parseInt(value, 10);
   // Only treat as a numeric index if it's a small number (≤ 9999) — large numbers are timestamp-based task IDs
   if (!isNaN(n) && String(n) === value.trim() && n <= 9999) {
-    const rows = buildRows(includeAll);
+    const rows = buildRows(false);
     const row = rows[n - 1];
     return row ? row.taskId : null;
   }

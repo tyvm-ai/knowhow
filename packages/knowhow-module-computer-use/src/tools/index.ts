@@ -937,6 +937,8 @@ function summarizeRun(result: any): string {
       actionCount: result.actionCount,
       clicks: clicks.length,
       suppressedActions: suppressed.length,
+      artifactCount: result.artifacts?.length ?? 0,
+      artifacts: result.artifacts ?? [],
       avgClickIntervalMs: avgInterval,
       requiredWindow: result.requiredWindow || null,
       ranWithoutWindowGate: !!result.ranWithoutWindowGate,
@@ -961,7 +963,11 @@ export async function computerUseRunAutomation(
   if (getRunning(name)) {
     return `Automation "${name}" is already running. Stop it first with computerUseStopAutomation("${name}").`;
   }
-  const runner = new AutomationRunner(spec, svc, { maxDurationMs, params });
+  const runner = new AutomationRunner(spec, svc, {
+    maxDurationMs,
+    params,
+    toolsService: this,
+  });
   const result = await runner.run();
   return summarizeRun(result);
 }
@@ -984,6 +990,7 @@ export async function computerUseTestAutomation(
   const runner = new AutomationRunner(spec, svc, {
     maxDurationMs: maxDurationMs ?? 8000,
     params,
+    toolsService: this,
     dryRun: true,
   });
   const result = await runner.run();

@@ -76,14 +76,14 @@ export class AgentService {
     return this.agentContext ?? { Tools: this.tools, Events: this.events };
   }
 
-  public getAgent(name: string): IAgent {
+  public getAgent<T extends IAgent = IAgent>(name: string): T {
     const agent = this.agents.get(name);
     if (!agent) {
       throw new Error(
         `Agent ${name} not found. Options are: ${this.listAgents()}`
       );
     }
-    return agent;
+    return agent as T;
   }
 
   public listAgents(): string[] {

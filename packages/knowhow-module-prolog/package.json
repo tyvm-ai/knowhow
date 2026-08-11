@@ -1,0 +1,27 @@
+{
+  "name": "@tyvm/knowhow-module-prolog",
+  "version": "0.0.1",
+  "description": "Prolog world-model querying and symbolic plan evaluation tools for Knowhow",
+  "main": "ts_build/index.js",
+  "types": "ts_build/index.d.ts",
+  "scripts": {
+    "build": "npm run compile",
+    "compile": "npm run clean && tsc",
+    "clean": "rm -rf ts_build",
+    "test": "npm run compile && node --test tests/*.test.js",
+    "prepublishOnly": "npm run compile"
+  },
+  "keywords": ["knowhow", "prolog", "planning", "world-model", "symbolic-reasoning"],
+  "author": "Tyvm AI",
+  "license": "MIT",
+  "peerDependencies": {
+    "@tyvm/knowhow": "*"
+  },
+  "dependencies": {
+    "tau-prolog": "^0.3.4"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.0.0"
+  }
+}

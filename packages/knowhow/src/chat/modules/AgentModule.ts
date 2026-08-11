@@ -8,6 +8,7 @@ import {
   TaskRegistry,
   SyncedAgentWatcher,
   SyncerService,
+  AgentService,
 } from "../../services/index";
 import { AttachableAgent } from "../../services/SyncedAgentWatcher";
 import * as fs from "fs";
@@ -77,10 +78,15 @@ export class AgentModule extends BaseChatModule {
     | { toolCall?: string; toolUsed?: string; agentSay?: string; done: string }
     | undefined;
 
+  private agentService: AgentService;
+  private eventService: EventService;
+
   constructor() {
     super();
     this.taskRegistry = new TaskRegistry();
     this.sessionManager = new SessionManager();
+    this.agentService = services().Agents;
+    this.eventService = services().Events;
   }
 
   /**
@@ -327,7 +333,7 @@ export class AgentModule extends BaseChatModule {
     await super.initialize(service);
 
     // Set up plugin log event handler - use setListener so re-init doesn't double-subscribe
-    const Events = services().Events;
+    const Events = this.eventService;
     Events.setListener(
       { key: "agentModule:pluginLog", event: Events.eventTypes.pluginLog },
       (logEvent: any) => {
@@ -405,7 +411,7 @@ export class AgentModule extends BaseChatModule {
         // Set selected agent in context and enable agent mode
         if (context) {
           // Create a temporary agent instance to read its default model/provider
-          const agentContext = services().Agents.getAgentContext();
+          const agentContext = this.agentService.getAgentContext();
           const tempAgent = createAgent(
             agentName as AgentName,
             agentContext
@@ -427,6 +433,25 @@ export class AgentModule extends BaseChatModule {
           this.chatService.setMode("agent");
         }
 
+        console.log(
+          `Agent mode enabled. Selected agent: ${agentName}. Type your task to get started.`
+        );
+      } else if (this.agentService.listAgents().includes(agentName)) {
+        // Config agent from knowhow.json
+        if (context) {
+          const configAgent = this.agentService.getAgent<BaseAgent>(agentName);
+          context.selectedAgent = configAgent;
+          context.agentMode = true;
+          context.currentAgent = agentName;
+          const clientInfo = await configAgent.clientService.getClient(
+            undefined,
+            configAgent.getModel()
+          );
+          context.currentModel = clientInfo.model;
+          context.currentProvider = clientInfo.provider;
+
+          this.chatService.setMode("agent");
+        }
         console.log(
           `Agent mode enabled. Selected agent: ${agentName}. Type your task to get started.`
         );
@@ -601,12 +626,16 @@ export class AgentModule extends BaseChatModule {
    */
   async handleAgentsCommand(args: string[]): Promise<void> {
     try {
-      const agentNames = Object.keys(agentConstructors);
+      const builtinNames = Object.keys(agentConstructors);
+      const configAgentNames = this.agentService.listAgents();
+      // Merge, deduplicate, preserving built-ins first
+      const agentNames = [...new Set([...builtinNames, ...configAgentNames])];
 
       if (agentNames.length > 0) {
         console.log("\nAvailable agents:");
         agentNames.forEach((name) => {
-          console.log(`  - ${name}`);
+          const isConfig = !builtinNames.includes(name);
+          console.log(`  - ${name}${isConfig ? " (config)" : ""}`);
         });
         console.log("─".repeat(80), "\n");
 
@@ -700,10 +729,13 @@ export class AgentModule extends BaseChatModule {
       const agentName = session.agentName || context.currentAgent;
       const previousAgentMode = context?.agentMode;
 
-      if (!agentName || !agentConstructors[agentName as AgentName]) {
+      if (!agentName) {
         console.error(`Agent ${agentName} not found.`);
         return;
       }
+
+      // setupAgent resolves both built-in agents and custom ConfigAgents. Do
+      // not reject config-defined agents here before it gets that opportunity.
 
       // Start agent with Knowhow task context and restored message history
       const remoteTaskId = asRemoteTaskId(session.knowhowTaskId);
@@ -817,7 +849,7 @@ export class AgentModule extends BaseChatModule {
     enabledTools?: string[];
   }) {
     const { input, chatHistory = [], agentName } = options;
-    const agentContext = services().Agents.getAgentContext();
+    const agentContext = this.agentService.getAgentContext();
 
     // Resolve agent: built-in agents first, then fall back to ConfigAgents from knowhow.json
     let agent: BaseAgent;
@@ -826,7 +858,7 @@ export class AgentModule extends BaseChatModule {
     } else {
       // Try to find a ConfigAgent registered via loadAgentsFromConfig (from knowhow.json agents[])
       try {
-        const configAgent = services().Agents.getAgent(options.agentName);
+        const configAgent = this.agentService.getAgent(options.agentName);
         agent = configAgent as unknown as BaseAgent;
       } catch {
         throw new Error(

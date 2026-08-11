@@ -1,5 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
+import sharpFactory, { Sharp, SharpOptions } from "sharp";
+import * as ts from "typescript";
 import {
   AccessibilityElement,
   AccessibilityOptions,
@@ -7,6 +9,9 @@ import {
   Point,
   Region,
 } from "@tyvm/knowhow";
+import { ToolsService } from "@tyvm/knowhow/ts_build/src/services/Tools";
+import { worldlines, WorldlineRegistry } from "@tyvm/knowhow-module-worldlines";
+import { prologFindPlan } from "@tyvm/knowhow-module-prolog";
 import {
   ComputerService,
   ColorRegion,
@@ -20,11 +25,15 @@ import { RustCoreDriver } from "./drivers/RustCoreDriver";
 import {
   createObjectTracker,
   createScreenWatcher,
+  LogScreenActionOptions,
   ObjectTracker,
   ObjectTrackingOptions,
+  ScreenFrame,
+  ScreenFrameArtifact,
   ScreenWatcher,
   WatchScreenOptions,
 } from "./tracking";
+import { analyzeGridFrame, GridVisionOptions, GridVisionResult } from "./gridVision";
 
 /**
  * Automations — a locally-run perception→action loop that the LLM authors once
@@ -127,6 +136,8 @@ export interface AutomationRunResult {
   actions: AutomationAction[];
   actionCount: number;
   logs: AutomationLogEntry[];
+  /** Action-aligned frame files persisted by ScreenWatcher.logAction(). */
+  artifacts: ScreenFrameArtifact[];
   pausedMs: number;
   dryRun: boolean;
   /** The window gate that was in effect (if any) — the focus-loss auto-pause. */
@@ -219,6 +230,18 @@ export interface AutomationSDK {
   /** Sample many points from a single frame, preserving input order. */
   pixelColors(points: Point[]): Promise<string[]>;
   /**
+   * Classify one captured frame into logical cells, reusable visual patterns,
+   * and same-colour components without taking a second screenshot.
+   */
+  analyzeGrid(frame: ScreenFrame, opts: GridVisionOptions): GridVisionResult;
+  /**
+   * Create a Sharp image pipeline from an in-memory Buffer or ScreenFrame.
+   * ScreenFrames are automatically interpreted as raw RGBA pixels. Prefer
+   * `toBuffer()` and `watcher.logAction({ frame: renderedFrame })` so rendered
+   * evidence stays inside the automation artifact lifecycle.
+   */
+  sharp(input: Buffer | ScreenFrame, options?: SharpOptions): Sharp;
+  /**
    * Start a persistent ScreenCaptureKit latest-frame stream. Unlike screenshot
    * polling this pays capture setup once and normally receives frames at display
    * refresh speed. Always call stop(); the runner also stops leaked streams.
@@ -274,6 +297,13 @@ export interface AutomationSDK {
   /** Clear annotations. This remains available while paused/stopped for cleanup. */
   clearOverlay(): Promise<void>;
 
+  // ── durable state transition journals ──
+  /**
+   * Open evidence-backed state/action graphs. The registry is generic; game or
+   * application state parsing remains automation-defined.
+   */
+  readonly worldlines: WorldlineRegistry;
+
   // ── control / telemetry ──
   sleep(ms: number): Promise<void>;
   now(): number;
@@ -316,6 +346,12 @@ export interface AutomationSDK {
   /** Immutable JSON parameters supplied by the caller for this run. */
   readonly params: Readonly<Record<string, unknown>>;
   readonly ctl: AutomationControl;
+  /**
+   * Invoke any registered Knowhow tool by name. The same tools are also
+   * installed as top-level functions in the automation scope, so either
+   * `await sdk.callTool("prologQuery", args)` or `await prologQuery(args)` works.
+   */
+  callTool(toolName: string, parameters?: Record<string, unknown>): Promise<any>;
 }
 
 /**
@@ -433,6 +469,19 @@ export function loadAutomationSafe(name: string): AutomationSpec | undefined {
   }
 }
 
+/** Load a constrained relative module used by another automation. */
+function loadAutomationImportSafe(name: string): string | undefined {
+  if (!/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(name)) return undefined;
+  try {
+    const root = path.resolve(STORE_DIR);
+    const candidate = path.resolve(root, `${name}.ts`);
+    if (!candidate.startsWith(root + path.sep) || !fs.existsSync(candidate)) return undefined;
+    return fs.readFileSync(candidate, "utf8");
+  } catch {
+    return undefined;
+  }
+}
+
 export function listAutomations(): AutomationSpec[] {
   try {
     if (!fs.existsSync(STORE_DIR)) return [];
@@ -463,10 +512,10 @@ export function deleteAutomation(name: string): boolean {
 }
 
 /**
- * Reject scripts that try to escape the SDK sandbox. Automations must "play"
- * honestly — only real pixels in, real mouse out — so we forbid network/shell/
- * filesystem/module access. This is a static guard, not a full sandbox; the
- * script still runs with `new Function` and only `sdk` in scope.
+ * Reject scripts that try to escape the automation scope. Automations may use
+ * the SDK and registered Knowhow tools, but direct network/shell/filesystem/
+ * module access remains forbidden. This is a static guard, not a full sandbox;
+ * the script runs with `new Function` and explicitly injected capabilities.
  */
 const FORBIDDEN_TOKENS = [
   "require",
@@ -485,18 +534,416 @@ const FORBIDDEN_TOKENS = [
 
 const SDK_IMPORT = /^\s*import\s*\{\s*sdk\s*\}\s*from\s*["']@tyvm\/knowhow-module-computer-use["']\s*;?\s*$/gm;
 
+/**
+ * Matches automation-to-automation import lines, e.g.:
+ *   import { foo, bar as baz } from './my-helper';
+ * The explicit `@automation/my-helper` form is also accepted.
+ * Group 1: the specifiers string (e.g. "foo, bar as baz")
+ * Group 2: the sibling automation name (e.g. "my-helper")
+ */
+const AUTOMATION_IMPORT =
+  /^\s*import\s*\{([^}]+)\}\s*from\s*["'](?:@automation\/|\.\/)([A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*)(?:\.ts)?["']\s*;?\s*$/gm;
+
+/** Strip TypeScript-only syntax while preserving constrained ESM imports. */
+function transpileAutomationSource(script: string): string {
+  return ts.transpileModule(script, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ESNext,
+      removeComments: false,
+    },
+    reportDiagnostics: false,
+  }).outputText;
+}
+
+function identifierAppears(code: string, name: string): boolean {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\b${escaped}\\b`).test(code);
+}
+
+/**
+ * Extract the set of named exports from an automation script body.
+ * Supports:
+ *   export function foo(...) { ... }
+ *   export async function foo(...) { ... }
+ *   export const foo = ...
+ *   export { foo, bar }
+ *   export { foo as bar }  (the alias becomes the external name)
+ * Returns a map from exported name -> the code snippet that defines it,
+ * ready for inlining into a consuming automation.
+ *
+ * @param allDeclarations When truthy, a second Map<string,string> to populate
+ *   with ALL function/const declarations found in the script (exported or not).
+ *   Used by resolveAutomationImports to resolve `export { localName }` refs.
+ */
+export function extractAutomationExports(
+  script: string,
+  allDeclarations?: Map<string, string>
+): Map<string, string> {
+  // Strip the SDK import and automation imports before extracting
+  const stripped = script
+    .replace(new RegExp(SDK_IMPORT.source, "gm"), "")
+    .replace(new RegExp(AUTOMATION_IMPORT.source, "gm"), "");
+
+  const exports = new Map<string, string>();
+  const lines = stripped.split("\n");
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // export function / export async function
+    const fnMatch = line.match(
+      /^export\s+(async\s+function|function)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/
+    );
+    if (fnMatch) {
+      const exportName = fnMatch[2];
+      // Collect the entire function body by brace counting
+      let body = "";
+      let depth = 0;
+      let started = false;
+      let j = i;
+      while (j < lines.length) {
+        const l = lines[j];
+        for (const ch of l) {
+          if (ch === "{") { depth++; started = true; }
+          else if (ch === "}") { depth--; }
+        }
+        body += (j === i ? "" : "\n") + l;
+        j++;
+        if (started && depth <= 0) break;
+      }
+      // Strip the export keyword so it's a plain function declaration
+      const decl = body.replace(/^export\s+/, "");
+      exports.set(exportName, decl);
+      if (allDeclarations) allDeclarations.set(exportName, decl);
+      i = j;
+      continue;
+    }
+
+    // export class / non-exported class
+    const classMatch = line.match(/^(export\s+)?class\s+([A-Za-z_$][A-Za-z0-9_$]*)\b/);
+    if (classMatch && (classMatch[1] || allDeclarations)) {
+      const className = classMatch[2];
+      let body = "";
+      let depth = 0;
+      let started = false;
+      let j = i;
+      while (j < lines.length) {
+        const l = lines[j];
+        for (const ch of l) {
+          if (ch === "{") { depth++; started = true; }
+          else if (ch === "}") { depth--; }
+        }
+        body += (j === i ? "" : "\n") + l;
+        j++;
+        if (started && depth <= 0) break;
+      }
+      const decl = body.replace(/^export\s+/, "");
+      if (classMatch[1]) exports.set(className, decl);
+      if (allDeclarations) allDeclarations.set(className, decl);
+      i = j;
+      continue;
+    }
+
+    // non-exported function (for ref-resolution)
+    if (allDeclarations) {
+      const plainFnMatch = line.match(
+        /^(async\s+function|function)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/
+      );
+      if (plainFnMatch) {
+        const fnName = plainFnMatch[2];
+        let body = "";
+        let depth = 0;
+        let started = false;
+        let j = i;
+        while (j < lines.length) {
+          const l = lines[j];
+          for (const ch of l) {
+            if (ch === "{") { depth++; started = true; }
+            else if (ch === "}") { depth--; }
+          }
+          body += (j === i ? "" : "\n") + l;
+          j++;
+          if (started && depth <= 0) break;
+        }
+        allDeclarations.set(fnName, body);
+        i = j;
+        continue;
+      }
+    }
+
+    // export const / export let / export var
+    const constMatch = line.match(
+      /^export\s+(const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=/
+    );
+    if (constMatch) {
+      const exportName = constMatch[2];
+      // Collect until the statement ends — track brace/bracket/paren depth.
+      let body = "";
+      let depth = 0;
+      let j = i;
+      while (j < lines.length) {
+        const l = lines[j];
+        for (const ch of l) {
+          if (ch === "{" || ch === "[" || ch === "(") depth++;
+          else if (ch === "}" || ch === "]" || ch === ")") depth--;
+        }
+        body += (j === i ? "" : "\n") + l;
+        j++;
+        const trimmed = l.trimEnd();
+        if (depth <= 0 && trimmed.endsWith(";")) break;
+        if (depth <= 0 && j < lines.length &&
+            !trimmed.endsWith(",") &&
+            !trimmed.endsWith("(") &&
+            !trimmed.endsWith("{") &&
+            !trimmed.endsWith("[") &&
+            !trimmed.endsWith("\\")) break;
+      }
+      // Strip the export keyword
+      const decl = body.replace(/^export\s+/, "");
+      exports.set(exportName, decl);
+      if (allDeclarations) allDeclarations.set(exportName, decl);
+      i = j;
+      continue;
+    }
+
+    // export { foo, bar as baz }
+    const listMatch = line.match(/^export\s*\{([^}]+)\}\s*;?\s*$/);
+    if (listMatch) {
+      const specifiers = listMatch[1].split(",").map((s) => s.trim()).filter(Boolean);
+      for (const spec of specifiers) {
+        const parts = spec.split(/\s+as\s+/);
+        const localName = parts[0].trim();
+        const exportedName = parts[1]?.trim() ?? localName;
+        if (localName !== exportedName) {
+          // The consumer needs the exported name; emit a const alias
+          exports.set(exportedName, `const ${exportedName} = ${localName};`);
+        } else {
+          // Mark as a local-name reference; the caller will look up the
+          // underlying definition from the same export map if needed.
+          exports.set(exportedName, `/* ref:${localName} */`);
+        }
+      }
+      i++;
+      continue;
+    }
+
+    // non-exported const/let/var (for ref-resolution)
+    if (allDeclarations) {
+      const plainConstMatch = line.match(
+        /^(const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=/
+      );
+      if (plainConstMatch) {
+        const varName = plainConstMatch[2];
+        let body = "";
+        let depth = 0;
+        let j = i;
+        while (j < lines.length) {
+          const l = lines[j];
+          for (const ch of l) {
+            if (ch === "{" || ch === "[" || ch === "(") depth++;
+            else if (ch === "}" || ch === "]" || ch === ")") depth--;
+          }
+          body += (j === i ? "" : "\n") + l;
+          j++;
+          const trimmed = l.trimEnd();
+          if (depth <= 0 && trimmed.endsWith(";")) break;
+          if (depth <= 0 && j < lines.length &&
+              !trimmed.endsWith(",") &&
+              !trimmed.endsWith("(") &&
+              !trimmed.endsWith("{") &&
+              !trimmed.endsWith("[") &&
+              !trimmed.endsWith("\\")) break;
+        }
+        allDeclarations.set(varName, body.trimEnd().replace(/;?\s*$/, ";"));
+        i = j;
+        continue;
+      }
+    }
+
+    i++;
+  }
+
+  return exports;
+}
+
+/**
+ * Resolve and inline `import { x, y as z } from './name'` imports (the
+ * `@automation/name` spelling is retained as an explicit alias)
+ * in an automation script. Returns the script with those imports replaced by
+ * the inlined exported code from the sibling automation. Recursive (nested
+ * imports are resolved depth-first). Detects cycles and missing exports.
+ *
+ * @param script    The raw source of the automation being prepared (SDK import already stripped).
+ * @param name      The name of the automation being prepared (for cycle detection).
+ * @param ancestors The chain of automation names already being resolved (cycle guard).
+ * @param loader    Optional override for loading sibling automations (for tests).
+ */
+export function resolveAutomationImports(
+  script: string,
+  name: string,
+  ancestors: ReadonlySet<string> = new Set(),
+  loader: (n: string) => string | undefined = loadAutomationImportSafe
+): string {
+  const importLines: Array<{
+    line: string;
+    sibling: string;
+    specifiers: Array<{ local: string; alias: string }>;
+  }> = [];
+
+  // Collect all constrained sibling-automation imports.
+  const re = new RegExp(AUTOMATION_IMPORT.source, "gm");
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(script)) !== null) {
+    const specStr = m[1];
+    const sibling = m[2];
+    const specifiers = specStr
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => !s.startsWith("type "))
+      .filter(Boolean)
+      .map((s) => {
+        const parts = s.split(/\s+as\s+/);
+        return { local: parts[0].trim(), alias: parts[1]?.trim() ?? parts[0].trim() };
+      });
+    importLines.push({ line: m[0], sibling, specifiers });
+  }
+
+  if (!importLines.length) return script;
+
+  let result = script;
+  const inlinedPrologue: string[] = [];
+
+  for (const { line, sibling, specifiers } of importLines) {
+    if (ancestors.has(sibling)) {
+      throw new Error(
+        `Automation import cycle detected: ${[...ancestors, name, sibling].join(" → ")}`
+      );
+    }
+    const siblingScript = loader(sibling);
+    if (siblingScript === undefined) {
+      throw new Error(
+        `Automation "${name}" imports from "@automation/${sibling}", but no such automation exists.`
+      );
+    }
+
+    // Recursively resolve the sibling's own imports first (strip SDK import first)
+    const nextAncestors = new Set([...ancestors, name]);
+    const resolvedSibling = transpileAutomationSource(resolveAutomationImports(
+      siblingScript.replace(new RegExp(SDK_IMPORT.source, "gm"), ""),
+      sibling,
+      nextAncestors,
+      loader
+    ));
+
+    // Extract exports from the fully-resolved sibling.
+    // Also collect ALL declarations (exported or not) so that:
+    //  - `export { localFn }` ref entries can be resolved to their definition
+    //  - nested-imported helpers used inside exported functions are available
+    const allDecls = new Map<string, string>();
+    const siblingExports = extractAutomationExports(resolvedSibling, allDecls);
+
+    // Return dependencies before their consumer, recursively. This includes
+    // declarations brought in by nested automation imports as well as private
+    // helpers in the sibling itself.
+    const dependenciesOf = (rootName: string, rootCode: string): string[] => {
+      const emitted = new Set<string>([rootName]);
+      const ordered: string[] = [];
+      const visit = (code: string) => {
+        for (const [declName, declCode] of allDecls) {
+          if (emitted.has(declName) || !identifierAppears(code, declName)) continue;
+          emitted.add(declName);
+          visit(declCode);
+          ordered.push(declCode);
+        }
+      };
+      visit(rootCode);
+      return ordered;
+    };
+
+    for (const { local, alias } of specifiers) {
+      if (!siblingExports.has(local)) {
+        throw new Error(
+          `Automation "${name}" tries to import "${local}" from "@automation/${sibling}", ` +
+          `but that export does not exist. Available exports: ${[...siblingExports.keys()].join(", ") || "(none)"}.`
+        );
+      }
+      const exportCode = siblingExports.get(local)!;
+      if (exportCode.startsWith("/* ref:")) {
+        // The export is a re-export list entry. Look up the underlying definition
+        // in both exported names and all declarations (catches non-exported locals).
+        const refName = exportCode.slice("/* ref:".length, -" */".length).trim();
+        // Prefer allDecls (actual definition) over siblingExports (which may
+        // itself be another /* ref:... */ placeholder) to avoid infinite regress.
+        const refDecl = allDecls.get(refName) ?? siblingExports.get(refName);
+        if (refDecl) {
+          inlinedPrologue.push(...dependenciesOf(refName, refDecl));
+          inlinedPrologue.push(refDecl);
+          if (alias !== refName) {
+            inlinedPrologue.push(`const ${alias} = ${refName};`);
+          }
+        } else {
+          throw new Error(
+            `Automation "${name}" imports "${local}" from "@automation/${sibling}", ` +
+            `but its definition could not be extracted. Use "export function" or "export const" for reliably importable exports.`
+          );
+        }
+      } else {
+        inlinedPrologue.push(...dependenciesOf(local, exportCode));
+        inlinedPrologue.push(exportCode);
+        // If the caller uses a different alias, add an alias const binding
+        if (alias !== local) {
+          inlinedPrologue.push(`const ${alias} = ${local};`);
+        }
+      }
+    }
+
+    // Remove the import line from the script
+    result = result.replace(line, "");
+  }
+
+  // Prepend all inlined definitions (deduplicated by content to handle diamond deps)
+  const seen = new Set<string>();
+  const unique = inlinedPrologue.filter((c) => {
+    if (seen.has(c)) return false;
+    seen.add(c);
+    return true;
+  });
+  if (unique.length) {
+    result = unique.join("\n") + "\n" + result;
+  }
+  return result;
+}
+
 /** Remove the one editor-only import supported by automation source files. */
 export function prepareAutomationScript(script: string): string {
-  return script.replace(SDK_IMPORT, "");
+  return resolveAutomationImports(
+    script.replace(SDK_IMPORT, ""),
+    "__prepare__"
+  );
 }
 
 export function validateScript(script: string): void {
-  script = prepareAutomationScript(script);
-  for (const tok of FORBIDDEN_TOKENS) {
-    const re = new RegExp(`\\b${tok}\\b`);
-    if (re.test(script)) {
+  // Strip the SDK import and all recognized sibling imports before checking.
+  // resolveAutomationImports removes those import lines; the inlined code has
+  // already been validated when the sibling was originally saved.
+  script = script.replace(SDK_IMPORT, "").replace(new RegExp(AUTOMATION_IMPORT.source, "gm"), "");
+  // Use TypeScript's scanner rather than a regular expression so harmless text
+  // in comments and string literals (for example "require the invariant") does
+  // not reject an automation. Identifier and keyword tokens are still checked,
+  // including dynamic import(), eval(), process, and globalThis references.
+  const forbidden = new Set(FORBIDDEN_TOKENS);
+  const scanner = ts.createScanner(
+    ts.ScriptTarget.ES2022,
+    true,
+    ts.LanguageVariant.Standard,
+    script
+  );
+  for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) {
+    const token = scanner.getTokenText();
+    if (forbidden.has(token)) {
       throw new Error(
-        `Automation script rejected: forbidden token "${tok}". Automations may only use the provided sdk (perception + mouse/keyboard). No network, shell, filesystem, or module access.`
+        `Automation script rejected: forbidden token "${token}". Automations may use the provided sdk and registered tool functions, but not direct network, shell, filesystem, or module access.`
       );
     }
   }
@@ -525,6 +972,8 @@ export interface RunOptions {
    * (default 40).
    */
   clickSettleMs?: number;
+  /** Registered Knowhow tools exposed to the authored automation. */
+  toolsService?: ToolsService;
 }
 
 /**
@@ -540,7 +989,10 @@ export class AutomationRunner {
   private pauseStartedAt = 0;
   private actions: AutomationAction[] = [];
   private logs: AutomationLogEntry[] = [];
+  private artifacts: ScreenFrameArtifact[] = [];
   private gateTimer: NodeJS.Timeout | null = null;
+  private readonly artifactRunId = `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  private static readonly MAX_FRAME_ARTIFACTS = 100;
   private durationTimer: NodeJS.Timeout | null = null;
   /** True once a non-empty required-window gate has been configured. */
   private everGatedWindow = false;
@@ -618,6 +1070,128 @@ export class AutomationRunner {
     }
   }
 
+  private async recordFrame(
+    frame: ScreenFrame,
+    label: string,
+    options: LogScreenActionOptions = {}
+  ): Promise<ScreenFrameArtifact | null> {
+    const captureAllowed = !this.ctl.stopped && !this.ctl.paused &&
+      (!this.opts.dryRun || options.captureInDryRun === true);
+    if (!captureAllowed) {
+      this.emit({
+        frameArtifact: "suppressed",
+        label,
+        reason: this.ctl.paused ? "window-focus-lost" :
+          this.opts.dryRun ? "dry-run" : "automation-stopped",
+      });
+      return null;
+    }
+    if (this.artifacts.length >= AutomationRunner.MAX_FRAME_ARTIFACTS) {
+      throw new Error(
+        `ScreenWatcher.logAction is limited to ${AutomationRunner.MAX_FRAME_ARTIFACTS} frame artifacts per run`
+      );
+    }
+    if (!frame?.data || !Buffer.isBuffer(frame.data)) {
+      throw new Error("ScreenWatcher.logAction received an invalid frame");
+    }
+
+    const format = options.format ?? "png";
+    const safeName = this.spec.name.replace(/[^A-Za-z0-9._-]+/g, "_") || "automation";
+    const safeLabel = label.replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 60) || "action";
+    const id = `${String(this.artifacts.length + 1).padStart(3, "0")}-${safeLabel}`;
+    const dir = path.resolve(
+      process.cwd(), ".knowhow", "artifacts", "automations", safeName, this.artifactRunId
+    );
+    fs.mkdirSync(dir, { recursive: true });
+    const artifactPath = path.join(dir, `${id}.${format === "jpeg" ? "jpg" : "png"}`);
+    // Encode the existing stream buffer. Taking another screenshot here could
+    // capture a later animation phase and defeats the purpose of frame evidence.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const sharp = require("sharp");
+    await sharp(frame.data, {
+      raw: { width: frame.width, height: frame.height, channels: 4 },
+    })[format]().toFile(artifactPath);
+
+    const actionIndex = this.actions.length ? this.actions.length - 1 : undefined;
+    const action = actionIndex === undefined ? undefined : this.actions[actionIndex];
+    const artifact: ScreenFrameArtifact = {
+      id,
+      path: artifactPath,
+      label,
+      t: this.elapsed(),
+      sequence: frame.sequence,
+      capturedAt: frame.capturedAt,
+      region: { ...frame.region },
+      width: frame.width,
+      height: frame.height,
+      scaleX: frame.scaleX,
+      scaleY: frame.scaleY,
+      format,
+      actionIndex,
+      actionKind: action?.kind,
+    };
+    this.artifacts.push(artifact);
+    this.emit({ frameArtifact: artifact });
+    return artifact;
+  }
+
+  private async callTool(
+    toolName: string,
+    parameters: Record<string, unknown> = {}
+  ): Promise<any> {
+    if (typeof toolName !== "string" || !toolName.trim()) {
+      throw new Error("sdk.callTool requires a non-empty tool name.");
+    }
+    const tools = this.opts.toolsService;
+    // The standalone `computer run-automation` command intentionally starts
+    // before the full chat tool graph. Keep its core symbolic planner usable
+    // directly, just as Worldlines is available directly to this runner.
+    if (!tools && toolName === "prologFindPlan") {
+      this.emit({ toolCall: "start", toolName });
+      try {
+        const p: any = parameters;
+        const result = await prologFindPlan(
+          p.program, p.maxPlanLength, p.initialPredicate, p.transitionPredicate,
+          p.goalPredicate, p.maxAnswers, p.inferenceLimit, p.timeoutMs,
+          p.minPlanLength, p.preferredActions
+        );
+        this.emit({ toolCall: "success", toolName });
+        return result;
+      } catch (error) {
+        this.emit({
+          toolCall: "error", toolName,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        throw error;
+      }
+    }
+    if (!tools) {
+      throw new Error("Knowhow tools are not available in this automation runner.");
+    }
+    // Match the script module's recursion guard. An automation may reason with
+    // tools, but it must not open another script execution environment.
+    if (toolName === "executeScript") {
+      throw new Error("Nested script execution is not allowed in automations.");
+    }
+
+    this.emit({ toolCall: "start", toolName });
+    const result = await tools.callTool(
+      {
+        id: `automation-tool-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        type: "function",
+        function: { name: toolName, arguments: JSON.stringify(parameters ?? {}) },
+      },
+      tools.getFunctionNames()
+    );
+    const errorMessage = result?.toolMessages?.find((message: any) => message.name === "error");
+    if (errorMessage) {
+      this.emit({ toolCall: "error", toolName, error: errorMessage.content });
+      throw new Error(errorMessage.content || `Tool '${toolName}' failed`);
+    }
+    this.emit({ toolCall: "success", toolName });
+    return result?.functionResp;
+  }
+
   private async configureRequiredWindow(match?: WindowMatch): Promise<void> {
     this.ctl.requiredWindow = match;
     if (match && (match.titleIncludes || match.app)) {
@@ -680,6 +1254,7 @@ export class AutomationRunner {
     const clickSettleMs = Math.max(0, this.opts.clickSettleMs ?? 40);
     const sdk: AutomationSDK = {
       params,
+      worldlines,
       ctl: this.ctl,
       runEvery: async (callback, intervalMs, opts) => {
         if (typeof callback !== "function") {
@@ -799,6 +1374,24 @@ export class AutomationRunner {
 
       pixelColor: (x, y) => svc.pixelColor({ x, y }),
       pixelColors: (points) => svc.pixelColors(points),
+      analyzeGrid: (frame, o) => analyzeGridFrame(frame, o),
+      sharp: (input, options = {}) => {
+        if (input && typeof input === "object" && "data" in input &&
+            "width" in input && "height" in input) {
+          const frame = input as ScreenFrame;
+          if (!Buffer.isBuffer(frame.data) || frame.width < 1 || frame.height < 1) {
+            throw new Error("sdk.sharp received an invalid ScreenFrame");
+          }
+          return sharpFactory(frame.data, {
+            ...options,
+            raw: { width: frame.width, height: frame.height, channels: 4 },
+          });
+        }
+        if (!Buffer.isBuffer(input)) {
+          throw new Error("sdk.sharp only accepts an in-memory Buffer or ScreenFrame");
+        }
+        return sharpFactory(input, options);
+      },
 
       readText: (o = {}) => svc.readText(o as ReadTextOptions),
 
@@ -809,7 +1402,76 @@ export class AutomationRunner {
         }
         const resolved = await resolveRegionAsync(o.region as any, () => svc.getActiveWindow());
         const region = resolved ?? { x: 0, y: 0, ...(await svc.screenSize()) };
-        const watcher = createScreenWatcher(driver, { ...o, region });
+        let watcher: ScreenWatcher;
+        try {
+          watcher = createScreenWatcher(
+            driver,
+            { ...o, region },
+            (frame, label, options) => self.recordFrame(frame, label, options),
+            () => !self.opts.dryRun
+          );
+        } catch (streamError) {
+          // ScreenCaptureKit streaming can be unavailable to a freshly spawned
+          // CLI process even when one-shot capture is permitted. Preserve the
+          // watcher contract with demand-driven screenshots so evidence-backed
+          // automations still run (at a lower frame rate) via `knowhow computer`.
+          self.emit({ screenWatcher: "polling-fallback", error: String(streamError) });
+          let sequence = 0;
+          let last: ScreenFrame | null = null;
+          let stopped = false;
+          const capture = async (): Promise<ScreenFrame | null> => {
+            if (stopped) return null;
+            const encoded = await svc.screenshot({ region });
+            const decoded = await sharpFactory(encoded).ensureAlpha().raw()
+              .toBuffer({ resolveWithObject: true });
+            last = {
+              data: decoded.data,
+              width: decoded.info.width,
+              height: decoded.info.height,
+              sequence: ++sequence,
+              capturedAt: Date.now(),
+              receivedAt: Date.now(),
+              region: { ...region },
+              scaleX: decoded.info.width / region.width,
+              scaleY: decoded.info.height / region.height,
+            };
+            return last;
+          };
+          watcher = {
+            region: { ...region },
+            latest: (afterSequence = 0) => last && last.sequence > afterSequence ? last : null,
+            nextFrame: async (afterSequence = 0) => {
+              const frame = await capture();
+              return frame && frame.sequence > afterSequence ? frame : null;
+            },
+            logAction: async (label, options = {}) => {
+              const frame = options.frame ?? last ?? await capture();
+              if (!frame) throw new Error("ScreenWatcher.logAction has no frame to record");
+              return self.recordFrame(frame, label, options);
+            },
+            logTransition: async (label, options: any) => {
+              if (!options?.worldline || !options.transition) {
+                throw new Error("ScreenWatcher.logTransition requires a worldline and transition");
+              }
+              const frame = options.frame ?? last ?? await capture();
+              if (!frame) throw new Error("ScreenWatcher.logTransition has no frame to record");
+              const artifact = await self.recordFrame(frame, label, options);
+              if (!artifact) return null;
+              if (self.opts.dryRun) return { artifact, transition: null };
+              const recorded = options.worldline.recordTransition({
+                ...options.transition,
+                evidence: [
+                  ...(Array.isArray(options.transition.evidence) ? options.transition.evidence : []),
+                  { kind: "computer-use/screen-frame", path: artifact.path,
+                    mimeType: artifact.format === "jpeg" ? "image/jpeg" : "image/png",
+                    metadata: { ...artifact } },
+                ],
+              });
+              return { artifact, transition: recorded };
+            },
+            stop: () => { stopped = true; last = null; },
+          };
+        }
         const stop = watcher.stop.bind(watcher);
         const dispose = () => { stop(); self.streamDisposers.delete(dispose); };
         watcher.stop = dispose;
@@ -987,6 +1649,7 @@ export class AutomationRunner {
       now: () => self.now(),
       elapsed: () => self.elapsed(),
       log: (data) => self.emit(data),
+      callTool: (toolName, parameters = {}) => self.callTool(toolName, parameters),
     };
     return sdk;
   }
@@ -1016,9 +1679,29 @@ export class AutomationRunner {
     if (this.durationTimer.unref) this.durationTimer.unref();
 
     const sdk = this.buildSDK();
-    const fn = new AsyncFunction("sdk", script);
+    const reserved = new Set(["sdk", "callTool", "executeScript"]);
+    const toolNames = (this.opts.toolsService?.getFunctionNames() ?? []).filter(
+      (name) =>
+        typeof name === "string" &&
+        /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) &&
+        !reserved.has(name)
+    );
+    const callTool = sdk.callTool.bind(sdk);
+    // As in knowhow-module-script, expose both a generic callTool and a named
+    // top-level function for each registered tool. Named functions accept the
+    // tool's normal JSON argument object; ToolsService handles positional tools.
+    const toolFunctions = toolNames.map(
+      (toolName) => (parameters: Record<string, unknown> = {}) =>
+        callTool(toolName, parameters)
+    );
+    const fn = new AsyncFunction(
+      "sdk",
+      "callTool",
+      ...toolNames,
+      script
+    );
     try {
-      await fn(sdk);
+      await fn(sdk, callTool, ...toolFunctions);
       // Script returned. The reason is whatever set ctl.stopped (duration/
       // manual), or a clean completion if nothing forced a stop.
       stopped = this.stopReason ?? "completed";
@@ -1051,6 +1734,7 @@ export class AutomationRunner {
       actions: this.actions,
       actionCount: this.actions.length,
       logs: this.logs,
+      artifacts: this.artifacts,
       pausedMs: this.pausedAccumMs,
       dryRun: !!this.opts.dryRun,
       requiredWindow: this.everGatedWindow ? this.ctl.requiredWindow : undefined,

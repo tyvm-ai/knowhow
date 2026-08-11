@@ -1670,8 +1670,7 @@ export abstract class BaseAgent implements IAgent {
     const response = await this.createAgentCompletion({
       model,
       messages: taskBreakdownMessages,
-      tools: this.getEnabledTools(),
-      tool_choice: "auto",
+      tool_choice: "none",
       long_ttl_cache: this.runTime() > 300_000,
       ...(this.reasoningEffort !== undefined && {
         reasoning_effort: this.reasoningEffort,
@@ -1681,9 +1680,17 @@ export abstract class BaseAgent implements IAgent {
       }),
     });
 
-    this.taskBreakdown = response.choices[0].message.content;
+    // The model may return null content (e.g. when it responds with tool calls
+    // instead of text). Guard against storing a literal null so that template
+    // strings don't render "null".
+    const breakdownContent = response.choices
+      .map((c) => c.message.content)
+      .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+      .join("\n\n");
+
+    this.taskBreakdown = breakdownContent || "";
     this.log(`task breakdown cost: ${response.usd_cost}`);
-    return this.taskBreakdown;
+    return this.taskBreakdown || undefined;
   }
 
   async compressMessages(messages: Message[]) {
@@ -1713,7 +1720,7 @@ export abstract class BaseAgent implements IAgent {
     3. Next Steps - what we're about to do next to continue the user's original request.
     4. Tasks remaining - what tasks are left from the initial task breakdown.
 
-    Our initial task breakdown: ${this.taskBreakdown}
+    ${this.taskBreakdown ? `Our initial task breakdown: ${this.taskBreakdown}` : ""}
 
     This summary will replace the older history. The latest agent interaction will remain verbatim:
 
@@ -1729,20 +1736,22 @@ export abstract class BaseAgent implements IAgent {
 
     const response = await this.createAgentCompletion({
       messages: compressMessagesPayload,
+      tool_choice: "none",
     });
 
-    const summaries = response.choices.map((c) => c.message.content);
+    const summaries = response.choices
+      .map((c) => c.message.content)
+      .filter((s): s is string => typeof s === "string" && s.trim().length > 0);
     this.summaries.push(...summaries);
 
     const startMessages = [
       {
         role: "user",
         content: `
-        Initial task breakdown:
-        ${this.taskBreakdown}
+        ${this.taskBreakdown ? `Initial task breakdown:\n        ${this.taskBreakdown}` : "(No task breakdown available — summarize what you know from context above)"}
 
         We have just compressed the conversation to save memory:
-        ${JSON.stringify(summaries)}
+        ${summaries.length > 0 ? JSON.stringify(summaries) : "(summary unavailable — please continue from the task breakdown above)"}
 
         Please continue the task from where we left off
         `,

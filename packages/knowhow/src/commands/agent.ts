@@ -193,6 +193,7 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
 
         const { taskCompleted } = await agentModule.setupAgent({
           ...options,
+          agentName: options.agentName ?? config.chat?.defaultAgent ?? "Patcher",
           input,
           maxTimeLimit: parseInt(options.maxTimeLimit, 10),
           maxSpendLimit: parseFloat(options.maxSpendLimit),

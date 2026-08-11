@@ -45,6 +45,22 @@ export class TokenCompressor implements JsonCompressorStorage {
   // JSON compression handler
   private jsonCompressor: JsonCompressor;
 
+
+  /**
+   * Tool names whose responses should never be compressed.
+   * These are compression/retrieval tools themselves - compressing their output
+   * would prevent the agent from seeing the uncompressed data it just retrieved.
+   */
+  static DO_NOT_COMPRESS: ReadonlySet<string> = new Set([
+    "expandTokens",
+    "grepToolResponse",
+    "jqToolResponse",
+    "tailToolResponse",
+    "listStoredToolResponses",
+    "loadImageAsBase64" // need a proper way to do this
+  ]);
+
+
   constructor(toolsService?: ToolsService) {
     this.jsonCompressor = new JsonCompressor(
       this,
@@ -290,19 +306,6 @@ export class TokenCompressor implements JsonCompressorStorage {
     }
   }
 
-  /**
-   * Tool names whose responses should never be compressed.
-   * These are compression/retrieval tools themselves - compressing their output
-   * would prevent the agent from seeing the uncompressed data it just retrieved.
-   */
-  static readonly COMPRESSION_TOOL_NAMES: ReadonlySet<string> = new Set([
-    "expandTokens",
-    "grepToolResponse",
-    "jqToolResponse",
-    "tailToolResponse",
-    "listStoredToolResponses",
-  ]);
-
   createProcessor(
     filterFn?: (msg: Message) => boolean
   ): MessageProcessorFunction {
@@ -344,7 +347,7 @@ export class TokenCompressor implements JsonCompressorStorage {
         if (
           message.role === "tool" &&
           message.name &&
-          TokenCompressor.COMPRESSION_TOOL_NAMES.has(message.name)
+          TokenCompressor.DO_NOT_COMPRESS.has(message.name)
         ) {
           continue;
         }

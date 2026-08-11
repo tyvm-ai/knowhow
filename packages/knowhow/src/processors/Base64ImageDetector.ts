@@ -251,6 +251,24 @@ export class Base64ImageProcessor {
     }
   }
 
+  private isUsableImageUrl(url: unknown): url is string {
+    if (typeof url !== "string") return false;
+
+    // Data URLs are only usable when they contain an image format this processor
+    // recognizes. In particular, reject TokenCompressor placeholders that happen
+    // to be located inside an otherwise valid-looking image_url content part.
+    if (url.startsWith("data:")) {
+      return this.isBase64Image(url).isImage;
+    }
+
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+
   private processToolMessageContent(message: Message): void {
     // Tool messages have string content that might be a JSON string containing image data
     if (typeof message.content === "string" && message.content.trim()) {
@@ -267,13 +285,19 @@ export class Base64ImageProcessor {
         //  model to see a raw base64 JSON string instead of an actual image.)
         const candidates = Array.isArray(parsed) ? parsed : [parsed];
         const isImagePart = (p: any) =>
-          p && p.type === "image_url" && p.image_url?.url;
+          p &&
+          p.type === "image_url" &&
+          this.isUsableImageUrl(p.image_url?.url);
         const isTextPart = (p: any) =>
           p && p.type === "text" && typeof p.text === "string";
+        const hasInvalidImagePart = candidates.some(
+          (p: any) => p?.type === "image_url" && !isImagePart(p)
+        );
 
-        // Only rewrite the content if it actually contains at least one image
-        // part; otherwise leave the original tool text untouched.
-        if (candidates.some(isImagePart)) {
+        // Only rewrite content containing valid provider-ready images. If an
+        // image URL was compressed or is malformed, preserve the JSON as text so
+        // the agent can inspect/expand it instead of failing the next API call.
+        if (!hasInvalidImagePart && candidates.some(isImagePart)) {
           message.content = candidates.filter(
             (p) => isImagePart(p) || isTextPart(p)
           );

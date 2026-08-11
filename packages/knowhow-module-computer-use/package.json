@@ -9,12 +9,22 @@
     "test": "jest --testTimeout 300000",
     "prepublishOnly": "npm run compile"
   },
-  "keywords": ["knowhow", "computer-use", "automation", "mouse", "keyboard"],
+  "keywords": [
+    "knowhow",
+    "computer-use",
+    "automation",
+    "mouse",
+    "keyboard"
+  ],
   "author": "Tyvm AI",
   "license": "MIT",
-  "peerDependencies": { "@tyvm/knowhow": "*" },
+  "peerDependencies": {
+    "@tyvm/knowhow": "*"
+  },
   "dependencies": {
     "@tyvm/knowhow-computer-core": "*",
+    "@tyvm/knowhow-module-prolog": "*",
+    "@tyvm/knowhow-module-worldlines": "*",
     "sharp": "^0.33.0"
   },
   "devDependencies": {

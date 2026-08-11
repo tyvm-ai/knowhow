@@ -6,6 +6,8 @@
 
 use crate::types::OverlayPrimitive;
 use napi::{Error, Result, Status};
+use std::ffi::CString;
+use std::os::raw::c_char;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -22,6 +24,8 @@ struct NativeOverlayPrimitive {
     blue: f64,
     alpha: f64,
     line_width: f64,
+    text: *const c_char,
+    font_size: f64,
 }
 
 extern "C" {
@@ -81,14 +85,20 @@ fn dimension(name: &str, value: Option<f64>) -> Result<f64> {
 
 pub fn show(primitives: Vec<OverlayPrimitive>) -> Result<()> {
     let mut native = Vec::with_capacity(primitives.len());
+    let mut texts = Vec::with_capacity(primitives.len());
     for p in primitives {
         let kind = match p.kind.to_ascii_lowercase().as_str() {
             "rect" => 0,
             "circle" => 1,
             "line" => 2,
             "point" => 3,
+            "text" => 4,
             other => return Err(invalid(format!("Unknown overlay primitive: {other}"))),
         };
+        texts.push(
+            CString::new(p.text.as_deref().unwrap_or(""))
+                .map_err(|_| invalid("Overlay text cannot contain NUL characters"))?,
+        );
         let x = finite("x", p.x)?;
         let y = finite("y", p.y)?;
         let (width, height, x2, y2) = match kind {
@@ -110,7 +120,7 @@ pub fn show(primitives: Vec<OverlayPrimitive>) -> Result<()> {
                     p.y2.ok_or_else(|| invalid("Overlay y2 is required for lines"))?,
                 )?,
             ),
-            _ => (
+            3 => (
                 p.width
                     .map(|v| dimension("width", Some(v)))
                     .transpose()?
@@ -119,6 +129,7 @@ pub fn show(primitives: Vec<OverlayPrimitive>) -> Result<()> {
                 x,
                 y,
             ),
+            _ => (0.0, 0.0, x, y),
         };
         let (red, green, blue, alpha) = color(p.color.as_deref())?;
         native.push(NativeOverlayPrimitive {
@@ -134,6 +145,8 @@ pub fn show(primitives: Vec<OverlayPrimitive>) -> Result<()> {
             blue,
             alpha,
             line_width: finite("lineWidth", p.line_width.unwrap_or(3.0))?.clamp(1.0, 32.0),
+            text: texts.last().unwrap().as_ptr(),
+            font_size: finite("fontSize", p.font_size.unwrap_or(16.0))?.clamp(8.0, 96.0),
         });
     }
     unsafe { knowhow_overlay_show(native.as_ptr(), native.len()) };
