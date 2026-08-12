@@ -6,6 +6,7 @@ import { embed, upload, download, purge } from "../index";
 import { generate, buildWaves, normalizeInputPattern, GenerateOptions } from "../generate";
 import { init } from "../config";
 import { login } from "../login";
+import { registerIdentity } from "../auth/registerIdentity";
 import { KnowhowSimpleClient } from "../services/KnowhowClient";
 import { startChat } from "../chat";
 
@@ -24,8 +25,22 @@ export function addLoginCommand(program: Command): void {
     .description("Login to knowhow")
     .option("--jwt", "Use manual JWT input instead of browser login")
     .option("-i, --identity <path>", "Ed25519 private key to use for public-key login")
-    .action(async (options: { jwt?: boolean; identity?: string }) => {
-      await login(options.jwt, options.identity);
+    .option("--register-identity", "Register an Ed25519 identity using the JWT in .knowhow/.jwt")
+    .option("--api-url <url>", "API base URL override (falls back to KNOWHOW_API_URL env)")
+    .action(async (options: {
+      jwt?: boolean;
+      identity?: string;
+      registerIdentity?: boolean;
+      apiUrl?: string;
+    }) => {
+      if (options.registerIdentity) {
+        await registerIdentity({
+          identityPath: options.identity,
+          apiUrl: options.apiUrl,
+        });
+      } else {
+        await login(options.jwt, options.identity);
+      }
     });
 }
 

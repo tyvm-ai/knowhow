@@ -81,7 +81,7 @@ export async function authenticateWithKey(
   }
 }
 
-/** Register an Ed25519 CLI-auth key using the JWT obtained by browser PKCE. */
+/** Register an Ed25519 identity; the backend derives its scope from the source JWT. */
 export async function registerPublicKey(
   jwt: string,
   publicKeyBase64: string,
@@ -109,7 +109,13 @@ export async function registerPublicKey(
 
 export function storeJwt(jwt: string): void {
   const directory = path.dirname(JWT_FILE_PATH);
-  fs.mkdirSync(directory, { recursive: true });
-  fs.writeFileSync(JWT_FILE_PATH, jwt, { mode: 0o600 });
-  fs.chmodSync(JWT_FILE_PATH, 0o600);
+  const temporaryPath = `${JWT_FILE_PATH}.${process.pid}.tmp`;
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  try {
+    fs.writeFileSync(temporaryPath, jwt, { mode: 0o600, flag: "wx" });
+    fs.renameSync(temporaryPath, JWT_FILE_PATH);
+    fs.chmodSync(JWT_FILE_PATH, 0o600);
+  } finally {
+    fs.rmSync(temporaryPath, { force: true });
+  }
 }
