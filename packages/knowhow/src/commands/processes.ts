@@ -128,6 +128,19 @@ async function followFiles(files: string[], fromEnd = true): Promise<void> {
   });
 }
 
+function parseMaxAge(value: string): number {
+  const match = value.trim().match(/^(\d+(?:\.\d+)?)\s*([smhd]?)$/i);
+  if (!match) throw new Error(`Invalid max-age format: "${value}". Use e.g. 30m, 6h, 7d, 3600s.`);
+  const n = parseFloat(match[1]);
+  switch ((match[2] || "h").toLowerCase()) {
+    case "s": return n * 1000;
+    case "m": return n * 60 * 1000;
+    case "h": return n * 60 * 60 * 1000;
+    case "d": return n * 24 * 60 * 60 * 1000;
+    default: throw new Error(`Unknown unit in max-age: "${match[2]}"`);
+  }
+}
+
 export function addProcessesCommand(program: Command): void {
   const processes = addFilters(program.command("processes").description("inspect and control managed processes"));
   processes.action((rawOptions, command) => printList(commandOptions(rawOptions, command)));
@@ -200,4 +213,36 @@ export function addProcessesCommand(program: Command): void {
     });
     render(null, "");
   });
+
+  processes.command("cleanup")
+    .description("remove process directories older than max-age (default 24h)")
+    .option("--max-age <duration>", "max age before removal, e.g. 30m, 6h, 7d (default: 24h)", "24h")
+    .option("--dry-run", "show what would be removed without deleting")
+    .action(async (rawOptions) => {
+      const options = typeof rawOptions?.optsWithGlobals === "function" ? rawOptions.optsWithGlobals() : rawOptions;
+      const maxAgeMs = parseMaxAge(options.maxAge || "24h");
+      const processesDir = getProcessesDir();
+      if (!fs.existsSync(processesDir)) { console.log("No processes directory found."); return; }
+      const entries = fs.readdirSync(processesDir, { withFileTypes: true });
+      const now = Date.now();
+      let removed = 0;
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const dirPath = path.join(processesDir, entry.name);
+        const statusPath = path.join(dirPath, "status.json");
+        if (!fs.existsSync(statusPath)) continue;
+        const stats = fs.statSync(dirPath);
+        const age = now - stats.mtimeMs;
+        if (age > maxAgeMs) {
+          if (options.dryRun) {
+            console.log(`[dry-run] would remove: ${entry.name} (age: ${Math.round(age / 60000)}m)`);
+          } else {
+            console.log(`🧹 Removing: ${entry.name} (age: ${Math.round(age / 60000)}m)`);
+            fs.rmSync(dirPath, { recursive: true, force: true });
+          }
+          removed++;
+        }
+      }
+      console.log(`${options.dryRun ? "[dry-run] " : ""}${removed} process director${removed === 1 ? "y" : "ies"} ${options.dryRun ? "would be" : ""} removed.`);
+    });
 }

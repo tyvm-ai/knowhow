@@ -34,8 +34,9 @@ export function listManagedProcesses(processesDir = getProcessesDir()): ManagedP
     .sort((a, b) => b.status.startedAt.localeCompare(a.status.startedAt));
 }
 function makeId(command: string): string {
+  const ts = Date.now();
   const name = path.basename(command).replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 28) || "process";
-  return `${name}-${Date.now()}-${randomBytes(3).toString("hex")}`;
+  return `${ts}-${name}-${randomBytes(3).toString("hex")}`;
 }
 function waitForFile(file: string, timeoutMs: number): Promise<void> {
   const started = Date.now();

@@ -88,6 +88,47 @@ export class AgentSyncFs {
   }
 
   /**
+   * Clean up old managed-process directories (.knowhow/processes/<id>/) that
+   * were created by spawnManaged / execCommand.  These are identified by the
+   * presence of a status.json file inside the directory.  Only directories
+   * older than maxAgeMs are removed.
+   */
+  static async cleanupOldManagedProcessDirs(maxAgeMs: number): Promise<void> {
+    try {
+      const processesPath = path.dirname(AgentSyncFs.sharedBasePath);
+
+      try {
+        await fs.access(processesPath);
+      } catch {
+        return;
+      }
+
+      const entries = await fs.readdir(processesPath, { withFileTypes: true });
+      const now = Date.now();
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const dirPath = path.join(processesPath, entry.name);
+        const statusPath = path.join(dirPath, "status.json");
+
+        try {
+          await fs.access(statusPath);
+          const stats = await fs.stat(dirPath);
+          const age = now - stats.mtimeMs;
+          if (age > maxAgeMs) {
+            console.log(`🧹 Cleaning up old process directory: ${entry.name}`);
+            await fs.rm(dirPath, { recursive: true, force: true });
+          }
+        } catch {
+          // No status.json or can't stat — skip (e.g. the agents/ subdir)
+        }
+      }
+    } catch (error) {
+      console.error(`❌ Error during managed process dir cleanup:`, error);
+    }
+  }
+
+  /**
    * Update task status
    */
   private async writeStatus(status: string): Promise<void> {
@@ -617,6 +658,7 @@ export class AgentSyncFs {
 
       // Also clean up old execCommand background log files in .knowhow/processes/*.txt
       await AgentSyncFs.cleanupOldProcessLogs(threeDaysMs);
+      await AgentSyncFs.cleanupOldManagedProcessDirs(threeDaysMs);
     } catch (error) {
       console.error(`❌ Error during cleanup:`, error);
     }
