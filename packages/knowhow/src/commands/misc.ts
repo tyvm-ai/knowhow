@@ -7,6 +7,7 @@ import { generate, buildWaves, normalizeInputPattern, GenerateOptions } from "..
 import { init } from "../config";
 import { login } from "../login";
 import { registerIdentity } from "../auth/registerIdentity";
+import { ensureIdentityKeyPair } from "../auth/keyManager";
 import { KnowhowSimpleClient } from "../services/KnowhowClient";
 import { startChat } from "../chat";
 
@@ -26,21 +27,43 @@ export function addLoginCommand(program: Command): void {
     .option("--jwt", "Use manual JWT input instead of browser login")
     .option("-i, --identity <path>", "Ed25519 private key to use for public-key login")
     .option("--register-identity", "Register an Ed25519 identity using the JWT in .knowhow/.jwt")
+    .option("--key-gen", "Generate or validate the CLI Ed25519 identity keypair and exit")
     .option("--api-url <url>", "API base URL override (falls back to KNOWHOW_API_URL env)")
     .action(async (options: {
       jwt?: boolean;
       identity?: string;
       registerIdentity?: boolean;
+      keyGen?: boolean;
       apiUrl?: string;
     }) => {
+      if (options.keyGen) {
+        if (options.jwt || options.registerIdentity) {
+          throw new Error("--key-gen cannot be used with --jwt or --register-identity");
+        }
+
+        const { keyPair, created } = ensureIdentityKeyPair(options.identity);
+        if (created) {
+          console.log(`✅ Generated CLI identity keypair: ${keyPair.fingerprint}`);
+          console.log(`Private key: ${keyPair.privateKeyPath}`);
+          console.log(`Public key: ${keyPair.publicKeyPath}`);
+        } else {
+          console.log(`✅ CLI identity keypair already exists: ${keyPair.fingerprint}`);
+          console.log(`Private key: ${keyPair.privateKeyPath}`);
+          console.log(`Public key: ${keyPair.publicKeyPath}`);
+        }
+
+        return;
+      }
+
       if (options.registerIdentity) {
         await registerIdentity({
           identityPath: options.identity,
           apiUrl: options.apiUrl,
         });
-      } else {
-        await login(options.jwt, options.identity);
+        return;
       }
+
+      await login(options.jwt, options.identity);
     });
 }
 

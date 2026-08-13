@@ -28,7 +28,7 @@ export function decodeJwtPayload(jwt: string): Record<string, unknown> {
 
 export function extractOrgIdFromJwt(jwt: string): string {
   const payload = decodeJwtPayload(jwt);
-  const orgId = payload["org"] ?? payload["orgId"] ?? payload["org_id"] ?? payload["organizationId"];
+  const orgId = payload.org ?? payload.orgId ?? payload.org_id ?? payload.organizationId;
   if (typeof orgId !== "string" || !orgId) {
     throw new Error("JWT does not contain an organization claim (expected org, orgId, org_id, or organizationId)");
   }

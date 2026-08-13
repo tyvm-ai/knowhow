@@ -6,6 +6,13 @@ import path from "path";
 const ED25519_KEY_TYPE = "ssh-ed25519";
 const ED25519_RAW_KEY_LENGTH = 32;
 const ED25519_SPKI_PREFIX = Buffer.from("302a300506032b6570032100", "hex");
+const ED25519_PKCS8_PREFIX = Buffer.from("302e020100300506032b657004220420", "hex");
+
+interface OpenSshMetadata {
+  encrypted: boolean;
+  algorithm?: string;
+  seed?: Buffer;
+}
 
 export interface KeyPair {
   privateKeyPath: string;
@@ -90,6 +97,14 @@ export function getOrCreatePublicKey(privateKeyPath?: string): KeyPair {
     : generateKeyPair(privateKeyPath);
 }
 
+export function ensureIdentityKeyPair(privateKeyPath?: string): {
+  keyPair: KeyPair;
+  created: boolean;
+} {
+  if (keyPairExists(privateKeyPath)) return { keyPair: loadKeyPair(privateKeyPath), created: false };
+  return { keyPair: generateKeyPair(privateKeyPath), created: true };
+}
+
 export function signMessage(message: string, privateKeyPath?: string): string {
   const privatePath = privateKeyPath ?? getDefaultPrivateKeyPath();
   if (!fs.existsSync(privatePath)) throw new Error(`Private key not found at: ${privatePath}`);
@@ -98,14 +113,50 @@ export function signMessage(message: string, privateKeyPath?: string): string {
 
 function readEd25519PrivateKey(privatePath: string): crypto.KeyObject {
   let key: crypto.KeyObject;
+  const privateKeyContents = fs.readFileSync(privatePath, "utf8");
+  const openSshMetadata = parseOpenSshMetadata(privateKeyContents);
+
+  if (openSshMetadata?.encrypted) {
+    throw new Error(
+      `Identity at ${privatePath} is an encrypted OpenSSH key. Use an unencrypted Ed25519 key for CLI auth (example: ssh-keygen -t ed25519 -N '' -f ${privatePath})`
+    );
+  }
+
   try {
-    key = crypto.createPrivateKey(fs.readFileSync(privatePath));
+    key = crypto.createPrivateKey({ key: privateKeyContents, format: "pem" });
   } catch {
-    throw new Error(`Identity at ${privatePath} is not a supported PEM Ed25519 private key`);
+    if (openSshMetadata) {
+      if (openSshMetadata.algorithm && openSshMetadata.algorithm !== ED25519_KEY_TYPE) {
+        throw new Error(
+          `Identity at ${privatePath} must be an OpenSSH Ed25519 key (found ${openSshMetadata.algorithm})`
+        );
+      }
+
+      if (openSshMetadata.seed) {
+        key = createEd25519PrivateKeyFromSeed(openSshMetadata.seed, privatePath);
+      } else {
+        throw new Error(
+          `Identity at ${privatePath} must be a PKCS#8 Ed25519 private key or an unencrypted OpenSSH Ed25519 private key`
+        );
+      }
+      return key;
+    }
+
+    throw new Error(`Identity at ${privatePath} must be a PKCS#8 Ed25519 private key or an unencrypted OpenSSH Ed25519 private key`);
   }
+
+  const detectedAlgorithm = key.asymmetricKeyType === "ed25519" ? openSshMetadata?.algorithm ?? "ed25519" : key.asymmetricKeyType;
+
   if (key.asymmetricKeyType !== "ed25519") {
-    throw new Error(`Identity at ${privatePath} must be an Ed25519 private key`);
+    throw new Error(
+      `Identity at ${privatePath} must be an Ed25519 private key (found ${detectedAlgorithm ?? "unknown"})`
+    );
   }
+
+  if (openSshMetadata?.algorithm && openSshMetadata.algorithm !== ED25519_KEY_TYPE) {
+    throw new Error(`Identity at ${privatePath} must be an OpenSSH Ed25519 key (found ${openSshMetadata.algorithm})`);
+  }
+
   return key;
 }
 
@@ -163,4 +214,118 @@ function keyPairMetadata(privatePath: string, rawPublicKey: Buffer): KeyPair {
     publicKeyBase64: rawPublicKey.toString("base64"),
     fingerprint: `SHA256:${hash}`,
   };
+}
+
+function createEd25519PrivateKeyFromSeed(seed: Buffer, privatePath: string): crypto.KeyObject {
+  if (seed.length !== ED25519_RAW_KEY_LENGTH) {
+    throw new Error(`Identity at ${privatePath} has an invalid OpenSSH Ed25519 private key payload`);
+  }
+
+  try {
+    const der = Buffer.concat([ED25519_PKCS8_PREFIX, seed]);
+    return crypto.createPrivateKey({ key: der, format: "der", type: "pkcs8" });
+  } catch {
+    throw new Error(
+      `Identity at ${privatePath} must be a PKCS#8 Ed25519 private key or an unencrypted OpenSSH Ed25519 private key`
+    );
+  }
+}
+
+function parseOpenSshMetadata(privateKeyContents: string): OpenSshMetadata | undefined {
+  const trimmed = privateKeyContents.trim();
+  if (!trimmed.startsWith("-----BEGIN OPENSSH PRIVATE KEY-----")) {
+    return undefined;
+  }
+
+  const body = trimmed
+    .replace("-----BEGIN OPENSSH PRIVATE KEY-----", "")
+    .replace("-----END OPENSSH PRIVATE KEY-----", "")
+    .replace(/\s+/g, "");
+
+  let buffer: Buffer;
+  try {
+    buffer = Buffer.from(body, "base64");
+  } catch {
+    return undefined;
+  }
+
+  let offset = 0;
+
+  const magic = Buffer.from("openssh-key-v1\0", "utf8");
+  if (buffer.length < magic.length || !buffer.subarray(0, magic.length).equals(magic)) {
+    return undefined;
+  }
+  offset += magic.length;
+
+  const readString = (): string | undefined => {
+    if (offset + 4 > buffer.length) return undefined;
+    const length = buffer.readUInt32BE(offset);
+    offset += 4;
+    if (offset + length > buffer.length) return undefined;
+    const value = buffer.subarray(offset, offset + length).toString("utf8");
+    offset += length;
+    return value;
+  };
+
+  const readBuffer = (): Buffer | undefined => {
+    if (offset + 4 > buffer.length) return undefined;
+    const length = buffer.readUInt32BE(offset);
+    offset += 4;
+    if (offset + length > buffer.length) return undefined;
+    const value = buffer.subarray(offset, offset + length);
+    offset += length;
+    return value;
+  };
+
+  const ciphername = readString();
+  const kdfname = readString();
+  const kdfoptions = readBuffer();
+  if (!ciphername || !kdfname || !kdfoptions) {
+    return undefined;
+  }
+
+  if (offset + 4 > buffer.length) return { encrypted: ciphername !== "none" || kdfname !== "none" };
+  const keyCount = buffer.readUInt32BE(offset);
+  offset += 4;
+
+  for (let i = 0; i < keyCount; i++) {
+    const skippedPublic = readBuffer();
+    if (!skippedPublic) return { encrypted: ciphername !== "none" || kdfname !== "none" };
+  }
+
+  const privateBlock = readBuffer();
+  if (!privateBlock) return { encrypted: ciphername !== "none" || kdfname !== "none" };
+
+  let privateOffset = 0;
+  const readPrivateString = (): string | undefined => {
+    if (privateOffset + 4 > privateBlock.length) return undefined;
+    const length = privateBlock.readUInt32BE(privateOffset);
+    privateOffset += 4;
+    if (privateOffset + length > privateBlock.length) return undefined;
+    const value = privateBlock.subarray(privateOffset, privateOffset + length).toString("utf8");
+    privateOffset += length;
+    return value;
+  };
+
+  const readPrivateBuffer = (): Buffer | undefined => {
+    if (privateOffset + 4 > privateBlock.length) return undefined;
+    const length = privateBlock.readUInt32BE(privateOffset);
+    privateOffset += 4;
+    if (privateOffset + length > privateBlock.length) return undefined;
+    const value = privateBlock.subarray(privateOffset, privateOffset + length);
+    privateOffset += length;
+    return value;
+  };
+
+  privateOffset += 8; // checkints
+
+  const algorithm = readPrivateString();
+  let seed: Buffer | undefined;
+  if (algorithm === ED25519_KEY_TYPE) {
+    readPrivateBuffer(); // public key (32 bytes)
+    const privateConcat = readPrivateBuffer(); // private seed (32) + public key (32)
+    seed = privateConcat?.subarray(0, ED25519_RAW_KEY_LENGTH);
+  }
+
+  return { encrypted: ciphername !== "none" || kdfname !== "none", algorithm, seed };
 }
