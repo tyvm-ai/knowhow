@@ -87,8 +87,8 @@ export async function spawnManaged(command: string, args: string[] = [], options
   fs.mkdirSync(directory);
   const configPath = path.join(directory, "launch.json");
   fs.writeFileSync(configPath, JSON.stringify({ id, command, args, cwd, env: options.env || {}, background: options.background === true, parentProcessId: options.parentProcessId || null, parentPid: options.parentPid ?? process.pid, shell: options.shell === true, processesDir }, null, 2));
-  const cliPath = path.resolve(__dirname, "..", "cli.js");
-  const shim = spawn(process.execPath, [cliPath, "processes", "run", "--config", configPath], { cwd, detached: true, stdio: "ignore", env: process.env });
+  const shimPath = path.resolve(__dirname, "managedProcessShim.js");
+  const shim = spawn(process.execPath, [shimPath, configPath], { cwd, detached: true, stdio: "ignore", env: process.env });
   shim.unref();
   try { await waitForFile(path.join(directory, "status.json"), 5000); }
   catch (error) { try { fs.rmSync(directory, { recursive: true, force: true }); } catch {} throw error; }

@@ -1,7 +1,7 @@
 import { spawn, spawnSync, ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
-import { ManagedProcessStatus } from "./ProcessManager";
+import type { ManagedProcessStatus } from "./ProcessManager";
 
 interface LaunchConfig {
   id: string; command: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv;
@@ -124,4 +124,15 @@ export async function runManagedProcessShim(configPath: string): Promise<void> {
       fifoStream!.destroy();
     });
   }
+}
+
+// Managed processes invoke this module directly. Keeping this entry point here
+// avoids booting the full CLI (config, chat services, command modules, and
+// plugins) before every command can write its initial status.
+if (require.main === module) {
+  runManagedProcessShim(path.resolve(process.argv[2]))
+    .catch((error) => {
+      console.error(error);
+      process.exitCode = 1;
+    });
 }
