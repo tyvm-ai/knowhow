@@ -247,9 +247,9 @@ export class HttpClient implements GenericClient {
         max_tokens: options.max_tokens || 4000,
         ...this.extra_body,
 
-        ...(options.tools && {
+        ...(options.tools?.length && {
           tools: options.tools,
-          tool_choice: "auto",
+          tool_choice: options.tool_choice ?? "auto",
         }),
       };
 
@@ -297,9 +297,9 @@ export class HttpClient implements GenericClient {
       ...this.extra_body,
       stream: true,
       stream_options: { include_usage: true },
-      ...(options.tools && {
+      ...(options.tools?.length && {
         tools: options.tools,
-        tool_choice: "auto",
+        tool_choice: options.tool_choice ?? "auto",
       }),
     };
 
@@ -442,7 +442,10 @@ export class HttpClient implements GenericClient {
         input,
         ...(instructions && { instructions }),
         ...(options.max_tokens && { max_output_tokens: options.max_tokens }),
-        ...(tools?.length && { tools, tool_choice: "auto" }),
+        ...(tools?.length && {
+          tools,
+          tool_choice: options.tool_choice ?? "auto",
+        }),
         // Reasoning persistence: store server-side when requested, otherwise
         // ask the provider to return encrypted reasoning content so we can
         // thread the reasoning items back into the next request ourselves.

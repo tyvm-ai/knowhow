@@ -420,7 +420,7 @@ export class GenericGeminiClient implements GenericClient {
 
   /**
    * Builds the thinkingConfig for Gemini models that support it.
-   * - Gemini 3.x models use thinkingLevel: "minimal" | "low" | "medium" | "high"
+   * - Gemini 3.x models use thinkingLevel (supported levels vary by model)
    * - Gemini 2.5 models use thinkingBudget: number (0 = off, -1 = dynamic)
    *
    * Maps CompletionOptions.reasoning_effort to provider-specific values.
@@ -433,9 +433,11 @@ export class GenericGeminiClient implements GenericClient {
 
     // Gemini 3.x — use thinkingLevel
     if (GoogleThinkingLevelModels.includes(model)) {
+      // Gemini 3.7 Flash rejects "minimal"; low is its least intensive level.
+      const minimumLevel = model === Models.google.Gemini_37_Flash ? "low" : "minimal";
       const levelMap: Record<string, string> = {
-        none: "minimal",
-        minimal: "minimal",
+        none: minimumLevel,
+        minimal: minimumLevel,
         low: "low",
         medium: "medium",
         high: "high",
@@ -474,6 +476,7 @@ export class GenericGeminiClient implements GenericClient {
     const { systemInstruction, contents } = this.transformMessages(
       options.messages
     );
+    const tools = this.transformTools(options.tools);
 
     try {
       await wait(2000);
@@ -483,7 +486,16 @@ export class GenericGeminiClient implements GenericClient {
         config: {
           systemInstruction,
           thinkingConfig,
-          tools: this.transformTools(options.tools),
+          tools,
+          ...(tools.length && {
+            toolConfig: {
+              functionCallingConfig: {
+                mode: options.tool_choice === "none"
+                  ? FunctionCallingConfigMode.NONE
+                  : FunctionCallingConfigMode.AUTO,
+              },
+            },
+          }),
           maxOutputTokens: options.max_tokens,
         },
       });

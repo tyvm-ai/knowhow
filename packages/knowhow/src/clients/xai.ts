@@ -90,9 +90,9 @@ export class GenericXAIClient implements GenericClient {
         // grok-3-mini models support reasoning_effort: "low" | "medium" | "high"
         reasoning_effort: reasoningEffort,
       }),
-      ...(options.tools && {
+      ...(options.tools?.length && {
         tools: options.tools,
-        tool_choice: "auto",
+        tool_choice: options.tool_choice ?? "auto",
       }),
     });
 
@@ -238,7 +238,10 @@ export class GenericXAIClient implements GenericClient {
       ...(instructions && { instructions }),
       ...(options.max_tokens && { max_output_tokens: Math.max(options.max_tokens, 16_000) }),
       ...(reasoningEffort && { reasoning: { effort: reasoningEffort } }),
-      ...(tools?.length && { tools, tool_choice: "auto" }),
+      ...(tools?.length && {
+        tools,
+        tool_choice: options.tool_choice ?? "auto",
+      }),
       // Reasoning persistence (same construct as OpenAI's Responses API):
       //  - store === true  → xAI persists the response; next turn passes
       //    previous_response_id to continue the reasoning chain server-side.

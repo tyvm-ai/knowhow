@@ -472,7 +472,9 @@ export class GenericAnthropicClient implements GenericClient {
         ...(thinkingParam && { thinking: thinkingParam }),
         ...(effortOutputConfig && { output_config: effortOutputConfig }),
         ...(tools.length && {
-          tool_choice: { type: "auto" },
+          tool_choice: {
+            type: options.tool_choice ?? "auto",
+          },
           tools,
         }),
       }, { signal: options.signal });

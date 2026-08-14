@@ -235,9 +235,9 @@ export class GenericOpenAiClient implements GenericClient {
         max_completion_tokens: Math.max(options.max_tokens ?? 0, 16_000),
         reasoning_effort: this.resolveReasoningEffort(options),
       }),
-      ...(options.tools && {
+      ...(options.tools?.length && {
         tools: options.tools,
-        tool_choice: "auto",
+        tool_choice: options.tool_choice ?? "auto",
       }),
     }, { signal: options.signal });
 
@@ -296,7 +296,10 @@ export class GenericOpenAiClient implements GenericClient {
       max_tokens: options.max_tokens,
       stream: true,
       stream_options: { include_usage: true },
-      ...(options.tools && { tools: options.tools, tool_choice: "auto" }),
+      ...(options.tools?.length && {
+        tools: options.tools,
+        tool_choice: options.tool_choice ?? "auto",
+      }),
     }, { signal: options.signal });
 
     let usage: CompletionResponse['usage'] | undefined;
@@ -501,7 +504,7 @@ export class GenericOpenAiClient implements GenericClient {
       }),
       ...(tools?.length && {
         tools,
-        tool_choice: "auto",
+        tool_choice: options.tool_choice ?? "auto",
       }),
     } as any);
 
