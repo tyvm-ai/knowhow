@@ -123,7 +123,8 @@ export const ContextLimits: Record<string, number> = {
   [Models.anthropic.Sonnet4_0]: 200_000,
 
   // ─── Google ───────────────────────────────────────────────────────────────
-  // Gemini 3.6 / 3.5 (text)
+  // Gemini 3.7 / 3.6 / 3.5 (text)
+  [Models.google.Gemini_37_Flash]: 1_048_576,
   [Models.google.Gemini_36_Flash]: 1_000_000,
   [Models.google.Gemini_35_Flash]: 1_000_000,
   [Models.google.Gemini_35_Flash_Lite]: 1_000_000,
@@ -178,6 +179,7 @@ export const ContextLimits: Record<string, number> = {
   [Models.google.Gemini_15_Pro]: 2_000_000,
 
   // ─── xAI ──────────────────────────────────────────────────────────────────
+  [Models.xai.Grok4_6]: 500_000,
   [Models.xai.Grok4_1_Fast_Reasoning]: 2_000_000,
   [Models.xai.Grok4_1_Fast_NonReasoning]: 2_000_000,
   [Models.xai.Grok_4_20_Reasoning]: 131_072,

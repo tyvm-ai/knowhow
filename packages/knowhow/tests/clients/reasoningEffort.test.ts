@@ -10,6 +10,7 @@ import {
 import {
   GoogleThinkingBudgetModels,
   GoogleThinkingLevelModels,
+  Models,
 } from "../../src/types";
 import { GenericXAIClient } from "../../src/clients/xai";
 
@@ -46,13 +47,16 @@ describe("reasoning effort values", () => {
 
   it("maps all values to valid Gemini thinking levels and budgets", () => {
     const client = new GenericGeminiClient("fake-key");
-    const levelModel = GoogleThinkingLevelModels[0];
+    const levelModel = GoogleThinkingLevelModels.find(
+      (model) => model !== Models.google.Gemini_37_Flash
+    )!;
     const budgetModel = GoogleThinkingBudgetModels[0];
 
     expect(client.buildThinkingConfig(options(levelModel, "none"))).toEqual({ thinkingLevel: "minimal" });
     expect(client.buildThinkingConfig(options(levelModel, "minimal"))).toEqual({ thinkingLevel: "minimal" });
     expect(client.buildThinkingConfig(options(levelModel, "xhigh"))).toEqual({ thinkingLevel: "high" });
     expect(client.buildThinkingConfig(options(levelModel, "max"))).toEqual({ thinkingLevel: "high" });
+    expect(client.buildThinkingConfig(options(Models.google.Gemini_37_Flash, "minimal"))).toEqual({ thinkingLevel: "low" });
     expect(client.buildThinkingConfig(options(budgetModel, "none"))).toEqual({ thinkingBudget: 0 });
     expect(client.buildThinkingConfig(options(budgetModel, "minimal"))).toEqual({ thinkingBudget: 512 });
     expect(client.buildThinkingConfig(options(budgetModel, "medium"))).toEqual({ thinkingBudget: 8192 });
