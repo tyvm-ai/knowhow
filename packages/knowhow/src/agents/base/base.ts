@@ -1107,6 +1107,14 @@ export abstract class BaseAgent implements IAgent {
 
       // Typically, there's only one choice in the array, but you could have many
       // If you set `n` to more than 1, you will get multiple choices
+      // Collect all tool calls across all choices up front.
+      // This is used by detectTruncatedToolCalls so that the size heuristic
+      // compares the full completion_tokens against ALL argument content,
+      // rather than just the current choice's single tool call (Anthropic maps
+      // each parallel tool_use block to a separate choice).
+      const allResponseToolCalls = response.choices.flatMap(
+        (c) => c.message.tool_calls ?? []
+      );
       for (const choice of response.choices) {
         messages.push(choice.message);
 
@@ -1136,7 +1144,8 @@ export abstract class BaseAgent implements IAgent {
 
           const truncationWarning = this.detectTruncatedToolCalls(
             toolCalls,
-            response
+            response,
+            allResponseToolCalls
           );
           if (truncationWarning) {
             messages.push(truncationWarning as Message);
@@ -1589,11 +1598,14 @@ export abstract class BaseAgent implements IAgent {
    *   2. The model reported many output tokens but the total argument content received is tiny
    *      relative to what those tokens should represent (soft/silent truncation).
    *
+   * @param toolCalls - The tool calls from the CURRENT choice being checked.
+   * @param allToolCalls - ALL tool calls across ALL choices in the response (used for the size heuristic).
    * Returns a warning system message if truncation is detected, or null otherwise.
    */
   detectTruncatedToolCalls(
     toolCalls: ToolCall[],
-    response: CompletionResponse
+    response: CompletionResponse,
+    allToolCalls?: ToolCall[]
   ): { role: string; content: string } | null {
     // Subtract thinking/reasoning tokens — they're billed as output tokens but
     // don't produce visible argument content, so including them inflates the heuristic.
@@ -1602,7 +1614,13 @@ export abstract class BaseAgent implements IAgent {
       (response?.usage?.output_tokens_details?.thinking_tokens ?? 0) +
       (response?.usage?.output_tokens_details?.reasoning_tokens ?? 0);
     const outputTokens = Math.max(0, rawOutputTokens - thinkingTokens);
-    const totalArgLength = toolCalls.reduce(
+    // Use allToolCalls for the size heuristic so that parallel tool calls from
+    // Anthropic (each mapped to a separate choice) are counted together. Without
+    // this, a response with N parallel tool calls would compare the full
+    // completion_tokens count against only 1/N of the actual argument content,
+    // causing false-positive truncation warnings.
+    const callsForSizeCheck = allToolCalls ?? toolCalls;
+    const totalArgLength = callsForSizeCheck.reduce(
       (sum, tc) => sum + (tc.function?.arguments?.length || 0),
       0
     );
@@ -1688,9 +1706,13 @@ export abstract class BaseAgent implements IAgent {
       .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
       .join("\n\n");
 
-    this.taskBreakdown = breakdownContent || "";
+    if (!breakdownContent) {
+      throw new Error("Compaction task-breakdown request returned no text content");
+    }
+
+    this.taskBreakdown = breakdownContent;
     this.log(`task breakdown cost: ${response.usd_cost}`);
-    return this.taskBreakdown || undefined;
+    return this.taskBreakdown;
   }
 
   async compressMessages(messages: Message[]) {
@@ -1742,6 +1764,10 @@ export abstract class BaseAgent implements IAgent {
     const summaries = response.choices
       .map((c) => c.message.content)
       .filter((s): s is string => typeof s === "string" && s.trim().length > 0);
+    if (summaries.length === 0) {
+      throw new Error("Compaction summary request returned no text content");
+    }
+
     this.summaries.push(...summaries);
 
     const startMessages = [
