@@ -31,34 +31,37 @@ function getPluginNames(): string {
 }
 
 export const includedTools = [
-  {
-    type: "function",
-    function: {
-      name: "agentCall",
-      description:
-        "Run another registered agent in-process as a blocking call and get its final answer back as a string. Unlike a plain llm() call, the target agent can use tools, loop, and maintain its own context. Useful as a graph node that delegates to a specialized agent (e.g. Researcher, Patcher). For long-running / parallel / detached work prefer startAgentTask.",
-      parameters: {
-        type: "object",
-        positional: true,
-        properties: {
-          agentName: {
-            type: "string",
-            description:
-              "The name of the agent to call (e.g. Researcher, Developer, Patcher).",
-          },
-          query: {
-            type: "string",
-            description: "The query / task to send to the agent.",
-          },
-        },
-        required: ["agentName", "query"],
-      },
-      returns: {
-        type: "string",
-        description: "The agent's final answer text.",
-      },
-    },
-  },
+  /*
+   * This doesn't use messageProcessors etc, needs rewrite
+   *{
+   *  type: "function",
+   *  function: {
+   *    name: "agentCall",
+   *    description:
+   *      "Run another registered agent in-process as a blocking call and get its final answer back as a string. Unlike a plain llm() call, the target agent can use tools, loop, and maintain its own context. Useful as a graph node that delegates to a specialized agent (e.g. Researcher, Patcher). For long-running / parallel / detached work prefer startAgentTask.",
+   *    parameters: {
+   *      type: "object",
+   *      positional: true,
+   *      properties: {
+   *        agentName: {
+   *          type: "string",
+   *          description:
+   *            "The name of the agent to call (e.g. Researcher, Developer, Patcher).",
+   *        },
+   *        query: {
+   *          type: "string",
+   *          description: "The query / task to send to the agent.",
+   *        },
+   *      },
+   *      required: ["agentName", "query"],
+   *    },
+   *    returns: {
+   *      type: "string",
+   *      description: "The agent's final answer text.",
+   *    },
+   *  },
+   *},
+   */
   {
     type: "function",
     function: {
