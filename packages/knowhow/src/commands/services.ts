@@ -69,6 +69,29 @@ export async function setupServices() {
 
   Agents.setAgentContext(agentContext);
 
+  // Refresh authentication before MCP transports, model clients, or remote
+  // sync modules can read the project JWT file.
+  try {
+    const startupConfig = getConfigSync();
+    if (startupConfig.orgId && !process.env.KNOWHOW_JWT) {
+      const refreshed = await authenticateWithKey(
+        startupConfig.orgId,
+        process.env.KNOWHOW_API_URL || "https://api.knowhow.tyvm.ai",
+        startupConfig.cliIdentityPath
+      );
+      if (!refreshed) {
+        console.warn(
+          `⚠ Could not renew the Knowhow session: no available CLI identity is registered ` +
+          `for configured organization ${startupConfig.orgId}. Run \`knowhow login\` to select ` +
+          `an organization and register the global identity.`
+        );
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`⚠ Could not renew the Knowhow session before startup: ${message}`);
+  }
+
   console.log("🔌 Connecting to MCP...");
   try {
     await Mcp.connectToConfigured(Tools);
@@ -77,24 +100,6 @@ export async function setupServices() {
     console.warn(
       `⚠ Some MCP servers failed to connect (continuing without them): ${msg}`
     );
-  }
-  // Attempt silent JWT refresh via SSH identity before registering models.
-  // This handles the case where the JWT has expired but the user has a valid
-  // SSH identity registered — they shouldn't need to run `knowhow login` again
-  // unless they want to switch organizations.
-  try {
-    const startupConfig = getConfigSync();
-    if (startupConfig.orgId && !process.env.KNOWHOW_JWT) {
-      await authenticateWithKey(
-        startupConfig.orgId,
-        process.env.KNOWHOW_API_URL || "https://api.knowhow.tyvm.ai",
-        startupConfig.cliIdentityPath
-      );
-    }
-  } catch (_err) {
-    // Non-fatal: if SSH refresh fails (no key, revoked, network issue), we
-    // continue with the existing JWT (or no JWT). The user will see model
-    // warnings if no valid JWT is available.
   }
 
   console.log("Connecting to clients...");

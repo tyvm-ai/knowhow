@@ -1,12 +1,13 @@
 import http from "./utils/http";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { ask } from "./utils";
 import { getConfig, updateConfig } from "./config";
 import { KNOWHOW_API_URL } from "./services/KnowhowClient";
 import { BrowserLoginService } from "./auth/browserLogin";
 import { authenticateWithKey, hasKeyPair, registerPublicKey } from "./auth/keyAuth";
-import { getOrCreatePublicKey } from "./auth/keyManager";
+import { getDefaultPrivateKeyPath, getOrCreatePublicKey } from "./auth/keyManager";
 
 /**
  * Log in to Knowhow.
@@ -40,18 +41,19 @@ export async function login(jwtFlag?: boolean, identityPath?: string): Promise<v
     fs.chmodSync(jwtFile, 0o600);
     console.log("JWT updated successfully.");
   } else {
+    const selectedIdentityPath = identityPath ?? getDefaultPrivateKeyPath();
     const config = await getConfig();
     const orgId = config.orgId;
 
     // A local key is not proof of registration. Let the selected environment
     // check it, but only when an organization is available to bind the attempt.
-    if (orgId && hasKeyPair(identityPath)) {
+    if (orgId && hasKeyPair(selectedIdentityPath)) {
       console.log("Found CLI identity — authenticating with public key...");
       try {
-        const success = await authenticateWithKey(orgId, KNOWHOW_API_URL, identityPath);
+        const success = await authenticateWithKey(orgId, KNOWHOW_API_URL, selectedIdentityPath);
         if (success) {
           console.log("✅ Successfully authenticated via public key!");
-          return await postLoginConfigUpdate(identityPath);
+          return await postLoginConfigUpdate(selectedIdentityPath);
         }
         console.warn("Key authentication returned no JWT, falling back to browser login...");
       } catch (error: unknown) {
@@ -61,7 +63,8 @@ export async function login(jwtFlag?: boolean, identityPath?: string): Promise<v
     }
 
     // Fall back when no org/key is configured or when key auth is unavailable.
-    await doBrowserLogin(identityPath);
+    await doBrowserLogin(selectedIdentityPath);
+    identityPath = selectedIdentityPath;
   }
 
   await postLoginConfigUpdate(identityPath);
@@ -101,6 +104,15 @@ async function doBrowserLogin(identityPath?: string): Promise<void> {
   }
 }
 
+function isTemporaryIdentityPath(identityPath: string): boolean {
+  const resolvedIdentity = path.resolve(identityPath);
+  const temporaryRoots = new Set([os.tmpdir(), "/tmp", "/var/tmp"]);
+  return Array.from(temporaryRoots).some((temporaryRoot) => {
+    const relativePath = path.relative(path.resolve(temporaryRoot), resolvedIdentity);
+    return relativePath !== "" && !relativePath.startsWith("..") && !path.isAbsolute(relativePath);
+  });
+}
+
 /** After any successful login, update the local config with the current user/org. */
 async function postLoginConfigUpdate(identityPath?: string): Promise<void> {
   try {
@@ -129,8 +141,12 @@ async function postLoginConfigUpdate(identityPath?: string): Promise<void> {
       config.orgId = orgId;
     }
 
-    if (identityPath) {
+    if (identityPath && !isTemporaryIdentityPath(identityPath)) {
       config.cliIdentityPath = path.resolve(identityPath);
+    } else if (
+      config.cliIdentityPath && isTemporaryIdentityPath(config.cliIdentityPath)
+    ) {
+      delete config.cliIdentityPath;
     }
 
     await updateConfig(config);

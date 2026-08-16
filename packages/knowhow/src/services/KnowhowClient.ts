@@ -3,7 +3,7 @@ import { TraceAll } from "../util/Trace";
 import http, { HTTP_UNAUTHORIZED_HANDLER, RefreshableHeaders } from "../utils/http";
 import fs from "fs";
 import { getConfigSync } from "../config";
-import { exchangePublicKeyJwt, storeJwt } from "../auth/keyAuth";
+import { exchangeAvailablePublicKeyJwt, storeJwt } from "../auth/keyAuth";
 import { keyPairExists } from "../auth/keyManager";
 import { Message } from "../clients/types";
 import path from "path";
@@ -189,6 +189,7 @@ export class KnowhowSimpleClient {
   }
 
   private jwtExpiresSoon(): boolean {
+    if (!this.jwt) return true;
     try {
       const payload = JSON.parse(Buffer.from(this.jwt.split(".")[1], "base64url").toString("utf8"));
       return typeof payload.exp === "number" && payload.exp * 1000 - Date.now() < 5 * 60 * 1000;
@@ -205,11 +206,11 @@ export class KnowhowSimpleClient {
     this.refreshPromise = (async () => {
       const config = getConfigSync();
       const identityPath = config.cliIdentityPath;
-      if (!config.orgId || !keyPairExists(identityPath)) {
+      if (!config.orgId || (!keyPairExists(identityPath) && !keyPairExists())) {
         throw new Error("JWT expired and the CLI identity is unavailable. Please run `knowhow login` again.");
       }
       try {
-        const freshJwt = await exchangePublicKeyJwt(config.orgId, this.baseUrl, identityPath);
+        const freshJwt = await exchangeAvailablePublicKeyJwt(config.orgId, this.baseUrl, identityPath);
         storeJwt(freshJwt);
         this.setJwt(freshJwt);
         this.jwtValidated = true;
@@ -226,11 +227,11 @@ export class KnowhowSimpleClient {
   }
 
   async checkJwt() {
+    await this.renewJwt();
+
     if (!this.jwt) {
       throw new Error("No JWT found. Please login first.");
     }
-
-    await this.renewJwt();
 
     if (!this.jwtValidated) {
       try {

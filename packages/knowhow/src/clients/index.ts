@@ -28,8 +28,9 @@ import { GenericXAIClient } from "./xai";
 import { KnowhowGenericClient } from "./knowhow";
 import { HttpClient } from "./http";
 import { ModelProvider } from "../types";
-import { getConfig } from "../config";
+import { getConfig, getConfigSync } from "../config";
 import { loadKnowhowJwt, KNOWHOW_API_URL } from "../services/KnowhowClient";
+import { keyPairExists } from "../auth/keyManager";
 import { ContextLimits } from "./contextLimits";
 import { OpenAiTextPricing } from "./pricing/openai";
 import { AnthropicTextPricing } from "./pricing/anthropic";
@@ -108,9 +109,11 @@ const BUILT_IN_PROVIDER_REGISTRY: Record<string, ProviderRegistryEntry> = {
   qwen: { clientClass: GenericQwenClient },
   knowhow: {
     createClient: (entry: ModelProvider) => {
-      const jwt = loadKnowhowJwt();
-      if (!jwt) return null;
-      return new KnowhowGenericClient(KNOWHOW_API_URL, jwt);
+      if (!loadKnowhowJwt()) {
+        const config = getConfigSync();
+        if (!config.orgId || (!keyPairExists(config.cliIdentityPath) && !keyPairExists())) return null;
+      }
+      return new KnowhowGenericClient(KNOWHOW_API_URL);
     },
   },
 };

@@ -3,9 +3,13 @@ import os from "os";
 import path from "path";
 import http from "../utils/http";
 import { getCliUserAgent } from "./browserLogin";
-import { keyPairExists, loadKeyPair, signMessage } from "./keyManager";
+import {
+  getDefaultPrivateKeyPath,
+  keyPairExists,
+  loadKeyPair,
+  signMessage,
+} from "./keyManager";
 
-const JWT_FILE_PATH = path.join(process.cwd(), ".knowhow", ".jwt");
 const DEFAULT_API_URL = process.env.KNOWHOW_API_URL || "https://api.knowhow.tyvm.ai";
 
 /**
@@ -62,15 +66,42 @@ export async function exchangePublicKeyJwt(
   return response.data.jwt;
 }
 
+/**
+ * Try the configured identity first, then the default CLI identity. Project
+ * configs can outlive temporary/custom keys, while the globally registered
+ * default identity remains valid.
+ */
+export async function exchangeAvailablePublicKeyJwt(
+  orgId: string,
+  apiUrl: string = DEFAULT_API_URL,
+  preferredPrivateKeyPath?: string
+): Promise<string> {
+  const defaultPath = getDefaultPrivateKeyPath();
+  const candidates = Array.from(
+    new Set([preferredPrivateKeyPath, defaultPath].filter((value): value is string => Boolean(value)))
+  ).filter((candidate) => keyPairExists(candidate));
+  if (candidates.length === 0) throw new Error("CLI identity is unavailable");
+
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    try {
+      return await exchangePublicKeyJwt(orgId, apiUrl, candidate);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
 export async function authenticateWithKey(
   orgId: string,
   apiUrl: string = DEFAULT_API_URL,
   privateKeyPath?: string
 ): Promise<boolean> {
-  if (!keyPairExists(privateKeyPath)) return false;
+  if (!keyPairExists(privateKeyPath) && !keyPairExists()) return false;
 
   try {
-    storeJwt(await exchangePublicKeyJwt(orgId, apiUrl, privateKeyPath));
+    storeJwt(await exchangeAvailablePublicKeyJwt(orgId, apiUrl, privateKeyPath));
     return true;
   } catch (error: unknown) {
     // The identity is not registered for this environment/org (or was revoked).
@@ -108,13 +139,14 @@ export async function registerPublicKey(
 }
 
 export function storeJwt(jwt: string): void {
-  const directory = path.dirname(JWT_FILE_PATH);
-  const temporaryPath = `${JWT_FILE_PATH}.${process.pid}.tmp`;
+  const jwtFilePath = path.join(process.cwd(), ".knowhow", ".jwt");
+  const directory = path.dirname(jwtFilePath);
+  const temporaryPath = `${jwtFilePath}.${process.pid}.tmp`;
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   try {
     fs.writeFileSync(temporaryPath, jwt, { mode: 0o600, flag: "wx" });
-    fs.renameSync(temporaryPath, JWT_FILE_PATH);
-    fs.chmodSync(JWT_FILE_PATH, 0o600);
+    fs.renameSync(temporaryPath, jwtFilePath);
+    fs.chmodSync(jwtFilePath, 0o600);
   } finally {
     fs.rmSync(temporaryPath, { force: true });
   }

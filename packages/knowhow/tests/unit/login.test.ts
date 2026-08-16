@@ -26,7 +26,10 @@ jest.mock("../../src/auth/keyAuth", () => ({
   registerPublicKey,
 }));
 
-jest.mock("../../src/auth/keyManager", () => ({ getOrCreatePublicKey }));
+jest.mock("../../src/auth/keyManager", () => ({
+  getDefaultPrivateKeyPath: () => "/keys/default",
+  getOrCreatePublicKey,
+}));
 jest.mock("../../src/config", () => ({ getConfig, updateConfig }));
 jest.mock("../../src/utils", () => ({ ask: jest.fn() }));
 
@@ -85,6 +88,41 @@ describe("login public-key bootstrap", () => {
     );
     expect(updateConfig).toHaveBeenCalledWith(
       expect.objectContaining({ orgId: "org-1", modelProviders: [{ provider: "knowhow" }] })
+    );
+  });
+
+  it("does not persist a temporary identity path into project configuration", async () => {
+    const temporaryIdentity = path.join(os.tmpdir(), "knowhow-login-test-key");
+    getConfig.mockResolvedValue({
+      orgId: "org-1",
+      cliIdentityPath: "/tmp/knowhow-csrf-e2e-key",
+      modelProviders: [],
+    });
+    registerPublicKey.mockResolvedValueOnce(undefined);
+
+    await expect(login(false, temporaryIdentity)).resolves.toBeUndefined();
+
+    expect(getOrCreatePublicKey).toHaveBeenCalledWith(temporaryIdentity);
+    expect(updateConfig).toHaveBeenCalledTimes(1);
+    expect(updateConfig.mock.calls[0][0]).toEqual(
+      expect.not.objectContaining({
+        cliIdentityPath: expect.any(String),
+      })
+    );
+  });
+
+  it("persists the default identity selected during browser bootstrap", async () => {
+    registerPublicKey.mockResolvedValueOnce(undefined);
+
+    await expect(login(false)).resolves.toBeUndefined();
+
+    expect(getOrCreatePublicKey).toHaveBeenCalledWith("/keys/default");
+    expect(updateConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orgId: "org-1",
+        cliIdentityPath: "/keys/default",
+        modelProviders: [{ provider: "knowhow" }],
+      })
     );
   });
 
