@@ -495,12 +495,18 @@ export class GenericOpenAiClient implements GenericClient {
         include: ["reasoning.encrypted_content"],
       }),
       // Don't limit max_output_tokens for Responses API - codex truncates tool call arguments when limited
-      ...(OpenAiReasoningModels.includes(options.model) && !this.isReasoningDisabled(options) && {
-        max_output_tokens: Math.max(options.max_tokens || 0, 16000),
+      ...(OpenAiReasoningModels.includes(options.model) && {
         reasoning: {
-          effort: this.resolveReasoningEffortForModel(options),
-          ...(options.reasoning_summary && { summary: "auto" }),
+          ...(this.isReasoningDisabled(options)
+            ? { effort: "none" }
+            : {
+                effort: this.resolveReasoningEffortForModel(options),
+                ...(options.reasoning_summary && { summary: "auto" }),
+              }),
         },
+      }),
+      ...(wantsReasoning && {
+        max_output_tokens: Math.max(options.max_tokens || 0, 16000),
       }),
       ...(tools?.length && {
         tools,
@@ -580,6 +586,33 @@ export class GenericOpenAiClient implements GenericClient {
           },
         });
       }
+    }
+
+    // Tool-only responses are valid agent turns. Warn only when the response
+    // contains neither visible text nor any callable output, and include enough
+    // provider metadata to diagnose incomplete or reasoning-only responses.
+    if (!textContent?.trim() && toolCalls.length === 0) {
+      const outputShape = response.output.map((item: any) => ({
+        type: item.type,
+        contentTypes: Array.isArray(item.content)
+          ? item.content.map((part: any) => part?.type ?? typeof part)
+          : [],
+      }));
+      const reasoningSummaryCount = response.output
+        .filter((item: any) => item.type === "reasoning")
+        .reduce(
+          (count: number, item: any) =>
+            count + (Array.isArray(item.summary) ? item.summary.length : 0),
+          0
+        );
+      console.warn("[Responses API] Response contained no text or tool calls", {
+        responseId: (response as any).id,
+        status: (response as any).status,
+        incompleteDetails: (response as any).incomplete_details,
+        outputShape,
+        reasoningSummaryCount,
+        usage: response.usage,
+      });
     }
 
     return {

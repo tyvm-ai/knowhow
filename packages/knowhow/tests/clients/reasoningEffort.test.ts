@@ -45,6 +45,63 @@ describe("reasoning effort values", () => {
     expect(client.resolveReasoningEffortForModel(options("unknown", "max"))).toBe("xhigh");
   });
 
+  it("explicitly disables reasoning in Responses API requests", async () => {
+    const client = new GenericOpenAiClient("fake-key");
+    const create = jest.fn().mockResolvedValue({
+      id: "resp_disabled",
+      status: "completed",
+      output: [{ type: "message", content: [{ type: "output_text", text: "summary" }] }],
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+    (client.client as any).responses.create = create;
+
+    await client.createChatResponse({
+      model: Models.openai.GPT_56_Sol,
+      messages: [{ role: "user", content: "summarize" }],
+      reasoning_effort: "none",
+    });
+
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ reasoning: { effort: "none" } })
+    );
+  });
+
+  it("diagnoses empty Responses output but not valid tool-only output", async () => {
+    const client = new GenericOpenAiClient("fake-key");
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    const create = jest.fn()
+      .mockResolvedValueOnce({
+        id: "resp_empty",
+        status: "incomplete",
+        incomplete_details: { reason: "max_output_tokens" },
+        output: [{ type: "reasoning", summary: [] }],
+        usage: { input_tokens: 2, output_tokens: 3 },
+      })
+      .mockResolvedValueOnce({
+        id: "resp_tool",
+        status: "completed",
+        output: [{
+          type: "function_call", call_id: "call_1", name: "readFile", arguments: "{}",
+        }],
+        usage: { input_tokens: 2, output_tokens: 3 },
+      });
+    (client.client as any).responses.create = create;
+    const request = {
+      model: Models.openai.GPT_56_Sol,
+      messages: [{ role: "user" as const, content: "continue" }],
+    };
+
+    await client.createChatResponse(request);
+    expect(warn).toHaveBeenCalledWith(
+      "[Responses API] Response contained no text or tool calls",
+      expect.objectContaining({ responseId: "resp_empty", status: "incomplete" })
+    );
+    warn.mockClear();
+    await client.createChatResponse(request);
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
   it("maps all values to valid Gemini thinking levels and budgets", () => {
     const client = new GenericGeminiClient("fake-key");
     const levelModel = GoogleThinkingLevelModels.find(
