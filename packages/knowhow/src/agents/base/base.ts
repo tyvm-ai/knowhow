@@ -1660,6 +1660,20 @@ export abstract class BaseAgent implements IAgent {
     return null;
   }
 
+  extractContentFromMessages(messages: Message[]): string {
+    const content = messages
+      .filter((m) => typeof m.content === "string" && m.content.trim())
+      .map((m) => m.content);
+
+    const finalAnswer = messages
+      .filter((m) => m.tool_calls?.length)
+      .flatMap((t) => t.tool_calls)
+      .filter((t) => t.function.name === "finalAnswer")
+      .map((t) => t.function.arguments);
+
+    return [...content, ...finalAnswer].join("\n\n");
+  }
+
   async getTaskBreakdown(messages: Message[]) {
     if (this.taskBreakdown) {
       return this.taskBreakdown;
@@ -1686,28 +1700,21 @@ export abstract class BaseAgent implements IAgent {
     ] as Message[];
 
     const response = await this.createAgentCompletion({
-      model,
       messages: taskBreakdownMessages,
       tool_choice: "none",
-      long_ttl_cache: this.runTime() > 300_000,
-      ...(this.reasoningEffort !== undefined && {
-        reasoning_effort: this.reasoningEffort,
-      }),
-      ...(this.summarizeReasoning !== undefined && {
-        reasoning_summary: this.summarizeReasoning,
-      }),
     });
 
+    const breakdownContent = this.extractContentFromMessages(
+      response.choices?.map((c) => c.message)
+    );
     // The model may return null content (e.g. when it responds with tool calls
     // instead of text). Guard against storing a literal null so that template
     // strings don't render "null".
-    const breakdownContent = response.choices
-      .map((c) => c.message.content)
-      .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
-      .join("\n\n");
-
     if (!breakdownContent) {
-      throw new Error("Compaction task-breakdown request returned no text content");
+      console.log(JSON.stringify(response.choices, null, 2));
+      throw new Error(
+        "Compaction task-breakdown request returned no text content"
+      );
     }
 
     this.taskBreakdown = breakdownContent;
@@ -1720,10 +1727,7 @@ export abstract class BaseAgent implements IAgent {
     // at the final assistant message keeps its tool calls, every tool response,
     // and any subsequent user messages together as one protocol-valid unit.
     let resumeIndex = messages.length - 1;
-    while (
-      resumeIndex >= 0 &&
-      messages[resumeIndex].role !== "assistant"
-    ) {
+    while (resumeIndex >= 0 && messages[resumeIndex].role !== "assistant") {
       resumeIndex--;
     }
     const compressionEnd = resumeIndex === -1 ? messages.length : resumeIndex;
@@ -1742,7 +1746,11 @@ export abstract class BaseAgent implements IAgent {
     3. Next Steps - what we're about to do next to continue the user's original request.
     4. Tasks remaining - what tasks are left from the initial task breakdown.
 
-    ${this.taskBreakdown ? `Our initial task breakdown: ${this.taskBreakdown}` : ""}
+    ${
+      this.taskBreakdown
+        ? `Our initial task breakdown: ${this.taskBreakdown}`
+        : ""
+    }
 
     This summary will replace the older history. The latest agent interaction will remain verbatim:
 
@@ -1761,23 +1769,33 @@ export abstract class BaseAgent implements IAgent {
       tool_choice: "none",
     });
 
-    const summaries = response.choices
-      .map((c) => c.message.content)
-      .filter((s): s is string => typeof s === "string" && s.trim().length > 0);
-    if (summaries.length === 0) {
+    const summary = this.extractContentFromMessages(
+      response.choices?.map((c) => c.message)
+    );
+
+    if (summary.length === 0) {
+      console.log(JSON.stringify(response.choices, null, 2));
       throw new Error("Compaction summary request returned no text content");
     }
 
-    this.summaries.push(...summaries);
+    this.summaries.push(summary);
 
     const startMessages = [
       {
         role: "user",
         content: `
-        ${this.taskBreakdown ? `Initial task breakdown:\n        ${this.taskBreakdown}` : "(No task breakdown available — summarize what you know from context above)"}
+        ${
+          this.taskBreakdown
+            ? `Initial task breakdown:\n        ${this.taskBreakdown}`
+            : "(No task breakdown available — summarize what you know from context above)"
+        }
 
         We have just compressed the conversation to save memory:
-        ${summaries.length > 0 ? JSON.stringify(summaries) : "(summary unavailable — please continue from the task breakdown above)"}
+        ${
+          summary.length > 0
+            ? JSON.stringify(summary)
+            : "(summary unavailable — please continue from the task breakdown above)"
+        }
 
         Please continue the task from where we left off
         `,

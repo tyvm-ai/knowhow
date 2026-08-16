@@ -67,6 +67,9 @@ export class AgentModule extends BaseChatModule {
   /** Whether to request a reasoning summary from supporting models */
   private summarizeReasoning: boolean = true;
 
+  /** Delayed finalAnswer output, cancelled when the task's done event arrives. */
+  private pendingFinalAnswers = new Map<string, ReturnType<typeof setTimeout>>();
+
   /** Stored wire params for rewireAgentRendering */
   private _wireAgentEvents: EventService | undefined;
   private _wireTaskId: string | undefined;
@@ -514,6 +517,28 @@ export class AgentModule extends BaseChatModule {
     this.activeAgentTaskId = id;
   }
 
+  private scheduleFinalAnswer(taskId: string, answer: unknown): void {
+    this.cancelFinalAnswer(taskId);
+    const renderedAnswer = typeof answer === "string"
+      ? answer
+      : JSON.stringify(answer) ?? String(answer);
+    const timeout = setTimeout(() => {
+      this.pendingFinalAnswers.delete(taskId);
+      console.log(Marked.parse(renderedAnswer));
+    }, 50);
+    this.pendingFinalAnswers.set(taskId, timeout);
+  }
+
+  private cancelFinalAnswer(taskId: string): void {
+    const timeout = this.pendingFinalAnswers.get(taskId);
+    if (!timeout) {
+      return;
+    }
+
+    clearTimeout(timeout);
+    this.pendingFinalAnswers.delete(taskId);
+  }
+
   /**
    * Wire up agentEvents to the renderer for a given task.
    * Uses setListener with stable keys so re-calling automatically replaces old listeners.
@@ -549,16 +574,27 @@ export class AgentModule extends BaseChatModule {
     if (eventTypes.toolUsed) {
       agentEvents.setListener(
         { key: "agentModule:render:toolUsed", event: eventTypes.toolUsed },
-        (data: any) =>
+        (data: any) => {
           this.renderer.render({
             type: "toolResult",
             taskId,
             agentName,
             toolCall: data.toolCall,
             result: data.functionResp,
-          })
+          });
+          // Give the done event a chance to render the same answer first. If the
+          // agent continues, the tool result becomes the fallback output.
+          const toolName: string = data.toolCall?.function?.name ?? "";
+          if (toolName === "finalAnswer" || toolName.endsWith("finalAnswer")) {
+            this.scheduleFinalAnswer(taskId, data.functionResp);
+          }
+        }
       );
     }
+    agentEvents.setListener(
+      { key: "agentModule:render:done", event: eventTypes.done },
+      () => this.cancelFinalAnswer(taskId)
+    );
     if (eventTypes.agentSay) {
       agentEvents.setListener(
         { key: "agentModule:render:agentSay", event: eventTypes.agentSay },
@@ -589,6 +625,9 @@ export class AgentModule extends BaseChatModule {
    * Clears the active task on the renderer.
    */
   public unwireAgentRendering(): void {
+    if (this._wireTaskId) {
+      this.cancelFinalAnswer(this._wireTaskId);
+    }
     if (this._wireAgentEvents) {
       this._wireAgentEvents.removeManagedListenersByPrefix(
         "agentModule:render:"
@@ -681,8 +720,14 @@ export class AgentModule extends BaseChatModule {
         console.error(`Session ${sessionId} not found.`);
         return;
       }
+      // Session files from older runs may not contain model/provider settings.
+      // Prefer task metadata, which is updated from the live agent on every
+      // thread update and is therefore the authoritative resume configuration.
+      const savedSettings = await this.loadTaskSettings(
+        session.taskId || sessionId
+      );
       console.log(`\n🔄 Resuming session: ${sessionId}`);
-      console.log(`Agent: ${session.agentName}`);
+      console.log(`Agent: ${savedSettings.agentName || session.agentName}`);
       console.log(`Original task: ${session.initialInput}`);
       console.log(`Status: ${session.status}`);
 
@@ -726,7 +771,8 @@ export class AgentModule extends BaseChatModule {
 
       console.log("🚀 Session resuming...");
       const context = this.chatService?.getContext();
-      const agentName = session.agentName || context.currentAgent;
+      const agentName =
+        savedSettings.agentName || session.agentName || context.currentAgent;
       const previousAgentMode = context?.agentMode;
 
       if (!agentName) {
@@ -738,7 +784,9 @@ export class AgentModule extends BaseChatModule {
       // not reject config-defined agents here before it gets that opportunity.
 
       // Start agent with Knowhow task context and restored message history
-      const remoteTaskId = asRemoteTaskId(session.knowhowTaskId);
+      const remoteTaskId = asRemoteTaskId(
+        savedSettings.remoteTaskId || session.knowhowTaskId
+      );
       const { agent, taskId } = await this.setupAgent({
         agentName,
         input: resumePrompt,
@@ -751,12 +799,12 @@ export class AgentModule extends BaseChatModule {
         taskId: session.taskId || sessionId,
         chatHistory: [],
         run: false, // Don't run yet, we need to set up event listeners first
-        // Restore the exact model/provider/reasoning the original run used.
-        model: session.model,
-        provider: session.provider,
-        reasoningEffort: session.reasoningEffort,
-        summarizeReasoning: session.summarizeReasoning,
-        enabledTools: session.enabledTools,
+        // Prefer authoritative task metadata over potentially incomplete sessions.
+        model: savedSettings.model || session.model,
+        provider: savedSettings.provider || session.provider,
+        reasoningEffort: savedSettings.reasoningEffort ?? session.reasoningEffort,
+        summarizeReasoning: savedSettings.summarizeReasoning ?? session.summarizeReasoning,
+        enabledTools: savedSettings.enabledTools || session.enabledTools,
       });
 
       // Match new interactive threads: local-only sessions get a fresh remote
@@ -871,6 +919,34 @@ export class AgentModule extends BaseChatModule {
       agent.restoreEnabledTools(options.enabledTools);
     }
 
+    // Restore persisted configuration before registering or saving this task.
+    // Otherwise the newly constructed agent's defaults can overwrite the
+    // original run settings during resume setup.
+    if (options.model) {
+      console.log("Setting model:", options.model);
+      agent.setModel(options.model);
+      agent.setModelPreferences([
+        { model: options.model, provider: options.provider as any },
+      ]);
+    }
+
+    if (options.provider) {
+      agent.setProvider(options.provider as any);
+    }
+
+    const effectiveReasoningEffort =
+      options.reasoningEffort !== undefined
+        ? options.reasoningEffort
+        : this.reasoningEffort;
+    if (effectiveReasoningEffort !== undefined) {
+      agent.setReasoningEffort(effectiveReasoningEffort);
+    }
+    agent.setSummarizeReasoning(
+      options.summarizeReasoning !== undefined
+        ? options.summarizeReasoning
+        : this.summarizeReasoning
+    );
+
     let done = false;
     let output = "Done";
     const taskId = options.taskId || this.sessionManager.generateTaskId(input);
@@ -907,6 +983,10 @@ export class AgentModule extends BaseChatModule {
         startTime: Date.now(),
         totalCost: 0,
         enabledTools: agent.getEnabledToolNames(),
+        model: agent.getModel(),
+        provider: agent.getProvider(),
+        reasoningEffort: agent.getReasoningEffort?.(),
+        summarizeReasoning: agent.getSummarizeReasoning?.(),
       };
 
       // Add to task registry
@@ -966,37 +1046,6 @@ export class AgentModule extends BaseChatModule {
       if (options.parentTaskId) {
         agent.setParentTaskId(options.parentTaskId);
       }
-
-      if (options.model) {
-        console.log("Setting model:", options.model);
-        agent.setModel(options.model);
-        agent.setModelPreferences([
-          { model: options.model, provider: options.provider as any },
-        ]);
-      }
-
-      // Restore the provider explicitly (e.g. on resume) so the agent talks to
-      // the same client the original run used, not the model's default provider.
-      if (options.provider) {
-        agent.setProvider(options.provider as any);
-      }
-
-      // Apply reasoning settings to the agent. Explicit per-task settings
-      // (e.g. restored from a resumed task's metadata) take precedence over
-      // the module-level CLI defaults so a /resume keeps the same reasoning
-      // effort the original run used.
-      const effectiveReasoningEffort =
-        options.reasoningEffort !== undefined
-          ? options.reasoningEffort
-          : this.reasoningEffort;
-      if (effectiveReasoningEffort !== undefined) {
-        agent.setReasoningEffort(effectiveReasoningEffort);
-      }
-      agent.setSummarizeReasoning(
-        options.summarizeReasoning !== undefined
-          ? options.summarizeReasoning
-          : this.summarizeReasoning
-      );
 
       // Set up message processors like in original startAgent
 
@@ -1097,6 +1146,12 @@ export class AgentModule extends BaseChatModule {
           toolCall: data.toolCall,
           result: data.functionResp,
         });
+        // Give the done event a chance to render the same answer first. If the
+        // agent continues, the tool result becomes the fallback output.
+        const toolName: string = data.toolCall?.function?.name ?? "";
+        if (toolName === "finalAnswer" || toolName.endsWith("finalAnswer")) {
+          this.scheduleFinalAnswer(taskId, data.functionResp);
+        }
       };
       const agentSayHandler = (data: any) => {
         this.renderer.render({
@@ -1130,6 +1185,7 @@ export class AgentModule extends BaseChatModule {
       const taskCompleted = new Promise<string>((resolve) => {
         agent.agentEvents.once(agent.eventTypes.done, async (doneMsg) => {
           console.log("🎯 [AgentModule] Task Completed");
+          this.cancelFinalAnswer(taskId);
           done = true;
           output = doneMsg || "No response from the AI";
           // Remove threadUpdate listener to prevent cost sharing across tasks
