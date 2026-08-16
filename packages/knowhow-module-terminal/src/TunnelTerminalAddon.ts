@@ -31,13 +31,12 @@ try {
 interface PtySession {
   pty: pty.IPty;
   terminalId: string;
-  activeStreamId: string;
   command: string;
   createdAt: Date;
   cols: number;
   rows: number;
   output: Buffer;
-  ctx: TunnelAddonContext | null;
+  attachments: Map<string, TunnelAddonContext>;
 }
 
 // Sessions deliberately live at module scope rather than on an addon instance.
@@ -82,7 +81,9 @@ export class TunnelTerminalAddon implements TunnelAddon {
   onDisconnect(): void {
     // A transport disconnect is only a detach. PTYs intentionally keep running.
     for (const session of sessions.values()) {
-      if (session.ctx === this.context) session.ctx = null;
+      for (const [streamId, ctx] of session.attachments) {
+        if (ctx === this.context) session.attachments.delete(streamId);
+      }
     }
     this.context = null;
   }
@@ -100,7 +101,7 @@ export class TunnelTerminalAddon implements TunnelAddon {
         this.handleResize(message as TunnelPtyResize);
         break;
       case TunnelMessageType.PTY_CLOSE:
-        this.handleClose(message as TunnelPtyClose, ctx);
+        this.handleClose(message as TunnelPtyClose);
         break;
       case TunnelMessageType.PTY_LIST:
         this.handleList(message as TunnelPtyList, ctx);
@@ -174,9 +175,13 @@ export class TunnelTerminalAddon implements TunnelAddon {
     }
 
     const session: PtySession = {
-      pty: shell, terminalId, activeStreamId: streamId,
+      pty: shell,
+      terminalId,
       command: [command, ...args].join(" "), createdAt: new Date(),
-      cols, rows, output: Buffer.alloc(0), ctx,
+      cols,
+      rows,
+      output: Buffer.alloc(0),
+      attachments: new Map([[streamId, ctx]]),
     };
     sessions.set(terminalId, session);
     ctx.send({
@@ -186,17 +191,17 @@ export class TunnelTerminalAddon implements TunnelAddon {
       existing: false,
     });
 
-    // Forward PTY output back through the tunnel
+    // Forward each PTY output chunk to every browser attached to this session.
     shell.onData((data: string) => {
       const chunk = Buffer.from(data);
       session.output = Buffer.concat([session.output, chunk]);
       if (session.output.length > MAX_REPLAY_BYTES) {
         session.output = session.output.subarray(session.output.length - MAX_REPLAY_BYTES);
       }
-      if (session.ctx) {
-        session.ctx.send({
+      for (const [attachedStreamId, attachedCtx] of session.attachments) {
+        attachedCtx.send({
           type: TunnelMessageType.PTY_DATA,
-          streamId: session.activeStreamId,
+          streamId: attachedStreamId,
           data: chunk.toString("base64"),
         });
       }
@@ -206,22 +211,21 @@ export class TunnelTerminalAddon implements TunnelAddon {
       console.log(`[terminal] PTY exited terminalId=${terminalId} code=${exitCode}`);
       markTerminated(terminalId, exitCode);
       sessions.delete(terminalId);
-      if (session.ctx) {
-        session.ctx.send({
+      for (const [attachedStreamId, attachedCtx] of session.attachments) {
+        attachedCtx.send({
           type: TunnelMessageType.PTY_EXIT,
-          streamId: session.activeStreamId,
+          streamId: attachedStreamId,
           exitCode,
         });
       }
+      session.attachments.clear();
     });
   }
 
   private handleDetach(msg: TunnelPtyDetach): void {
     const session = this.findByStream(msg.streamId);
     if (!session) return;
-    // Only the currently attached stream may detach this session. An old browser
-    // closing after a newer one attached must not detach the replacement.
-    session.ctx = null;
+    session.attachments.delete(msg.streamId);
   }
 
   private handleInput(msg: TunnelPtyData): void {
@@ -239,37 +243,43 @@ export class TunnelTerminalAddon implements TunnelAddon {
     session.pty.resize(msg.cols, msg.rows);
   }
 
-  private handleClose(msg: TunnelPtyClose, ctx: TunnelAddonContext): void {
+  private handleClose(msg: TunnelPtyClose): void {
     const session = msg.terminalId
       ? sessions.get(msg.terminalId)
       : this.findByStream(msg.streamId);
     if (!session) return;
+
+    markTerminated(session.terminalId, 0);
+    sessions.delete(session.terminalId);
+    for (const [attachedStreamId, attachedCtx] of session.attachments) {
+      attachedCtx.send({
+        type: TunnelMessageType.PTY_EXIT,
+        streamId: attachedStreamId,
+        exitCode: 0,
+      });
+    }
+    session.attachments.clear();
+
     try {
       session.pty.kill();
     } catch {
       // ignore
     }
-    markTerminated(session.terminalId, 0);
-    sessions.delete(session.terminalId);
-    ctx.send({
-      type: TunnelMessageType.PTY_EXIT,
-      streamId: msg.streamId,
-      exitCode: 0,
-    });
   }
 
   private attach(session: PtySession, streamId: string, ctx: TunnelAddonContext, cols: number, rows: number): void {
-    session.activeStreamId = streamId;
-    session.ctx = ctx;
+    session.attachments.set(streamId, ctx);
     session.cols = cols;
     session.rows = rows;
     session.pty.resize(cols, rows);
+
     ctx.send({
       type: TunnelMessageType.PTY_ATTACHED,
       streamId,
       terminalId: session.terminalId,
       existing: true,
     });
+
     if (session.output.length) {
       ctx.send({
         type: TunnelMessageType.PTY_DATA,
@@ -297,7 +307,7 @@ export class TunnelTerminalAddon implements TunnelAddon {
 
   private findByStream(streamId: string): PtySession | undefined {
     for (const session of sessions.values()) {
-      if (session.activeStreamId === streamId) return session;
+      if (session.attachments.has(streamId)) return session;
     }
     return undefined;
   }
