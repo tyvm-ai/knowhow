@@ -20,6 +20,7 @@ import {
   stopObservingDefinition,
 } from "./observe";
 import { skillsToolDefinitions } from "./skills";
+import { loadImageAsBase64Definition } from "./loadImageAsBase64";
 
 function getPluginNames(): string {
   try {
@@ -720,6 +721,7 @@ export const includedTools = [
       },
     },
   },
+  loadImageAsBase64Definition,
   googleSearchDefinition,
   startAgentTaskDefinition,
   replyToParentDefinition,

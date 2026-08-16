@@ -220,6 +220,38 @@ describe("Base64ImageDetector", () => {
       expect(content[0].image_url.url).toBe(imageDataUrl);
     });
 
+    it("should process an image result that is not the newest parallel tool result", () => {
+      const imageDataUrl =
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+      const modifiedMessages: Message[] = [
+        {
+          role: "tool",
+          content: JSON.stringify({
+            type: "image_url",
+            image_url: { url: imageDataUrl, detail: "high" },
+          }),
+          tool_call_id: "call_image",
+        },
+        {
+          role: "tool",
+          content: "A later readFile result",
+          tool_call_id: "call_file",
+        },
+        {
+          role: "user",
+          content: "A pending workflow update",
+        },
+      ];
+
+      detector.createProcessor()([], modifiedMessages);
+
+      expect(Array.isArray(modifiedMessages[0].content)).toBe(true);
+      expect((modifiedMessages[0].content as any[])[0]).toEqual({
+        type: "image_url",
+        image_url: { url: imageDataUrl, detail: "high" },
+      });
+    });
+
     it("should not promote a compressed image URL placeholder to image content", () => {
       const toolResponseJson = JSON.stringify({
         type: "image_url",

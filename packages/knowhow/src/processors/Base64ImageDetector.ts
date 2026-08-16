@@ -316,25 +316,26 @@ export class Base64ImageProcessor {
 
   createProcessor(): MessageProcessorFunction {
     return (originalMessages: Message[], modifiedMessages: Message[]) => {
-      // Only process the last (newest) message for hint injection.
-      // Processing all historical messages on every call would re-append hints
-      // to already-processed messages, causing the hint to multiply and busting
-      // Anthropic's prefix cache (which requires byte-identical prior messages).
       const lastIndex = modifiedMessages.length - 1;
       if (lastIndex < 0) return;
 
       const lastMessage = modifiedMessages[lastIndex];
 
-      // Process user messages (images from user input)
-      if (lastMessage.role === "user") {
-        this.processMessageContent(lastMessage);
+      // Every request starts with a fresh clone of the persisted thread. Normalize
+      // all images: parallel calls can place another tool result after an image,
+      // while historical image results remain persisted as JSON strings.
+      for (const message of modifiedMessages) {
+        if (message.role === "user") {
+          this.processMessageContent(message);
+        }
+        if (message.role === "tool") {
+          this.processToolMessageContent(message);
+        }
       }
 
-      // Process tool messages (images from loadImageAsBase64 tool)
-      // Tool responses come back as JSON strings that need to be parsed
-      // and converted to proper image content before the agent sees them
+      // Add path hints only to the newest message. Re-appending hints to history
+      // would multiply them and invalidate the provider's prompt cache.
       if (lastMessage.role === "tool") {
-        this.processToolMessageContent(lastMessage);
         // After processing tool content (which may not convert to image if it's plain text
         // describing a screenshot path), add hints for any image file paths found in the text.
         this.applyImagePathHintsToMessage(lastMessage);
