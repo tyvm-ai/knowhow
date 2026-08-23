@@ -69,6 +69,7 @@ export {
   XaiImagePricing,
   XaiVideoPricing,
 };
+export * from "./responseMetadata";
 export type {
   ModelPricing,
   ModelType,
@@ -111,7 +112,11 @@ const BUILT_IN_PROVIDER_REGISTRY: Record<string, ProviderRegistryEntry> = {
     createClient: (entry: ModelProvider) => {
       if (!loadKnowhowJwt()) {
         const config = getConfigSync();
-        if (!config.orgId || (!keyPairExists(config.cliIdentityPath) && !keyPairExists())) return null;
+        if (
+          !config.orgId ||
+          (!keyPairExists(config.cliIdentityPath) && !keyPairExists())
+        )
+          return null;
       }
       return new KnowhowGenericClient(KNOWHOW_API_URL);
     },
@@ -320,9 +325,10 @@ export class AIClient {
         if (entry.provider === "knowhow") {
           if (process.env.KNOWHOW_CLI) {
             const warnNeeds = (process.env.KNOWHOW_WARN_NEEDS ?? "").split(",");
-            if (warnNeeds.includes("models")) console.warn(
-              `⚠️  Knowhow provider is not logged in. Run 'knowhow login' to enable Knowhow models.`
-            );
+            if (warnNeeds.includes("models"))
+              console.warn(
+                `⚠️  Knowhow provider is not logged in. Run 'knowhow login' to enable Knowhow models.`
+              );
           }
         }
         continue;
@@ -417,7 +423,9 @@ export class AIClient {
       // Model not in local registry — pass it through anyway so the provider
       // API can accept or reject it directly (e.g. newly-released models that
       // haven't been fetched into our local model list yet).
-      console.warn(`⚠️  Model '${model}' not in local registry for provider '${provider}', attempting anyway.`);
+      console.warn(
+        `⚠️  Model '${model}' not in local registry for provider '${provider}', attempting anyway.`
+      );
     }
 
     return { client: this.clients[provider], provider, model };
@@ -914,7 +922,9 @@ export class AIClient {
    * For HttpClient-based providers with getPricing(), only priced models are kept.
    * For other providers (no getPricing()), all models pass through unchanged.
    */
-  private _filterByPricing(models: Record<string, string[]>): Record<string, string[]> {
+  private _filterByPricing(
+    models: Record<string, string[]>
+  ): Record<string, string[]> {
     const result: Record<string, string[]> = {};
     for (const [provider, ids] of Object.entries(models)) {
       const client = this.clients[provider];
@@ -1009,7 +1019,9 @@ export class AIClient {
   }
 
   listAllModelsWithProvider(options?: { pricing?: boolean }) {
-    const models = options?.pricing ? this._filterByPricing(this.clientModels) : this.clientModels;
+    const models = options?.pricing
+      ? this._filterByPricing(this.clientModels)
+      : this.clientModels;
     return Object.entries(models)
       .map(([provider, ids]) => ids.map((m) => ({ id: `${provider}/${m}` })))
       .flat();

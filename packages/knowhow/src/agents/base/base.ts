@@ -1680,7 +1680,7 @@ export abstract class BaseAgent implements IAgent {
     }
 
     const taskPrompt = `
-    Analyze all previous messages.
+    TASK INTERRUPT. CONTEXT COMPACTION NEEDED. Analyze all previous messages.
 
     Generate a detailed task breakdown for this conversation, include a section for the following:
     1. Task List
@@ -1737,7 +1737,8 @@ export abstract class BaseAgent implements IAgent {
     this.log(
       `Compressing messages from 0 to ${compressionEnd}, resuming from ${resumeIndex}, total messages: ${messages.length}`
     );
-    const toCompressPrompt = `We are compressing our conversation to save memory.
+    const toCompressPrompt = `TASK INTERRUPT. CONTEXT COMPACTION NEEDED.
+    We are compressing our conversation to save memory.
     Please summarize the conversation so far, so that we may continue the original task with a smaller context
 
     Include the following sections:

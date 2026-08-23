@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { wait } from "../utils";
+import { emitResponseMetadata } from "./responseMetadata";
 import { AnthropicTextPricing, AnthropicModels } from "./pricing";
 import { ContextLimits } from "./contextLimits";
 import { ModelModality } from "./types";
@@ -27,12 +28,16 @@ type Usage = Anthropic.Usage;
 type ThinkingParam = Anthropic.Messages.ThinkingConfigParam;
 
 const alwaysOnModels: readonly string[] = [
-  AnthropicModels.Sonnet5, AnthropicModels.Fable5,
-  AnthropicModels.Mythos5, AnthropicModels.MythosPreview,
+  AnthropicModels.Sonnet5,
+  AnthropicModels.Fable5,
+  AnthropicModels.Mythos5,
+  AnthropicModels.MythosPreview,
 ];
 const optInModels: readonly string[] = [
-  AnthropicModels.Opus4_8, AnthropicModels.Opus4_7,
-  AnthropicModels.Opus4_6, AnthropicModels.Sonnet4_6,
+  AnthropicModels.Opus4_8,
+  AnthropicModels.Opus4_7,
+  AnthropicModels.Opus4_6,
+  AnthropicModels.Sonnet4_6,
 ];
 
 export class GenericAnthropicClient implements GenericClient {
@@ -43,10 +48,32 @@ export class GenericAnthropicClient implements GenericClient {
     this.setKey(apiKey || process.env.ANTHROPIC_API_KEY || "");
   }
 
+  private emitErrorMetadata(options: CompletionOptions, error: unknown) {
+    if (!error || typeof error !== "object") return;
+    const apiError = error as {
+      status?: number;
+      headers?: Headers | Record<string, unknown>;
+      request_id?: string;
+      requestID?: string;
+      response?: Response;
+    };
+    const statusCode = apiError.status ?? apiError.response?.status;
+    const headers = apiError.headers ?? apiError.response?.headers;
+    if (typeof statusCode === "number" || headers) {
+      emitResponseMetadata(options, {
+        statusCode,
+        headers,
+        requestId: apiError.request_id ?? apiError.requestID,
+      });
+    }
+  }
+
   setKey(apiKey: string) {
     this.apiKey = apiKey;
     this.client = new Anthropic({
       apiKey: apiKey || process.env.ANTHROPIC_API_KEY,
+      // Do not hide retry responses from the response-scoped observer.
+      maxRetries: 0,
     });
   }
 
@@ -54,7 +81,9 @@ export class GenericAnthropicClient implements GenericClient {
     const lastTool = tools[tools.length - 1];
 
     if (lastTool) {
-      lastTool.cache_control = longTtl ? { type: "ephemeral", ttl: "1h" } as any : { type: "ephemeral" };
+      lastTool.cache_control = longTtl
+        ? ({ type: "ephemeral", ttl: "1h" } as any)
+        : { type: "ephemeral" };
     }
   }
 
@@ -65,10 +94,12 @@ export class GenericAnthropicClient implements GenericClient {
   getThinkingParam(
     model: string,
     reasoning_effort?: CompletionOptions["reasoning_effort"],
-    reasoning_summary?: boolean,
+    reasoning_summary?: boolean
   ): ThinkingParam | undefined {
     const effortIsNone = reasoning_effort === "none";
-    const withSummary = reasoning_summary ? ({ display: "summarized" } as const) : {};
+    const withSummary = reasoning_summary
+      ? ({ display: "summarized" } as const)
+      : {};
 
     if (alwaysOnModels.includes(model)) {
       return effortIsNone
@@ -112,13 +143,13 @@ export class GenericAnthropicClient implements GenericClient {
    * Removes unsupported fields like additionalProperties, $ref, $defs, positional.
    */
   private cleanSchemaForAnthropic(schema: any): any {
-    if (!schema || typeof schema !== 'object') {
+    if (!schema || typeof schema !== "object") {
       return schema;
     }
 
     // Handle arrays
     if (Array.isArray(schema)) {
-      return schema.map(item => this.cleanSchemaForAnthropic(item));
+      return schema.map((item) => this.cleanSchemaForAnthropic(item));
     }
 
     const cleaned: any = {};
@@ -130,10 +161,10 @@ export class GenericAnthropicClient implements GenericClient {
 
       // Skip unsupported properties
       if (
-        key === 'additionalProperties' ||
-        key === '$ref' ||
-        key === '$defs' ||
-        key === 'positional'
+        key === "additionalProperties" ||
+        key === "$ref" ||
+        key === "$defs" ||
+        key === "positional"
       ) {
         continue;
       }
@@ -141,7 +172,7 @@ export class GenericAnthropicClient implements GenericClient {
       const value = schema[key];
 
       // Recursively clean nested objects
-      if (typeof value === 'object' && value !== null) {
+      if (typeof value === "object" && value !== null) {
         cleaned[key] = this.cleanSchemaForAnthropic(value);
       }
       // Copy primitive values as-is
@@ -160,7 +191,9 @@ export class GenericAnthropicClient implements GenericClient {
     const transformed = tools.map((tool) => ({
       name: tool.function.name || "",
       description: tool.function.description || "",
-      input_schema: this.cleanSchemaForAnthropic(tool.function.parameters) as any,
+      input_schema: this.cleanSchemaForAnthropic(
+        tool.function.parameters
+      ) as any,
     }));
 
     this.handleToolCaching(transformed, longTtl);
@@ -440,7 +473,7 @@ export class GenericAnthropicClient implements GenericClient {
     const thinkingParam = this.getThinkingParam(
       options.model,
       options.reasoning_effort,
-      options.reasoning_summary,
+      options.reasoning_summary
     );
     const effortOutputConfig = this.getEffortOutputConfig(
       options.model,
@@ -456,28 +489,41 @@ export class GenericAnthropicClient implements GenericClient {
 
     const tools = this.transformTools(options.tools, longTtl);
     try {
-      const response = await this.client.messages.create({
-        model: options.model,
-        messages: claudeMessages,
-        system: systemMessage
-          ? [
-              {
-                text: systemMessage,
-                cache_control: longTtl ? ({ type: "ephemeral", ttl: "1h" } as any) : { type: "ephemeral" },
-                type: "text",
+      const result = await this.client.messages
+        .create(
+          {
+            model: options.model,
+            messages: claudeMessages,
+            system: systemMessage
+              ? [
+                  {
+                    text: systemMessage,
+                    cache_control: longTtl
+                      ? ({ type: "ephemeral", ttl: "1h" } as any)
+                      : { type: "ephemeral" },
+                    type: "text",
+                  },
+                ]
+              : undefined,
+            max_tokens: options.max_tokens || 8000,
+            ...(thinkingParam && { thinking: thinkingParam }),
+            ...(effortOutputConfig && { output_config: effortOutputConfig }),
+            ...(tools.length && {
+              tool_choice: {
+                type: options.tool_choice ?? "auto",
               },
-            ]
-          : undefined,
-        max_tokens: options.max_tokens || 8000,
-        ...(thinkingParam && { thinking: thinkingParam }),
-        ...(effortOutputConfig && { output_config: effortOutputConfig }),
-        ...(tools.length && {
-          tool_choice: {
-            type: options.tool_choice ?? "auto",
+              tools,
+            }),
           },
-          tools,
-        }),
-      }, { signal: options.signal });
+          { signal: options.signal }
+        )
+        .withResponse();
+      const { data: response, response: nativeResponse, request_id } = result;
+      emitResponseMetadata(options, {
+        statusCode: nativeResponse.status,
+        headers: nativeResponse.headers,
+        requestId: request_id,
+      });
 
       if (!response.content || !response.content.length) {
         console.log("no content in Anthropic response", response);
@@ -496,10 +542,11 @@ export class GenericAnthropicClient implements GenericClient {
           ? { provider: "anthropic", items: thinkingBlocks }
           : undefined;
       // Extract a human-readable summary from thinking blocks (when present).
-      const reasoningSummary = thinkingBlocks
-        .map((b) => ("thinking" in b ? (b as any).thinking : ""))
-        .filter(Boolean)
-        .join("\n") || undefined;
+      const reasoningSummary =
+        thinkingBlocks
+          .map((b) => ("thinking" in b ? (b as any).thinking : ""))
+          .filter(Boolean)
+          .join("\n") || undefined;
 
       // Determine which resulting choice should carry the thinking blocks. They
       // are re-injected before the first tool_use on the next turn, so prefer
@@ -509,16 +556,18 @@ export class GenericAnthropicClient implements GenericClient {
       const nonThinking = response.content.filter(
         (c) => c.type !== "thinking" && c.type !== "redacted_thinking"
       );
-      const firstToolUseIdx = nonThinking.findIndex((c) => c.type === "tool_use");
+      const firstToolUseIdx = nonThinking.findIndex(
+        (c) => c.type === "tool_use"
+      );
       const carryIdx = firstToolUseIdx >= 0 ? firstToolUseIdx : 0;
 
       return {
         choices: nonThinking.map((c, idx) => {
-            // Only the FIRST resulting assistant message carries the thinking
-            // blocks (Anthropic requires a single thinking block sequence at the
-            // start of the assistant turn); attaching to every choice would
-            // duplicate them once the messages are re-transformed.
-            const carryReasoning = idx === carryIdx;
+          // Only the FIRST resulting assistant message carries the thinking
+          // blocks (Anthropic requires a single thinking block sequence at the
+          // start of the assistant turn); attaching to every choice would
+          // duplicate them once the messages are re-transformed.
+          const carryReasoning = idx === carryIdx;
           if (c.type === "tool_use") {
             return {
               message: {
@@ -534,8 +583,10 @@ export class GenericAnthropicClient implements GenericClient {
                     },
                   },
                 ],
-                ...(carryReasoning && reasoningDetails && { _reasoning_details: reasoningDetails }),
-                ...(carryReasoning && reasoningSummary && { reasoning_summary: reasoningSummary }),
+                ...(carryReasoning &&
+                  reasoningDetails && { _reasoning_details: reasoningDetails }),
+                ...(carryReasoning &&
+                  reasoningSummary && { reasoning_summary: reasoningSummary }),
               },
             };
           } else {
@@ -544,36 +595,48 @@ export class GenericAnthropicClient implements GenericClient {
                 role: "assistant",
                 content: "text" in c ? c.text : c.type,
                 tool_calls: [],
-                ...(carryReasoning && reasoningDetails && { _reasoning_details: reasoningDetails }),
-                ...(carryReasoning && reasoningSummary && { reasoning_summary: reasoningSummary }),
+                ...(carryReasoning &&
+                  reasoningDetails && { _reasoning_details: reasoningDetails }),
+                ...(carryReasoning &&
+                  reasoningSummary && { reasoning_summary: reasoningSummary }),
               },
             };
           }
         }),
 
         model: options.model,
-        usage: response.usage ? {
-          input_tokens: response.usage.input_tokens ?? 0,
-          output_tokens: response.usage.output_tokens ?? 0,
-          prompt_tokens: response.usage.input_tokens ?? 0,
-          completion_tokens: response.usage.output_tokens ?? 0,
-          total_tokens: (response.usage.input_tokens ?? 0) + (response.usage.output_tokens ?? 0),
-          cache_creation_input_tokens: response.usage.cache_creation_input_tokens ?? 0,
-          cache_read_input_tokens: response.usage.cache_read_input_tokens ?? 0,
-          ...((response.usage as any).thinking_input_tokens != null ||
-              (response.usage as any).output_tokens_details?.thinking_tokens != null
-            ? {
-                output_tokens_details: {
-                  thinking_tokens:
-                    (response.usage as any).thinking_input_tokens ??
-                    (response.usage as any).output_tokens_details?.thinking_tokens ?? 0,
-                },
-              }
-            : {}),
-        } : undefined,
+        usage: response.usage
+          ? {
+              input_tokens: response.usage.input_tokens ?? 0,
+              output_tokens: response.usage.output_tokens ?? 0,
+              prompt_tokens: response.usage.input_tokens ?? 0,
+              completion_tokens: response.usage.output_tokens ?? 0,
+              total_tokens:
+                (response.usage.input_tokens ?? 0) +
+                (response.usage.output_tokens ?? 0),
+              cache_creation_input_tokens:
+                response.usage.cache_creation_input_tokens ?? 0,
+              cache_read_input_tokens:
+                response.usage.cache_read_input_tokens ?? 0,
+              ...((response.usage as any).thinking_input_tokens != null ||
+              (response.usage as any).output_tokens_details?.thinking_tokens !=
+                null
+                ? {
+                    output_tokens_details: {
+                      thinking_tokens:
+                        (response.usage as any).thinking_input_tokens ??
+                        (response.usage as any).output_tokens_details
+                          ?.thinking_tokens ??
+                        0,
+                    },
+                  }
+                : {}),
+            }
+          : undefined,
         usd_cost: this.calculateCost(options.model, response.usage),
       };
     } catch (err) {
+      this.emitErrorMetadata(options, err);
       if ("headers" in err && err.headers?.["x-should-retry"] === "true") {
         console.warn("Retrying failed request", err);
         await wait(2500);
@@ -589,25 +652,37 @@ export class GenericAnthropicClient implements GenericClient {
     return AnthropicTextPricing;
   }
 
-  getPricing(model?: string): import("./pricing/types").ModelPricing | Record<string, import("./pricing/types").ModelPricing> | undefined {
+  getPricing(
+    model?: string
+  ):
+    | import("./pricing/types").ModelPricing
+    | Record<string, import("./pricing/types").ModelPricing>
+    | undefined {
     if (model !== undefined) {
-      return AnthropicTextPricing[model as keyof typeof AnthropicTextPricing] as import("./pricing/types").ModelPricing | undefined;
+      return AnthropicTextPricing[
+        model as keyof typeof AnthropicTextPricing
+      ] as import("./pricing/types").ModelPricing | undefined;
     }
-    return AnthropicTextPricing as unknown as Record<string, import("./pricing/types").ModelPricing>;
+    return AnthropicTextPricing as unknown as Record<
+      string,
+      import("./pricing/types").ModelPricing
+    >;
   }
 
   calculateCost(model: string, usage: Usage): number | undefined {
     const rawP = this.pricesPerMillion()[model];
     // Fall back to pricing file for unknown/newer models
-    const fallback = AnthropicTextPricing[model as keyof typeof AnthropicTextPricing];
+    const fallback =
+      AnthropicTextPricing[model as keyof typeof AnthropicTextPricing];
     // Second fallback: short aliases like "claude-sonnet-4-5" don't have their
     // own entry but map to a dated version like "claude-sonnet-4-5-20250929".
     // Find the first pricing entry whose key starts with the short model name.
-    const aliasFallback = !rawP && !fallback
-      ? Object.entries(AnthropicTextPricing).find(([key]) =>
-          key.startsWith(model + "-")
-        )?.[1]
-      : undefined;
+    const aliasFallback =
+      !rawP && !fallback
+        ? Object.entries(AnthropicTextPricing).find(([key]) =>
+            key.startsWith(model + "-")
+          )?.[1]
+        : undefined;
     const p: any = rawP || fallback || aliasFallback || undefined;
     if (!p) return undefined;
 
@@ -663,7 +738,9 @@ export class GenericAnthropicClient implements GenericClient {
     throw new Error("Anthropic does not support audio transcription");
   }
 
-  getContextLimit(model: string): { contextLimit: number; threshold: number } | undefined {
+  getContextLimit(
+    model: string
+  ): { contextLimit: number; threshold: number } | undefined {
     const contextLimit = ContextLimits[model];
     if (contextLimit === undefined) return undefined;
     const pricing = AnthropicTextPricing[model];

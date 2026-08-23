@@ -14,6 +14,7 @@ import { AgentSyncFs } from "../../services/AgentSyncFs";
 import { AgentModule } from "./AgentModule";
 import { TaskInfo } from "../types";
 import { getConfig, updateConfig } from "../../config";
+import { withRetry } from "../../clients/withRetry";
 
 @TraceAll()
 export class RemoteSyncModule extends BaseChatModule {
@@ -42,6 +43,22 @@ export class RemoteSyncModule extends BaseChatModule {
     super();
     this.agentModule = agentModule;
     this.client = new KnowhowSimpleClient(KNOWHOW_API_URL);
+  }
+
+  /**
+   * Start an automatic sync without delaying agent execution. Manual syncs use
+   * syncTask directly so the command still waits for and reports its result.
+   */
+  public syncTaskInBackground(taskId: string): void {
+    void this.syncTask(taskId).catch((error: unknown) => {
+      // syncTask handles expected API failures itself. Keep this final guard so
+      // an unexpected failure can never become an unhandled rejection.
+      console.error(
+        `❌ Unexpected remote sync failure: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    });
   }
 
   /**
@@ -157,11 +174,15 @@ export class RemoteSyncModule extends BaseChatModule {
     }
 
     console.log("📡 Creating remote session for this terminal session...");
-    const result = await this.client.createSessionPlaceholder({
-      title: title.slice(0, 80) || "CLI Session",
-      workerId: this.workerId,
-      metadata: { source: "cli", createdAt: new Date().toISOString() },
-    });
+    const result = await withRetry(
+      () =>
+        this.client.createSessionPlaceholder({
+          title: title.slice(0, 80) || "CLI Session",
+          workerId: this.workerId,
+          metadata: { source: "cli", createdAt: new Date().toISOString() },
+        }),
+      { maxRetries: 3, backoffMs: 500 }
+    );
 
     this.remoteSessionId = result.sessionId;
     console.log(`✅ Remote session created: ${result.sessionId}`);
@@ -177,12 +198,16 @@ export class RemoteSyncModule extends BaseChatModule {
     agentName?: string,
     modelName?: string
   ): Promise<{ messageId: string; taskId: string | undefined }> {
-    const result = await this.client.createMessagePlaceholder(sessionId, {
-      content: prompt,
-      agentName,
-      modelName,
-      metadata: { source: "cli", createdAt: new Date().toISOString() },
-    });
+    const result = await withRetry(
+      () =>
+        this.client.createMessagePlaceholder(sessionId, {
+          content: prompt,
+          agentName,
+          modelName,
+          metadata: { source: "cli", createdAt: new Date().toISOString() },
+        }),
+      { maxRetries: 3, backoffMs: 500 }
+    );
     return { messageId: result.messageId, taskId: result.taskId };
   }
 
@@ -273,7 +298,10 @@ export class RemoteSyncModule extends BaseChatModule {
     try {
       // Step 1: Ensure remote session exists
       console.log("\n🔐 Checking KnowHow API credentials...");
-      const me = await this.client.me();
+      const me = await withRetry(() => this.client.me(), {
+        maxRetries: 3,
+        backoffMs: 500,
+      });
       console.log(`✅ Authenticated as ${me.data?.email || "unknown"}`);
 
       const title =
@@ -341,13 +369,13 @@ export class RemoteSyncModule extends BaseChatModule {
 
       this.syncedMessageCount++;
 
-      const baseUrl = KNOWHOW_API_URL.replace("/api", "").replace(
-        "api.",
-        ""
-      );
+      const chatUrl = new URL(KNOWHOW_API_URL);
+      chatUrl.hostname = chatUrl.hostname.replace(/^api\./, "");
+      chatUrl.pathname = chatUrl.pathname.replace(/\/api\/?$/, "");
+      chatUrl.pathname = `${chatUrl.pathname.replace(/\/$/, "")}/chat/${sessionId}`;
       console.log(
         `\n💾 Local session updated with remote IDs.\n` +
-          `🌐 View your task at: ${baseUrl}/chat/${sessionId}`
+          `🌐 View your task at: ${chatUrl.toString()}`
       );
     } catch (error: any) {
       console.error(

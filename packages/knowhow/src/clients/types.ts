@@ -104,6 +104,36 @@ export interface Tool {
   };
 }
 
+/**
+ * Provider-neutral rate-limit information derived from response headers.
+ * Reset values are ISO-8601 strings so callback payloads remain JSON-safe.
+ */
+export interface ProviderRateLimitMetadata {
+  limit?: number;
+  remaining?: number;
+  resetAt?: string;
+  retryAfterSeconds?: number;
+  tokenLimit?: number;
+  tokenRemaining?: number;
+  tokenResetAt?: string;
+}
+
+/**
+ * Safe telemetry details for one provider response. `rateLimit` is normalized
+ * by the client for every observed response. `headers`, when present, contains
+ * only the bounded allowlisted raw headers used to derive it.
+ */
+export interface ProviderResponseMetadata {
+  statusCode?: number;
+  rateLimit: ProviderRateLimitMetadata;
+  headers?: Record<string, string>;
+  requestId?: string;
+}
+
+export type ProviderResponseMetadataObserver = (
+  metadata: ProviderResponseMetadata
+) => void;
+
 export interface ToolCall {
   id: string;
   type: "function";
@@ -134,6 +164,11 @@ export interface RetryOptions {
    * attempt is cancelled immediately and no further retries are made.
    */
   signal?: AbortSignal;
+  /**
+   * Synchronous observer invoked once for each provider HTTP response visible to
+   * this client, including errors and streaming handshakes.
+   */
+  onResponseMetadata?: ProviderResponseMetadataObserver;
 }
 
 /**
@@ -150,10 +185,13 @@ export const REASONING_EFFORTS = [
   "xhigh",
   "max",
 ] as const;
-export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+export type ReasoningEffort = typeof REASONING_EFFORTS[number];
 
 export function isReasoningEffort(value: unknown): value is ReasoningEffort {
-  return typeof value === "string" && REASONING_EFFORTS.includes(value as ReasoningEffort);
+  return (
+    typeof value === "string" &&
+    REASONING_EFFORTS.includes(value as ReasoningEffort)
+  );
 }
 
 export interface CompletionOptions extends RetryOptions {
@@ -438,7 +476,9 @@ export interface GenericClient {
   setKey(key: string): void;
   createChatCompletion(options: CompletionOptions): Promise<CompletionResponse>;
   /** Optional streaming variant — yields incremental tokens then a final done chunk. */
-  createChatCompletionStream?(options: CompletionOptions): AsyncGenerator<StreamChunk>;
+  createChatCompletionStream?(
+    options: CompletionOptions
+  ): AsyncGenerator<StreamChunk>;
   createEmbedding(options: EmbeddingOptions): Promise<EmbeddingResponse>;
   createAudioTranscription?(
     options: AudioTranscriptionOptions
@@ -482,5 +522,10 @@ export interface GenericClient {
    * Returns undefined for a specific model if no pricing is known.
    * Only implemented by HttpClient-based providers that have been given a pricing map via setPrices().
    */
-  getPricing?(model?: string): import("./pricing/types").ModelPricing | Record<string, import("./pricing/types").ModelPricing> | undefined;
+  getPricing?(
+    model?: string
+  ):
+    | import("./pricing/types").ModelPricing
+    | Record<string, import("./pricing/types").ModelPricing>
+    | undefined;
 }

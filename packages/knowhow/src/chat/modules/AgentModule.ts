@@ -810,7 +810,7 @@ export class AgentModule extends BaseChatModule {
       // Match new interactive threads: local-only sessions get a fresh remote
       // task when auto-sync is enabled.
       if (!remoteTaskId && this.remoteSyncModule?.isAutoSyncEnabled()) {
-        await this.remoteSyncModule.syncTask(taskId);
+        this.remoteSyncModule.syncTaskInBackground(taskId);
       }
 
       // After resume finishes, revert to normal chat (non-agent mode) so the
@@ -1471,7 +1471,7 @@ export class AgentModule extends BaseChatModule {
         !remoteTaskId &&
         this.remoteSyncModule?.isAutoSyncEnabled()
       ) {
-        await this.remoteSyncModule.syncTask(result.taskId);
+        this.remoteSyncModule.syncTaskInBackground(result.taskId);
       }
 
       await this.attachedAgentChatLoop(
@@ -1566,7 +1566,7 @@ export class AgentModule extends BaseChatModule {
 
       // If auto-sync is enabled, push this task to the remote KnowHow app
       if (this.remoteSyncModule?.isAutoSyncEnabled()) {
-        await this.remoteSyncModule.syncTask(taskId);
+        this.remoteSyncModule.syncTaskInBackground(taskId);
       }
 
       await this.attachedAgentChatLoop(taskId, agent, formattedPrompt);
