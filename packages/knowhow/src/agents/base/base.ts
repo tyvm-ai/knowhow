@@ -1307,10 +1307,19 @@ export abstract class BaseAgent implements IAgent {
         this.logStatus();
 
         const continuation = `<Workflow>
-        Task terminates after you call on of these tools: ${JSON.stringify(
+        This is an automated runtime instruction, not a new user message.
+        The original user request remains active. Do not say that the user's
+        message was empty, and do not ask the user to repeat the request.
+
+        Your previous response did not terminate the task because it did not
+        call one of the required tools: ${JSON.stringify(
           this.requiredToolNames
-        )}.\n
-        User likely only sees output from the required tool call.
+        )}.
+        If your previous response was intended as the final response, call the
+        appropriate required tool now with that response. Otherwise, continue
+        working on the original request and call an appropriate required tool
+        when the task is complete.
+
         <TaskStatus>${statusMessage}</TaskStatus>
         </Workflow>`;
 
