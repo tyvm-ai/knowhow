@@ -1,3 +1,16 @@
+/**
+ * A historical record of a model's pricing at a point in time.
+ * Use this to track price changes over time.
+ */
+export interface PricingChangelogEntry {
+  /** ISO date string when this pricing became effective (e.g. "2025-04-01") */
+  date: string;
+  /** Optional human-readable note about the change (e.g. "Promotional pricing announcement") */
+  note?: string;
+  /** The pricing values that were in effect from this date */
+  pricing: Omit<ModelPricing, "deprecated" | "deprecationDate" | "limitedAvailability" | "replacedBy" | "reasoningLevels" | "useResponsesApi" | "changelog">;
+}
+
 export type ModelType =
   | "completion"
   | "embedding"
@@ -30,6 +43,8 @@ export interface ModelPricing {
   reasoningLevels?: string[];
   /** If true, this model must be called via the Responses API (/v1/responses) instead of /v1/chat/completions */
   useResponsesApi?: boolean;
+  /** Optional changelog of historical pricing entries, ordered from oldest to newest */
+  changelog?: PricingChangelogEntry[];
 }
 
 export interface ModelCatalogEntry {

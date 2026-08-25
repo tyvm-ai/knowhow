@@ -1,4 +1,5 @@
-import { HttpClient } from "./http";
+import { HttpClient, HttpClientOptions } from "./http";
+import { withKnowhowAttribution } from "./attribution";
 import { OpenRouterTextPricing } from "./pricing/openrouter";
 
 /**
@@ -9,8 +10,14 @@ import { OpenRouterTextPricing } from "./pricing/openrouter";
  * Set env var OPENROUTER_API_KEY to enable.
  */
 export class GenericOpenRouterClient extends HttpClient {
-  constructor(apiKey = process.env.OPENROUTER_API_KEY) {
-    super("https://openrouter.ai/api");
+  constructor(
+    apiKey = process.env.OPENROUTER_API_KEY,
+    transportOptions: HttpClientOptions = {}
+  ) {
+    super("https://openrouter.ai/api", {
+      ...transportOptions,
+      headers: withKnowhowAttribution(transportOptions.headers),
+    });
     if (apiKey) this.setJwt(apiKey);
     this.setPrices(OpenRouterTextPricing);
   }

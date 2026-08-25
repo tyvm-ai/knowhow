@@ -247,7 +247,12 @@ export class HttpClient implements GenericClient {
     if (options.extra_body !== undefined) this.extra_body = options.extra_body;
     if (options.headers) {
       // Mutate in-place to preserve the HTTP_UNAUTHORIZED_HANDLER symbol property.
-      Object.assign(this.headers, options.headers);
+      for (const [name, value] of Object.entries(options.headers)) {
+        const existingName = Object.keys(this.headers).find(
+          (candidate) => candidate.toLowerCase() === name.toLowerCase()
+        );
+        this.headers[existingName ?? name] = value;
+      }
     }
   }
 

@@ -83,8 +83,8 @@ export type {
 // ---------------------------------------------------------------------------
 
 type ProviderRegistryEntry = {
-  /** Constructor that accepts up to two optional string args (e.g. apiKey or url, jwt) */
-  clientClass?: new (arg1?: string, arg2?: string) => GenericClient;
+  /** Constructor that accepts the optional API key passed by the registry. */
+  clientClass?: new (arg1?: string) => GenericClient;
   /** Custom factory — takes precedence over clientClass */
   createClient?: (entry: ModelProvider) => GenericClient | null;
 };
