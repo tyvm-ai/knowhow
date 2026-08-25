@@ -14,6 +14,14 @@ import {
 import * as pty from "node-pty";
 import { execSync } from "child_process";
 import * as path from "path";
+import {
+  sessions,
+  terminatedSessions,
+  markTerminated,
+  MAX_REPLAY_BYTES,
+  MAX_TERMINATED_IDS,
+  PtySession,
+} from "./sessionAccessor";
 
 // Fix spawn-helper permissions at module load time.
 // node-pty's spawn-helper binary must be executable or posix_spawnp fails.
@@ -26,35 +34,6 @@ try {
   );
 } catch {
   // best-effort — don't crash the module if this fails
-}
-
-interface PtySession {
-  pty: pty.IPty;
-  terminalId: string;
-  command: string;
-  createdAt: Date;
-  cols: number;
-  rows: number;
-  output: Buffer;
-  attachments: Map<string, TunnelAddonContext>;
-}
-
-// Sessions deliberately live at module scope rather than on an addon instance.
-// TunnelHandler instances are replaced whenever the worker WebSocket reconnects;
-// the worker process and its PTYs are not. Keeping this registry here gives PTYs
-// tmux-like lifetime: explicit termination, natural process exit, or worker exit.
-const sessions = new Map<string, PtySession>();
-const MAX_REPLAY_BYTES = 1024 * 1024;
-const MAX_TERMINATED_IDS = 1000;
-const terminatedSessions = new Map<string, number>();
-
-function markTerminated(terminalId: string, exitCode: number): void {
-  terminatedSessions.delete(terminalId);
-  terminatedSessions.set(terminalId, exitCode);
-  if (terminatedSessions.size > MAX_TERMINATED_IDS) {
-    const oldest = terminatedSessions.keys().next().value;
-    if (oldest !== undefined) terminatedSessions.delete(oldest);
-  }
 }
 
 /**
