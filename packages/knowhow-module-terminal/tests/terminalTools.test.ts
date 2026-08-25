@@ -16,7 +16,7 @@ import {
   getSessionList,
   getSessionByIndexOrId,
   writeToSession,
-  PtySession,
+  PtySession, isValidIndex,
 } from "../src/sessionAccessor";
 
 // ---------------------------------------------------------------------------
@@ -97,6 +97,38 @@ describe("getSessionList", () => {
 
     const [entry] = getSessionList();
     expect(entry.output.toString()).toBe("foo");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isValidIndex
+// ---------------------------------------------------------------------------
+
+describe("isValidIndex", () => {
+  it("accepts 0", () => { expect(isValidIndex(0)).toBe(true); });
+  it("accepts positive integers", () => { expect(isValidIndex(5)).toBe(true); });
+  it("rejects negative integers", () => { expect(isValidIndex(-1)).toBe(false); });
+  it("rejects floats", () => { expect(isValidIndex(1.5)).toBe(false); });
+  it("rejects NaN", () => { expect(isValidIndex(NaN)).toBe(false); });
+  it("rejects Infinity", () => { expect(isValidIndex(Infinity)).toBe(false); });
+  it("rejects strings", () => { expect(isValidIndex("0")).toBe(false); });
+  it("rejects null", () => { expect(isValidIndex(null)).toBe(false); });
+  it("rejects undefined", () => { expect(isValidIndex(undefined)).toBe(false); });
+});
+
+// ---------------------------------------------------------------------------
+// getSessionByIndexOrId – invalid index rejection
+// ---------------------------------------------------------------------------
+
+describe("getSessionByIndexOrId – invalid index values", () => {
+  it("returns undefined for a negative index", () => {
+    expect(getSessionByIndexOrId({ index: -1 })).toBeUndefined();
+  });
+  it("returns undefined for a float index", () => {
+    expect(getSessionByIndexOrId({ index: 1.5 })).toBeUndefined();
+  });
+  it("returns undefined for NaN index", () => {
+    expect(getSessionByIndexOrId({ index: NaN })).toBeUndefined();
   });
 });
 
@@ -356,5 +388,68 @@ describe("writeTerminalInput handler", () => {
 
     const result = await handler({ terminalId: "id-1", input: "abc" });
     expect(result.bytesWritten).toBe(3);
+  });
+
+  it("throws when index is negative", async () => {
+    await expect(handler({ index: -1, input: "ls\n" })).rejects.toThrow(/invalid 'index'/i);
+  });
+
+  it("throws when index is a float", async () => {
+    await expect(handler({ index: 1.5, input: "ls\n" })).rejects.toThrow(/invalid 'index'/i);
+  });
+
+  it("throws when index is NaN", async () => {
+    await expect(handler({ index: NaN, input: "ls\n" })).rejects.toThrow(/invalid 'index'/i);
+  });
+
+  it("throws when input exceeds 65536 bytes", async () => {
+    const session = makeFakeSession({ terminalId: "id-1" });
+    sessions.set("id-1", session);
+    const bigInput = "x".repeat(65537);
+    await expect(handler({ terminalId: "id-1", input: bigInput })).rejects.toThrow(/input too large/i);
+  });
+
+  it("accepts exactly 65536 bytes of input without throwing", async () => {
+    const session = makeFakeSession({ terminalId: "id-1" });
+    sessions.set("id-1", session);
+    const maxInput = "x".repeat(65536);
+    const result = await handler({ terminalId: "id-1", input: maxInput });
+    expect(result.status).toBe("ok");
+    expect(result.bytesWritten).toBe(65536);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// readTerminalOutput handler – additional validation
+// ---------------------------------------------------------------------------
+
+describe("readTerminalOutput handler – additional validation", () => {
+  let handler: (args: any) => Promise<any>;
+
+  beforeEach(async () => {
+    const { terminalTools } = await import("../src/tools");
+    const tool = terminalTools.find((t) => t.name === "readTerminalOutput")!;
+    handler = tool.handler as (args: any) => Promise<any>;
+  });
+
+  it("throws when index is negative", async () => {
+    await expect(handler({ index: -1 })).rejects.toThrow(/invalid 'index'/i);
+  });
+
+  it("throws when index is a float", async () => {
+    await expect(handler({ index: 2.7 })).rejects.toThrow(/invalid 'index'/i);
+  });
+
+  it("clamps maxBytes exceeding the 1 MiB limit instead of throwing", async () => {
+    sessions.set("id-1", makeFakeSession({ terminalId: "id-1", output: Buffer.from("hello") }));
+    // Should NOT throw even with an outrageous maxBytes value
+    const result = await handler({ terminalId: "id-1", maxBytes: 999_999_999 });
+    expect(result.output).toBe("hello");
+  });
+
+  it("uses the default maxBytes when an invalid value is provided", async () => {
+    sessions.set("id-1", makeFakeSession({ terminalId: "id-1", output: Buffer.from("hello") }));
+    const result = await handler({ terminalId: "id-1", maxBytes: -1 });
+    expect(result.output).toBe("hello");
   });
 });

@@ -205,7 +205,6 @@ export const terminalTools: ModuleTool[] = [
             index: {
               type: "integer",
               description: "0-based non-negative integer index of the terminal session (from listTerminalSessions).",
-              minimum: 0,
             },
             terminalId: {
               type: "string",
@@ -213,9 +212,7 @@ export const terminalTools: ModuleTool[] = [
             },
             maxBytes: {
               type: "integer",
-              description: "Maximum number of bytes of output to return (default: 32768, max: 1048576).",
-              minimum: 1,
-              maximum: 1048576,
+              description: "Maximum number of bytes of output to return (default: 32768, max: 1048576). Values exceeding the maximum are clamped.",
             },
           },
           required: [],
@@ -238,7 +235,6 @@ export const terminalTools: ModuleTool[] = [
             index: {
               type: "integer",
               description: "0-based non-negative integer index of the terminal session (from listTerminalSessions).",
-              minimum: 0,
             },
             terminalId: {
               type: "string",
