@@ -1,6 +1,6 @@
 {
   "name": "@tyvm/knowhow-module-worker-telemetry",
-  "version": "0.0.2",
+  "version": "0.0.1",
   "description": "Optional worker telemetry module for @tyvm/knowhow — publishes privacy-safe runtime/resource telemetry over the authenticated worker WebSocket",
   "main": "ts_build/index.js",
   "exports": {

@@ -1,6 +1,6 @@
 {
   "name": "@tyvm/knowhow-tunnel",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "HTTP tunnel implementation for knowhow worker",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
