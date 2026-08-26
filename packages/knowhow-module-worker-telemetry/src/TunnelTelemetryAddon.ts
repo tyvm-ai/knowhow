@@ -5,7 +5,6 @@ import type {
   TunnelTelemetryControl,
   TunnelTelemetryMessage,
 } from "@tyvm/knowhow-tunnel";
-import { TunnelMessageType } from "@tyvm/knowhow-tunnel";
 import type { TelemetryTransport } from "./telemetryTransport";
 import { WorkerTelemetryCoordinator } from "./coordinator";
 import { resolveTelemetryConfig } from "./config";
@@ -108,7 +107,7 @@ export class TunnelTelemetryAddon implements TunnelAddon {
     if (this.ctx !== ctx) return;
 
     if (
-      (message as { type: string }).type === TunnelMessageType.TELEMETRY_CONTROL
+      (message as { type: string }).type === "TUNNEL_TELEMETRY_CONTROL"
     ) {
       const control = message as TunnelTelemetryControl;
       const socketFacade = this.socketFacade;
