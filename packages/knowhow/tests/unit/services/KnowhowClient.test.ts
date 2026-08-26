@@ -54,7 +54,7 @@ describe("KnowhowSimpleClient identity renewal", () => {
       "https://api.example.test",
       "/tmp/identity"
     );
-    expect(mockStoreJwt).toHaveBeenCalledWith("fresh-jwt");
+    expect(mockStoreJwt).toHaveBeenCalledWith("fresh-jwt", "https://api.example.test");
     expect(mockGet.mock.calls[0][1].headers.Authorization).toBe("Bearer fresh-jwt");
   });
 
@@ -77,7 +77,7 @@ describe("KnowhowSimpleClient identity renewal", () => {
       "https://api.example.test",
       "/tmp/identity"
     );
-    expect(mockStoreJwt).toHaveBeenCalledWith("fresh-jwt");
+    expect(mockStoreJwt).toHaveBeenCalledWith("fresh-jwt", "https://api.example.test");
     expect(mockGet).toHaveBeenCalledTimes(1);
     expect(mockGet.mock.calls[0][1].headers.Authorization).toBe("Bearer fresh-jwt");
   });

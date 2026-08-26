@@ -1,0 +1,9 @@
+# Source and tests are not part of the published package. Do not use a broad
+# *.ts rule here: it also matches generated declaration files in ts_build.
+src
+tests
+
+node_modules
+jest.config.js
+tsconfig.json
+*.tgz

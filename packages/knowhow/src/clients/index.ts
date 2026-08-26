@@ -31,6 +31,7 @@ import { ModelProvider } from "../types";
 import { getConfig, getConfigSync } from "../config";
 import { loadKnowhowJwt, KNOWHOW_API_URL } from "../services/KnowhowClient";
 import { keyPairExists } from "../auth/keyManager";
+import { getOrgIdForApi } from "../auth/environmentAuth";
 import { ContextLimits } from "./contextLimits";
 import { OpenAiTextPricing } from "./pricing/openai";
 import { AnthropicTextPricing } from "./pricing/anthropic";
@@ -112,8 +113,9 @@ const BUILT_IN_PROVIDER_REGISTRY: Record<string, ProviderRegistryEntry> = {
     createClient: (entry: ModelProvider) => {
       if (!loadKnowhowJwt()) {
         const config = getConfigSync();
+        const orgId = getOrgIdForApi(config, KNOWHOW_API_URL);
         if (
-          !config.orgId ||
+          !orgId ||
           (!keyPairExists(config.cliIdentityPath) && !keyPairExists())
         )
           return null;
@@ -1030,7 +1032,9 @@ export class AIClient {
   /**
    * Returns the context window limit (in tokens) for a given model.
    * Delegates to the registered client's getContextLimit() if available.
-   * Falls back to the global ContextLimits table.
+   * Falls back to the global ContextLimits table, stripping any leading
+   * provider prefix (e.g. "openai/gpt-5.6-sol" → "gpt-5.6-sol") so that
+   * proxied providers like "knowhow" resolve correctly.
    */
   getContextLimit(
     provider: string,
@@ -1040,9 +1044,25 @@ export class AIClient {
     if (client?.getContextLimit) {
       return client.getContextLimit(model);
     }
-    const contextLimit = ContextLimits[model];
-    if (contextLimit === undefined) return undefined;
-    return { contextLimit, threshold: contextLimit };
+    // Try the model as-is first, then strip leading "provider/" prefixes
+    // (e.g. "openai/gpt-5.6-sol" used with the "knowhow" proxy provider).
+    const candidates = [model];
+    if (model.includes("/")) {
+      const parts = model.split("/");
+      for (let i = 1; i < parts.length; i++) {
+        candidates.push(parts.slice(i).join("/"));
+      }
+    }
+    for (const candidate of candidates) {
+      const contextLimit = ContextLimits[candidate];
+      if (contextLimit !== undefined) {
+        const pricing = OpenAiTextPricing[candidate];
+        const threshold =
+          pricing && "input_gt_200k" in pricing ? 200_000 : contextLimit;
+        return { contextLimit, threshold };
+      }
+    }
+    return undefined;
   }
 
   /**

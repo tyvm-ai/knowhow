@@ -8,6 +8,16 @@ import { KNOWHOW_API_URL } from "./services/KnowhowClient";
 import { BrowserLoginService } from "./auth/browserLogin";
 import { authenticateWithKey, hasKeyPair, registerPublicKey } from "./auth/keyAuth";
 import { getDefaultPrivateKeyPath, getOrCreatePublicKey } from "./auth/keyManager";
+import { storeJwtForApi } from "./auth/jwtStore";
+import { getOrgIdForApi, setOrgIdForApi } from "./auth/environmentAuth";
+import {
+  createRemote,
+  findRemoteForApi,
+  inferRemoteName,
+  registerRemote,
+  resolveJwtPath,
+} from "./remotes";
+import { KnowhowRemote } from "./types";
 
 /**
  * Log in to Knowhow.
@@ -23,37 +33,31 @@ import { getDefaultPrivateKeyPath, getOrCreatePublicKey } from "./auth/keyManage
  * @param jwtFlag      True when --jwt flag is passed.
  * @param identityPath Optional path to a specific private key file (--identity flag).
  */
-export async function login(jwtFlag?: boolean, identityPath?: string): Promise<void> {
-  if (!KNOWHOW_API_URL) {
-    throw new Error("Error: KNOWHOW_API_URL environment variable not set.");
-  }
+export async function login(
+  jwtFlag?: boolean,
+  identityPath?: string,
+  apiUrl: string = KNOWHOW_API_URL,
+  remoteName?: string
+): Promise<void> {
+  const config = await getConfig();
+  const remote = findRemoteForApi(config, apiUrl) ??
+    createRemote(remoteName ?? inferRemoteName(apiUrl), apiUrl);
 
   if (jwtFlag) {
     const jwt = await ask("Enter your JWT: ");
-
-    const configDir = path.join(process.cwd(), ".knowhow");
-    const jwtFile = path.join(configDir, ".jwt");
-
-    if (!fs.existsSync(configDir)) {
-      fs.mkdirSync(configDir, { recursive: true });
-    }
-    fs.writeFileSync(jwtFile, jwt);
-    fs.chmodSync(jwtFile, 0o600);
-    console.log("JWT updated successfully.");
+    const jwtFile = storeJwtForApi(jwt, remote.apiUrl, remote.jwtPath);
+    console.log(`JWT updated successfully in ${path.relative(process.cwd(), jwtFile)}.`);
   } else {
     const selectedIdentityPath = identityPath ?? getDefaultPrivateKeyPath();
-    const config = await getConfig();
-    const orgId = config.orgId;
+    const orgId = getOrgIdForApi(config, remote.apiUrl);
 
-    // A local key is not proof of registration. Let the selected environment
-    // check it, but only when an organization is available to bind the attempt.
     if (orgId && hasKeyPair(selectedIdentityPath)) {
       console.log("Found CLI identity — authenticating with public key...");
       try {
-        const success = await authenticateWithKey(orgId, KNOWHOW_API_URL, selectedIdentityPath);
+        const success = await authenticateWithKey(orgId, remote.apiUrl, selectedIdentityPath);
         if (success) {
           console.log("✅ Successfully authenticated via public key!");
-          return await postLoginConfigUpdate(selectedIdentityPath);
+          return await postLoginConfigUpdate(remote, selectedIdentityPath);
         }
         console.warn("Key authentication returned no JWT, falling back to browser login...");
       } catch (error: unknown) {
@@ -62,30 +66,31 @@ export async function login(jwtFlag?: boolean, identityPath?: string): Promise<v
       }
     }
 
-    // Fall back when no org/key is configured or when key auth is unavailable.
-    await doBrowserLogin(selectedIdentityPath);
+    await doBrowserLogin(remote, selectedIdentityPath, orgId);
     identityPath = selectedIdentityPath;
   }
 
-  await postLoginConfigUpdate(identityPath);
+  await postLoginConfigUpdate(remote, identityPath);
 }
 
 /** Complete browser PKCE, then best-effort bootstrap the selected identity. */
-async function doBrowserLogin(identityPath?: string): Promise<void> {
+async function doBrowserLogin(
+  remote: KnowhowRemote,
+  identityPath?: string,
+  orgId?: string
+): Promise<void> {
   console.log("Starting browser-based authentication...");
   try {
-    const existingConfig = await getConfig();
-    const existingOrgId = existingConfig?.orgId;
-    const browserLoginService = new BrowserLoginService(undefined, existingOrgId);
+    const browserLoginService = new BrowserLoginService(remote.apiUrl, orgId);
     await browserLoginService.login();
     console.log("✅ Successfully authenticated via browser!");
 
     try {
       const keyPair = getOrCreatePublicKey(identityPath);
       await registerPublicKey(
-        await loadJwt(),
+        await loadJwt(remote),
         keyPair.publicKeyBase64,
-        KNOWHOW_API_URL
+        remote.apiUrl
       );
       console.log(`Registered CLI identity ${keyPair.fingerprint}`);
     } catch (registrationError: unknown) {
@@ -114,10 +119,13 @@ function isTemporaryIdentityPath(identityPath: string): boolean {
 }
 
 /** After any successful login, update the local config with the current user/org. */
-async function postLoginConfigUpdate(identityPath?: string): Promise<void> {
+async function postLoginConfigUpdate(
+  remote: KnowhowRemote,
+  identityPath?: string
+): Promise<void> {
   try {
-    const storedJwt = await loadJwt();
-    const { user, currentOrg } = await checkJwt(storedJwt);
+    const storedJwt = await loadJwt(remote);
+    const { user, currentOrg } = await checkJwt(storedJwt, remote.apiUrl);
     const orgId = currentOrg?.organizationId;
 
     console.log(
@@ -137,8 +145,10 @@ async function postLoginConfigUpdate(identityPath?: string): Promise<void> {
       config.modelProviders.push({ provider: "knowhow" });
     }
 
+    registerRemote(config, orgId ? { ...remote, orgId } : remote);
+    config.activeRemote = remote.name;
     if (orgId) {
-      config.orgId = orgId;
+      setOrgIdForApi(config, remote.apiUrl, orgId);
     }
 
     if (identityPath && !isTemporaryIdentityPath(identityPath)) {
@@ -164,23 +174,25 @@ async function postLoginConfigUpdate(identityPath?: string): Promise<void> {
   }
 }
 
-export async function loadJwt(): Promise<string> {
-  const jwtFile = path.join(process.cwd(), ".knowhow", ".jwt");
-  if (!fs.existsSync(jwtFile)) {
-    throw new Error("Error: JWT file not found.");
-  }
-
-  const jwt = fs.readFileSync(jwtFile, "utf-8").trim();
+export async function loadJwt(remote?: KnowhowRemote): Promise<string> {
+  const selectedRemote = remote ??
+    findRemoteForApi(await getConfig(), KNOWHOW_API_URL) ??
+    createRemote(inferRemoteName(KNOWHOW_API_URL), KNOWHOW_API_URL);
+  const jwtFile = resolveJwtPath(selectedRemote.jwtPath);
+  const jwt = fs.existsSync(jwtFile) ? fs.readFileSync(jwtFile, "utf8").trim() : "";
 
   if (!jwt) {
+    if (!fs.existsSync(jwtFile)) {
+      throw new Error(`Error: JWT file not found: ${jwtFile}`);
+    }
     throw new Error("Error: JWT is empty. Re-login with knowhow login --jwt.");
   }
 
   return jwt;
 }
 
-export async function checkJwt(storedJwt: string) {
-  const response = await http.get(`${KNOWHOW_API_URL}/api/users/me`, {
+export async function checkJwt(storedJwt: string, apiUrl: string = KNOWHOW_API_URL) {
+  const response = await http.get(`${apiUrl}/api/users/me`, {
     headers: {
       Authorization: `Bearer ${storedJwt}`,
     },

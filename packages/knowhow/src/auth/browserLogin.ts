@@ -8,6 +8,7 @@ import * as path from "path";
 import { KNOWHOW_API_URL } from "../services/KnowhowClient";
 import { Spinner } from "./spinner";
 import { BrowserLoginError } from "./errors";
+import { storeJwtForApi } from "./jwtStore";
 
 // TypeScript interfaces for the CLI Login API
 
@@ -199,19 +200,7 @@ export class BrowserLoginService {
    * Securely stores the JWT token to the file system
    */
   private async storeJwt(jwt: string): Promise<void> {
-    const configDir = `${process.cwd()}/.knowhow`;
-    const jwtFile = `${configDir}/.jwt`;
-
-    // Ensure directory exists
-    if (!fs.existsSync(configDir)) {
-      fs.mkdirSync(configDir, { recursive: true });
-    }
-
-    // Write JWT to file
-    fs.writeFileSync(jwtFile, jwt, { mode: 0o600 });
-
-    // Ensure file has correct permissions (readable only by owner)
-    fs.chmodSync(jwtFile, 0o600);
+    storeJwtForApi(jwt, this.baseUrl);
   }
 
   /**

@@ -5,8 +5,10 @@ import fs from "fs";
 import { getConfigSync } from "../config";
 import { exchangeAvailablePublicKeyJwt, storeJwt } from "../auth/keyAuth";
 import { keyPairExists } from "../auth/keyManager";
+import { getOrgIdForApi } from "../auth/environmentAuth";
+import { loadJwtFromDisk } from "../auth/jwtStore";
+import { getActiveRemoteSync } from "../remotes";
 import { Message } from "../clients/types";
-import path from "path";
 import {
   CompletionOptions,
   CompletionResponse,
@@ -125,7 +127,7 @@ export interface GitCredentialResponse {
   expiresAt: string | null;
 }
 
-export function loadKnowhowJwt(): string {
+export function loadKnowhowJwt(apiUrl: string = KNOWHOW_API_URL): string {
   // Check env var first — this is how cloud workers/CI runners get auth
   // (injected via KNOWHOW_JWT env var in the runner's .env file by GithubRunnerService).
   // This avoids depending on a potentially stale .knowhow/.jwt file from the snapshot.
@@ -133,17 +135,10 @@ export function loadKnowhowJwt(): string {
     return process.env.KNOWHOW_JWT;
   }
 
-  const jwtFile = path.join(process.cwd(), ".knowhow", ".jwt");
-  if (!fs.existsSync(jwtFile)) {
-    return "";
-  }
-  const jwt = fs.readFileSync(jwtFile, "utf-8").trim();
-
-  return jwt;
+  return loadJwtFromDisk(apiUrl);
 }
 
-export const KNOWHOW_API_URL =
-  process.env.KNOWHOW_API_URL || "https://api.knowhow.tyvm.ai";
+export const KNOWHOW_API_URL = getActiveRemoteSync().apiUrl;
 
 @TraceAll()
 export class KnowhowSimpleClient {
@@ -159,7 +154,7 @@ export class KnowhowSimpleClient {
     // Explicit tokens (including KNOWHOW_JWT worker credentials) have no
     // corresponding local identity and must never trigger interactive renewal.
     this.canRefreshJwt = jwt === undefined && !process.env.KNOWHOW_JWT;
-    this.jwt = jwt ?? loadKnowhowJwt();
+    this.jwt = jwt ?? loadKnowhowJwt(this.baseUrl);
     this.setJwt(this.jwt);
     if (this.canRefreshJwt) {
       Object.defineProperty(this.headers, HTTP_UNAUTHORIZED_HANDLER, {
@@ -175,7 +170,7 @@ export class KnowhowSimpleClient {
    * Reload the JWT from disk (useful after login refreshes the token).
    */
   refreshJwt() {
-    const freshJwt = loadKnowhowJwt();
+    const freshJwt = loadKnowhowJwt(this.baseUrl);
     if (freshJwt) {
       this.setJwt(freshJwt);
       this.jwtValidated = false;
@@ -206,12 +201,13 @@ export class KnowhowSimpleClient {
     this.refreshPromise = (async () => {
       const config = getConfigSync();
       const identityPath = config.cliIdentityPath;
-      if (!config.orgId || (!keyPairExists(identityPath) && !keyPairExists())) {
+      const orgId = getOrgIdForApi(config, this.baseUrl);
+      if (!orgId || (!keyPairExists(identityPath) && !keyPairExists())) {
         throw new Error("JWT expired and the CLI identity is unavailable. Please run `knowhow login` again.");
       }
       try {
-        const freshJwt = await exchangeAvailablePublicKeyJwt(config.orgId, this.baseUrl, identityPath);
-        storeJwt(freshJwt);
+        const freshJwt = await exchangeAvailablePublicKeyJwt(orgId, this.baseUrl, identityPath);
+        storeJwt(freshJwt, this.baseUrl);
         this.setJwt(freshJwt);
         this.jwtValidated = true;
       } catch (error) {

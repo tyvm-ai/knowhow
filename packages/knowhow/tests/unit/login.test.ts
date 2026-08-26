@@ -48,7 +48,7 @@ describe("login public-key bootstrap", () => {
     jest.spyOn(console, "warn").mockImplementation(() => undefined);
     workingDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "knowhow-login-"));
     fs.mkdirSync(path.join(workingDirectory, ".knowhow"));
-    fs.writeFileSync(path.join(workingDirectory, ".knowhow", ".jwt"), "raw-jwt");
+    fs.writeFileSync(path.join(workingDirectory, ".knowhow", ".jwt.api.example"), "raw-jwt");
     process.chdir(workingDirectory);
     hasKeyPair.mockReturnValue(false);
     browserLogin.mockResolvedValue(undefined);
@@ -87,7 +87,42 @@ describe("login public-key bootstrap", () => {
       "https://api.example"
     );
     expect(updateConfig).toHaveBeenCalledWith(
-      expect.objectContaining({ orgId: "org-1", modelProviders: [{ provider: "knowhow" }] })
+      expect.objectContaining({
+        activeRemote: "api.example",
+        modelProviders: [{ provider: "knowhow" }],
+        remotes: expect.objectContaining({
+          "api.example": {
+            name: "api.example",
+            apiUrl: "https://api.example",
+            jwtPath: ".knowhow/.jwt.api.example",
+            orgId: "org-1",
+          },
+        }),
+      })
+    );
+  });
+
+  it("persists an explicit --api-url as the authenticated remote", async () => {
+    fs.writeFileSync(path.join(workingDirectory, ".knowhow", ".jwt.local"), "local-jwt");
+
+    await login(false, undefined, "http://localhost:4000/", "local");
+
+    expect(updateConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeRemote: "local",
+        remotes: expect.objectContaining({
+          local: {
+            name: "local",
+            apiUrl: "http://localhost:4000",
+            jwtPath: ".knowhow/.jwt.local",
+            orgId: "org-1",
+          },
+        }),
+      })
+    );
+    expect(httpGet).toHaveBeenCalledWith(
+      "http://localhost:4000/api/users/me",
+      expect.any(Object)
     );
   });
 
@@ -119,9 +154,9 @@ describe("login public-key bootstrap", () => {
     expect(getOrCreatePublicKey).toHaveBeenCalledWith("/keys/default");
     expect(updateConfig).toHaveBeenCalledWith(
       expect.objectContaining({
-        orgId: "org-1",
         cliIdentityPath: "/keys/default",
         modelProviders: [{ provider: "knowhow" }],
+        remotes: expect.objectContaining({ "api.example": expect.objectContaining({ orgId: "org-1" }) }),
       })
     );
   });
@@ -141,6 +176,32 @@ describe("login public-key bootstrap", () => {
     );
     expect(browserLogin).toHaveBeenCalledTimes(1);
     expect(getOrCreatePublicKey).toHaveBeenCalledWith("/keys/dev");
+  });
+
+  it("uses the selected API's JWT org instead of an org saved by another environment", async () => {
+    const devJwt = `${Buffer.from("{}").toString("base64url")}.${Buffer.from(
+      JSON.stringify({ org: "org-dev" })
+    ).toString("base64url")}.signature`;
+    fs.writeFileSync(
+      path.join(workingDirectory, ".knowhow", ".jwt.api.example"),
+      devJwt
+    );
+    hasKeyPair.mockReturnValue(true);
+    getConfig.mockResolvedValue({
+      orgId: "org-local",
+      orgIds: { "http://localhost:4000": "org-local" },
+      modelProviders: [],
+    });
+    authenticateWithKey.mockResolvedValueOnce(true);
+
+    await expect(login(false, "/keys/default")).resolves.toBeUndefined();
+
+    expect(authenticateWithKey).toHaveBeenCalledWith(
+      "org-dev",
+      "https://api.example",
+      "/keys/default"
+    );
+    expect(browserLogin).not.toHaveBeenCalled();
   });
 
   it("does not attempt key authentication without a configured organization", async () => {

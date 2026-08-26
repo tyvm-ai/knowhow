@@ -36,6 +36,11 @@ export {
   // Addon interface
   TunnelAddon,
   TunnelAddonContext,
+  // Telemetry types
+  TunnelTelemetryHello,
+  TunnelTelemetryControl,
+  TunnelTelemetrySample,
+  TunnelTelemetryMessage,
 } from "./types";
 export {
   parseTunnelMessage,

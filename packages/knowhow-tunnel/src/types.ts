@@ -23,6 +23,10 @@ export enum TunnelMessageType {
   PTY_DETACH = "TUNNEL_PTY_DETACH",
   PTY_LIST_RESPONSE = "TUNNEL_PTY_LIST_RESPONSE",
   PTY_EXIT = "TUNNEL_PTY_EXIT",
+  // Telemetry addon message types
+  TELEMETRY_HELLO = "TUNNEL_TELEMETRY_HELLO",
+  TELEMETRY_SAMPLE = "TUNNEL_TELEMETRY_SAMPLE",
+  TELEMETRY_CONTROL = "TUNNEL_TELEMETRY_CONTROL",
 }
 
 /**
@@ -277,6 +281,53 @@ export type TunnelPtyMessage =
   | TunnelPtyListResponse
   | TunnelPtyExit;
 
+// ─── Telemetry Message Types ──────────────────────────────────────────────────
+
+/**
+ * Worker → Backend: initial telemetry handshake announcing capabilities.
+ */
+export interface TunnelTelemetryHello {
+  type: TunnelMessageType.TELEMETRY_HELLO;
+  version: 1;
+  bootId: string;
+  capabilities: string[];
+}
+
+/**
+ * Backend → Worker: accept/reject negotiation + session parameters.
+ */
+export interface TunnelTelemetryControl {
+  type: TunnelMessageType.TELEMETRY_CONTROL;
+  version: 1;
+  accepted: boolean;
+  sessionId?: string;
+  intervalMs?: number;
+  maxPayloadBytes?: number;
+  reason?: string;
+}
+
+/**
+ * Worker → Backend: periodic telemetry sample.
+ */
+export interface TunnelTelemetrySample {
+  type: TunnelMessageType.TELEMETRY_SAMPLE;
+  version: 1;
+  bootId: string;
+  sessionId: string;
+  sequence: number;
+  observedAt: string;
+  uptimeMs: number;
+  capabilities?: string[];
+  runtime?: Record<string, unknown>;
+  resources?: Record<string, unknown>;
+  collectorError?: boolean;
+}
+
+export type TunnelTelemetryMessage =
+  | TunnelTelemetryHello
+  | TunnelTelemetryControl
+  | TunnelTelemetrySample;
+
 // ─── Addon Interface ──────────────────────────────────────────────────────────
 
 /**
@@ -284,7 +335,11 @@ export type TunnelPtyMessage =
  */
 export interface TunnelAddonContext {
   /** Send a message back over the tunnel WebSocket */
-  send(message: TunnelMessage | TunnelPtyMessage): void;
+  send(
+    message: TunnelMessage | TunnelPtyMessage | TunnelTelemetryMessage
+  ): void;
+  /** Bytes queued by the underlying WebSocket, for addon backpressure. */
+  readonly bufferedAmount?: number;
 }
 
 /**
@@ -302,9 +357,15 @@ export interface TunnelAddon {
    */
   handles: string[];
   onConnect?(ctx: TunnelAddonContext): void;
-  onMessage(message: TunnelMessage | TunnelPtyMessage, ctx: TunnelAddonContext): void | Promise<void>;
-  onDisconnect?(): void;
+  onMessage(
+    message: TunnelMessage | TunnelPtyMessage | TunnelTelemetryMessage,
+    ctx: TunnelAddonContext
+  ): void | Promise<void>;
+  onDisconnect?(ctx: TunnelAddonContext): void;
 }
 
 // Extend the union type to include PTY messages
-export type AnyTunnelMessage = TunnelMessage | TunnelPtyMessage;
+export type AnyTunnelMessage =
+  | TunnelMessage
+  | TunnelPtyMessage
+  | TunnelTelemetryMessage;

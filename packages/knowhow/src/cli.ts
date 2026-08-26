@@ -63,6 +63,7 @@ import { addAgentsCommand } from "./commands/agents";
 import { addHashCommand } from "./commands/hash";
 import { addSandboxCommand } from "./commands/sandbox";
 import { addProcessesCommand } from "./commands/processes";
+import { addRemoteCommand } from "./commands/remote";
 
 // Handle unhandled promise rejections gracefully — particularly from MCP SDK
 // which fires errors via event emitters that can bypass Promise.allSettled.
@@ -106,6 +107,7 @@ async function main() {
   // Register all commands
   addInitCommand(program);
   addLoginCommand(program);
+  addRemoteCommand(program);
   addUpdateCommand(program);
   addGenerateCommand(program);
   addEmbedCommands(program);

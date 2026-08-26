@@ -4,7 +4,6 @@ import * as os from "os";
 import gitignoreToGlob from "gitignore-to-glob";
 import { Prompts } from "./prompts";
 import { promisify } from "util";
-import { KNOWHOW_API_URL } from "./services/KnowhowClient";
 import {
   Config,
   SourceRef,
@@ -110,6 +109,15 @@ const defaultConfig = {
     tunnel: {
       enabled: false,
       allowedPorts: [],
+    },
+  },
+
+  activeRemote: "origin",
+  remotes: {
+    origin: {
+      name: "origin",
+      apiUrl: "https://api.knowhow.tyvm.ai",
+      jwtPath: ".knowhow/.jwt",
     },
   },
 

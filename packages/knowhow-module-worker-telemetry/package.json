@@ -1,0 +1,42 @@
+{
+  "name": "@tyvm/knowhow-module-worker-telemetry",
+  "version": "0.0.1",
+  "description": "Optional worker telemetry module for @tyvm/knowhow — publishes privacy-safe runtime/resource telemetry over the authenticated worker WebSocket",
+  "main": "ts_build/index.js",
+  "exports": {
+    ".": {
+      "types": "./ts_build/index.d.ts",
+      "default": "./ts_build/index.js"
+    }
+  },
+  "types": "ts_build/index.d.ts",
+  "scripts": {
+    "build": "npm run compile",
+    "compile": "npm run clean && tsc",
+    "clean": "rm -rf ts_build",
+    "test": "jest",
+    "prepack": "npm run compile",
+    "prepublishOnly": "npm run compile"
+  },
+  "keywords": [
+    "knowhow",
+    "worker",
+    "telemetry"
+  ],
+  "author": "Tyvm AI",
+  "license": "MIT",
+  "peerDependencies": {
+    "@tyvm/knowhow": "*",
+    "@tyvm/knowhow-tunnel": "*"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.0",
+    "@types/node": "^24.0.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.0",
+    "typescript": "^5.0.0"
+  }
+}

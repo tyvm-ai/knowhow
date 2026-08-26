@@ -63,7 +63,7 @@ export function addLoginCommand(program: Command): void {
         return;
       }
 
-      await login(options.jwt, options.identity);
+      await login(options.jwt, options.identity, options.apiUrl);
     });
 }
 

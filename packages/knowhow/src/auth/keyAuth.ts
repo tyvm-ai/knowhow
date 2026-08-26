@@ -1,8 +1,7 @@
-import fs from "fs";
 import os from "os";
-import path from "path";
 import http from "../utils/http";
 import { getCliUserAgent } from "./browserLogin";
+import { storeJwtForApi } from "./jwtStore";
 import {
   getDefaultPrivateKeyPath,
   keyPairExists,
@@ -101,7 +100,7 @@ export async function authenticateWithKey(
   if (!keyPairExists(privateKeyPath) && !keyPairExists()) return false;
 
   try {
-    storeJwt(await exchangeAvailablePublicKeyJwt(orgId, apiUrl, privateKeyPath));
+    storeJwt(await exchangeAvailablePublicKeyJwt(orgId, apiUrl, privateKeyPath), apiUrl);
     return true;
   } catch (error: unknown) {
     // The identity is not registered for this environment/org (or was revoked).
@@ -138,16 +137,6 @@ export async function registerPublicKey(
   );
 }
 
-export function storeJwt(jwt: string): void {
-  const jwtFilePath = path.join(process.cwd(), ".knowhow", ".jwt");
-  const directory = path.dirname(jwtFilePath);
-  const temporaryPath = `${jwtFilePath}.${process.pid}.tmp`;
-  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-  try {
-    fs.writeFileSync(temporaryPath, jwt, { mode: 0o600, flag: "wx" });
-    fs.renameSync(temporaryPath, jwtFilePath);
-    fs.chmodSync(jwtFilePath, 0o600);
-  } finally {
-    fs.rmSync(temporaryPath, { force: true });
-  }
+export function storeJwt(jwt: string, apiUrl: string = DEFAULT_API_URL): void {
+  storeJwtForApi(jwt, apiUrl);
 }

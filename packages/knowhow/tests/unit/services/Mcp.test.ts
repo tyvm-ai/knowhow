@@ -33,11 +33,11 @@ describe("McpService JWT file transport", () => {
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
   });
 
-  it("reads the refreshed JWT when the transport is created", () => {
+  it("reads the refreshed JWT when the transport is created", async () => {
     fs.writeFileSync(tokenFile, "expired-jwt");
     fs.writeFileSync(tokenFile, "fresh-jwt");
 
-    new McpService().createTransport({
+    await new McpService().createTransport({
       name: "authenticated-remote",
       url: "https://api.example.test/mcp",
       authorization_token_file: tokenFile,

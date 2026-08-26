@@ -1,8 +1,9 @@
-import fs from "fs";
 import path from "path";
 import { getOrCreatePublicKey } from "./keyManager";
 import { registerPublicKey, exchangePublicKeyJwt, storeJwt } from "./keyAuth";
 import { getConfig, updateConfig } from "../config";
+import { getJwtFilePath, loadJwtFromDisk } from "./jwtStore";
+import { setOrgIdForApi } from "./environmentAuth";
 
 export interface RegisterIdentityOptions {
   /** Optional Ed25519 private-key path. Defaults to ~/.knowhow/keys/id_ed25519. */
@@ -36,30 +37,29 @@ export function extractOrgIdFromJwt(jwt: string): string {
 }
 
 /**
- * Register a CLI identity using the JWT already stored in the current project's
- * .knowhow/.jwt, then replace that JWT with one obtained via key authentication.
+ * Register a CLI identity using the JWT stored for the selected API, then
+ * replace that JWT with one obtained via key authentication.
  * This is intentionally generic: authorization scope is derived by the backend
  * from the verified source JWT.
  */
 export async function registerIdentity(options: RegisterIdentityOptions = {}): Promise<void> {
   const apiUrl = options.apiUrl ?? process.env.KNOWHOW_API_URL ?? "https://api.knowhow.tyvm.ai";
-  const jwtPath = path.join(process.cwd(), ".knowhow", ".jwt");
-  if (!fs.existsSync(jwtPath)) throw new Error(`JWT file not found: ${jwtPath}`);
-  const sourceJwt = fs.readFileSync(jwtPath, "utf8").trim();
+  const jwtPath = getJwtFilePath(apiUrl);
+  const sourceJwt = loadJwtFromDisk(apiUrl);
   if (!sourceJwt) throw new Error(`JWT file is empty: ${jwtPath}`);
 
   const orgId = extractOrgIdFromJwt(sourceJwt);
   const keyPair = getOrCreatePublicKey(options.identityPath);
   await registerPublicKey(sourceJwt, keyPair.publicKeyBase64, apiUrl);
   const identityJwt = await exchangePublicKeyJwt(orgId, apiUrl, options.identityPath);
-  storeJwt(identityJwt);
+  storeJwt(identityJwt, apiUrl);
 
   const config = await getConfig();
   if (!config.modelProviders) config.modelProviders = [];
   if (!config.modelProviders.some((provider: { provider: string }) => provider.provider === "knowhow")) {
     config.modelProviders.push({ provider: "knowhow" });
   }
-  config.orgId = orgId;
+  setOrgIdForApi(config, apiUrl, orgId);
   config.cliIdentityPath = path.resolve(options.identityPath ?? keyPair.privateKeyPath);
   await updateConfig(config);
 

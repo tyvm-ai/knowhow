@@ -1,11 +1,14 @@
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import Anthropic from "@anthropic-ai/sdk";
+import { spawn } from "child_process";
 
 import fs from "fs";
+import path from "path";
 import { McpConfig } from "../types";
 import { Tool } from "../clients";
 import { getConfig } from "../config";
+import { loadJwtFromDisk } from "../auth/jwtStore";
 import { TraceAll } from "../util/Trace";
 import { ToolsService } from "./Tools";
 import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
@@ -31,6 +34,84 @@ export * from "./McpServer";
 export * from "./McpWebsocketTransport";
 
 /*
+ * Returns true if the given URL string points to localhost / 127.x / ::1.
+ */
+function isLocalhostUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname;
+    return (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "::1" ||
+      /^127\./.test(host)
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if a URL is reachable by making a simple HTTP GET/HEAD request.
+ * Resolves true if we get any HTTP response (even 4xx), false on network error.
+ */
+async function isUrlReachable(url: string, timeoutMs = 2000): Promise<boolean> {
+  return new Promise((resolve) => {
+    const parsed = new URL(url);
+    const lib = parsed.protocol === "https:" ? require("https") : require("http");
+    const req = lib.request(
+      { hostname: parsed.hostname, port: parsed.port || (parsed.protocol === "https:" ? 443 : 80), path: parsed.pathname || "/", method: "GET", timeout: timeoutMs },
+      () => { resolve(true); req.destroy(); }
+    );
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => { req.destroy(); resolve(false); });
+    req.end();
+  });
+}
+
+/**
+ * If an MCP config has both a localhost `url` and a `command`, this function
+ * ensures the server is running: checks reachability, and if not up, spawns
+ * the command and waits until the URL is reachable (or timeout expires).
+ */
+async function ensureLocalServer(mcp: McpConfig): Promise<void> {
+  if (!mcp.url || !mcp.command || !isLocalhostUrl(mcp.url)) return;
+
+  const alreadyUp = await isUrlReachable(mcp.url);
+  if (alreadyUp) {
+    console.log(`MCP '${mcp.name}': server already running at ${mcp.url}`);
+    return;
+  }
+
+  console.log(`MCP '${mcp.name}': starting server with command: ${mcp.command} ${(mcp.args || []).join(" ")}`);
+
+  const child = spawn(mcp.command, mcp.args || [], {
+    detached: true,
+    stdio: "ignore",
+    env: mcp.env ? { ...process.env, ...mcp.env } : process.env,
+  });
+  child.unref(); // don't keep the knowhow process alive just for this child
+
+  // Wait up to 30s for the server to become reachable
+  const maxWait = 30_000;
+  const interval = 500;
+  const started = Date.now();
+
+  while (Date.now() - started < maxWait) {
+    await new Promise((r) => setTimeout(r, interval));
+    const up = await isUrlReachable(mcp.url!);
+    if (up) {
+      console.log(`MCP '${mcp.name}': server is up at ${mcp.url}`);
+      return;
+    }
+  }
+
+  throw new Error(
+    `MCP '${mcp.name}': timed out waiting for server to start at ${mcp.url} (command: ${mcp.command} ${(mcp.args || []).join(" ")})`
+  );
+}
+
+/*
  *
  * McpService is a service that manages connections to multiple MCP servers.
  * Allows us to connect the tools exposed by MCP servers to our internal ToolService, which agents can use.
@@ -53,7 +134,7 @@ export class McpService {
     }
 
     this.config = mcpServers;
-    this.transports = mcpServers.map((mcp) => this.createTransport(mcp));
+    this.transports = await Promise.all(mcpServers.map((mcp) => this.createTransport(mcp)));
     this.clients = this.transports.map(() => new Client(knowhowMcpClient, knowhowConfig));
 
     return this.clients;
@@ -64,8 +145,9 @@ export class McpService {
    * Re-reads authorization_token_file every time so that token refreshes
    * are picked up without restarting the agent process.
    */
-  createTransport(mcp: McpConfig): Transport {
-    if (mcp.command) {
+  async createTransport(mcp: McpConfig): Promise<Transport> {
+    await ensureLocalServer(mcp);
+    if (mcp.command && !mcp.url) {
       const stdioParams: StdioServerParameters = {
         command: mcp.command,
         args: mcp.args,
@@ -79,8 +161,13 @@ export class McpService {
     if (mcp.url) {
       // Always re-read the token file so refreshed tokens are picked up
       if (mcp.authorization_token_file) {
-        const token = fs.readFileSync(mcp.authorization_token_file, "utf-8");
-        mcp.authorization_token = token.trim();
+        if (path.basename(mcp.authorization_token_file) === ".jwt") {
+          const apiUrl = process.env.KNOWHOW_API_URL || "https://api.knowhow.tyvm.ai";
+          mcp.authorization_token = loadJwtFromDisk(apiUrl, mcp.authorization_token_file);
+        } else {
+          const token = fs.readFileSync(mcp.authorization_token_file, "utf-8");
+          mcp.authorization_token = token.trim();
+        }
       }
       const scheme = mcp.authorization_scheme === "basic" ? "Basic" : "Bearer";
       const transport = new StreamableHTTPClientTransport(new URL(mcp.url), {
@@ -216,7 +303,7 @@ export class McpService {
       // Always create a fresh transport + client before connecting.
       // This handles cases where a previous connection attempt failed and left
       // the transport in a started-but-not-connected state.
-      this.transports[index] = this.createTransport(this.config[index]);
+      this.transports[index] = await this.createTransport(this.config[index]);
       this.clients[index] = new Client(knowhowMcpClient, knowhowConfig);
 
       const client = this.clients[index];
@@ -315,7 +402,7 @@ export class McpService {
       // Replace with a fresh transport + client so connectSingle() can reconnect
       // without hitting "StreamableHTTPClientTransport already started".
       // createTransport() re-reads authorization_token_file, picking up refreshed tokens.
-      this.transports[index] = this.createTransport(this.config[index]);
+      this.transports[index] = await this.createTransport(this.config[index]);
       this.clients[index] = new Client(knowhowMcpClient, knowhowConfig);
 
       // Remove tools from cache

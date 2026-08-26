@@ -31,6 +31,7 @@ describe("registerIdentity", () => {
     workDir = fs.mkdtempSync(path.join(os.tmpdir(), "knowhow-register-identity-"));
     fs.mkdirSync(path.join(workDir, ".knowhow"), { recursive: true });
     fs.writeFileSync(path.join(workDir, ".knowhow", ".jwt"), sourceJwt);
+    fs.writeFileSync(path.join(workDir, ".knowhow", ".jwt.api.example"), sourceJwt);
     process.chdir(workDir);
     getOrCreatePublicKey.mockReturnValue({
       publicKeyBase64,
@@ -53,11 +54,16 @@ describe("registerIdentity", () => {
     await registerIdentity({ apiUrl: "https://api.example" });
     expect(registerPublicKey).toHaveBeenCalledWith(sourceJwt, publicKeyBase64, "https://api.example");
     expect(exchangePublicKeyJwt).toHaveBeenCalledWith("org-test", "https://api.example", undefined);
-    expect(storeJwt).toHaveBeenCalledWith("identity.jwt.token");
+    expect(storeJwt).toHaveBeenCalledWith("identity.jwt.token", "https://api.example");
     expect(updateConfig).toHaveBeenCalledWith(expect.objectContaining({
-      orgId: "org-test",
       modelProviders: [{ provider: "knowhow" }],
       cliIdentityPath: expect.stringContaining("id_ed25519"),
+      remotes: {
+        origin: expect.objectContaining({
+          apiUrl: "https://api.example",
+          orgId: "org-test",
+        }),
+      },
     }));
   });
 
