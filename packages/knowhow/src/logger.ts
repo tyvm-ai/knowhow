@@ -41,6 +41,8 @@ const _originalConsole = {
 };
 
 let consoleOverloadInstalled = false;
+let beforeOutputHook: (() => unknown) | undefined;
+let afterOutputHook: ((state: unknown) => void) | undefined;
 
 // ---- EventService lazy accessor ---------------------------------------------
 
@@ -157,7 +159,12 @@ export const logger = {
 
     const route = (originalFn: (...args: any[]) => void, args: any[]) => {
       if (silenced) return;
-      originalFn(...args);
+      const state = beforeOutputHook?.();
+      try {
+        originalFn(...args);
+      } finally {
+        afterOutputHook?.(state);
+      }
     };
 
     console.log = (...args: any[]) => route(_originalConsole.log, args);
@@ -178,6 +185,15 @@ export const logger = {
     console.info = _originalConsole.info;
     console.warn = _originalConsole.warn;
     consoleOverloadInstalled = false;
+  },
+
+  /** Register lifecycle hooks used by interactive UIs to stay below logs. */
+  setOutputHooks(
+    before: (() => unknown) | undefined,
+    after: ((state: unknown) => void) | undefined
+  ): void {
+    beforeOutputHook = before;
+    afterOutputHook = after;
   },
 };
 

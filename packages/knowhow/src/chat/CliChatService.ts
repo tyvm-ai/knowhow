@@ -301,7 +301,8 @@ export class CliChatService implements ChatService {
 
   async getInput(
     prompt: string = "> ",
-    options: string[] = []
+    options: string[] = [],
+    inputPanel: boolean | any[] = false
   ): Promise<string> {
     if (this.context.inputMethod) {
       return await this.context.inputMethod.getInput(prompt);
@@ -324,10 +325,42 @@ export class CliChatService implements ChatService {
     } else {
       // Use saved input history for scrollback (InputQueueManager handles reverse access)
       const history = this.inputHistory.slice();
-      value = await ask(prompt, options, history);
+      if (inputPanel === true && process.stdout.isTTY) {
+        const width = Math.max(24, process.stdout.columns || 80);
+        const separator = `\x1b[2m${"─".repeat(width)}\x1b[0m`;
+        value = await ask(
+          `${separator}\n\x1b[36m❯\x1b[0m `,
+          options,
+          history,
+          () => this.getStatusBar(width)
+        );
+      } else {
+        value = await ask(prompt, options, history);
+      }
     }
 
     return value.trim();
+  }
+
+  private getStatusBar(width: number): string {
+    const agent = this.context.selectedAgent;
+    const usage = agent?.getTokenUsage?.();
+    const tokens = usage
+      ? usage.totalInputTokens + usage.totalOutputTokens +
+        usage.totalCacheReadTokens + usage.totalCacheWriteTokens
+      : 0;
+    const compactNumber = (value: number): string =>
+      value >= 1_000_000 ? `${(value / 1_000_000).toFixed(1)}m` :
+      value >= 1_000 ? `${(value / 1_000).toFixed(1)}k` : String(value);
+    const agentName = agent?.name || this.context.currentAgent || "chat";
+    const provider = agent?.getProvider?.() || this.context.currentProvider || "default";
+    const model = agent?.getModel?.() || this.context.currentModel || "default";
+    const reasoning = agent?.getReasoningEffort?.() || "default";
+    const cost = agent?.getTotalCostUsd?.() || 0;
+    const reasoningStatus = reasoning === "default" ? "" : `  ·  reasoning ${reasoning}`;
+    const status = ` ${agentName}  ·  ${provider}/${model}${reasoningStatus}  ·  $${cost.toFixed(4)}  ·  ${compactNumber(tokens)} tokens`;
+    const clipped = status.length > width ? `${status.slice(0, Math.max(1, width - 1))}…` : status;
+    return `\x1b[2m${clipped.padEnd(width)}\x1b[0m`;
   }
 
   clearHistory(): void {
@@ -410,7 +443,7 @@ export class CliChatService implements ChatService {
           : `\nAsk knowhow: `);
       try {
         // Pass command names as autocomplete options
-        const input = await this.getInput(promptText, currentCommandNames);
+        const input = await this.getInput(promptText, currentCommandNames, true);
 
         if (input.trim() === "") {
           continue;

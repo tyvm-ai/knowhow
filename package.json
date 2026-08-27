@@ -6,7 +6,9 @@
   "bin": "./packages/core/ts_build/src/cli.js",
   "scripts": {
     "prepare": "node scripts/install-git-hooks.mjs",
-    "scan:secrets": "node scripts/scan-staged-secrets.mjs"
+    "scan:secrets": "node scripts/scan-staged-secrets.mjs",
+    "check:publish": "node scripts/check-publish-status.mjs",
+    "check:publish:json": "node scripts/check-publish-status.mjs --json"
   },
   "keywords": [],
   "author": "Micah Riggan",

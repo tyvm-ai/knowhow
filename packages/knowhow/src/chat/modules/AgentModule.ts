@@ -1599,7 +1599,11 @@ export class AgentModule extends BaseChatModule {
         agent.name
       );
       const context = this.chatService?.getContext();
-      if (context) context.activeAgentTaskId = taskId;
+      if (context) {
+        context.activeAgentTaskId = taskId;
+        // Drive the live input status bar from the actual running agent.
+        if (agent instanceof BaseAgent) context.selectedAgent = agent;
+      }
 
       // Store the agent so the registered agent:attached commands can reference it
       this.attachedAgent = agent;
