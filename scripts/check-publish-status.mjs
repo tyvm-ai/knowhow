@@ -15,6 +15,7 @@
  * Usage:
  *   node scripts/check-publish-status.mjs
  *   node scripts/check-publish-status.mjs --json
+ *   node scripts/check-publish-status.mjs --not-published
  *   node scripts/check-publish-status.mjs --package @tyvm/knowhow-module-terminal
  */
 
@@ -29,6 +30,7 @@ const ROOT = resolve(__dirname, "..");
 
 const args = process.argv.slice(2);
 const JSON_OUTPUT = args.includes("--json");
+const SHOW_NOT_PUBLISHED = args.includes("--not-published");
 const FILTER_PACKAGE = args.find((a) => a.startsWith("--package="))?.split("=")[1]
   || (args.includes("--package") ? args[args.indexOf("--package") + 1] : null);
 
@@ -224,7 +226,7 @@ async function main() {
     console.log();
   }
 
-  if (groups.NOT_PUBLISHED.length) {
+  if (SHOW_NOT_PUBLISHED && groups.NOT_PUBLISHED.length) {
     console.log(`${STATUS_COLORS.NOT_PUBLISHED}${BOLD}🆕 NOT PUBLISHED YET:${RESET}`);
     groups.NOT_PUBLISHED.forEach(printResult);
     console.log();
@@ -249,8 +251,9 @@ async function main() {
   console.log(`${BOLD}Summary:${RESET}`);
   console.log(`  Needs bump:     ${groups.NEEDS_BUMP.length}`);
   console.log(`  Needs publish:  ${groups.NEEDS_PUBLISH.length}`);
-  console.log(`  Not published:  ${groups.NOT_PUBLISHED.length}`);
-  console.log(`  Up to date:     ${groups.UP_TO_DATE.length}`);
+  if (SHOW_NOT_PUBLISHED) {
+    console.log(`  Not published:  ${groups.NOT_PUBLISHED.length}`);
+  }
   console.log("=".repeat(60));
 
   // Exit with non-zero code if action is needed
