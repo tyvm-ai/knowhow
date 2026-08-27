@@ -15,7 +15,9 @@ export class FsSyncedAgentWatcher implements SyncedAgentWatcher {
   public taskId: string = "";
   private taskPath: string = "";
   private watcher: fs.FSWatcher | null = null;
+  private lastThreadIndex: number = -1;
   private lastThreadLength: number = 0;
+  private lastMessageJson: string | null = null;
   public agentName: string = "unknown";
   private debounceTimer: NodeJS.Timeout | null = null;
   public agentEvents = new EventService();
@@ -37,7 +39,9 @@ export class FsSyncedAgentWatcher implements SyncedAgentWatcher {
       const threads: any[][] = metadata.threads || [];
       const lastThread = threads[threads.length - 1] || [];
       this.agentName = metadata.agentName || taskId;
+      this.lastThreadIndex = threads.length - 1;
       this.lastThreadLength = lastThread.length;
+      this.lastMessageJson = this.messageJson(lastThread[lastThread.length - 1]);
     }
 
     // Watch the directory for metadata.json changes
@@ -68,8 +72,26 @@ export class FsSyncedAgentWatcher implements SyncedAgentWatcher {
     const threads: any[][] = metadata.threads;
     const lastThread = threads[threads.length - 1] || [];
 
+    const threadIndex = threads.length - 1;
+    let newMessages: any[];
+    if (
+      threadIndex === this.lastThreadIndex &&
+      lastThread.length >= this.lastThreadLength
+    ) {
+      newMessages = lastThread.slice(this.lastThreadLength);
+    } else {
+      const retainedIndex = this.findLastMessage(
+        lastThread,
+        this.lastMessageJson
+      );
+      newMessages = lastThread.slice(retainedIndex + 1);
+    }
+
+    this.lastThreadIndex = threadIndex;
+    this.lastThreadLength = lastThread.length;
+    this.lastMessageJson = this.messageJson(lastThread[lastThread.length - 1]);
+
     // Only render NEW messages since last check
-    const newMessages = lastThread.slice(this.lastThreadLength);
     if (newMessages.length > 0) {
       const renderEvents = messagesToRenderEvents(
         newMessages,
@@ -93,7 +115,6 @@ export class FsSyncedAgentWatcher implements SyncedAgentWatcher {
         }
       }
       this.agentEvents.emit(this.eventTypes.threadUpdate, lastThread);
-      this.lastThreadLength = lastThread.length;
     }
 
     // Emit done if the agent has completed and has a result
@@ -147,6 +168,23 @@ export class FsSyncedAgentWatcher implements SyncedAgentWatcher {
     const inputPath = path.join(this.taskPath, "input.txt");
     await fsPromises.writeFile(inputPath, `/poke ${message || ""}`.trim(), "utf8");
     console.log(`🫵 Interrupt written to input for agent: ${this.taskId}`);
+  }
+
+  private messageJson(message: any): string | null {
+    if (message == null) return null;
+    try {
+      return JSON.stringify(message);
+    } catch {
+      return null;
+    }
+  }
+
+  private findLastMessage(messages: any[], messageJson: string | null): number {
+    if (messageJson == null) return -1;
+    for (let index = messages.length - 1; index >= 0; index--) {
+      if (this.messageJson(messages[index]) === messageJson) return index;
+    }
+    return -1;
   }
 
   private async readMetadata(): Promise<any> {

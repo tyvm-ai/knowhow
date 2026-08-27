@@ -72,15 +72,14 @@ export class SandboxContext {
   };
 
   /**
-   * List the names of all tools available to this script (respecting the
-   * ToolsService's enabled set). Used by the generic function resolver to know
-   * which bare identifiers should route to callTool.
+   * List every function registered on the script's ToolsService. Prompt-visible
+   * tools are intentionally a separate concern from script tool access.
    */
   listToolNames(): string[] {
     try {
       const names =
-        typeof (this.toolsService as any).getToolNames === "function"
-          ? (this.toolsService as any).getToolNames()
+        typeof this.toolsService.getFunctionNames === "function"
+          ? this.toolsService.getFunctionNames()
           : [];
       return Array.isArray(names) ? names : [];
     } catch {
@@ -123,7 +122,10 @@ export class SandboxContext {
       };
 
       // Call the actual tool through the Tools service
-      const result = await this.toolsService.callTool(toolCall);
+      const result = await this.toolsService.callTool(
+        toolCall,
+        this.toolsService.getFunctionNames()
+      );
 
       this.tracer.emitEvent("tool_call_success", {
         toolName,
@@ -211,6 +213,7 @@ export class SandboxContext {
     options: {
       model?: string;
       maxTokens?: number;
+      max_tokens?: number;
       temperature?: number;
     } = {}
   ) {
@@ -236,7 +239,7 @@ export class SandboxContext {
       const completionOptions = {
         model: options.model,
         messages,
-        max_tokens: options.maxTokens,
+        max_tokens: options.maxTokens ?? options.max_tokens,
       };
 
       // Detect provider from model or use default

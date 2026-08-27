@@ -6,9 +6,11 @@ import { Tool, ToolProp } from "../clients/types";
 import { ToolsService } from "./Tools";
 import { MCPWebSocketTransport } from "./McpWebsocketTransport";
 import { WebSocket } from "ws";
+import { TraceAll } from "../util/Trace";
 
 export type McpServerConfig = { name: string; version: string };
 
+@TraceAll()
 export class McpServerService {
   server: McpServer | null = null;
   constructor(private toolsService: ToolsService) {}

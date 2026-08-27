@@ -1,4 +1,5 @@
 import * as path from "path";
+import { TraceAll } from "../util/Trace";
 import { globSync } from "glob";
 
 import {
@@ -38,6 +39,7 @@ interface EmbeddingServiceContext {
   plugins: PluginService;
 }
 
+@TraceAll()
 export class EmbeddingService {
   private config: Config;
   private embeddingClient: GenericClient;

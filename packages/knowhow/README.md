@@ -49,7 +49,23 @@ If you want to paste a token manually:
 knowhow login --jwt
 ```
 
-After login, Knowhow stores your JWT in `.knowhow/.jwt` and updates `knowhow.json` so models can route through the Knowhow proxy.
+Authentication belongs to a named remote. `origin` is available by default and
+points to the production API. To use another compatible backend:
+
+```bash
+knowhow remote add dev https://api.dev.knowhow.tyvm.ai
+knowhow remote use dev
+knowhow login
+```
+
+Use `knowhow remote list` to show remotes and `knowhow remote get-url` to show
+the selected API. Each entry in `.knowhow/knowhow.json` stores its name, API URL,
+organization ID, and JWT path. Tokens remain independent: production uses
+`.knowhow/.jwt`, development uses `.knowhow/.jwt.dev`, localhost uses
+`.knowhow/.jwt.local`, and arbitrary hosts receive a host-specific filename.
+
+`KNOWHOW_API_URL` remains an explicit per-process override, which is useful when
+you only want to select a remote for one terminal command.
 
 ### First steps after setup
 Start the interactive chat:

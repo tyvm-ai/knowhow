@@ -273,6 +273,7 @@ export function addMcpCommands(program: Command): void {
         await listRemoteSecrets();
       }
     });
+
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

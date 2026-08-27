@@ -1,0 +1,208 @@
+//! Shared, platform-agnostic types exposed across the napi boundary and used by
+//! every platform backend. Keeping these in one place means the `Backend` trait
+//! and the `#[napi]` surface speak the exact same vocabulary.
+
+use napi_derive::napi;
+
+/// A screen coordinate in virtual-desktop space (top-left origin).
+#[napi(object)]
+#[derive(Clone, Copy, Debug)]
+pub struct Point {
+    pub x: f64,
+    pub y: f64,
+}
+
+/// A width/height pair in pixels.
+#[napi(object)]
+#[derive(Clone, Copy, Debug)]
+pub struct Size {
+    pub width: f64,
+    pub height: f64,
+}
+
+/// A rectangular region in virtual-desktop space.
+#[napi(object)]
+#[derive(Clone, Copy, Debug)]
+pub struct Region {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// A click-through debug annotation rendered in virtual-desktop coordinates.
+/// Rect/circle use x/y/width/height, line uses x/y/x2/y2, and point uses x/y.
+#[napi(object)]
+#[derive(Clone, Debug)]
+pub struct OverlayPrimitive {
+    pub kind: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+    pub x2: Option<f64>,
+    pub y2: Option<f64>,
+    /// Text content and font size are used by the `text` primitive.
+    pub text: Option<String>,
+    pub font_size: Option<f64>,
+    /// Hex color in #RRGGBB or #RRGGBBAA form. Defaults to yellow.
+    pub color: Option<String>,
+    pub line_width: Option<f64>,
+}
+
+/// A window on the desktop. `bounds` is in virtual-desktop coords (top-left
+/// origin). `active` is true for the frontmost (focused) window.
+#[napi(object)]
+#[derive(Clone, Debug)]
+pub struct WindowInfo {
+    /// Window title (may be empty; the TS layer falls back to `app`).
+    pub title: String,
+    /// Owning application / process name.
+    pub app: String,
+    pub bounds: Region,
+    /// True for the frontmost window of the frontmost app.
+    pub active: bool,
+}
+
+/// A focused-window accessibility node with a short-lived structural ID.
+#[napi(object)]
+#[derive(Clone, Debug)]
+pub struct AccessibilityElement {
+    pub id: String,
+    pub role: String,
+    pub subrole: Option<String>,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub value: Option<String>,
+    pub enabled: Option<bool>,
+    pub focused: Option<bool>,
+    pub bounds: Option<Region>,
+    pub actions: Vec<String>,
+    pub child_count: u32,
+}
+
+/// Bounds focused-window AX traversal to avoid expensive full application trees.
+#[napi(object)]
+#[derive(Clone, Debug)]
+pub struct AccessibilityOptions {
+    pub max_depth: Option<u32>,
+    pub max_elements: Option<u32>,
+    pub interactive_only: Option<bool>,
+}
+
+/// A single physical/logical display.
+#[napi(object)]
+#[derive(Clone, Debug)]
+pub struct Display {
+    pub id: f64,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    /// HiDPI / Retina scale factor (device pixels per logical pixel).
+    pub scale_factor: f64,
+    pub primary: bool,
+}
+
+/// What this backend can actually do on the current session. The TS layer turns
+/// `input == false` / `capture == false` into a doctor hint rather than a crash.
+#[napi(object)]
+#[derive(Clone, Debug)]
+pub struct Capabilities {
+    pub input: bool,
+    pub capture: bool,
+    pub windows: bool,
+    /// Human-readable explanation when a capability is unavailable
+    /// (e.g. "macOS: Accessibility permission not granted").
+    pub reason: Option<String>,
+}
+
+/// Structured permission report used by `knowhow computer doctor`.
+#[napi(object)]
+#[derive(Clone, Debug)]
+pub struct PermissionsStatus {
+    /// e.g. "macos" | "windows" | "linux-x11" | "linux-wayland"
+    pub platform: String,
+    /// Can we synthesize input (mouse/keyboard) right now?
+    pub input_ok: bool,
+    /// Can we capture the screen right now?
+    pub capture_ok: bool,
+    /// Actionable remediation text when something is not ok.
+    pub fix: Option<String>,
+}
+
+/// Options for a screen capture. All fields optional; defaults to the full
+/// virtual desktop as raw RGBA bytes plus the dimensions needed to decode them.
+#[napi(object)]
+#[derive(Clone, Debug, Default)]
+pub struct ScreenshotOptions {
+    /// Capture only this region (virtual-desktop coords).
+    pub region: Option<Region>,
+    /// Capture a single display by id.
+    pub display_id: Option<f64>,
+    /// Resize the captured pixels before crossing the napi boundary. 1 is native
+    /// resolution; 0.25 is useful for high-frequency visual detection.
+    pub scale: Option<f64>,
+}
+
+/// Raw capture result. We return RGBA bytes + dimensions and let the TS layer
+/// (via `sharp`) handle PNG/JPEG encoding and scaling, so the native core stays
+/// small and we don't bundle an image codec per platform.
+#[napi(object)]
+pub struct RawImage {
+    pub width: u32,
+    pub height: u32,
+    /// Tightly-packed RGBA8 pixels, row-major, length == width*height*4.
+    pub data: napi::bindgen_prelude::Buffer,
+}
+
+/// Mouse buttons.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Button {
+    Left,
+    Right,
+    Middle,
+}
+
+impl Button {
+    /// Parse a JS-facing button string. Defaults to Left on unknown input so a
+    /// missing/typo'd button never throws in the hot path.
+    pub fn parse(s: &str) -> Button {
+        match s.to_ascii_lowercase().as_str() {
+            "right" => Button::Right,
+            "middle" => Button::Middle,
+            _ => Button::Left,
+        }
+    }
+}
+
+/// Options for `startScreenStream`. All fields optional.
+#[napi(object)]
+#[derive(Clone, Debug, Default)]
+pub struct ScreenStreamOptions {
+    /// Capture only this sub-region in virtual-desktop coords. Whole display if absent.
+    pub region: Option<Region>,
+    /// Which display to capture (CGDirectDisplayID). Main display if absent.
+    pub display_id: Option<f64>,
+    /// Downsample factor applied to every frame before storing (0 < scale ≤ 1).
+    pub scale: Option<f64>,
+    /// Desired capture frame rate (1..60). Default 10.
+    pub fps: Option<f64>,
+    /// Number of frames kept in the ring buffer (1..256). Default 4.
+    pub frames_to_keep: Option<u32>,
+}
+
+/// A single captured frame returned by `latestScreenFrame`.
+#[napi(object)]
+pub struct ScreenFrame {
+    /// Monotonically increasing counter. Pass as `afterSequence` to receive only new frames.
+    pub sequence: f64,
+    /// Monotonic ScreenCaptureKit presentation timestamp in milliseconds.
+    pub captured_at: f64,
+    /// Frame width in pixels (after scale is applied).
+    pub width: u32,
+    /// Frame height in pixels (after scale is applied).
+    pub height: u32,
+    /// Tightly-packed RGBA8 pixels, row-major, length == width * height * 4.
+    pub data: napi::bindgen_prelude::Buffer,
+}

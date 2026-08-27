@@ -20,6 +20,9 @@ export interface EmbeddingsResolver {
  * Modules can register a resolver for a given remoteType (e.g. "github", "s3")
  * via registerResolver(), and the core upload()/download() functions delegate to it.
  */
+import { TraceAll } from "../util/Trace";
+
+@TraceAll()
 export class EmbeddingsService {
   private resolvers = new Map<string, EmbeddingsResolver>();
 

@@ -87,6 +87,27 @@ export interface OperationIndex {
   description: string;
 }
 
+/** Minimal HTTP abstraction used by the runtime so consumers can enforce their own transport policy. */
+export interface SwaggerRequestConfig {
+  method: string;
+  headers: Record<string, string>;
+  data?: unknown;
+  params?: Record<string, unknown>;
+  maxRedirects: number;
+  validateStatus: (status: number) => boolean;
+}
+
+export interface SwaggerRequestResponse {
+  status: number;
+  statusText?: string;
+  data: unknown;
+}
+
+export type SwaggerRequest = (
+  url: string,
+  config: SwaggerRequestConfig
+) => Promise<SwaggerRequestResponse>;
+
 /**
  * Options for executing an HTTP operation
  */
@@ -95,6 +116,7 @@ export interface ExecuteOptions {
   operationId: string;
   parameters: Record<string, any>;
   headers?: Record<string, string>;
+  request?: SwaggerRequest;
 }
 
 /**

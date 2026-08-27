@@ -10,10 +10,13 @@ import { WorkerPasskeyAuthService } from "./workers/auth/WorkerPasskeyAuth";
 import { WsMiddlewareStack } from "./workers/auth/WsMiddleware";
 import { makeAuthMiddleware } from "./workers/auth/authMiddleware";
 
+const PROD_TUNNEL_WORKER_DOMAIN = "worker.tyvm-apps.com";
+
 /**
- * Extract the tunnel domain and protocol from the API URL.
- * e.g., "https://api.knowhow.tyvm.ai" -> { domain: "worker.knowhow.tyvm.ai", useHttps: true }
- * e.g., "http://localhost:4000" -> { domain: "worker.localhost:4000", useHttps: false }
+ * Resolve the tunnel domain and protocol from the environment and API URL.
+ * TUNNEL_WORKER_DOMAIN takes precedence. Otherwise localhost API URLs use the
+ * local tunnel proxy, dev API URLs use the dev tunnel domain, and all other API
+ * URLs use the production tunnel domain.
  */
 export function extractTunnelDomain(apiUrl: string): {
   domain: string;
@@ -22,18 +25,31 @@ export function extractTunnelDomain(apiUrl: string): {
   try {
     const url = new URL(apiUrl);
     const useHttps = url.protocol === "https:";
+    const configuredDomain = process.env.TUNNEL_WORKER_DOMAIN?.trim();
 
-    // For localhost, include port; for production, just use hostname
-    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
-      return {
-        domain: `worker.${url.hostname}:${url.port || "80"}`,
-        useHttps,
-      };
-    }
-    return { domain: `worker.${url.hostname}`, useHttps };
+    const isLocalApi =
+      url.hostname === "localhost" ||
+      url.hostname.endsWith(".localhost") ||
+      url.hostname === "127.0.0.1" ||
+      url.hostname === "[::1]";
+    const isDevApi = url.hostname.split(".").includes("dev");
+    const domain =
+      configuredDomain ||
+      (isLocalApi
+        ? `worker.localhost:${url.port || (useHttps ? "443" : "80")}`
+        : isDevApi
+          ? `worker.dev.tyvm-apps.com`
+          : PROD_TUNNEL_WORKER_DOMAIN);
+
+    return { domain, useHttps };
   } catch (err) {
     console.error("Failed to parse API_URL for tunnel domain:", err);
-    return { domain: "worker.localhost:4000", useHttps: false }; // fallback
+    return {
+      domain:
+        process.env.TUNNEL_WORKER_DOMAIN?.trim() ||
+        PROD_TUNNEL_WORKER_DOMAIN,
+      useHttps: false,
+    };
   }
 }
 

@@ -5,11 +5,13 @@
  * Command semantics:
  *   /attach <taskId>  - Attach to a RUNNING session (in-memory, filesystem, or web).
  *                       If the task is completed, the user is told to use /resume instead.
- *   /resume <taskId>  - Resume a COMPLETED/saved session with optional additional context.
+ *   /resume <taskId> [--rollback N] - Continue the same saved task.
+ *   /fork <taskId> [--rollback N]   - Start a new task from saved history.
  *   /sessions         - List sessions that can be attached to or resumed.
  *   /logs [N]         - Show the last N messages from the currently attached agent.
  */
 import { BaseChatModule } from "./BaseChatModule";
+import { TraceAll } from "../../util/Trace";
 import { ChatCommand, ChatMode, ChatContext } from "../types";
 import { AgentModule } from "./AgentModule";
 import {
@@ -24,6 +26,33 @@ import { Marked } from "../../utils/index";
 import * as fs from "fs";
 import * as path from "path";
 
+export function parseHistoryCommandArgs(args: string[]): {
+  id?: string;
+  rollback: number;
+  showAll: boolean;
+} {
+  let id: string | undefined;
+  let rollback = 0;
+  let showAll = false;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--all") {
+      showAll = true;
+    } else if (args[i] === "--rollback") {
+      const value = args[++i];
+      rollback = Number(value);
+      if (!Number.isInteger(rollback) || rollback < 0) {
+        throw new Error("--rollback must be a non-negative integer");
+      }
+    } else if (!id) {
+      id = args[i];
+    } else {
+      throw new Error(`Unexpected argument: ${args[i]}`);
+    }
+  }
+  return { id, rollback, showAll };
+}
+
+@TraceAll()
 export class SessionsModule extends BaseChatModule {
   name = "sessions";
   description = "Session and attachment management";
@@ -48,6 +77,12 @@ export class SessionsModule extends BaseChatModule {
         description:
           "Resume a completed/saved session with optional additional context",
         handler: this.handleResumeCommand.bind(this),
+      },
+      {
+        name: "fork",
+        description:
+          "Fork a saved session into a new task; use --rollback N to discard recent agent interactions",
+        handler: this.handleForkCommand.bind(this),
       },
       {
         name: "sessions",
@@ -214,7 +249,6 @@ export class SessionsModule extends BaseChatModule {
     // ── Case 1: in-memory running task ──────────────────────────────────────
     if (taskRegistry.has(id)) {
       const taskInfo = taskRegistry.get(id)!;
-      const renderer = this.agentModule.getRenderer();
       const context = this.chatService?.getContext();
       const selectedAgent = taskInfo.agent;
 
@@ -222,13 +256,9 @@ export class SessionsModule extends BaseChatModule {
         context.selectedAgent = selectedAgent;
         context.agentMode = true;
         context.currentAgent = taskInfo.agentName;
-        context.activeAgentTaskId = id;
         context.currentModel = selectedAgent.getModel();
         context.currentProvider = selectedAgent.getProvider();
       }
-      this.agentModule.setActiveAgentTaskId(id);
-      renderer.setActiveTaskId(id);
-      if (this.chatService) this.chatService.setMode("agent:attached");
 
       console.log(`🔄 Attached to running task: ${id}`);
       console.log(`   Agent : ${taskInfo.agentName}`);
@@ -237,6 +267,13 @@ export class SessionsModule extends BaseChatModule {
       console.log(
         `   Type /logs to see recent messages, or /detach to detach.`
       );
+
+      // Route through attachedAgentChatLoop so that:
+      // 1. wireAgentRendering is called (new output becomes visible)
+      // 2. attachedAgent is set (so /poke, /kill, /compact work)
+      // 3. a done listener is registered (mode resets when agent finishes)
+      // Do NOT pass initialInput — agent is already running, no need to call it again.
+      await this.agentModule.attachedAgentChatLoop(id, selectedAgent as any);
       return;
     }
 
@@ -303,10 +340,17 @@ export class SessionsModule extends BaseChatModule {
 
   async handleResumeCommand(args: string[]): Promise<void> {
     const sessionManager = this.agentModule.getSessionManager();
+    let parsed;
+    try {
+      parsed = parseHistoryCommandArgs(args);
+    } catch (error: any) {
+      console.error(`Usage: /resume <taskId> [--rollback N] [--all]\n${error.message}`);
+      return;
+    }
 
-    if (args.length === 0 || args[0] === "--all") {
+    if (!parsed.id) {
       // Interactive: show saved sessions for selection
-      const showAll = args[0] === "--all";
+      const showAll = parsed.showAll;
       const allSessions = sessionManager.listAvailableSessions();
       const savedSessions = showAll ? allSessions : allSessions.slice(0, 10);
       if (savedSessions.length === 0) {
@@ -326,18 +370,32 @@ export class SessionsModule extends BaseChatModule {
       );
 
       if (selectedId) {
-        await this.resumeById(selectedId);
+        await this.resumeById(selectedId, parsed.rollback);
       }
       return;
     }
 
-    await this.resumeById(args[0]);
+    await this.resumeById(parsed.id, parsed.rollback);
   }
 
-  private async resumeById(id: string): Promise<void> {
+  async handleForkCommand(args: string[]): Promise<void> {
+    let parsed;
+    try {
+      parsed = parseHistoryCommandArgs(args);
+    } catch (error: any) {
+      console.error(`Usage: /fork <taskId> [--rollback N]\n${error.message}`);
+      return;
+    }
+    if (!parsed.id) {
+      console.error("Usage: /fork <taskId> [--rollback N]");
+      return;
+    }
+    await this.resumeById(parsed.id, parsed.rollback, true);
+  }
+
+  private async resumeById(id: string, rollback = 0, fork = false): Promise<void> {
     const sessionManager = this.agentModule.getSessionManager();
 
-    // Check saved sessions first
     try {
       const session = sessionManager.loadSession(id);
       if (session) {
@@ -347,34 +405,46 @@ export class SessionsModule extends BaseChatModule {
         console.log(`   Status : ${session.status}`);
 
         const additionalContext = await this.chatService?.getInput(
-          "Add any additional context for resuming this session (or press Enter to skip): "
+          `Add any additional context for ${fork ? "forking" : "resuming"} this session (or press Enter to skip): `
         );
-        await this.agentModule.resumeSession(
-          id,
-          additionalContext?.trim() || undefined
-        );
+        if (fork) {
+          const result = await this.agentModule.resumeFromMessages({
+            agentName: session.agentName,
+            threads: session.threads,
+            input: additionalContext?.trim() || session.initialInput,
+            interactive: true,
+            rollback,
+            fork: true,
+            model: session.model,
+            provider: session.provider,
+            reasoningEffort: session.reasoningEffort,
+            summarizeReasoning: session.summarizeReasoning,
+            enabledTools: session.enabledTools,
+          });
+          console.log(`🌿 Forked ${id} into new task ${result.taskId}`);
+        } else {
+          await this.agentModule.resumeSession(
+            id,
+            additionalContext?.trim() || undefined,
+            rollback
+          );
+        }
         return;
       }
-    } catch {
+    } catch (e: any) {
+      if (e?.message?.includes("rollback")) throw e;
       // not found as a saved session
     }
 
-    // Check filesystem agent (may have metadata with threads)
     const fsAgentPath = path.join(".knowhow", "processes", "agents", id);
     if (fs.existsSync(fsAgentPath)) {
-      // Try to load threads from metadata.json and resume
       const metadataPath = path.join(fsAgentPath, "metadata.json");
       if (fs.existsSync(metadataPath)) {
         try {
-          const raw = fs.readFileSync(metadataPath, "utf-8");
-          const metadata = JSON.parse(raw);
+          const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf-8"));
           const threads: any[] = metadata.threads || [];
           const agentName = metadata.agentName || "Developer";
-
-          // Try to get initialInput from the saved session file (more complete)
-          // since metadata.json doesn't always store it
-          const savedSession = sessionManager.loadSession(id);
-          const initialInput = savedSession?.initialInput || metadata.initialInput || metadata.prompt || "";
+          const initialInput = metadata.initialInput || metadata.prompt || "";
 
           console.log(`\n📋 Found task in filesystem: ${id}`);
           console.log(`   Agent  : ${agentName}`);
@@ -382,24 +452,33 @@ export class SessionsModule extends BaseChatModule {
           console.log(`   Status : ${metadata.status || "unknown"}`);
 
           const additionalContext = await this.chatService?.getInput(
-            "Add any additional context for resuming this session (or press Enter to skip): "
+            `Add any additional context for ${fork ? "forking" : "resuming"} this session (or press Enter to skip): `
           );
-
-          // Normalize threads: if flat Message[] (old buggy format), wrap in array
           const normalizedThreads = threads.length > 0 && !Array.isArray(threads[0])
             ? [threads]
             : threads;
-
-          await this.agentModule.resumeFromMessages({
+          const result = await this.agentModule.resumeFromMessages({
             agentName,
-            taskId: id,
+            remoteTaskId: fork
+              ? undefined
+              : metadata.remoteTaskId || metadata.knowhowTaskId,
+            taskId: fork ? undefined : id,
             threads: normalizedThreads,
-            input: additionalContext?.trim() || initialInput || "",
+            input: additionalContext?.trim() || initialInput,
             interactive: true,
+            rollback,
+            fork,
+            model: metadata.model,
+            provider: metadata.provider,
+            reasoningEffort: metadata.reasoningEffort,
+            summarizeReasoning: metadata.summarizeReasoning,
+            enabledTools: metadata.enabledTools,
           });
+          if (fork) console.log(`🌿 Forked ${id} into new task ${result.taskId}`);
           return;
         } catch (e: any) {
           console.error(`⚠️  Failed to load metadata for task ${id}: ${e.message}`);
+          return;
         }
       }
       console.log(
@@ -409,9 +488,7 @@ export class SessionsModule extends BaseChatModule {
       return;
     }
 
-    console.log(
-      `Session "${id}" not found. Use /sessions to list available sessions.`
-    );
+    console.log(`Session "${id}" not found. Use /sessions to list available sessions.`);
   }
 
   // ─────────────────────────────────────────────────────────────────────────────

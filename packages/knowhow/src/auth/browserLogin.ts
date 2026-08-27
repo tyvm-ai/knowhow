@@ -1,12 +1,14 @@
 import http from "../utils/http";
 import { exec } from "child_process";
 import { promisify } from "util";
+import crypto from "crypto";
 import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
 import { KNOWHOW_API_URL } from "../services/KnowhowClient";
 import { Spinner } from "./spinner";
 import { BrowserLoginError } from "./errors";
+import { storeJwtForApi } from "./jwtStore";
 
 // TypeScript interfaces for the CLI Login API
 
@@ -28,6 +30,8 @@ interface RetrieveTokenResponse {
 
 export class BrowserLoginService {
   private baseUrl: string;
+  /** PKCE verifier — generated once per login attempt, never sent in a URL */
+  private verifier: string = crypto.randomBytes(32).toString("hex");
 
   constructor(baseUrl: string = KNOWHOW_API_URL, private orgId?: string) {
     if (!baseUrl) {
@@ -100,9 +104,10 @@ export class BrowserLoginService {
             spinner.stop();
             spinner.start("Authentication successful! Retrieving token");
 
-            // Step 4: Retrieve JWT token
+            // Step 4: Redeem session using PKCE verifier (never sent in URL)
             const tokenResponse = await http.post(
-              `${this.baseUrl}/api/cli-login/session/${sessionData.sessionId}/token`
+              `${this.baseUrl}/api/cli-login/session/${sessionData.sessionId}/redeem`,
+              { verifier: this.verifier }
             );
 
             const tokenData = tokenResponse.data as RetrieveTokenResponse;
@@ -170,9 +175,11 @@ export class BrowserLoginService {
    */
   private async createSession(): Promise<CreateSessionResponse> {
     try {
+      // Compute the PKCE challenge (sha256 of verifier) to store server-side
+      const challenge = crypto.createHash("sha256").update(this.verifier, "utf8").digest("hex");
       const response = await http.post<CreateSessionResponse>(
         `${this.baseUrl}/api/cli-login/session`,
-        {},
+        { challenge },
         { headers: { "User-Agent": getCliUserAgent() } }
       );
       return response.data;
@@ -193,19 +200,7 @@ export class BrowserLoginService {
    * Securely stores the JWT token to the file system
    */
   private async storeJwt(jwt: string): Promise<void> {
-    const configDir = `${process.cwd()}/.knowhow`;
-    const jwtFile = `${configDir}/.jwt`;
-
-    // Ensure directory exists
-    if (!fs.existsSync(configDir)) {
-      fs.mkdirSync(configDir, { recursive: true });
-    }
-
-    // Write JWT to file
-    fs.writeFileSync(jwtFile, jwt, { mode: 0o600 });
-
-    // Ensure file has correct permissions (readable only by owner)
-    fs.chmodSync(jwtFile, 0o600);
+    storeJwtForApi(jwt, this.baseUrl);
   }
 
   /**

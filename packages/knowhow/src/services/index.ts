@@ -15,8 +15,11 @@ import { SessionManager } from "./SessionManager";
 import { TaskRegistry } from "./TaskRegistry";
 import { MediaProcessorService } from "./MediaProcessorService";
 import { BehaviorsService } from "./BehaviorsService";
+import { RuntimeReloadService } from "./RuntimeReloadService";
+import { ExtensionsService } from "./ExtensionsService";
 
 import { ConversionService } from "./conversion/ConversionService";
+import { TracingService } from "./TracingService";
 
 export * from "./AgentService";
 export * from "./EventService";
@@ -38,13 +41,19 @@ export * from "./SyncedAgentWatcher";
 export * from "./SyncerService";
 export * from "./watchers";
 export { Clients } from "../clients";
+export * from "../util/Trace";
+export { TracingService } from "./TracingService";
+export type { TracerImpl, SpanHandle } from "./TracingService";
 export * from "./conversion";
+export * from "./RuntimeReloadService";
+export * from "./ExtensionsService";
 export { BehaviorsService } from "./BehaviorsService";
 
 let Singletons = {} as {
   Tools: ToolsService;
   Events: EventService;
   Agents: AgentService;
+  Tracing: typeof TracingService;
   Embeddings: EmbeddingsService;
   Flags: FlagsService;
   Mcp: McpService;
@@ -56,6 +65,8 @@ let Singletons = {} as {
   MediaProcessor: MediaProcessorService;
   Conversion: ConversionService;
   Behaviors: BehaviorsService;
+  RuntimeReload: RuntimeReloadService;
+  Extensions: ExtensionsService;
 };
 
 export const services = (): typeof Singletons => {
@@ -76,6 +87,7 @@ export const services = (): typeof Singletons => {
     Singletons = {
       Agents,
       AwsS3: new S3Service(),
+      Tracing: TracingService,
       Clients,
       Docker: new DockerService(),
       Events,
@@ -88,6 +100,8 @@ export const services = (): typeof Singletons => {
       Tools,
       knowhowApiClient: new KnowhowSimpleClient(),
       Behaviors,
+      RuntimeReload: new RuntimeReloadService(),
+      Extensions: new ExtensionsService(),
     };
 
     Singletons.Tools.setContext({

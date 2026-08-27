@@ -18,7 +18,15 @@ export enum TunnelMessageType {
   PTY_DATA = "TUNNEL_PTY_DATA",
   PTY_RESIZE = "TUNNEL_PTY_RESIZE",
   PTY_CLOSE = "TUNNEL_PTY_CLOSE",
+  PTY_LIST = "TUNNEL_PTY_LIST",
+  PTY_ATTACHED = "TUNNEL_PTY_ATTACHED",
+  PTY_DETACH = "TUNNEL_PTY_DETACH",
+  PTY_LIST_RESPONSE = "TUNNEL_PTY_LIST_RESPONSE",
   PTY_EXIT = "TUNNEL_PTY_EXIT",
+  // Telemetry addon message types
+  TELEMETRY_HELLO = "TUNNEL_TELEMETRY_HELLO",
+  TELEMETRY_SAMPLE = "TUNNEL_TELEMETRY_SAMPLE",
+  TELEMETRY_CONTROL = "TUNNEL_TELEMETRY_CONTROL",
 }
 
 /**
@@ -184,6 +192,8 @@ export interface StreamState {
 export interface TunnelPtyOpen {
   type: TunnelMessageType.PTY_OPEN;
   streamId: string;
+  /** Stable PTY identity. Unlike streamId, this survives browser reconnects. */
+  terminalId?: string;
   command: string;
   args?: string[];
   cols: number;
@@ -216,6 +226,39 @@ export interface TunnelPtyResize {
 export interface TunnelPtyClose {
   type: TunnelMessageType.PTY_CLOSE;
   streamId: string;
+  terminalId?: string;
+}
+
+export interface TunnelPtyList {
+  type: TunnelMessageType.PTY_LIST;
+  streamId: string;
+}
+
+export interface TunnelPtySessionInfo {
+  terminalId: string;
+  pid: number;
+  command: string;
+  createdAt: string;
+  cols: number;
+  rows: number;
+}
+
+export interface TunnelPtyAttached {
+  type: TunnelMessageType.PTY_ATTACHED;
+  streamId: string;
+  terminalId: string;
+  existing: boolean;
+}
+
+export interface TunnelPtyDetach {
+  type: TunnelMessageType.PTY_DETACH;
+  streamId: string;
+}
+
+export interface TunnelPtyListResponse {
+  type: TunnelMessageType.PTY_LIST_RESPONSE;
+  streamId: string;
+  sessions: TunnelPtySessionInfo[];
 }
 
 /**
@@ -232,7 +275,58 @@ export type TunnelPtyMessage =
   | TunnelPtyData
   | TunnelPtyResize
   | TunnelPtyClose
+  | TunnelPtyList
+  | TunnelPtyAttached
+  | TunnelPtyDetach
+  | TunnelPtyListResponse
   | TunnelPtyExit;
+
+// ─── Telemetry Message Types ──────────────────────────────────────────────────
+
+/**
+ * Worker → Backend: initial telemetry handshake announcing capabilities.
+ */
+export interface TunnelTelemetryHello {
+  type: TunnelMessageType.TELEMETRY_HELLO;
+  version: 1;
+  bootId: string;
+  capabilities: string[];
+}
+
+/**
+ * Backend → Worker: accept/reject negotiation + session parameters.
+ */
+export interface TunnelTelemetryControl {
+  type: TunnelMessageType.TELEMETRY_CONTROL;
+  version: 1;
+  accepted: boolean;
+  sessionId?: string;
+  intervalMs?: number;
+  maxPayloadBytes?: number;
+  reason?: string;
+}
+
+/**
+ * Worker → Backend: periodic telemetry sample.
+ */
+export interface TunnelTelemetrySample {
+  type: TunnelMessageType.TELEMETRY_SAMPLE;
+  version: 1;
+  bootId: string;
+  sessionId: string;
+  sequence: number;
+  observedAt: string;
+  uptimeMs: number;
+  capabilities?: string[];
+  runtime?: Record<string, unknown>;
+  resources?: Record<string, unknown>;
+  collectorError?: boolean;
+}
+
+export type TunnelTelemetryMessage =
+  | TunnelTelemetryHello
+  | TunnelTelemetryControl
+  | TunnelTelemetrySample;
 
 // ─── Addon Interface ──────────────────────────────────────────────────────────
 
@@ -241,7 +335,11 @@ export type TunnelPtyMessage =
  */
 export interface TunnelAddonContext {
   /** Send a message back over the tunnel WebSocket */
-  send(message: TunnelMessage | TunnelPtyMessage): void;
+  send(
+    message: TunnelMessage | TunnelPtyMessage | TunnelTelemetryMessage
+  ): void;
+  /** Bytes queued by the underlying WebSocket, for addon backpressure. */
+  readonly bufferedAmount?: number;
 }
 
 /**
@@ -259,9 +357,15 @@ export interface TunnelAddon {
    */
   handles: string[];
   onConnect?(ctx: TunnelAddonContext): void;
-  onMessage(message: TunnelMessage | TunnelPtyMessage, ctx: TunnelAddonContext): void | Promise<void>;
-  onDisconnect?(): void;
+  onMessage(
+    message: TunnelMessage | TunnelPtyMessage | TunnelTelemetryMessage,
+    ctx: TunnelAddonContext
+  ): void | Promise<void>;
+  onDisconnect?(ctx: TunnelAddonContext): void;
 }
 
 // Extend the union type to include PTY messages
-export type AnyTunnelMessage = TunnelMessage | TunnelPtyMessage;
+export type AnyTunnelMessage =
+  | TunnelMessage
+  | TunnelPtyMessage
+  | TunnelTelemetryMessage;

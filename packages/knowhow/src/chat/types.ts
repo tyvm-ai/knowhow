@@ -3,6 +3,7 @@
  */
 import { ChatInteraction, Config } from "../types";
 import { BaseAgent } from "../agents/base/base";
+import { ReasoningEffort } from "../clients/types";
 import { ToolsService } from "../services";
 import { AgentRenderer } from "./renderer/types";
 
@@ -10,6 +11,9 @@ export interface ChatContext {
   debugMode?: boolean;
   agentMode?: boolean;
   currentAgent?: string;
+  defaultAgent?: string;
+  defaultModel?: string;
+  defaultProvider?: string;
   promptText?: string;
   searchMode?: boolean;
   voiceMode?: boolean;
@@ -41,7 +45,7 @@ export interface CommandResult {
 export interface ChatCommand {
   name: string;
   description: string;
-  handler: (args: string[]) => Promise<void | CommandResult>;
+  handler: (args: string[], chatService?: ChatService) => Promise<void | CommandResult>;
   modes?: string[]; // Commands can specify which modes they're available in
 }
 
@@ -94,6 +98,13 @@ export interface TaskInfo {
   endTime?: number;
   totalCost: number;
   sessionFile?: string;
+  // Model/provider/reasoning actually used for this run, so a resume can
+  // restore the exact configuration instead of falling back to agent defaults.
+  model?: string;
+  provider?: string;
+  reasoningEffort?: ReasoningEffort;
+  summarizeReasoning?: boolean;
+  enabledTools?: string[];
 }
 
 export interface ChatSession {
@@ -111,6 +122,12 @@ export interface ChatSession {
   threads: any[][];
   currentThread: number;
   lastUpdated: number;
+  // Persisted run configuration for exact resume restoration.
+  model?: string;
+  provider?: string;
+  reasoningEffort?: ReasoningEffort;
+  summarizeReasoning?: boolean;
+  enabledTools?: string[];
 }
 
 export interface ChatHistory {

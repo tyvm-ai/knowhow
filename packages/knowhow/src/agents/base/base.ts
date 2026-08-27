@@ -22,6 +22,7 @@ import { Models } from "../../ai";
 import { MessageProcessor } from "../../services/MessageProcessor";
 import { DEFAULT_CONTEXT_LIMIT } from "../../clients/contextLimits";
 import { Marked } from "../../utils";
+import { TraceAll } from "../../util/Trace";
 
 export { Message, Tool, ToolCall };
 export interface ModelPreference {
@@ -41,6 +42,18 @@ export interface AgentContext {
 export interface ToolCallEvent {
   toolCall: ToolCall;
   functionResp: any;
+}
+
+type ChatCompletion = Parameters<GenericClient["createChatCompletion"]>[0];
+type CachedChatCompletion = { messages: ChatCompletion["messages"] } & Partial<
+  Omit<ChatCompletion, "messages">
+>;
+
+interface CompletedCompaction {
+  compressionEnd: number;
+  originalPrefix: Message[];
+  replacementPrefix: Message[];
+  summary: string;
 }
 
 /**
@@ -78,6 +91,7 @@ interface ActiveObservation {
   expiry?: NodeJS.Timeout;
 }
 
+@TraceAll()
 export abstract class BaseAgent implements IAgent {
   abstract name: string;
   abstract description: string;
@@ -121,6 +135,12 @@ export abstract class BaseAgent implements IAgent {
   // regardless of whether the token threshold has been reached.
   protected _forceCompact = false;
 
+  // Compaction is intentionally detached from the main agent loop. A failed
+  // attempt is cleared so a later turn can retry without ending the task.
+  private _compactionPromise: Promise<void> | null = null;
+  private _completedCompaction: CompletedCompaction | null = null;
+  private _compactionGeneration = 0;
+
   // Interrupt support: resolves the currently awaited tool call or completion
   private _interruptResolve: (() => void) | null = null;
   // A monotonically-increasing token identifying the active interruptible window.
@@ -145,6 +165,12 @@ export abstract class BaseAgent implements IAgent {
   protected taskBreakdown = "";
   protected summaries = [] as string[];
   protected currentTaskId: string | null = null;
+  /**
+   * The taskId of the parent agent that spawned this task, if any.
+   * Used by self-referential tools (e.g. replyToParent) to know who to
+   * report back to without relying solely on reading metadata.json off disk.
+   */
+  public parentTaskId: string | null = null;
 
   public agentEvents = new EventService();
   public eventTypes = {
@@ -274,6 +300,10 @@ export abstract class BaseAgent implements IAgent {
   }
 
   newTask(taskId?: string) {
+    // Invalidate any detached compaction still finishing for the previous task.
+    this._compactionGeneration++;
+    this._compactionPromise = null;
+    this._completedCompaction = null;
     this.currentThread = 0;
     this.threads = [];
     this.taskBreakdown = "";
@@ -347,6 +377,14 @@ export abstract class BaseAgent implements IAgent {
 
   getProvider() {
     return this.provider;
+  }
+
+  getParentTaskId(): string | null {
+    return this.parentTaskId;
+  }
+
+  setParentTaskId(value: string | null) {
+    this.parentTaskId = value ?? null;
   }
 
   setProvider(value: keyof typeof Clients.clients) {
@@ -452,6 +490,28 @@ export abstract class BaseAgent implements IAgent {
     return this.getEnabledTools().map((t) => t.function.name);
   }
 
+  /** Restore the exact request-visible tool list persisted for a prior run. */
+  restoreEnabledTools(names: string[]) {
+    const uniqueNames = [...new Set(names)];
+    const lazyTools = this.tools as ToolsService & {
+      enableTools?: (patterns: string[]) => unknown;
+      restoreEnabledTools?: (names: string[]) => void;
+    };
+
+    // LazyToolsService only exposes explicitly enabled tools. Materialize the
+    // saved concrete names before applying the agent-level exact-set filter.
+    if (lazyTools.restoreEnabledTools) {
+      lazyTools.restoreEnabledTools(uniqueNames);
+    } else {
+      lazyTools.enableTools?.(uniqueNames);
+    }
+    const savedNames = new Set(uniqueNames);
+    this.disabledTools = this.tools
+      .getTools()
+      .map((tool) => tool.function.name)
+      .filter((name) => !savedNames.has(name));
+  }
+
   disableTool(toolName: string) {
     this.disabledTools.push(toolName);
   }
@@ -528,7 +588,11 @@ export abstract class BaseAgent implements IAgent {
     return this.totalCostUsd;
   }
 
-  adjustTokenUsage(usage: any, messages?: Message[]) {
+  adjustTokenUsage(
+    usage: any,
+    messages?: Message[],
+    updateLastPromptTokens = true
+  ) {
     if (!usage) return;
     // Support both OpenAI-style (prompt_tokens/completion_tokens) and Anthropic-style (input_tokens/output_tokens)
     const inputTokens = usage.input_tokens ?? usage.prompt_tokens ?? 0;
@@ -550,7 +614,7 @@ export abstract class BaseAgent implements IAgent {
     // (i.e. when there are input tokens) so a usage-less interrupt stub doesn't
     // reset it to 0.
     const promptTokens = inputTokens + cacheReadTokens + cacheWriteTokens;
-    if (promptTokens > 0) {
+    if (updateLastPromptTokens && promptTokens > 0) {
       this.lastPromptTokens = promptTokens;
     }
 
@@ -595,20 +659,42 @@ export abstract class BaseAgent implements IAgent {
    * no-op).
    */
   protected async createAgentCompletion(
-    params: Parameters<GenericClient["createChatCompletion"]>[0],
+    params: CachedChatCompletion,
     options: {
       interruptValue?: CompletionResponse;
+      updateLastPromptTokens?: boolean;
     } = {}
   ): Promise<CompletionResponse> {
-    const { interruptValue } = options;
+    const { interruptValue, updateLastPromptTokens = true } = options;
 
-    const callPromise = this.getClient().createChatCompletion(params);
+    // If you change the tools, or any of this, you bust cache
+    // only safe to change messages
+    const defaultedParams: ChatCompletion = {
+      model: this.getModel(),
+      tools: this.getEnabledTools(),
+      tool_choice: "auto",
+      long_ttl_cache: this.runTime() > 300_000,
+      ...(this.reasoningEffort !== undefined && {
+        reasoning_effort: this.reasoningEffort,
+      }),
+      ...(this.summarizeReasoning !== undefined && {
+        reasoning_summary: this.summarizeReasoning,
+      }),
+
+      ...params,
+    };
+
+    const callPromise = this.getClient().createChatCompletion(defaultedParams);
     const response = interruptValue
       ? await this.makeInterruptible(callPromise, interruptValue)
       : await callPromise;
 
     this.adjustTotalCostUsd(response?.usd_cost);
-    this.adjustTokenUsage(response?.usage, params.messages);
+    this.adjustTokenUsage(
+      response?.usage,
+      params.messages,
+      updateLastPromptTokens
+    );
 
     return response;
   }
@@ -663,6 +749,7 @@ export abstract class BaseAgent implements IAgent {
       this.tools.callTool(toolCall, this.getEnabledToolNames(), {
         caller: this,
         taskId: this.currentTaskId,
+        parentTaskId: this.parentTaskId ?? undefined,
       }),
       interruptResult
     );
@@ -677,6 +764,14 @@ export abstract class BaseAgent implements IAgent {
 
   logMessages(messages: Message[]) {
     for (const message of messages) {
+      // Surface the model's reasoning summary (what it's "thinking") when the
+      // provider exposes one, so it appears alongside the assistant's output.
+      const reasoningSummary = (message as any).reasoning_summary;
+      if (message.role === "assistant" && reasoningSummary) {
+        this.agentEvents.emit(this.eventTypes.agentSay, {
+          message: `💭 ${reasoningSummary}`,
+        });
+      }
       if (message.role === "assistant" && message.content) {
         this.agentEvents.emit(this.eventTypes.agentSay, {
           message: message.content,
@@ -901,10 +996,7 @@ export abstract class BaseAgent implements IAgent {
       // would pre-empt the next tool call and drop its result. Any message
       // supplied with the poke was already added as a pending user message
       // above, so the agent will still see it on its next step.
-      this.log(
-        "No active interruptible operation to interrupt",
-        "warn"
-      );
+      this.log("No active interruptible operation to interrupt", "warn");
     }
   }
 
@@ -968,9 +1060,6 @@ export abstract class BaseAgent implements IAgent {
       messages = this.formatInputMessages(messages);
       this.updateCurrentThread(messages);
       const isMissingTool = this.isRequiredToolMissing();
-
-      const startIndex = 0;
-      const endIndex = messages.length;
 
       // Process messages before each AI call
       messages = await this.messageProcessor.processMessages(
@@ -1044,6 +1133,14 @@ export abstract class BaseAgent implements IAgent {
 
       // Typically, there's only one choice in the array, but you could have many
       // If you set `n` to more than 1, you will get multiple choices
+      // Collect all tool calls across all choices up front.
+      // This is used by detectTruncatedToolCalls so that the size heuristic
+      // compares the full completion_tokens against ALL argument content,
+      // rather than just the current choice's single tool call (Anthropic maps
+      // each parallel tool_use block to a separate choice).
+      const allResponseToolCalls = response.choices.flatMap(
+        (c) => c.message.tool_calls ?? []
+      );
       for (const choice of response.choices) {
         messages.push(choice.message);
 
@@ -1073,7 +1170,8 @@ export abstract class BaseAgent implements IAgent {
 
           const truncationWarning = this.detectTruncatedToolCalls(
             toolCalls,
-            response
+            response,
+            allResponseToolCalls
           );
           if (truncationWarning) {
             messages.push(truncationWarning as Message);
@@ -1204,28 +1302,59 @@ export abstract class BaseAgent implements IAgent {
       // prompt token count from the last completion response over the
       // whitespace-based estimate — so it compares real tokens against the
       // real (token-based) compress threshold.
+      const completedCompaction = this._completedCompaction;
+      this._completedCompaction = null;
+      let appliedCompaction = false;
+
+      if (completedCompaction) {
+        const currentPrefix = messages.slice(
+          0,
+          completedCompaction.compressionEnd
+        );
+        const prefixIsUnchanged = currentPrefix.every(
+          (message, index) =>
+            message === completedCompaction.originalPrefix[index] ||
+            JSON.stringify(message) ===
+              JSON.stringify(completedCompaction.originalPrefix[index])
+        );
+
+        if (
+          currentPrefix.length === completedCompaction.compressionEnd &&
+          prefixIsUnchanged
+        ) {
+          messages = [
+            ...completedCompaction.replacementPrefix,
+            ...messages.slice(completedCompaction.compressionEnd),
+          ];
+          this.summaries.push(completedCompaction.summary);
+          this.startNewThread(messages);
+          this.lastPromptTokens = 0;
+          appliedCompaction = true;
+        } else {
+          this.log(
+            "Discarding completed compaction because its source prefix changed; a later turn will retry",
+            "warn"
+          );
+        }
+      }
+
       const contextTokens = this.getContextTokenCount(messages);
       const overThreshold =
         contextTokens > this.getCompressThreshold() &&
         messages.length > this.compressMinMessages;
 
-      if (overThreshold || this._forceCompact) {
-        const taskBreakdown = await this.getTaskBreakdown(messages);
+      if (
+        !appliedCompaction &&
+        !this._compactionPromise &&
+        (overThreshold || this._forceCompact)
+      ) {
         this.log(
           this._forceCompact
-            ? `Compacting messages (manual /compact request): ${contextTokens} tokens`
-            : `Compressing messages: ${contextTokens} tokens exceeds ${this.getCompressThreshold()}`
+            ? `Starting background compaction (manual /compact request): ${contextTokens} tokens`
+            : `Starting background compaction: ${contextTokens} tokens exceeds ${this.getCompressThreshold()}`
         );
         this._forceCompact = false;
-        messages = await this.compressMessages(messages, startIndex, endIndex);
-        this.startNewThread(messages);
-        // Reset the real-token tracker. compressMessages() ran a completion over
-        // the FULL (pre-compression) thread, so lastPromptTokens now reflects
-        // that large context — not the small compressed thread. Zeroing it makes
-        // getContextTokenCount() fall back to the whitespace estimate of the new
-        // (small) thread until the next real completion reports fresh usage,
-        // preventing an immediate false re-compaction on the following iteration.
-        this.lastPromptTokens = 0;
+        this.startBackgroundCompaction(messages);
       }
 
       if (["assistant", "tool"].includes(messages[messages.length - 1].role)) {
@@ -1235,10 +1364,19 @@ export abstract class BaseAgent implements IAgent {
         this.logStatus();
 
         const continuation = `<Workflow>
-        Task terminates after you call on of these tools: ${JSON.stringify(
+        This is an automated runtime instruction, not a new user message.
+        The original user request remains active. Do not say that the user's
+        message was empty, and do not ask the user to repeat the request.
+
+        Your previous response did not terminate the task because it did not
+        call one of the required tools: ${JSON.stringify(
           this.requiredToolNames
-        )}.\n
-        User likely only sees output from the required tool call.
+        )}.
+        If your previous response was intended as the final response, call the
+        appropriate required tool now with that response. Otherwise, continue
+        working on the original request and call an appropriate required tool
+        when the task is complete.
+
         <TaskStatus>${statusMessage}</TaskStatus>
         </Workflow>`;
 
@@ -1435,12 +1573,18 @@ export abstract class BaseAgent implements IAgent {
     };
 
     const teardownPromise = Promise.resolve(source.start(emit)).catch((e) => {
-      this.log(`observe(${source.label}) start failed: ${e?.message ?? e}`, "warn");
+      this.log(
+        `observe(${source.label}) start failed: ${e?.message ?? e}`,
+        "warn"
+      );
       return undefined;
     });
 
     const expiry = maxDurationMs
-      ? setTimeout(() => this.stopObserving(id, "max duration reached"), maxDurationMs)
+      ? setTimeout(
+          () => this.stopObserving(id, "max duration reached"),
+          maxDurationMs
+        )
       : undefined;
     if (expiry && typeof (expiry as any).unref === "function") {
       (expiry as any).unref();
@@ -1520,11 +1664,14 @@ export abstract class BaseAgent implements IAgent {
    *   2. The model reported many output tokens but the total argument content received is tiny
    *      relative to what those tokens should represent (soft/silent truncation).
    *
+   * @param toolCalls - The tool calls from the CURRENT choice being checked.
+   * @param allToolCalls - ALL tool calls across ALL choices in the response (used for the size heuristic).
    * Returns a warning system message if truncation is detected, or null otherwise.
    */
   detectTruncatedToolCalls(
     toolCalls: ToolCall[],
-    response: CompletionResponse
+    response: CompletionResponse,
+    allToolCalls?: ToolCall[]
   ): { role: string; content: string } | null {
     // Subtract thinking/reasoning tokens — they're billed as output tokens but
     // don't produce visible argument content, so including them inflates the heuristic.
@@ -1533,7 +1680,13 @@ export abstract class BaseAgent implements IAgent {
       (response?.usage?.output_tokens_details?.thinking_tokens ?? 0) +
       (response?.usage?.output_tokens_details?.reasoning_tokens ?? 0);
     const outputTokens = Math.max(0, rawOutputTokens - thinkingTokens);
-    const totalArgLength = toolCalls.reduce(
+    // Use allToolCalls for the size heuristic so that parallel tool calls from
+    // Anthropic (each mapped to a separate choice) are counted together. Without
+    // this, a response with N parallel tool calls would compare the full
+    // completion_tokens count against only 1/N of the actual argument content,
+    // causing false-positive truncation warnings.
+    const callsForSizeCheck = allToolCalls ?? toolCalls;
+    const totalArgLength = callsForSizeCheck.reduce(
       (sum, tc) => sum + (tc.function?.arguments?.length || 0),
       0
     );
@@ -1573,13 +1726,81 @@ export abstract class BaseAgent implements IAgent {
     return null;
   }
 
-  async getTaskBreakdown(messages: Message[]) {
+  extractContentFromMessages(messages: Message[]): string {
+    const content = messages
+      .filter((m) => typeof m.content === "string" && m.content.trim())
+      .map((m) => m.content);
+
+    const finalAnswer = messages
+      .filter((m) => m.tool_calls?.length)
+      .flatMap((t) => t.tool_calls)
+      .filter((t) => t.function.name === "finalAnswer")
+      .map((t) => t.function.arguments);
+
+    return [...content, ...finalAnswer].join("\n\n");
+  }
+
+  private startBackgroundCompaction(messages: Message[]): void {
+    const snapshot = messages.slice();
+    let resumeIndex = snapshot.length - 1;
+    while (resumeIndex >= 0 && snapshot[resumeIndex].role !== "assistant") {
+      resumeIndex--;
+    }
+    const compressionEnd =
+      resumeIndex === -1 ? snapshot.length : resumeIndex;
+    const generation = this._compactionGeneration;
+
+    const promise = (async () => {
+      const taskBreakdown = await this.getTaskBreakdown(snapshot, false);
+      if (generation !== this._compactionGeneration) return;
+      this.taskBreakdown = taskBreakdown;
+      let summary = "";
+      const compactedSnapshot = await this.compressMessages(
+        snapshot,
+        (generatedSummary) => {
+          summary = generatedSummary;
+        },
+        taskBreakdown
+      );
+      if (generation !== this._compactionGeneration) return;
+
+      const preservedSnapshotLength = snapshot.length - compressionEnd;
+      this._completedCompaction = {
+        compressionEnd,
+        originalPrefix: snapshot.slice(0, compressionEnd),
+        replacementPrefix: compactedSnapshot.slice(
+          0,
+          compactedSnapshot.length - preservedSnapshotLength
+        ),
+        summary,
+      };
+      this.log("Background compaction completed; it will be applied next turn");
+    })();
+
+    this._compactionPromise = promise;
+    promise
+      .catch((error) => {
+        if (generation === this._compactionGeneration) {
+          this.log(
+            `Background compaction failed; a later turn will retry: ${error}`,
+            "warn"
+          );
+        }
+      })
+      .finally(() => {
+        if (this._compactionPromise === promise) {
+          this._compactionPromise = null;
+        }
+      });
+  }
+
+  async getTaskBreakdown(messages: Message[], cacheResult = true) {
     if (this.taskBreakdown) {
       return this.taskBreakdown;
     }
 
     const taskPrompt = `
-    Analyze all previous messages.
+    TASK INTERRUPT. CONTEXT COMPACTION NEEDED. Analyze all previous messages.
 
     Generate a detailed task breakdown for this conversation, include a section for the following:
     1. Task List
@@ -1598,27 +1819,55 @@ export abstract class BaseAgent implements IAgent {
       },
     ] as Message[];
 
-    const response = await this.createAgentCompletion({
-      model,
-      messages: taskBreakdownMessages,
-      max_tokens: 2000,
-    });
+    const response = await this.createAgentCompletion(
+      {
+        messages: taskBreakdownMessages,
+        tool_choice: "none",
+      },
+      { updateLastPromptTokens: false }
+    );
 
-    this.taskBreakdown = response.choices[0].message.content;
+    const breakdownContent = this.extractContentFromMessages(
+      response.choices?.map((c) => c.message)
+    );
+    // The model may return null content (e.g. when it responds with tool calls
+    // instead of text). Guard against storing a literal null so that template
+    // strings don't render "null".
+    if (!breakdownContent) {
+      console.log(JSON.stringify(response.choices, null, 2));
+      throw new Error(
+        "Compaction task-breakdown request returned no text content"
+      );
+    }
+
+    if (cacheResult) {
+      this.taskBreakdown = breakdownContent;
+    }
     this.log(`task breakdown cost: ${response.usd_cost}`);
-    return this.taskBreakdown;
+    return breakdownContent;
   }
 
   async compressMessages(
     messages: Message[],
-    startIndex: number,
-    endIndex: number
+    onSummary?: (summary: string) => void,
+    taskBreakdown = this.taskBreakdown
   ) {
+    // Preserve the latest agent interaction exactly. Starting the resumed thread
+    // at the final assistant message keeps its tool calls, every tool response,
+    // and any subsequent user messages together as one protocol-valid unit.
+    let resumeIndex = messages.length - 1;
+    while (resumeIndex >= 0 && messages[resumeIndex].role !== "assistant") {
+      resumeIndex--;
+    }
+    const compressionEnd = resumeIndex === -1 ? messages.length : resumeIndex;
+    const toCompress = messages.slice(0, compressionEnd);
+    const resumeMessages = messages.slice(compressionEnd);
+
     this.log(
-      `Compressing messages from ${startIndex} to ${endIndex}, total messages: ${messages.length}`
+      `Compressing messages from 0 to ${compressionEnd}, resuming from ${resumeIndex}, total messages: ${messages.length}`
     );
-    const toCompress = messages.slice(startIndex, endIndex);
-    const toCompressPrompt = `We are compressing our conversation to save memory.
+    const toCompressPrompt = `TASK INTERRUPT. CONTEXT COMPACTION NEEDED.
+    We are compressing our conversation to save memory.
     Please summarize the conversation so far, so that we may continue the original task with a smaller context
 
     Include the following sections:
@@ -1627,50 +1876,74 @@ export abstract class BaseAgent implements IAgent {
     3. Next Steps - what we're about to do next to continue the user's original request.
     4. Tasks remaining - what tasks are left from the initial task breakdown.
 
-    Our initial task breakdown: ${this.taskBreakdown}
+    ${
+      taskBreakdown
+        ? `Our initial task breakdown: ${taskBreakdown}`
+        : ""
+    }
 
-    This summary will become the agent's only memory of the past, all other messages will be dropped:
+    This summary will replace the older history. The latest agent interaction will remain verbatim:
 
       `;
 
-    const model = this.getModel();
-
     const compressMessagesPayload = [
-      ...messages,
+      ...toCompress,
       {
         role: "user",
         content: toCompressPrompt,
       },
     ] as Message[];
 
-    const response = await this.createAgentCompletion({
-      model,
-      messages: compressMessagesPayload,
-    });
+    const response = await this.createAgentCompletion(
+      {
+        messages: compressMessagesPayload,
+        tool_choice: "none",
+      },
+      { updateLastPromptTokens: false }
+    );
 
-    const summaries = response.choices.map((c) => c.message.content);
-    this.summaries.push(...summaries);
+    const summary = this.extractContentFromMessages(
+      response.choices?.map((c) => c.message)
+    );
+
+    if (summary.length === 0) {
+      console.log(JSON.stringify(response.choices, null, 2));
+      throw new Error("Compaction summary request returned no text content");
+    }
+
+    if (onSummary) {
+      onSummary(summary);
+    } else {
+      this.summaries.push(summary);
+    }
 
     const startMessages = [
       {
         role: "user",
         content: `
-        Initial task breakdown:
-        ${this.taskBreakdown}
+        ${
+          taskBreakdown
+            ? `Initial task breakdown:\n        ${taskBreakdown}`
+            : "(No task breakdown available — summarize what you know from context above)"
+        }
 
         We have just compressed the conversation to save memory:
-        ${JSON.stringify(summaries)}
+        ${
+          summary.length > 0
+            ? JSON.stringify(summary)
+            : "(summary unavailable — please continue from the task breakdown above)"
+        }
 
         Please continue the task from where we left off
         `,
       },
     ] as Message[];
-    const systemMesasges = toCompress.filter((m) => m.role === "system");
+    const systemMessages = toCompress.filter((m) => m.role === "system");
 
     const newMessages = [
-      ...systemMesasges,
+      ...systemMessages,
       ...startMessages,
-      ...messages.slice(endIndex),
+      ...resumeMessages,
     ];
 
     const oldLength = this.getMessagesLength(messages);

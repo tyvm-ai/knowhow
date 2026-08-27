@@ -19,11 +19,13 @@ export async function getHashes() {
 /**
  * Atomically save hashes to disk — writes to a temp file then renames,
  * preventing concurrent writes from producing corrupted/truncated JSON.
+ * The hash directory is optional state and may not exist in a fresh checkout.
  */
 export async function saveHashes(hashes: any) {
   const target = ".knowhow/.hashes.json";
   const tmp = `${target}.tmp.${process.pid}`;
   try {
+    fs.mkdirSync(".knowhow", { recursive: true });
     fs.writeFileSync(tmp, JSON.stringify(hashes, null, 2));
     fs.renameSync(tmp, target);
   } catch (err) {

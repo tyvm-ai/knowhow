@@ -16,7 +16,9 @@ export class WebSyncedAgentWatcher implements SyncedAgentWatcher {
   public taskId: string = "";
   private client: KnowhowSimpleClient;
   private pollInterval: NodeJS.Timeout | null = null;
+  private lastThreadIndex: number = -1;
   private lastThreadLength: number = 0;
+  private lastMessageJson: string | null = null;
   public agentName: string = "remote-agent";
   private stopped: boolean = false;
   public agentEvents = new EventService();
@@ -41,8 +43,10 @@ export class WebSyncedAgentWatcher implements SyncedAgentWatcher {
       const details = await this.client.getTaskDetails(taskId);
       const threads: any[][] = details?.data?.threads || [];
       const lastThread = threads[threads.length - 1] || [];
+      this.lastThreadIndex = threads.length - 1;
       this.agentName = "remote-agent";
       this.lastThreadLength = lastThread.length;
+      this.lastMessageJson = this.messageJson(lastThread[lastThread.length - 1]);
     } catch (err: any) {
       console.warn(
         `⚠️  Could not load initial state for task ${taskId}: ${err.message}`
@@ -68,8 +72,26 @@ export class WebSyncedAgentWatcher implements SyncedAgentWatcher {
       const details = await this.client.getTaskDetails(this.taskId);
       const threads: any[][] = details?.data?.threads || [];
       const lastThread = threads[threads.length - 1] || [];
+      const threadIndex = threads.length - 1;
 
-      const newMessages = lastThread.slice(this.lastThreadLength);
+      let newMessages: any[];
+      if (
+        threadIndex === this.lastThreadIndex &&
+        lastThread.length >= this.lastThreadLength
+      ) {
+        newMessages = lastThread.slice(this.lastThreadLength);
+      } else {
+        const retainedIndex = this.findLastMessage(
+          lastThread,
+          this.lastMessageJson
+        );
+        newMessages = lastThread.slice(retainedIndex + 1);
+      }
+
+      this.lastThreadIndex = threadIndex;
+      this.lastThreadLength = lastThread.length;
+      this.lastMessageJson = this.messageJson(lastThread[lastThread.length - 1]);
+
       if (newMessages.length > 0) {
         const renderEvents = messagesToRenderEvents(
           newMessages,
@@ -93,7 +115,6 @@ export class WebSyncedAgentWatcher implements SyncedAgentWatcher {
           }
         }
         this.agentEvents.emit(this.eventTypes.threadUpdate, lastThread);
-        this.lastThreadLength = lastThread.length;
       }
 
       // Stop polling and emit done if task is complete with a result
@@ -154,5 +175,22 @@ export class WebSyncedAgentWatcher implements SyncedAgentWatcher {
   async interrupt(message?: string): Promise<void> {
     await this.client.sendMessageToAgent(this.taskId, `/poke ${message || ""}`.trim());
     console.log(`🫵 Interrupt sent to remote web agent: ${this.taskId}`);
+  }
+
+  private messageJson(message: any): string | null {
+    if (message == null) return null;
+    try {
+      return JSON.stringify(message);
+    } catch {
+      return null;
+    }
+  }
+
+  private findLastMessage(messages: any[], messageJson: string | null): number {
+    if (messageJson == null) return -1;
+    for (let index = messages.length - 1; index >= 0; index--) {
+      if (this.messageJson(messages[index]) === messageJson) return index;
+    }
+    return -1;
   }
 }

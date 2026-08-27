@@ -1,6 +1,7 @@
 import * as readline from "readline";
 import * as https from "https";
 import * as http from "http";
+import { randomUUID } from "crypto";
 
 export interface AttachOptions {
   interactive?: boolean;
@@ -171,7 +172,8 @@ async function connectSession(
   jwt: string,
   apiUrl: string,
   command: string,
-  isReconnect: boolean
+  isReconnect: boolean,
+  terminalId: string
 ): Promise<"exit" | "disconnect" | "error"> {
   const { default: WebSocket } = await import("ws");
 
@@ -180,7 +182,7 @@ async function connectSession(
   const cols = (process.stdout as any).columns || 220;
   const rows = (process.stdout as any).rows || 50;
 
-  const wsUrl = `${wsProtocol}//${url.host}/ws/terminal?workerId=${worker.id}&cols=${cols}&rows=${rows}&token=${encodeURIComponent(jwt)}`;
+  const wsUrl = `${wsProtocol}//${url.host}/ws/terminal?workerId=${worker.id}&terminalId=${encodeURIComponent(terminalId)}&cols=${cols}&rows=${rows}&token=${encodeURIComponent(jwt)}`;
 
   if (isReconnect) {
     process.stderr.write(`\r\nReconnecting to ${displayWorkerName(worker)}…\r\n`);
@@ -339,7 +341,9 @@ async function connectSession(
         const str = data.toString("utf8");
         if (str.trimStart().startsWith("{")) {
           const msg = JSON.parse(str);
-          if (msg.type === "exit") {
+          if (msg.type === "attached" || msg.type === "sessions") {
+            return;
+          } else if (msg.type === "exit") {
             process.stderr.write(
               `\r\n[Process exited with code ${msg.exitCode ?? 0}]\r\n`
             );
@@ -389,9 +393,11 @@ async function connectToWorkerTerminal(
 ): Promise<void> {
   let isReconnect = false;
   let reconnectDelay = 2000;
+  // One stable PTY identity per invocation; reconnecting reattaches instead of spawning.
+  const terminalId = randomUUID();
 
   while (true) {
-    const result = await connectSession(worker, jwt, apiUrl, command, isReconnect);
+    const result = await connectSession(worker, jwt, apiUrl, command, isReconnect, terminalId);
 
     if (result === "exit") {
       // Clean exit — restore terminal and leave

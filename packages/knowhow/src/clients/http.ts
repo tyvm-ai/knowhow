@@ -1,4 +1,10 @@
-import http from "../utils/http";
+import http, {
+  HTTP_UNAUTHORIZED_HANDLER,
+  HttpError,
+  RefreshableHeaders,
+} from "../utils/http";
+import { emitResponseMetadata } from "./responseMetadata";
+
 import {
   GenericClient,
   CompletionOptions,
@@ -17,16 +23,81 @@ export interface HttpClientOptions {
   extra_body?: Record<string, any>;
 }
 
+/**
+ * Optional callback that, when set, is called whenever a 401 is received
+ * (reactive refresh) or whenever `needsRefresh()` returns true before a
+ * request (proactive refresh).  Override this in a subclass or set it
+ * directly on an instance:
+ *
+ *   client.refreshToken = async () => { const newJwt = await ...; client.setJwt(newJwt); };
+ */
+export type RefreshTokenFn = () => Promise<void>;
+
 export class HttpClient implements GenericClient {
   /** Timeout in milliseconds for HTTP requests. Default: 30000 (30s). Use 0 to disable. */
   private timeout: number;
-  private headers: Record<string, string>;
+  private headers: RefreshableHeaders;
   private extra_body: Record<string, any>;
   /** Optional pricing table: model id → per-million-token prices */
   private pricingMap: Record<string, ModelPricing> = {};
 
+  /**
+   * Override this to provide automatic token refresh.  Called reactively on
+   * 401 responses (via HTTP_UNAUTHORIZED_HANDLER) and proactively before
+   * each request when `needsRefresh()` returns true.
+   *
+   * The implementation should obtain a new token and call `this.setJwt()`
+   * (or `this.setKey()`) before returning.
+   */
+  refreshToken: RefreshTokenFn | undefined = undefined;
+
+  /**
+   * Override this to provide proactive expiry detection.  When it returns
+   * `true`, `refreshToken()` is called before the next outgoing request.
+   * The default implementation decodes the JWT `exp` claim (< 5 min window).
+   */
+  needsRefresh(): boolean {
+    const authHeader = (this.headers as Record<string, string>)[
+      "Authorization"
+    ];
+    if (!authHeader) return false;
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7)
+      : authHeader;
+    try {
+      const parts = token.split(".");
+      if (parts.length !== 3) return false;
+      const payload = JSON.parse(
+        Buffer.from(parts[1], "base64url").toString("utf8")
+      );
+      return (
+        typeof payload.exp === "number" &&
+        payload.exp * 1000 - Date.now() < 5 * 60 * 1000
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Call before each outgoing request to proactively refresh an expiring
+   * token.  No-ops when no `refreshToken` hook is set.
+   */
+  private async refreshIfNeeded(): Promise<void> {
+    if (this.refreshToken && this.needsRefresh()) {
+      await this.refreshToken();
+    }
+  }
+
   constructor(private baseUrl: string, options: HttpClientOptions = {}) {
     this.headers = options.headers ?? {};
+    // Wire the reactive 401 handler so the low-level http util can retry once
+    // after a token refresh without callers needing to do anything extra.
+    Object.defineProperty(this.headers, HTTP_UNAUTHORIZED_HANDLER, {
+      enumerable: false,
+      configurable: true,
+      get: () => (this.refreshToken ? () => this.refreshToken!() : undefined),
+    });
     this.timeout = options.timeout ?? 30000;
     this.extra_body = options.extra_body ?? {};
   }
@@ -69,10 +140,8 @@ export class HttpClient implements GenericClient {
   }
 
   setJwt(jwt: string) {
-    this.headers = {
-      ...this.headers,
-      Authorization: `Bearer ${jwt}`,
-    };
+    // Mutate in-place to preserve the HTTP_UNAUTHORIZED_HANDLER symbol property.
+    this.headers.Authorization = `Bearer ${jwt}`;
   }
 
   setBaseUrl(baseUrl: string) {
@@ -93,10 +162,39 @@ export class HttpClient implements GenericClient {
   }
 
   /**
+   * A stable provider id used to tag/read the provider-agnostic
+   * `_reasoning_details` slot. Reasoning items are opaque and only meaningful
+   * to the provider that produced them, so we key on the client's baseUrl.
+   */
+  protected reasoningProviderId(): string {
+    return `http:${this.baseUrl}`;
+  }
+
+  /**
+   * Resolve the provider-native reasoning items (Responses API `reasoning`
+   * items with encrypted_content) to re-inject for an assistant message,
+   * reading the provider-agnostic `_reasoning_details` slot only when it was
+   * produced by this same client.
+   */
+  protected getReasoningItems(msg: any): any[] {
+    const details = msg?._reasoning_details;
+    if (
+      details &&
+      details.provider === this.reasoningProviderId() &&
+      Array.isArray(details.items)
+    ) {
+      return details.items;
+    }
+    return [];
+  }
+
+  /**
    * Returns the pricing entry for a specific model, or all pricing entries if no model is given.
    * Returns undefined for a specific model if no pricing is known.
    */
-  getPricing(model?: string): ModelPricing | Record<string, ModelPricing> | undefined {
+  getPricing(
+    model?: string
+  ): ModelPricing | Record<string, ModelPricing> | undefined {
     if (model !== undefined) {
       return this.pricingMap[model];
     }
@@ -109,19 +207,27 @@ export class HttpClient implements GenericClient {
    */
   calculateCost(
     model: string,
-    usage: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } } | undefined
+    usage:
+      | {
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          prompt_tokens_details?: { cached_tokens?: number };
+        }
+      | undefined
   ): number | undefined {
     if (!usage) return undefined;
     const pricing = this.pricingMap[model];
     if (!pricing) return undefined;
 
-    const cachedInputTokens =
-      usage.prompt_tokens_details?.cached_tokens ?? 0;
+    const cachedInputTokens = usage.prompt_tokens_details?.cached_tokens ?? 0;
     const inputTokens = usage.prompt_tokens ?? 0;
     const outputTokens = usage.completion_tokens ?? 0;
 
-    const cachedInputCost = (cachedInputTokens * (pricing.cache_hit ?? pricing.cached_input ?? 0)) / 1e6;
-    const inputCost = ((inputTokens - cachedInputTokens) * (pricing.input ?? 0)) / 1e6;
+    const cachedInputCost =
+      (cachedInputTokens * (pricing.cache_hit ?? pricing.cached_input ?? 0)) /
+      1e6;
+    const inputCost =
+      ((inputTokens - cachedInputTokens) * (pricing.input ?? 0)) / 1e6;
     const outputCost = (outputTokens * (pricing.output ?? 0)) / 1e6;
 
     return cachedInputCost + inputCost + outputCost;
@@ -132,11 +238,21 @@ export class HttpClient implements GenericClient {
    * Used by AIClient.resolveClient to honour per-provider config overrides
    * even when the client is created via a known clientClass (e.g. nvidia, groq).
    */
-  setOptions(options: Omit<HttpClientOptions, "headers"> & { headers?: Record<string, string> }) {
+  setOptions(
+    options: Omit<HttpClientOptions, "headers"> & {
+      headers?: Record<string, string>;
+    }
+  ) {
     if (options.timeout !== undefined) this.timeout = options.timeout;
     if (options.extra_body !== undefined) this.extra_body = options.extra_body;
     if (options.headers) {
-      this.headers = { ...this.headers, ...options.headers };
+      // Mutate in-place to preserve the HTTP_UNAUTHORIZED_HANDLER symbol property.
+      for (const [name, value] of Object.entries(options.headers)) {
+        const existingName = Object.keys(this.headers).find(
+          (candidate) => candidate.toLowerCase() === name.toLowerCase()
+        );
+        this.headers[existingName ?? name] = value;
+      }
     }
   }
 
@@ -156,25 +272,52 @@ export class HttpClient implements GenericClient {
   async createChatCompletion(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
+    await this.refreshIfNeeded();
     return this.withRetry(async () => {
+      const {
+        signal,
+        timeout,
+        maxRetries,
+        backoffMs,
+        onResponseMetadata,
+        ...requestOptions
+      } = options;
       const body = {
-        ...options,
+        ...requestOptions,
         model: options.model,
         messages: options.messages,
         max_tokens: options.max_tokens || 4000,
         ...this.extra_body,
 
-        ...(options.tools && {
+        ...(options.tools?.length && {
           tools: options.tools,
-          tool_choice: "auto",
+          tool_choice: options.tool_choice ?? "auto",
         }),
       };
 
-      const response = await http.post(
-        `${this.baseUrl}/v1/chat/completions`,
-        body,
-        { headers: this.headers as Record<string, string>, timeout: this.timeout }
-      );
+      let response;
+      try {
+        response = await http.post(
+          `${this.baseUrl}/v1/chat/completions`,
+          body,
+          {
+            headers: this.headers as Record<string, string>,
+            timeout: this.timeout,
+          }
+        );
+      } catch (error) {
+        if (error instanceof HttpError) {
+          emitResponseMetadata(options, {
+            statusCode: error.status,
+            headers: error.response.headers,
+          });
+        }
+        throw error;
+      }
+      emitResponseMetadata(options, {
+        statusCode: response.status,
+        headers: response.headers,
+      });
 
       const data = response.data;
 
@@ -193,7 +336,8 @@ export class HttpClient implements GenericClient {
         })),
         model: data.model,
         usage: data.usage,
-        usd_cost: data.usd_cost ?? this.calculateCost(options.model, data.usage),
+        usd_cost:
+          data.usd_cost ?? this.calculateCost(options.model, data.usage),
       };
     });
   }
@@ -205,17 +349,26 @@ export class HttpClient implements GenericClient {
   async *createChatCompletionStream(
     options: CompletionOptions
   ): AsyncGenerator<StreamChunk> {
+    await this.refreshIfNeeded();
+    const {
+      signal,
+      timeout,
+      maxRetries,
+      backoffMs,
+      onResponseMetadata,
+      ...requestOptions
+    } = options;
     const body = {
-      ...options,
+      ...requestOptions,
       model: options.model,
       messages: options.messages,
       max_tokens: options.max_tokens || 4000,
       ...this.extra_body,
       stream: true,
       stream_options: { include_usage: true },
-      ...(options.tools && {
+      ...(options.tools?.length && {
         tools: options.tools,
-        tool_choice: "auto",
+        tool_choice: options.tool_choice ?? "auto",
       }),
     };
 
@@ -224,10 +377,14 @@ export class HttpClient implements GenericClient {
       headers: {
         ...(this.headers as Record<string, string>),
         "Content-Type": "application/json",
-        "Accept": "text/event-stream",
+        Accept: "text/event-stream",
       },
       body: JSON.stringify(body),
       signal: options.signal,
+    });
+    emitResponseMetadata(options, {
+      statusCode: response.status,
+      headers: response.headers,
     });
 
     if (!response.ok) {
@@ -289,38 +446,79 @@ export class HttpClient implements GenericClient {
     options: CompletionOptions,
     store = false
   ): Promise<CompletionResponse> {
+    await this.refreshIfNeeded();
     return this.withRetry(async () => {
       // Extract system messages as instructions
-      const systemMessages = options.messages.filter((m) => m.role === "system");
-      const nonSystemMessages = options.messages.filter((m) => m.role !== "system");
-      const instructions = systemMessages
-        .map((m) => (typeof m.content === "string" ? m.content : ""))
-        .join("\n")
-        .trim() || undefined;
+      const systemMessages = options.messages.filter(
+        (m) => m.role === "system"
+      );
+      const nonSystemMessages = options.messages.filter(
+        (m) => m.role !== "system"
+      );
+      const instructions =
+        systemMessages
+          .map((m) => (typeof m.content === "string" ? m.content : ""))
+          .join("\n")
+          .trim() || undefined;
 
       // Convert messages to Responses API input format
-      const input: any[] = nonSystemMessages.map((msg) => {
-        if (msg.role === "tool") {
+      // Responses API hard limit: 10,485,760 chars per function_call_output.output
+      const MAX_TOOL_OUTPUT = 10_485_000;
+      const truncateToolOutput = (s: string) =>
+        s.length > MAX_TOOL_OUTPUT
+          ? s.slice(0, MAX_TOOL_OUTPUT) +
+            "\n\n[TRUNCATED: output exceeded 10MB API limit]"
+          : s;
+      const input: any[] = nonSystemMessages
+        .map((msg) => {
+          if (msg.role === "tool") {
+            return {
+              type: "function_call_output",
+              call_id: msg.tool_call_id,
+              output: truncateToolOutput(
+                typeof msg.content === "string"
+                  ? msg.content
+                  : JSON.stringify(msg.content)
+              ),
+            };
+          }
+          if (msg.role === "assistant" && msg.tool_calls?.length) {
+            // Re-inject any captured reasoning items (encrypted_content) BEFORE
+            // the function_call items so the model preserves its chain-of-thought
+            // across tool-use turns instead of re-deriving it each turn.
+            const reasoningItems = this.getReasoningItems(msg);
+            return [
+              ...reasoningItems,
+              ...(msg.tool_calls as any[]).map((tc: any) => ({
+                type: "function_call",
+                id: tc.id.startsWith("fc") ? tc.id : `fc_${tc.id}`,
+                call_id: tc.id,
+                name: tc.function.name,
+                arguments: tc.function.arguments,
+              })),
+            ];
+          }
+          if (msg.role === "assistant" && this.getReasoningItems(msg).length) {
+            return [
+              ...this.getReasoningItems(msg),
+              {
+                role: msg.role,
+                content:
+                  typeof msg.content === "string"
+                    ? msg.content
+                    : JSON.stringify(msg.content),
+              },
+            ];
+          }
           return {
-            type: "function_call_output",
-            call_id: msg.tool_call_id,
-            output: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+            role: msg.role,
+            content:
+              typeof msg.content === "string"
+                ? msg.content
+                : JSON.stringify(msg.content),
           };
-        }
-        if (msg.role === "assistant" && msg.tool_calls?.length) {
-          return (msg.tool_calls as any[]).map((tc: any) => ({
-            type: "function_call",
-            id: tc.id.startsWith("fc") ? tc.id : `fc_${tc.id}`,
-            call_id: tc.id,
-            name: tc.function.name,
-            arguments: tc.function.arguments,
-          }));
-        }
-        return {
-          role: msg.role,
-          content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
-        };
-      }).flat();
+        })
+        .flat();
 
       const tools = options.tools?.map((tool) => ({
         type: "function" as const,
@@ -335,16 +533,44 @@ export class HttpClient implements GenericClient {
         input,
         ...(instructions && { instructions }),
         ...(options.max_tokens && { max_output_tokens: options.max_tokens }),
-        ...(tools?.length && { tools, tool_choice: "auto" }),
-        store,
+        ...(tools?.length && {
+          tools,
+          tool_choice: options.tool_choice ?? "auto",
+        }),
+        // Reasoning persistence: store server-side when requested, otherwise
+        // ask the provider to return encrypted reasoning content so we can
+        // thread the reasoning items back into the next request ourselves.
+        store: options.store === true ? true : store,
+        ...(options.previous_response_id && {
+          previous_response_id: options.previous_response_id,
+        }),
+        ...(options.store !== true &&
+          options.reasoning_effort &&
+          options.reasoning_effort !== "none" && {
+            include: ["reasoning.encrypted_content"],
+          }),
         ...this.extra_body,
       };
 
-      const response = await http.post(
-        `${this.baseUrl}/v1/responses`,
-        body,
-        { headers: this.headers as Record<string, string>, timeout: this.timeout }
-      );
+      let response;
+      try {
+        response = await http.post(`${this.baseUrl}/v1/responses`, body, {
+          headers: this.headers as Record<string, string>,
+          timeout: this.timeout,
+        });
+      } catch (error) {
+        if (error instanceof HttpError) {
+          emitResponseMetadata(options, {
+            statusCode: error.status,
+            headers: error.response.headers,
+          });
+        }
+        throw error;
+      }
+      emitResponseMetadata(options, {
+        statusCode: response.status,
+        headers: response.headers,
+      });
 
       const data = response.data;
 
@@ -368,12 +594,25 @@ export class HttpClient implements GenericClient {
       // Collect text content and tool calls from output items
       let textContent: string | null = null;
       const toolCalls: any[] = [];
+      // Reasoning items (encrypted_content) to thread back into the next turn,
+      // plus a human-readable summary of the model's thinking (if present).
+      const reasoningItems: any[] = [];
+      let reasoningSummary: string | null = null;
 
       for (const item of data.output ?? []) {
         if (item.type === "message") {
           for (const part of item.content ?? []) {
             if (part.type === "output_text") {
               textContent = (textContent ?? "") + part.text;
+            }
+          }
+        } else if (item.type === "reasoning") {
+          reasoningItems.push(item);
+          const summaryParts = item.summary ?? [];
+          for (const part of summaryParts) {
+            const text = typeof part === "string" ? part : part?.text;
+            if (text) {
+              reasoningSummary = (reasoningSummary ?? "") + text;
             }
           }
         } else if (item.type === "function_call") {
@@ -392,26 +631,53 @@ export class HttpClient implements GenericClient {
               role: "assistant",
               content: textContent,
               ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
+              ...(reasoningSummary && { reasoning_summary: reasoningSummary }),
+              ...(reasoningItems.length > 0 && {
+                _reasoning_details: {
+                  provider: this.reasoningProviderId(),
+                  items: reasoningItems,
+                },
+              }),
             },
           },
         ],
         model: data.model ?? options.model,
         usage,
         usd_cost: data.usd_cost ?? this.calculateCost(options.model, usage),
+        response_id: data.id,
       };
     });
   }
 
   async createEmbedding(options: EmbeddingOptions): Promise<EmbeddingResponse> {
+    await this.refreshIfNeeded();
     return this.withRetry(async () => {
-      const response = await http.post(
-        `${this.baseUrl}/v1/embeddings`,
-        {
-          model: options.model,
-          input: options.input,
-        },
-        { headers: this.headers as Record<string, string>, timeout: this.timeout }
-      );
+      let response;
+      try {
+        response = await http.post(
+          `${this.baseUrl}/v1/embeddings`,
+          {
+            model: options.model,
+            input: options.input,
+          },
+          {
+            headers: this.headers as Record<string, string>,
+            timeout: this.timeout,
+          }
+        );
+      } catch (error) {
+        if (error instanceof HttpError) {
+          emitResponseMetadata(options, {
+            statusCode: error.status,
+            headers: error.response.headers,
+          });
+        }
+        throw error;
+      }
+      emitResponseMetadata(options, {
+        statusCode: response.status,
+        headers: response.headers,
+      });
 
       const data = response.data;
 
@@ -424,17 +690,22 @@ export class HttpClient implements GenericClient {
         data: data.data,
         model: options.model,
         usage: data.usage,
-        usd_cost: data.usd_cost ?? this.calculateCost(options.model, data.usage),
+        usd_cost:
+          data.usd_cost ?? this.calculateCost(options.model, data.usage),
       };
     });
   }
 
   async getModels(type = "all") {
+    await this.refreshIfNeeded();
     return this.withRetry(async () => {
-      const response = await http.get(`${this.baseUrl}/v1/models?type=${type}`, {
-        headers: this.headers as Record<string, string>,
-        timeout: this.timeout,
-      });
+      const response = await http.get(
+        `${this.baseUrl}/v1/models?type=${type}`,
+        {
+          headers: this.headers as Record<string, string>,
+          timeout: this.timeout,
+        }
+      );
 
       const data = response.data?.data;
 

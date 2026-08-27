@@ -231,9 +231,23 @@ export const OpenAiSearchModels: string[] = [
 
 export const OpenAiTextPricing: Record<string, ModelPricing> = {
   // gpt-5.6 series — short context / long context pricing
-  [OpenAiModels.GPT_56_Sol]:   { input: 5.0, cached_input: 0.5,  cache_write: 6.25,  output: 30.0, input_gt_200k: 10.0, output_gt_200k: 45.0 },
-  [OpenAiModels.GPT_56_Terra]: { input: 2.5, cached_input: 0.25, cache_write: 3.125, output: 15.0, input_gt_200k: 5.0,  output_gt_200k: 22.5 },
-  [OpenAiModels.GPT_56_Luna]:  { input: 1.0, cached_input: 0.10, cache_write: 1.25,  output: 6.0,  input_gt_200k: 2.0,  output_gt_200k: 9.0  },
+  [OpenAiModels.GPT_56_Sol]: {
+    input: 4.0,
+    cached_input: 0.40,
+    cache_write: 5.00,
+    output: 30.0,
+    input_gt_200k: 10.0,
+    output_gt_200k: 30.0,
+    changelog: [
+      {
+        date: "2026-08-01",
+        note: "Launch pricing — promotional rates available through November 21, 2026",
+        pricing: { input: 5.0, cached_input: 0.5, cache_write: 6.25, output: 30.0, input_gt_200k: 10.0, output_gt_200k: 45.0 },
+      },
+    ],
+  },
+  [OpenAiModels.GPT_56_Terra]: { input: 2.0, cached_input: 0.20, cache_write: 2.5,   output: 12.0, input_gt_200k: 4.0,  output_gt_200k: 18.0 },
+  [OpenAiModels.GPT_56_Luna]:  { input: 0.2, cached_input: 0.02, cache_write: 0.25,  output: 1.2,  input_gt_200k: 0.4,  output_gt_200k: 1.8  },
   [OpenAiModels.GPT_55]: { input: 5.0, cached_input: 0.5, output: 30.0 },
   [OpenAiModels.GPT_55_Pro]: { input: 30.0, cached_input: 0, output: 180.0, reasoningLevels: ["medium", "high", "xhigh"] },
   [OpenAiModels.GPT_54]: { input: 2.5, cached_input: 0.25, output: 15.0 },

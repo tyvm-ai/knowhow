@@ -35,7 +35,7 @@ export { GitHubModelsTextPricing } from "./github";
 export { OpenRouterTextPricing } from "./openrouter";
 export { LlamaTextPricing } from "./llama";
 export { CopilotTextPricing, CopilotModelMultipliers } from "./copilot";
-export { FireworksTextPricing } from "./fireworks";
+export { FireworksTextPricing, FireworksEmbeddingPricing, FIREWORKS_MODEL_CATALOG, FireworksActiveTextModels, FireworksDeprecatedTextModels } from "./fireworks";
 export { MetaTextPricing, MetaWebSearchPricingPer1000Queries } from "./meta";
 
 // ─── Combined catalog ─────────────────────────────────────────────────────────

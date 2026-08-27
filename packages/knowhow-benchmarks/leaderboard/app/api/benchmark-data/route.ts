@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
     const mockData: LeaderboardEntry[] = [
       {
         model: 'sample-model',
+        harness: 'Knowhow',
         provider: 'sample-provider',
         language: 'javascript',
         successRate: 85.5,
@@ -125,6 +126,7 @@ function aggregateResults(results: BenchmarkResults[]): LeaderboardEntry[] {
       // Create new entry
       const entry: LeaderboardEntry = {
         model: result.config.model,
+        harness: 'Knowhow',
         provider: result.config.provider,
         toolMode: result.config.lazyTools ? 'lazy' : 'eager',
         language: result.config.language,

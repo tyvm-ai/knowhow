@@ -86,7 +86,7 @@ knowhow chat
 ---
 
 ### `knowhow agent`
-**Purpose:** Run a one-shot agent task directly from the CLI (default agent: `Patcher`). Can also resume a previously started task.
+**Purpose:** Start a new one-shot agent task directly from the CLI (default agent: `Patcher`).
 
 **Usage:**
 ```bash
@@ -114,8 +114,6 @@ knowhow agent [options]
   Custom prompt template file with a `{text}` placeholder
 - `--input <text>`  
   Task input (fallback to stdin if not provided)
-- `--resume`  
-  Resume a previously started task using `--task-id` (local FS or remote)
 - `--renderer <name>`  
   Renderer to use: `basic`, `compact`, `fancy`, or a path/package  
   (default: from config or `basic`)
@@ -136,14 +134,45 @@ Use a custom prompt template file:
 knowhow agent --prompt-file .knowhow/prompts/BasicCodeDocumenter.mdx --input "src/index.ts"
 ```
 
-Resume a task:
-```bash
-knowhow agent --resume --task-id 123 --message-id 456 --input "Continue where you left off"
-```
-
 Choose provider + renderer:
 ```bash
 knowhow agent --provider openai --model gpt-4.1-mini --renderer fancy --input "Fix the failing tests"
+```
+
+---
+
+### `knowhow agents resume` / `knowhow agents fork`
+**Purpose:** Continue an existing agent task, or branch its history into a new task without modifying the source.
+
+**Usage:**
+```bash
+knowhow agents resume [taskId] [options]
+knowhow agents fork [sourceTaskId] [options]
+```
+
+Both commands accept a full or partial task ID. Use `-i <number>` instead to select the corresponding row from `knowhow agents list`.
+
+#### Options
+- `-i, --index <number>` — Select a task by row number from `knowhow agents list`
+- `--rollback <count>` — Discard the newest N agent interactions before continuing (default: `0`)
+- `--input <text>` — Message to send after restoring history
+- `--message-id <messageId>` — Knowhow message ID for remote task lookup
+- `--sync-fs` — Enable filesystem-based synchronization
+- `--provider <provider>` — Override the saved AI provider
+- `--model <model>` — Override the saved model
+- `--agent-name <name>` — Override the saved agent
+- `--reasoning-effort <effort>` — Override the saved reasoning effort
+- `--renderer <name>` — Renderer to use (default: from config or `basic`)
+- `--task-id <taskId>` — Explicit destination task ID (`fork` only)
+
+Resume the first listed task after removing its newest assistant interaction:
+```bash
+knowhow agents resume -i 1 --rollback 1
+```
+
+Fork the third listed task into an explicit destination task ID:
+```bash
+knowhow agents fork -i 3 --rollback 1 --task-id my-new-task
 ```
 
 ---

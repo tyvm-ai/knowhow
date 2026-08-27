@@ -4,6 +4,7 @@ import * as os from "os";
 import { KnowhowSimpleClient } from "./KnowhowClient";
 import { createHash } from "crypto";
 import { getConfig } from "../config";
+import { TraceAll } from "../util/Trace";
 
 const BEHAVIORS_DIR = ".knowhow/behaviors";
 const LOCAL_SKILLS_DIRS = [".agents/skills", ".knowhow/skills"];
@@ -30,6 +31,7 @@ export interface Behavior {
  * In-memory singleton for behaviors/skills.
  * Call initFromDisk() once at startup; tools then read from memory.
  */
+@TraceAll()
 export class BehaviorsService {
   private behaviors: Behavior[] = [];
   private skills: Behavior[] = [];

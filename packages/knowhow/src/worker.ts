@@ -6,6 +6,7 @@ import { loadJwt } from "./login";
 import { services } from "./services";
 import { PasskeySetupService } from "./workers/auth/PasskeySetup";
 import { WorkerPasskeyAuthService } from "./workers/auth/WorkerPasskeyAuth";
+import { authenticateWithKey, hasKeyPair } from "./auth/keyAuth";
 import {
   makeUnlockTool,
   makeLockTool,
@@ -303,8 +304,8 @@ export async function worker(options?: {
   let connected = false;
   let tunnelHandler: TunnelHandler | null = null;
   let tunnelWs: WebSocket | null = null;
-  let lastJwt: string | null = null;
   let unauthorizedJwt: string | null = null;
+  let refreshAttemptedJwt: string | null = null;
 
   // ---------------------------------------------------------------------------
   // Liveness watchdog state
@@ -353,7 +354,6 @@ export async function worker(options?: {
   async function connectWebSocket() {
     const jwt = await loadJwt();
     console.log(`Connecting to ${API_URL}`);
-    lastJwt = jwt;
 
     // Reset the MCP server to avoid "Already connected to a transport" error on reconnects
     await mcpServer.reset();
@@ -476,11 +476,17 @@ export async function worker(options?: {
         },
         onClose: (code, _reason) => {
           if (code === 1008) {
-            unauthorizedJwt = lastJwt;
+            unauthorizedJwt = jwt;
+            // The worker and tunnel sockets share a JWT and must be renewed as
+            // one connection cycle. Ensure a later worker "open" event cannot
+            // leave us connected with a permanently closed tunnel.
+            if (ws.readyState !== WebSocket.CLOSED) {
+              ws.terminate();
+            }
             console.error(
               "❌ Tunnel received Unauthorized (1008). The JWT may be expired."
             );
-            console.error("   Pausing reconnection until JWT changes...");
+            console.error("   Attempting to refresh the JWT with the CLI identity...");
           } else {
             console.log(
               "Tunnel connection will reconnect on next connection cycle..."
@@ -532,14 +538,16 @@ export async function worker(options?: {
       // If we got an Unauthorized (1008) close, record the JWT that failed
       // so we don't keep hammering the server with the same expired token
       if (code === 1008) {
-        unauthorizedJwt = lastJwt;
+        unauthorizedJwt = jwt;
+        if (tunnelConnection?.readyState !== WebSocket.CLOSED) {
+          tunnelConnection?.terminate();
+        }
         console.error(
           "❌ Worker received Unauthorized (1008). The JWT may be expired."
         );
         console.error(
-          "   Run 'knowhow login' to refresh your token, then restart the worker."
+          "   Attempting to refresh the JWT with the CLI identity..."
         );
-        console.error("   Pausing reconnection until JWT changes...");
       } else {
         console.log("Attempting to reconnect...");
       }
@@ -566,17 +574,59 @@ export async function worker(options?: {
 
   while (true) {
     if (!connected) {
-      // If we got an Unauthorized error, check if the JWT has changed before retrying
+      // A registered CLI identity can renew an expired JWT without requiring an
+      // interactive login. Attempt this once per rejected token; if it fails,
+      // continue watching the JWT file so `knowhow login` in another shell works.
       if (unauthorizedJwt !== null) {
-        const currentJwt = await loadJwt().catch(() => null);
+        let currentJwt = await loadJwt().catch(() => null);
         if (currentJwt === unauthorizedJwt) {
-          // JWT hasn't changed - don't reconnect, just wait
-          await wait(5000);
-          continue;
+          let attemptedRefreshNow = false;
+          if (refreshAttemptedJwt !== currentJwt) {
+            refreshAttemptedJwt = currentJwt;
+            attemptedRefreshNow = true;
+            const freshConfig = await getConfig();
+            const identityPath = freshConfig.cliIdentityPath;
+            if (freshConfig.orgId && hasKeyPair(identityPath)) {
+              try {
+                const refreshed = await authenticateWithKey(
+                  freshConfig.orgId,
+                  API_URL,
+                  identityPath
+                );
+                if (refreshed) {
+                  currentJwt = await loadJwt();
+                  console.log("✅ JWT refreshed automatically; reconnecting...");
+                } else {
+                  console.error(
+                    "❌ CLI identity was rejected and could not refresh the JWT."
+                  );
+                }
+              } catch (error) {
+                const message =
+                  error instanceof Error ? error.message : String(error);
+                console.error(`❌ Automatic JWT refresh failed: ${message}`);
+              }
+            } else {
+              console.error(
+                "❌ No registered CLI identity is available for automatic JWT refresh."
+              );
+            }
+          }
+
+          if (currentJwt === unauthorizedJwt) {
+            if (attemptedRefreshNow) {
+              console.error(
+                "   Run 'knowhow login' in another shell; reconnection will resume when the JWT changes."
+              );
+            }
+            await wait(5000);
+            continue;
+          }
         }
         // JWT changed - clear the unauthorized state and reconnect
         console.log("🔄 JWT has changed, attempting to reconnect...");
         unauthorizedJwt = null;
+        refreshAttemptedJwt = null;
       }
 
       console.log("Attempting to connect...");

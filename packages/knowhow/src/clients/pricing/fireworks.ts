@@ -1,4 +1,4 @@
-import { ModelPricing } from "./types";
+import { ModelPricing, ModelCatalogEntry, completions, embeddings } from "./types";
 
 /**
  * Fireworks AI model IDs, pricing, and catalog.
@@ -11,6 +11,10 @@ import { ModelPricing } from "./types";
 export const FireworksModels = {
   // Moonshot AI
   KimiK3:      "accounts/fireworks/models/kimi-k3",
+
+  // Meta
+  MuseGlimmer30b: "accounts/fireworks/models/muse-glimmer-30b",
+
   KimiK2p7Code: "accounts/fireworks/models/kimi-k2p7-code",
   KimiK2_6:    "accounts/fireworks/models/kimi-k2-6",
   KimiK2_5:    "accounts/fireworks/models/kimi-k2-5",
@@ -22,6 +26,13 @@ export const FireworksModels = {
 
   // Qwen
   Qwen3p7Plus: "accounts/fireworks/models/qwen3p7-plus",
+  Qwen3p8Max:  "accounts/fireworks/models/qwen3p8-2p4t-a95b",
+
+  // NVIDIA
+  NemotronLightning3p530bA3b: "accounts/fireworks/models/nemotron-lightning-3p5-30b-a3b",
+
+  // Thinking Machines Lab
+  Inkling: "accounts/fireworks/models/inkling",
 
   // Deprecated Qwen Models
   Qwen3_6Plus:                "accounts/fireworks/models/qwen3-6-plus",
@@ -56,6 +67,10 @@ export const FireworksTextPricing: Record<string, ModelPricing> = {
   // Moonshot AI
   [FireworksModels.KimiK3]:       { input: 3.0, cache_hit: 0.30, output: 15.0 },
   [FireworksModels.KimiK2p7Code]: { input: 0.95, cache_hit: 0.19, output: 4.0 },
+
+  // Meta
+  [FireworksModels.MuseGlimmer30b]: { input: 0.35, cache_hit: 0.04, output: 1.50 },
+
   [FireworksModels.KimiK2_6]:     { input: 0.95, cache_hit: 0.16, output: 4.0 },
   [FireworksModels.KimiK2_5]:     { input: 0.60, cache_hit: 0.10, output: 3.0 },
 
@@ -66,6 +81,14 @@ export const FireworksTextPricing: Record<string, ModelPricing> = {
 
   // Qwen
   [FireworksModels.Qwen3p7Plus]:  { input: 0.40, cache_hit: 0.08, output: 1.60 },
+
+  [FireworksModels.Qwen3p8Max]:   { input: 2.00, cache_hit: 0.25, output: 6.00 },
+
+  // NVIDIA
+  [FireworksModels.NemotronLightning3p530bA3b]: { input: 0.05, cache_hit: 0.01, output: 0.20 },
+
+  // Thinking Machines Lab
+  [FireworksModels.Inkling]: { input: 1.00, cache_hit: 0.17, output: 4.05 },
 
   // Deprecated QWEN Models
   [FireworksModels.Qwen3_6Plus]:           { input: 0.50, cache_hit: 0.10, output: 3.0, deprecated: true },
@@ -81,8 +104,8 @@ export const FireworksTextPricing: Record<string, ModelPricing> = {
   [FireworksModels.Glm4_7]: { input: 0.60, cache_hit: 0.30, output: 2.20, deprecated: true },
 
   // DeepSeek AI
-  [FireworksModels.DeepseekV4Pro]:   { input: 1.74, cache_hit: 0.15, output: 3.48 },
-  [FireworksModels.DeepseekV4Flash]: { input: 0.14, cache_hit: 0.03, output: 0.28 },
+  [FireworksModels.DeepseekV4Pro]:   { input: 1.32, cache_hit: 0.044, output: 3.96 },
+  [FireworksModels.DeepseekV4Flash]: { input: 0.22, cache_hit: 0.007, output: 0.66 },
   [FireworksModels.DeepseekV3_2]:    { input: 0.56, cache_hit: 0.28, output: 1.68, deprecated: true },
   [FireworksModels.DeepseekV3_1]:    { input: 0.56, cache_hit: 0.28, output: 1.68, deprecated: true },
 
@@ -101,3 +124,59 @@ export const FireworksEmbeddingPricing: Record<string, ModelPricing> = {
   // Qwen3 Reranker 8B — $0.20/M tokens, context 40k
   [FireworksModels.Qwen3Reranker8b]: { input: 0.20, output: 0.20 },
 };
+
+
+// ─── Active text models (non-deprecated) ─────────────────────────────────────
+
+export const FireworksActiveTextModels: string[] = [
+  // Moonshot AI
+  FireworksModels.KimiK3,
+  FireworksModels.KimiK2p7Code,
+  FireworksModels.KimiK2_6,
+  FireworksModels.KimiK2_5,
+  // Meta
+  FireworksModels.MuseGlimmer30b,
+  // MiniMax
+  FireworksModels.MinimaxM3,
+  FireworksModels.MinimaxM2_7,
+  FireworksModels.MinimaxM2_5,
+  // Qwen
+  FireworksModels.Qwen3p7Plus,
+  FireworksModels.Qwen3p8Max,
+  // NVIDIA
+  FireworksModels.NemotronLightning3p530bA3b,
+  // Thinking Machines Lab
+  FireworksModels.Inkling,
+  // Z.ai
+  FireworksModels.Glm5p2,
+  FireworksModels.Glm5p1,
+  // DeepSeek AI
+  FireworksModels.DeepseekV4Pro,
+  FireworksModels.DeepseekV4Flash,
+  // OpenAI OSS
+  FireworksModels.GptOss120b,
+];
+
+export const FireworksDeprecatedTextModels: string[] = [
+  FireworksModels.Qwen3_6Plus,
+  FireworksModels.Qwen3p6Plus,
+  FireworksModels.Qwen3Vl30bA3bThinking,
+  FireworksModels.Qwen3Vl30bA3bInstruct,
+  FireworksModels.Qwen3_8b,
+  FireworksModels.Glm5,
+  FireworksModels.Glm4_7,
+  FireworksModels.DeepseekV3_2,
+  FireworksModels.DeepseekV3_1,
+];
+
+// ─── Catalog ──────────────────────────────────────────────────────────────────
+
+export const FIREWORKS_MODEL_CATALOG: ModelCatalogEntry[] = [
+  ...completions(FireworksActiveTextModels, "fireworks", FireworksTextPricing),
+  ...completions(FireworksDeprecatedTextModels, "fireworks", FireworksTextPricing),
+  ...embeddings(
+    [FireworksModels.Qwen3Embedding8b, FireworksModels.Qwen3Reranker8b],
+    "fireworks",
+    FireworksEmbeddingPricing,
+  ),
+];

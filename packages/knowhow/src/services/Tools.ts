@@ -1,4 +1,5 @@
 import { ChatCompletionTool } from "openai/resources/chat";
+import { TraceAll } from "../util/Trace";
 import { replaceEscapedNewLines, restoreEscapedNewLines } from "../utils";
 import { includedTools } from "../agents/tools/list";
 import { AgentService } from "./AgentService";
@@ -34,6 +35,8 @@ export interface ToolCallContext {
   caller?: any;
   /** The task id of the calling agent, if known. */
   taskId?: string;
+  /** The task id of the parent agent that spawned the calling agent, if any. */
+  parentTaskId?: string;
   /** Arbitrary additional per-call context. */
   [key: string]: any;
 }
@@ -46,6 +49,7 @@ export interface ToolContext {
   Plugins?: PluginService;
   Mcp?: McpService;
   Behaviors?: BehaviorsService;
+  ComputerUse?: import("./modules/computerUse").ComputerUseService;
   metadata?: { [key: string]: any };
 }
 
@@ -58,6 +62,7 @@ export interface ToolContext {
  * larger context bloat from having every tool defined in system prompt
  *
  */
+@TraceAll()
 export class ToolsService {
   private context: ToolContext = {};
 
@@ -74,6 +79,17 @@ export class ToolsService {
     } else {
       this.context = { Tools: this };
     }
+  }
+
+  /**
+   * Remove every registered tool and handler while retaining service context,
+   * wrappers, and overrides. Runtime reload uses this before rebuilding the
+   * catalog from built-ins, MCP servers, and configured modules.
+   */
+  resetTools(): void {
+    this.tools = [];
+    this.functions = {};
+    this.originalFunctions = {};
   }
 
   getContext(): ToolContext {
@@ -117,6 +133,16 @@ export class ToolsService {
 
   getToolNames() {
     return this.tools.map((tool) => tool.function.name);
+  }
+
+  /**
+   * Return every registered function implementation. Unlike getToolNames(),
+   * this is not a prompt-visibility list; lazy tool services may intentionally
+   * hide definitions from the model while keeping their functions callable by
+   * trusted programmatic consumers such as the script runtime.
+   */
+  getFunctionNames(): string[] {
+    return Object.keys(this.functions).filter((name) => typeof this.functions[name] === "function");
   }
 
   getTool(name: string): Tool {

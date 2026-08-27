@@ -7,6 +7,7 @@ import { completions, images, videos, ModelCatalogEntry, ModelPricing } from "./
 // ─── Model IDs ────────────────────────────────────────────────────────────────
 
 export const XaiModels = {
+  Grok4_6: "grok-4.6",
   Grok_4_20_Reasoning: "grok-4.20-0309-reasoning",
   Grok_4_20_NonReasoning: "grok-4.20-0309-non-reasoning",
   Grok_4_20_MultiAgent: "grok-4.20-multi-agent-0309",
@@ -42,6 +43,7 @@ export const XaiModels = {
 // ─── Modality arrays ──────────────────────────────────────────────────────────
 
 export const XaiTextModels: string[] = [
+  XaiModels.Grok4_6,
   XaiModels.Grok_4_20_Reasoning, XaiModels.Grok_4_20_NonReasoning,
   XaiModels.Grok_4_20_MultiAgent,
   XaiModels.Grok4_1_Fast_Reasoning, XaiModels.Grok4_1_Fast_NonReasoning,
@@ -61,8 +63,9 @@ export const XaiResponsesOnlyModels: string[] = [
 ];
 
 // Models that support the reasoning_effort parameter
-// grok-3-mini variants support reasoning_effort; grok-3-beta, grok-4 etc. do NOT
+// Grok 4.6, Grok 4.20 multi-agent, and grok-3-mini variants support reasoning_effort
 export const XaiReasoningModels: string[] = [
+  XaiModels.Grok4_6,
   XaiModels.Grok_4_20_MultiAgent,
   XaiModels.Grok3MiniBeta,
   XaiModels.Grok3MiniFastBeta,
@@ -84,6 +87,7 @@ export const XaiVideoModels: string[] = [XaiModels.GrokImagineVideo];
 // ─── Pricing (USD per 1M tokens / per-image / per-second) ────────────────────
 
 export const XaiTextPricing: Record<string, ModelPricing> = {
+  [XaiModels.Grok4_6]:                    { input: 2.0, input_gt_200k: 4.0, cache_hit: 0.50, output: 6.0, output_gt_200k: 12.0, reasoningLevels: ["low", "medium", "high", "xhigh"] },
   [XaiModels.Grok_4_20_Reasoning]:       { input: 2.0, cache_hit: 0.20, output: 6.0, useResponsesApi: true },
   [XaiModels.Grok_4_20_NonReasoning]:    { input: 2.0, cache_hit: 0.20, output: 6.0, useResponsesApi: true },
   [XaiModels.Grok_4_20_MultiAgent]:      { input: 2.0, cache_hit: 0.20, output: 6.0, reasoningLevels: ["low", "medium", "high", "xhigh"], useResponsesApi: true },

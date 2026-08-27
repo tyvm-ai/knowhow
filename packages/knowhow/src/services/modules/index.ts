@@ -39,6 +39,13 @@ function globalResolvePaths(): string[] {
 }
 
 export class ModulesService {
+  private _loadedModules: {
+    modulePath: string;
+    resolvedPath: string;
+    module: KnowhowModule;
+    params: any;
+  }[] = [];
+
   async getDefaultContext() {
     return { ...services() };
   }
@@ -74,6 +81,22 @@ export class ModulesService {
     // Global-config modules resolve against ~/.knowhow/node_modules first; local-config
     // modules resolve against cwd/.knowhow/node_modules first. See localResolvePaths()
     // and globalResolvePaths() above.
+
+    // Two-phase load:
+    //   Phase 1 (register): resolve + require EVERY module and run its optional
+    //     `register()`, which may (a) register CLI subcommands on Program and
+    //     (b) inject shared services into `context` (e.g. `ComputerUse`) so that
+    //     sibling/adapter modules loaded later can consume them.
+    //   Phase 2 (init): run every loaded module's `init()`, now that all
+    //     services registered during phase 1 are present. This lets, e.g., a
+    //     `-nutjs` adapter module register a driver against the base
+    //     computer-use service during phase 1, and the base module resolve the
+    //     best driver during phase 2.
+    const loadedModules: {
+      modulePath: string;
+      resolvedPath: string;
+      module: KnowhowModule;
+    }[] = [];
 
     for (const modulePath of allModulePaths) {
       // Build an ordered list of candidate resolutions for this module.
@@ -113,6 +136,7 @@ export class ModulesService {
       // global install).
       let importedModule: KnowhowModule;
       let loaded = false;
+      let selectedResolvedPath = modulePath;
       const errors: { candidate: string; error: Error }[] = [];
       for (const resolvedPath of candidates) {
         try {
@@ -122,15 +146,17 @@ export class ModulesService {
             "ModulesService",
             `🔌 Loading module: ${modulePath} (resolved: ${resolvedPath})`
           );
-          await importedModule.init({
-            config,
-            cwd: process.cwd(),
-            context: context as ModuleContext,
-          });
-          context.Events?.log(
-            "ModulesService",
-            `✅ Module initialized: ${modulePath} (tools: ${importedModule.tools.length}, agents: ${importedModule.agents.length}, plugins: ${importedModule.plugins.length}, clients: ${importedModule.clients.length})`
-          );
+          // Phase 1: register (optional). Injects services into `context` and
+          // registers CLI commands. Must be idempotent (may run in the early
+          // Program-only CLI phase AND the full-services phase).
+          if (typeof importedModule.register === "function") {
+            await importedModule.register({
+              config,
+              cwd: process.cwd(),
+              context: context as ModuleContext,
+            });
+          }
+          selectedResolvedPath = resolvedPath;
           loaded = true;
           break;
         } catch (err: any) {
@@ -152,6 +178,40 @@ export class ModulesService {
         );
         continue;
       }
+      loadedModules.push({
+        modulePath,
+        resolvedPath: selectedResolvedPath,
+        module: importedModule,
+      });
+    }
+
+    // Phase 2: init every successfully-loaded module now that all `register`
+    // phases have run and injected their services into `context`.
+    for (const { modulePath, resolvedPath, module: importedModule } of loadedModules) {
+      const initParams = { config, cwd: process.cwd(), context: context as ModuleContext };
+      try {
+        await importedModule.init({
+          config,
+          cwd: process.cwd(),
+          context: context as ModuleContext,
+        });
+        context.Events?.log(
+          "ModulesService",
+          `✅ Module initialized: ${modulePath} (tools: ${importedModule.tools.length}, agents: ${importedModule.agents.length}, plugins: ${importedModule.plugins.length}, clients: ${importedModule.clients.length})`
+        );
+      } catch (err: any) {
+        process.stderr.write(
+          `\n⚠️  Failed to init module "${modulePath}": ${err?.message || err}\n\n`
+        );
+        continue;
+      }
+      this._loadedModules.push({ modulePath, resolvedPath, module: importedModule, params: initParams });
+
+      context.Extensions?.removeOwner(modulePath);
+      for (const extension of importedModule.extensions ?? []) {
+        context.Extensions?.register(modulePath, extension);
+      }
+
       // Only register tools/agents/plugins/clients if the relevant services
       // are available in context (they may not be during early CLI command registration)
       if (context.Agents) {
@@ -188,6 +248,33 @@ export class ModulesService {
     }
   }
 
+  /**
+   * Call `destroy()` on every successfully-initialized module, in reverse
+   * initialization order (last-in, first-out). Errors are caught and logged
+   * so one broken module does not prevent others from cleaning up.
+   */
+  async destroyModules() {
+    const toDestroy = [...this._loadedModules].reverse();
+    // Clear first so repeated shutdown/reload attempts cannot destroy twice.
+    this._loadedModules = [];
+    for (const { modulePath, resolvedPath, module: mod, params } of toDestroy) {
+      params.context?.Extensions?.removeOwner(modulePath);
+      if (typeof mod.destroy === "function") {
+        try {
+          await mod.destroy(params);
+        } catch (err: any) {
+          process.stderr.write(
+            `\n⚠️  Error in module destroy "${modulePath}": ${err?.message || err}\n\n`
+          );
+        }
+      }
+      // Re-require the entry point so source/configuration changes are visible.
+      if (require.cache[resolvedPath]) {
+        delete require.cache[resolvedPath];
+      }
+    }
+  }
+
   async loadModulesFromConfig(context?: ModuleContext) {
     const config = await getConfig();
 
@@ -203,9 +290,12 @@ export class ModulesService {
 
     // Load global-config modules resolving against the global install's
     // node_modules (~/.knowhow/node_modules) first.
+    // Pass a merged config so that keys defined in the global config (e.g.
+    // `tracing`) are visible to globally-declared modules during init().
+    // Local config keys take precedence so that local overrides still work.
     if (globalModules.length > 0) {
       await this.loadModulesFrom(
-        { ...config, modules: globalModules },
+        { ...globalConfig, ...config, modules: globalModules },
         context,
         globalResolvePaths()
       );

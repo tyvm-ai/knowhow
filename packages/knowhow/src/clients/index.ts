@@ -28,8 +28,10 @@ import { GenericXAIClient } from "./xai";
 import { KnowhowGenericClient } from "./knowhow";
 import { HttpClient } from "./http";
 import { ModelProvider } from "../types";
-import { getConfig } from "../config";
+import { getConfig, getConfigSync } from "../config";
 import { loadKnowhowJwt, KNOWHOW_API_URL } from "../services/KnowhowClient";
+import { keyPairExists } from "../auth/keyManager";
+import { getOrgIdForApi } from "../auth/environmentAuth";
 import { ContextLimits } from "./contextLimits";
 import { OpenAiTextPricing } from "./pricing/openai";
 import { AnthropicTextPricing } from "./pricing/anthropic";
@@ -58,6 +60,8 @@ import { GitHubCopilotClient } from "./copilot";
 import { GenericLlamaClient } from "./llama";
 import { GenericFireworksClient } from "./fireworks";
 import { GenericMetaClient } from "./meta";
+import { GenericQwenClient } from "./qwen";
+import { TraceAll } from "../util/Trace";
 export {
   OpenAiTextPricing,
   AnthropicTextPricing,
@@ -66,6 +70,7 @@ export {
   XaiImagePricing,
   XaiVideoPricing,
 };
+export * from "./responseMetadata";
 export type {
   ModelPricing,
   ModelType,
@@ -79,8 +84,8 @@ export type {
 // ---------------------------------------------------------------------------
 
 type ProviderRegistryEntry = {
-  /** Constructor that accepts up to two optional string args (e.g. apiKey or url, jwt) */
-  clientClass?: new (arg1?: string, arg2?: string) => GenericClient;
+  /** Constructor that accepts the optional API key passed by the registry. */
+  clientClass?: new (arg1?: string) => GenericClient;
   /** Custom factory — takes precedence over clientClass */
   createClient?: (entry: ModelProvider) => GenericClient | null;
 };
@@ -103,11 +108,19 @@ const BUILT_IN_PROVIDER_REGISTRY: Record<string, ProviderRegistryEntry> = {
   llama: { clientClass: GenericLlamaClient },
   fireworks: { clientClass: GenericFireworksClient },
   meta: { clientClass: GenericMetaClient },
+  qwen: { clientClass: GenericQwenClient },
   knowhow: {
     createClient: (entry: ModelProvider) => {
-      const jwt = loadKnowhowJwt();
-      if (!jwt) return null;
-      return new KnowhowGenericClient(KNOWHOW_API_URL, jwt);
+      if (!loadKnowhowJwt()) {
+        const config = getConfigSync();
+        const orgId = getOrgIdForApi(config, KNOWHOW_API_URL);
+        if (
+          !orgId ||
+          (!keyPairExists(config.cliIdentityPath) && !keyPairExists())
+        )
+          return null;
+      }
+      return new KnowhowGenericClient(KNOWHOW_API_URL);
     },
   },
 };
@@ -134,8 +147,10 @@ const DEFAULT_PROVIDERS: ModelProvider[] = [
   { provider: "llama", envKey: "LLAMA_API_KEY" },
   { provider: "fireworks", envKey: "FIREWORKS_API_KEY" },
   { provider: "meta", envKey: "META_API_KEY" },
+  { provider: "qwen", envKey: "QWEN_CLOUD_API_KEY" },
 ];
 
+@TraceAll()
 export class AIClient {
   clients: Record<string, GenericClient> = {};
 
@@ -312,9 +327,10 @@ export class AIClient {
         if (entry.provider === "knowhow") {
           if (process.env.KNOWHOW_CLI) {
             const warnNeeds = (process.env.KNOWHOW_WARN_NEEDS ?? "").split(",");
-            if (warnNeeds.includes("models")) console.warn(
-              `⚠️  Knowhow provider is not logged in. Run 'knowhow login' to enable Knowhow models.`
-            );
+            if (warnNeeds.includes("models"))
+              console.warn(
+                `⚠️  Knowhow provider is not logged in. Run 'knowhow login' to enable Knowhow models.`
+              );
           }
         }
         continue;
@@ -409,7 +425,9 @@ export class AIClient {
       // Model not in local registry — pass it through anyway so the provider
       // API can accept or reject it directly (e.g. newly-released models that
       // haven't been fetched into our local model list yet).
-      console.warn(`⚠️  Model '${model}' not in local registry for provider '${provider}', attempting anyway.`);
+      console.warn(
+        `⚠️  Model '${model}' not in local registry for provider '${provider}', attempting anyway.`
+      );
     }
 
     return { client: this.clients[provider], provider, model };
@@ -523,12 +541,14 @@ export class AIClient {
   }
 
   providerHasModel(provider: string, model: string): boolean {
+    if (!provider) return false;
     const models = this.clientModels[provider];
     if (!models) return false;
     return models.includes(model);
   }
 
   findModel(modelPrefix: string) {
+    if (!modelPrefix) return undefined;
     for (const provider of Object.keys(this.clientModels)) {
       const models = this.clientModels[provider] as string[];
       const foundModel = models.find((m) => m.startsWith(modelPrefix));
@@ -537,14 +557,17 @@ export class AIClient {
       }
 
       // Handle the case when model prefix is gpt-5 and the provider is knowhow, and the actual model is openai/gpt-5
+      // Also handles deep prefixes like "accounts/fireworks/models/kimi-k3" matched by "kimi-k3"
       const inferredFound = models.find((m) => {
         const split = m.split("/");
         if (split.length < 2) return false;
         const inferredModel = split.slice(1).join("/");
+        const lastSegment = split[split.length - 1];
         return (
           m === modelPrefix ||
           inferredModel === modelPrefix ||
-          inferredModel.startsWith(modelPrefix)
+          inferredModel.startsWith(modelPrefix) ||
+          lastSegment === modelPrefix
         );
       });
       if (inferredFound) {
@@ -617,6 +640,36 @@ export class AIClient {
   detectProviderModel(provider: string, model?: string) {
     if (this.providerHasModel(provider, model)) {
       return { provider, model };
+    }
+
+    // When an explicit provider is given and the model contains slashes (e.g.
+    // provider="knowhow", model="anthropic/claude-sonnet-4-6"), check if the
+    // explicit provider has a model that matches by ignoring the leading
+    // provider prefix segments. Also handle deep prefixes like
+    // "accounts/fireworks/models/kimi-k3" → search for "kimi-k3".
+    if (provider && model) {
+      const providerModels = this.clientModels[provider] ?? [];
+      if (model.includes("/")) {
+        // Model has slashes: try progressively stripping leading prefix segments
+        const modelParts = model.split("/");
+        for (let i = 1; i < modelParts.length; i++) {
+          const suffix = modelParts.slice(i).join("/");
+          // Exact match within the explicit provider
+          if (this.providerHasModel(provider, suffix)) {
+            return { provider, model: suffix };
+          }
+        }
+      }
+      // For any model (with or without slashes): check if a registered model's
+      // last path segment matches the requested model name.
+      // e.g. provider="fireworks", model="kimi-k3" matches
+      //      "accounts/fireworks/models/kimi-k3"
+      const lastSegmentMatch = providerModels.find(
+        (m) => m.split("/").pop() === model
+      );
+      if (lastSegmentMatch) {
+        return { provider, model: lastSegmentMatch };
+      }
     }
 
     // If an explicit provider was given, don't fall through to fuzzy cross-provider
@@ -871,7 +924,9 @@ export class AIClient {
    * For HttpClient-based providers with getPricing(), only priced models are kept.
    * For other providers (no getPricing()), all models pass through unchanged.
    */
-  private _filterByPricing(models: Record<string, string[]>): Record<string, string[]> {
+  private _filterByPricing(
+    models: Record<string, string[]>
+  ): Record<string, string[]> {
     const result: Record<string, string[]> = {};
     for (const [provider, ids] of Object.entries(models)) {
       const client = this.clients[provider];
@@ -966,7 +1021,9 @@ export class AIClient {
   }
 
   listAllModelsWithProvider(options?: { pricing?: boolean }) {
-    const models = options?.pricing ? this._filterByPricing(this.clientModels) : this.clientModels;
+    const models = options?.pricing
+      ? this._filterByPricing(this.clientModels)
+      : this.clientModels;
     return Object.entries(models)
       .map(([provider, ids]) => ids.map((m) => ({ id: `${provider}/${m}` })))
       .flat();
@@ -975,7 +1032,9 @@ export class AIClient {
   /**
    * Returns the context window limit (in tokens) for a given model.
    * Delegates to the registered client's getContextLimit() if available.
-   * Falls back to the global ContextLimits table.
+   * Falls back to the global ContextLimits table, stripping any leading
+   * provider prefix (e.g. "openai/gpt-5.6-sol" → "gpt-5.6-sol") so that
+   * proxied providers like "knowhow" resolve correctly.
    */
   getContextLimit(
     provider: string,
@@ -985,9 +1044,25 @@ export class AIClient {
     if (client?.getContextLimit) {
       return client.getContextLimit(model);
     }
-    const contextLimit = ContextLimits[model];
-    if (contextLimit === undefined) return undefined;
-    return { contextLimit, threshold: contextLimit };
+    // Try the model as-is first, then strip leading "provider/" prefixes
+    // (e.g. "openai/gpt-5.6-sol" used with the "knowhow" proxy provider).
+    const candidates = [model];
+    if (model.includes("/")) {
+      const parts = model.split("/");
+      for (let i = 1; i < parts.length; i++) {
+        candidates.push(parts.slice(i).join("/"));
+      }
+    }
+    for (const candidate of candidates) {
+      const contextLimit = ContextLimits[candidate];
+      if (contextLimit !== undefined) {
+        const pricing = OpenAiTextPricing[candidate];
+        const threshold =
+          pricing && "input_gt_200k" in pricing ? 200_000 : contextLimit;
+        return { contextLimit, threshold };
+      }
+    }
+    return undefined;
   }
 
   /**
@@ -1075,3 +1150,4 @@ export * from "./llama";
 export * from "./copilot";
 export * from "./fireworks";
 export * from "./meta";
+export * from "./qwen";

@@ -20,6 +20,12 @@ import fs from "fs";
 import path from "path";
 import { services } from "../services";
 import { logger } from "../logger";
+import { ModuleExtension } from "../services/ExtensionsService";
+
+export interface ChatExtension extends ModuleExtension {
+  type: "chat";
+  commands: ChatCommand[];
+}
 
 export class CliChatService implements ChatService {
   private context: ChatContext;
@@ -43,6 +49,23 @@ export class CliChatService implements ChatService {
       chatHistory: this.chatHistory,
       plugins,
     };
+    this.registerCommand({
+      name: "reload",
+      description: "Reload configuration, tools, MCP connections, and modules",
+      handler: async () => {
+        try {
+          console.log("Reloading configuration...");
+          const result = await services().RuntimeReload.reload();
+          console.log(
+            `✓ Reloaded ${result.tools} tools, ${result.mcps} MCP servers, and ${result.modules} modules`
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`⚠ Reload failed: ${message}`);
+        }
+      },
+    });
+    this.refreshExtensions();
     this.loadInputHistory();
 
     // Set up callback to add entries to inputHistory immediately when user presses Enter
@@ -135,7 +158,12 @@ export class CliChatService implements ChatService {
   }
 
   registerCommand(command: ChatCommand): void {
-    this.commands.push(command);
+    const existing = this.commands.findIndex((item) => item.name === command.name);
+    if (existing >= 0) {
+      this.commands[existing] = command;
+    } else {
+      this.commands.push(command);
+    }
   }
 
   registerMode(mode: ChatMode): void {
@@ -147,7 +175,15 @@ export class CliChatService implements ChatService {
   }
 
   getCommands(): ChatCommand[] {
+    this.refreshExtensions();
     return this.commands;
+  }
+
+  /** Re-read the registry so services created before module setup still work. */
+  refreshExtensions(): void {
+    for (const extension of services().Extensions.list<ChatExtension>("chat")) {
+      for (const command of extension.commands ?? []) this.registerCommand(command);
+    }
   }
 
   /**
@@ -160,6 +196,7 @@ export class CliChatService implements ChatService {
   }
 
   getCommandsForActiveModes(): ChatCommand[] {
+    this.refreshExtensions();
     const activeModes = this.modes
       .filter((mode) => mode.active)
       .map((mode) => mode.name);
@@ -200,7 +237,7 @@ export class CliChatService implements ChatService {
       const command = availableCommands.find((cmd) => cmd.name === commandName);
 
       if (command) {
-        const result = await command.handler(args);
+        const result = await command.handler(args, this);
 
         // If handler returns a CommandResult and it's not handled, pass to modules
         if (result && typeof result === "object" && "handled" in result) {
@@ -264,7 +301,8 @@ export class CliChatService implements ChatService {
 
   async getInput(
     prompt: string = "> ",
-    options: string[] = []
+    options: string[] = [],
+    inputPanel: boolean | any[] = false
   ): Promise<string> {
     if (this.context.inputMethod) {
       return await this.context.inputMethod.getInput(prompt);
@@ -287,10 +325,42 @@ export class CliChatService implements ChatService {
     } else {
       // Use saved input history for scrollback (InputQueueManager handles reverse access)
       const history = this.inputHistory.slice();
-      value = await ask(prompt, options, history);
+      if (inputPanel === true && process.stdout.isTTY) {
+        const width = Math.max(24, process.stdout.columns || 80);
+        const separator = `\x1b[2m${"─".repeat(width)}\x1b[0m`;
+        value = await ask(
+          `${separator}\n\x1b[36m❯\x1b[0m `,
+          options,
+          history,
+          () => this.getStatusBar(width)
+        );
+      } else {
+        value = await ask(prompt, options, history);
+      }
     }
 
     return value.trim();
+  }
+
+  private getStatusBar(width: number): string {
+    const agent = this.context.selectedAgent;
+    const usage = agent?.getTokenUsage?.();
+    const tokens = usage
+      ? usage.totalInputTokens + usage.totalOutputTokens +
+        usage.totalCacheReadTokens + usage.totalCacheWriteTokens
+      : 0;
+    const compactNumber = (value: number): string =>
+      value >= 1_000_000 ? `${(value / 1_000_000).toFixed(1)}m` :
+      value >= 1_000 ? `${(value / 1_000).toFixed(1)}k` : String(value);
+    const agentName = agent?.name || this.context.currentAgent || "chat";
+    const provider = agent?.getProvider?.() || this.context.currentProvider || "default";
+    const model = agent?.getModel?.() || this.context.currentModel || "default";
+    const reasoning = agent?.getReasoningEffort?.() || "default";
+    const cost = agent?.getTotalCostUsd?.() || 0;
+    const reasoningStatus = reasoning === "default" ? "" : `  ·  reasoning ${reasoning}`;
+    const status = ` ${agentName}  ·  ${provider}/${model}${reasoningStatus}  ·  $${cost.toFixed(4)}  ·  ${compactNumber(tokens)} tokens`;
+    const clipped = status.length > width ? `${status.slice(0, Math.max(1, width - 1))}…` : status;
+    return `\x1b[2m${clipped.padEnd(width)}\x1b[0m`;
   }
 
   clearHistory(): void {
@@ -373,7 +443,7 @@ export class CliChatService implements ChatService {
           : `\nAsk knowhow: `);
       try {
         // Pass command names as autocomplete options
-        const input = await this.getInput(promptText, currentCommandNames);
+        const input = await this.getInput(promptText, currentCommandNames, true);
 
         if (input.trim() === "") {
           continue;

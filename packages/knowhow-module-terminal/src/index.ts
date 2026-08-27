@@ -1,5 +1,6 @@
 import { KnowhowModule, InitParams } from "@tyvm/knowhow/ts_build/src/services/modules/types";
 import { TunnelTerminalAddon } from "./TunnelTerminalAddon";
+import { terminalTools } from "./tools";
 
 export { TunnelTerminalAddon } from "./TunnelTerminalAddon";
 
@@ -27,7 +28,7 @@ const terminalModule: KnowhowModule = {
         });
     }
   },
-  tools: [],
+  tools: terminalTools,
   agents: [],
   plugins: [],
   clients: [],

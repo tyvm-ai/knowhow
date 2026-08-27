@@ -12,6 +12,7 @@ export const executeScriptDefinition: Tool = {
     This is most useful for complex workflows of tool calls that need conditional logic based off tool responses.
 
   The script has access to:
+  - scriptArgs: Read-only JSON arguments supplied by the caller
   - callTool(toolName, parameters): Call any available tool
   - llm(messages, options): Make LLM calls
   - agent(agentName, query): Run another registered agent as a node (it can use tools/loop/keep context) and get its final answer string back. Great for graph-based agents. Compose with Promise.all for concurrent agent nodes.
@@ -28,6 +29,9 @@ export const executeScriptDefinition: Tool = {
 
   Example:
   \`\`\`typescript
+  // Read a caller-provided argument, with a default
+  const maxCycles = scriptArgs.maxCycles ?? 4;
+
   // Call a tool
   const searchResult = await callTool('textSearch', { searchTerm: 'hello world' });
   console.log('Search found:', searchResult);
@@ -49,7 +53,7 @@ export const executeScriptDefinition: Tool = {
   Test tools yourself to know the return type when scripting. Can pass JSON.stringified data into llm call if you don't need to know the type.
   You cannot use isolation breaking methods like: setTimeout setInterval setImmediate clearTimeout clearInterval
 
-  Security: Scripts run in isolation with quotas on tool calls, tokens, time, and cost.`,
+  Security: Scripts run in isolation. Resource limits are optional and have no defaults; only set one when the run has a known, intentional cap.`,
 
     parameters: {
       type: "object",
@@ -58,22 +62,30 @@ export const executeScriptDefinition: Tool = {
           type: "string",
           description: "The TypeScript code to execute. 4000 tokens or less",
         },
+        args: {
+          type: "object",
+          description:
+            "Optional JSON-serializable object exposed inside the sandbox as the read-only scriptArgs global.",
+        },
         maxToolCalls: {
           type: "number",
-          description: "Maximum number of tool calls allowed (default: 50)",
+          description:
+            "Optional tool-call limit. No default; omit when the required number of calls is not known.",
         },
         maxTokens: {
           type: "number",
-          description: "Maximum tokens for LLM calls (default: 10000)",
+          description:
+            "Optional LLM token limit. No default; only set for an intentionally bounded run.",
         },
         maxExecutionTimeMs: {
           type: "number",
           description:
-            "Maximum execution time in milliseconds (default: 30000)",
+            "Optional wall-clock deadline in milliseconds. No default; only set when a known completion deadline exists.",
         },
         maxCostUsd: {
           type: "number",
-          description: "Maximum cost in USD (default: 1.0)",
+          description:
+            "Optional cost limit in USD. No default; only set for an intentionally bounded run.",
         },
       },
       required: ["script"],

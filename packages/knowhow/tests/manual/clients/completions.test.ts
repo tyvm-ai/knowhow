@@ -17,6 +17,7 @@ import { OpenAiChatModels, OpenAiReasoningModels, OpenAiResponsesOnlyModels } fr
 import { AnthropicTextModels, AnthropicLimitedAvailabilityModels } from "../../../src/clients/pricing/anthropic";
 import { GoogleTextModels } from "../../../src/clients/pricing/google";
 import { XaiTextModels, XaiDeprecatedTextModels } from "../../../src/clients/pricing/xai";
+import { FireworksTextPricing } from "../../../src/clients/pricing/fireworks";
 
 const OUTPUT_FILE = path.join(__dirname, "completions.json");
 const PROMPT = "Say hello in 5 words.";
@@ -29,6 +30,7 @@ interface ModelEntry {
   provider: string;
   model: string;
   envKey: string;
+  reasoningEffort?: "low";
 }
 
 function openaiEntries(models: string[]): ModelEntry[] {
@@ -47,19 +49,35 @@ function xaiEntries(models: string[]): ModelEntry[] {
   return models.map((model) => ({ provider: "xai", model, envKey: "XAI_API_KEY" }));
 }
 
+function fireworksEntries(): ModelEntry[] {
+  return Object.entries(FireworksTextPricing)
+    .filter(([, pricing]) => !pricing.deprecated)
+    .map(([model]) => ({
+      provider: "fireworks",
+      model,
+      envKey: "FIREWORKS_API_KEY",
+      // Fireworks model support for reasoning_effort is model-specific. This
+      // suite exercises the request shape used by Patcher without that flag.
+    }));
+}
+
 const TEST_MODELS: ModelEntry[] = [
   // OpenAI — all active chat + reasoning models + responses-API models
   // Deduplicate since some models appear in multiple lists
-  ...openaiEntries([...new Set([...OpenAiChatModels, ...OpenAiReasoningModels, ...OpenAiResponsesOnlyModels])]),
+  ...openaiEntries([...new Set([...OpenAiChatModels, ...OpenAiReasoningModels, ...OpenAiResponsesOnlyModels])])
+    .map((entry) => ({ ...entry, reasoningEffort: "low" as const })),
 
   // Anthropic — active text models (limited availability excluded)
-  ...anthropicEntries(AnthropicTextModels),
+  ...anthropicEntries(AnthropicTextModels).map((entry) => ({ ...entry, reasoningEffort: "low" as const })),
 
   // Google — all active text models
-  ...googleEntries(GoogleTextModels),
+  ...googleEntries(GoogleTextModels).map((entry) => ({ ...entry, reasoningEffort: "low" as const })),
 
   // XAI — active text models (deprecated grok-2 models excluded)
-  ...xaiEntries(XaiTextModels),
+  ...xaiEntries(XaiTextModels).map((entry) => ({ ...entry, reasoningEffort: "low" as const })),
+
+  // Fireworks — all active catalog models
+  ...fireworksEntries(),
 ];
 
 // ─── Persistence helpers ──────────────────────────────────────────────────────
@@ -118,7 +136,7 @@ describe("Text Completions – multi-provider model verification", () => {
     console.log(`   Total records: ${Object.keys(results).length}`);
   });
 
-  for (const { provider, model, envKey } of TEST_MODELS) {
+  for (const { provider, model, envKey, reasoningEffort } of TEST_MODELS) {
     const key = recordKey(provider, model);
 
     test(`${provider} / ${model}`, async () => {
@@ -145,11 +163,10 @@ describe("Text Completions – multi-provider model verification", () => {
         model,
         messages: [{ role: "user", content: PROMPT }],
         max_tokens: 2000,
-        // Use low reasoning effort for all models that support it — keeps latency
-        // and cost down while still verifying the model responds successfully.
-        // For OpenAI this maps to reasoning_effort="low", for Gemini to
-        // thinkingLevel="low" or thinkingBudget=1024, etc.
-        reasoning_effort: "low",
+        // Exercise the summary option enabled by Patcher. Provider clients must
+        // translate or remove this internal option rather than forwarding it.
+        reasoning_summary: true,
+        reasoning_effort: reasoningEffort,
       });
       const durationMs = Date.now() - startMs;
 

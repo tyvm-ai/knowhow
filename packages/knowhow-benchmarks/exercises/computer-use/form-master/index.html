@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Form Master Benchmark</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+    }
+    #hud {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 60px;
+      background: rgba(13,17,23,0.95);
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 32px;
+      z-index: 100;
+    }
+    .hud-item { display: flex; flex-direction: column; align-items: center; }
+    .hud-label { font-size: 10px; color: #7d8590; text-transform: uppercase; letter-spacing: 1px; }
+    .hud-value { font-size: 20px; font-weight: bold; color: #58a6ff; }
+    .hud-value.green { color: #3fb950; }
+    .hud-value.red { color: #f85149; }
+    #main {
+      margin-top: 60px;
+      padding: 24px;
+      display: flex;
+      gap: 24px;
+      min-height: calc(100vh - 60px);
+    }
+    /* Easy mode: left panel shows profile data */
+    #profile-panel {
+      width: 320px;
+      flex-shrink: 0;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 20px;
+      height: fit-content;
+      position: sticky;
+      top: 80px;
+    }
+    #profile-panel h2 {
+      font-size: 14px;
+      color: #7d8590;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid #30363d;
+      padding-bottom: 8px;
+    }
+    .profile-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 6px 0;
+      border-bottom: 1px solid #21262d;
+      font-size: 13px;
+    }
+    .profile-row:last-child { border-bottom: none; }
+    .profile-key { color: #7d8590; }
+    .profile-value { color: #e6edf3; font-weight: 500; text-align: right; max-width: 160px; word-break: break-word; }
+    #round-jumper {
+      margin-top: 18px;
+      padding-top: 14px;
+      border-top: 1px solid #30363d;
+    }
+    #round-jumper h3 {
+      margin-bottom: 10px;
+      color: #7d8590;
+      font-size: 12px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    #round-jump-list { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+    .round-jump-btn {
+      padding: 7px 4px;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      background: #21262d;
+      color: #8b949e;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .round-jump-btn:hover { border-color: #58a6ff; color: #e6edf3; }
+    .round-jump-btn.current { box-shadow: 0 0 0 2px #58a6ff; }
+    .round-jump-btn.passed { background: #16351f; border-color: #238636; color: #56d364; }
+    .round-jump-btn.failed { background: #3d1d1d; border-color: #da3633; color: #ff7b72; }
+    #round-jump-legend {
+      margin-top: 8px;
+      color: #7d8590;
+      font-size: 10px;
+      line-height: 1.5;
+    }
+    /* Form panel */
+    #form-panel {
+      flex: 1;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 28px;
+    }
+    #form-panel h2 {
+      font-size: 20px;
+      color: #e6edf3;
+      margin-bottom: 6px;
+    }
+    #form-panel .round-info {
+      font-size: 13px;
+      color: #7d8590;
+      margin-bottom: 24px;
+    }
+    .field-group {
+      margin-bottom: 20px;
+    }
+    .field-group label {
+      display: block;
+      font-size: 13px;
+      color: #8b949e;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+    .field-group input[type="text"],
+    .field-group input[type="email"],
+    .field-group input[type="number"],
+    .field-group input[type="date"],
+    .field-group select,
+    .field-group textarea {
+      width: 100%;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 10px 12px;
+      color: #e6edf3;
+      font-size: 15px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .field-group input:focus,
+    .field-group select:focus,
+    .field-group textarea:focus {
+      border-color: #58a6ff;
+    }
+    .field-group select option { background: #161b22; }
+    .field-group textarea { resize: vertical; min-height: 80px; }
+    /* Radio group */
+    .radio-group { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+    .radio-option {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      padding: 8px 14px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      transition: border-color 0.15s;
+    }
+    .radio-option:hover { border-color: #58a6ff; }
+    .radio-option input[type="radio"] { accent-color: #58a6ff; }
+    .radio-option.selected { border-color: #58a6ff; background: #1c2d42; }
+    /* Checkbox */
+    .checkbox-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      padding: 10px 14px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      transition: border-color 0.15s;
+    }
+    .checkbox-option input[type="checkbox"] { accent-color: #58a6ff; width: 16px; height: 16px; }
+    .submit-btn {
+      margin-top: 28px;
+      padding: 14px 40px;
+      background: #238636;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+    .submit-btn:hover { background: #2ea043; }
+    /* Result overlay per round */
+    #round-result {
+      display: none;
+      margin-top: 24px;
+      padding: 20px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+    }
+    #round-result h3 { margin-bottom: 12px; font-size: 16px; }
+    .field-result-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid #21262d;
+      font-size: 13px;
+    }
+    .field-result-row:last-child { border-bottom: none; }
+    .field-result-row .fr-label { color: #8b949e; }
+    .field-result-row .fr-submitted { color: #e6edf3; }
+    .field-result-row .fr-status { font-weight: bold; }
+    .fr-correct { color: #3fb950; }
+    .fr-incorrect { color: #f85149; }
+    #next-btn {
+      margin-top: 16px;
+      padding: 12px 32px;
+      background: #1f6feb;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+    }
+    #next-btn:hover { background: #388bfd; }
+    /* Overlay */
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(13,17,23,0.95);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      z-index: 200;
+    }
+    #overlay h1 { font-size: 36px; color: #58a6ff; }
+    #overlay p { font-size: 16px; color: #7d8590; max-width: 500px; text-align: center; }
+    #overlay button {
+      padding: 14px 40px;
+      background: #238636;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 18px;
+      cursor: pointer;
+      font-family: inherit;
+      font-weight: 600;
+    }
+    .mode-toggle {
+      display: flex;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .mode-btn {
+      padding: 8px 20px;
+      border-radius: 6px;
+      border: 1px solid #30363d;
+      background: #161b22;
+      color: #8b949e;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 14px;
+    }
+    .mode-btn.active {
+      background: #1f6feb;
+      color: white;
+      border-color: #1f6feb;
+    }
+    #final-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(13,17,23,0.97);
+      align-items: center;
+      justify-content: center;
+      z-index: 300;
+      flex-direction: column;
+      gap: 16px;
+    }
+    #final-overlay.show { display: flex; }
+    #final-overlay h1 { font-size: 40px; color: #3fb950; }
+    #final-overlay .stat { font-size: 18px; color: #e6edf3; }
+    #final-overlay .stat span { color: #58a6ff; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+
+<div id="hud">
+  <div class="hud-item">
+    <span class="hud-label">Score</span>
+    <span class="hud-value" id="hud-score">0</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-label">Round</span>
+    <span class="hud-value" id="hud-round">-</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-label">Correct</span>
+    <span class="hud-value green" id="hud-correct">0</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-label">Incorrect</span>
+    <span class="hud-value red" id="hud-incorrect">0</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-label">Accuracy</span>
+    <span class="hud-value" id="hud-accuracy">-</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-label">Time</span>
+    <span class="hud-value" id="hud-time">0s</span>
+  </div>
+</div>
+
+<div id="overlay">
+  <h1>📋 Form Master</h1>
+  <p>Fill out forms based on the profile data shown. Accuracy and speed both matter. Easy mode shows data side-by-side with the form.</p>
+  <div class="mode-toggle">
+    <button class="mode-btn active" id="btn-easy" onclick="setMode(true)">Easy Mode</button>
+    <button class="mode-btn" id="btn-hard" onclick="setMode(false)">Hard Mode</button>
+  </div>
+  <button onclick="startGame()">Start Game</button>
+</div>
+
+<div id="final-overlay">
+  <h1>🎉 Complete!</h1>
+  <div class="stat">Score: <span id="final-score">0</span></div>
+  <div class="stat">Correct Fields: <span id="final-correct">0</span></div>
+  <div class="stat">Accuracy: <span id="final-accuracy">-</span></div>
+  <div class="stat">Time: <span id="final-time">-</span></div>
+  <button onclick="location.reload()" style="margin-top:20px;padding:12px 32px;background:#238636;color:white;border:none;border-radius:8px;font-size:16px;cursor:pointer;font-family:inherit;">Play Again</button>
+</div>
+
+<div id="main" style="display:none;">
+  <div id="profile-panel">
+    <h2>📄 Profile Data</h2>
+    <div id="profile-rows"></div>
+    <div id="round-jumper">
+      <h3>Round Jumper</h3>
+      <div id="round-jump-list"></div>
+      <div id="round-jump-legend">● Passed &nbsp; ● Failed &nbsp; ○ Not tested</div>
+    </div>
+  </div>
+  <div id="form-panel">
+    <h2 id="form-title">Round 1</h2>
+    <div class="round-info" id="round-info">Fill in the fields below based on the profile data.</div>
+    <form id="game-form" onsubmit="submitForm(event)">
+      <div id="fields-container"></div>
+      <button type="submit" class="submit-btn">Submit →</button>
+    </form>
+    <div id="round-result">
+      <h3>Round Result</h3>
+      <div id="result-rows"></div>
+      <button id="next-btn" onclick="loadNextRound()">Next Round →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API = 'http://localhost:7433';
+  let sessionId = null;
+  let state = null;
+  let roundStartTime = null;
+  let easyMode = true;
+  let timerInterval = null;
+
+  function setMode(easy) {
+    easyMode = easy;
+    document.getElementById('btn-easy').classList.toggle('active', easy);
+    document.getElementById('btn-hard').classList.toggle('active', !easy);
+    document.getElementById('profile-panel').style.display = easy ? '' : 'none';
+  }
+
+  async function startGame() {
+    const res = await fetch(`${API}/api/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config: { easyMode } }),
+    });
+    state = await res.json();
+    sessionId = state.sessionId;
+
+    document.getElementById('overlay').style.display = 'none';
+    document.getElementById('main').style.display = 'flex';
+    document.getElementById('profile-panel').style.display = easyMode ? '' : 'none';
+
+    if (easyMode && state.profile) renderProfile(state.profile);
+    startTimer();
+    loadRound(state);
+  }
+
+  function startTimer() {
+    timerInterval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - (state && state._startTime || Date.now())) / 1000);
+      document.getElementById('hud-time').textContent = elapsed + 's';
+    }, 1000);
+  }
+
+  function renderProfile(profile) {
+    const container = document.getElementById('profile-rows');
+    const labels = {
+      firstName: 'First Name', lastName: 'Last Name', email: 'Email',
+      phone: 'Phone', dateOfBirth: 'Date of Birth', street: 'Street',
+      city: 'City', state: 'State', zipCode: 'ZIP Code', country: 'Country',
+      department: 'Department', employmentType: 'Employment Type',
+      salary: 'Salary', startDate: 'Start Date',
+      subscriptionPlan: 'Plan', newsletter: 'Newsletter', notes: 'Notes',
+    };
+    container.innerHTML = Object.entries(profile).map(([k, v]) => {
+      if (!(k in labels)) return '';
+      return `<div class="profile-row"><span class="profile-key">${labels[k]}</span><span class="profile-value">${v === true ? 'Yes' : v === false ? 'No' : v}</span></div>`;
+    }).join('');
+  }
+
+  function renderRoundJumper(s) {
+    const container = document.getElementById('round-jump-list');
+    if (!container || !s) return;
+    const results = s.roundResults || [];
+    container.innerHTML = Array.from({ length: s.totalRounds }, (_, roundIndex) => {
+      const result = results[roundIndex];
+      const status = !result ? 'pending' : result.incorrectFields === 0 ? 'passed' : 'failed';
+      const icon = status === 'passed' ? '✓' : status === 'failed' ? '✗' : '○';
+      const current = !s.finished && s.round === roundIndex ? ' current' : '';
+      const detail = result
+        ? `${result.correctFields}/${result.totalFields} correct — click to retest`
+        : 'Not tested — click to jump';
+      return `<button type="button" class="round-jump-btn ${status}${current}"
+        title="Round ${roundIndex + 1}: ${detail}" onclick="jumpToRound(${roundIndex})">${icon} ${roundIndex + 1}</button>`;
+    }).join('');
+  }
+
+  async function jumpToRound(roundIndex) {
+    if (!sessionId) return;
+    const res = await fetch(`${API}/api/jump`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, roundIndex }),
+    });
+    if (!res.ok) return;
+    document.getElementById('final-overlay').classList.remove('show');
+    loadRound(await res.json());
+  }
+
+  function loadRound(s) {
+    state = s;
+    updateHud(s, s.finished ? s.totalRounds : s.round + 1);
+    renderRoundJumper(s);
+    if (s.finished) { showFinal(s); return; }
+
+    const round = s.currentRound;
+    document.getElementById('form-title').textContent = `Round ${s.round + 1} of ${s.totalRounds}`;
+    document.getElementById('round-info').textContent = `Fill in ${round.fields.length} field${round.fields.length > 1 ? 's' : ''} from the profile data.`;
+
+    const container = document.getElementById('fields-container');
+    container.innerHTML = '';
+    for (const field of round.fields) {
+      container.appendChild(buildField(field));
+    }
+
+    document.getElementById('round-result').style.display = 'none';
+    document.getElementById('game-form').style.display = '';
+    roundStartTime = Date.now();
+
+    // Focus first input
+    setTimeout(() => {
+      const first = container.querySelector('input, select, textarea');
+      if (first) first.focus();
+    }, 50);
+  }
+
+  function buildField(field) {
+    const group = document.createElement('div');
+    group.className = 'field-group';
+
+    const label = document.createElement('label');
+    label.setAttribute('for', `field-${field.id}`);
+    label.textContent = field.label;
+    group.appendChild(label);
+
+    if (field.type === 'select') {
+      const sel = document.createElement('select');
+      sel.id = `field-${field.id}`;
+      sel.name = field.id;
+      sel.innerHTML = `<option value="">-- Select --</option>` +
+        (field.options || []).map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+      group.appendChild(sel);
+    } else if (field.type === 'radio') {
+      const radioGroup = document.createElement('div');
+      radioGroup.className = 'radio-group';
+      for (const opt of (field.options || [])) {
+        const optDiv = document.createElement('label');
+        optDiv.className = 'radio-option';
+        optDiv.innerHTML = `<input type="radio" name="${field.id}" value="${opt.value}"> ${opt.label}`;
+        optDiv.querySelector('input').addEventListener('change', () => {
+          radioGroup.querySelectorAll('.radio-option').forEach(el => el.classList.remove('selected'));
+          optDiv.classList.add('selected');
+        });
+        radioGroup.appendChild(optDiv);
+      }
+      group.appendChild(radioGroup);
+    } else if (field.type === 'checkbox') {
+      const label2 = document.createElement('label');
+      label2.className = 'checkbox-option';
+      label2.innerHTML = `<input type="checkbox" id="field-${field.id}" name="${field.id}"> ${field.label}`;
+      // remove the first label's text (already shown in checkbox label)
+      label.textContent = '';
+      group.appendChild(label2);
+    } else if (field.type === 'textarea') {
+      const ta = document.createElement('textarea');
+      ta.id = `field-${field.id}`;
+      ta.name = field.id;
+      group.appendChild(ta);
+    } else {
+      const inp = document.createElement('input');
+      inp.type = field.type || 'text';
+      inp.id = `field-${field.id}`;
+      inp.name = field.id;
+      inp.autocomplete = 'off';
+      group.appendChild(inp);
+    }
+
+    return group;
+  }
+
+  async function submitForm(e) {
+    e.preventDefault();
+    const reactionMs = Date.now() - roundStartTime;
+    const form = document.getElementById('game-form');
+    const data = new FormData(form);
+    const answers = {};
+    if (state.currentRound) {
+      for (const field of state.currentRound.fields) {
+        if (field.type === 'checkbox') {
+          answers[field.id] = data.get(field.id) === 'on' || form.querySelector(`[name="${field.id}"]`)?.checked || false;
+        } else if (field.type === 'radio') {
+          answers[field.id] = data.get(field.id) || '';
+        } else {
+          answers[field.id] = data.get(field.id) || '';
+        }
+      }
+    }
+
+    const res = await fetch(`${API}/api/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId, answers, reactionMs }),
+    });
+    const result = await res.json();
+
+    document.getElementById('game-form').style.display = 'none';
+    showRoundResult(result.fieldResults, result.state);
+    // The server has advanced its index, but this result belongs to the
+    // round just submitted.
+    updateHud(result.state, result.state.round);
+
+    if (result.state.finished) {
+      setTimeout(() => showFinal(result.state), 1500);
+    }
+  }
+
+  function showRoundResult(fieldResults, newState) {
+    const box = document.getElementById('round-result');
+    const rows = document.getElementById('result-rows');
+    rows.innerHTML = (fieldResults || []).map(fr => {
+      const cls = fr.isCorrect ? 'fr-correct' : 'fr-incorrect';
+      const icon = fr.isCorrect ? '✓' : '✗';
+      const submitted = fr.submitted === true ? 'Yes' : fr.submitted === false ? 'No' : (fr.submitted || '(empty)');
+      const correct = fr.correct === true ? 'Yes' : fr.correct === false ? 'No' : fr.correct;
+      return `<div class="field-result-row">
+        <span class="fr-label">${fr.fieldId}</span>
+        <span class="fr-submitted">${submitted}</span>
+        <span class="fr-status ${cls}">${icon} ${fr.isCorrect ? 'Correct' : `→ ${correct}`}</span>
+      </div>`;
+    }).join('');
+
+    box.style.display = 'block';
+    state = newState;
+  }
+
+  function loadNextRound() {
+    loadRound(state);
+  }
+
+  function updateHud(s, displayedRound = s.round) {
+    document.getElementById('hud-score').textContent = s.score;
+    document.getElementById('hud-round').textContent = `${displayedRound}/${s.totalRounds}`;
+    document.getElementById('hud-correct').textContent = s.correctFields;
+    document.getElementById('hud-incorrect').textContent = s.incorrectFields;
+    document.getElementById('hud-accuracy').textContent = s.accuracy !== null ? Math.round(s.accuracy * 100) + '%' : '-';
+    document.getElementById('hud-time').textContent = Math.floor(s.totalTime / 1000) + 's';
+  }
+
+  function showFinal(s) {
+    const overlay = document.getElementById('final-overlay');
+    document.getElementById('final-score').textContent = s.score;
+    document.getElementById('final-correct').textContent = `${s.correctFields}/${s.totalFields}`;
+    document.getElementById('final-accuracy').textContent = s.accuracy !== null ? Math.round(s.accuracy * 100) + '%' : '-';
+    document.getElementById('final-time').textContent = Math.floor(s.totalTime / 1000) + 's';
+    overlay.classList.add('show');
+    if (timerInterval) clearInterval(timerInterval);
+  }
+</script>
+</body>
+</html>

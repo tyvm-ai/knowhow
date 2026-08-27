@@ -25,12 +25,22 @@ export {
   TunnelPtyData,
   TunnelPtyResize,
   TunnelPtyClose,
+  TunnelPtyList,
+  TunnelPtyAttached,
+  TunnelPtyDetach,
+  TunnelPtyListResponse,
+  TunnelPtySessionInfo,
   TunnelPtyExit,
   TunnelPtyMessage,
   AnyTunnelMessage,
   // Addon interface
   TunnelAddon,
   TunnelAddonContext,
+  // Telemetry types
+  TunnelTelemetryHello,
+  TunnelTelemetryControl,
+  TunnelTelemetrySample,
+  TunnelTelemetryMessage,
 } from "./types";
 export {
   parseTunnelMessage,

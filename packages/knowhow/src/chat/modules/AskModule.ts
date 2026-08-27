@@ -3,12 +3,14 @@
  */
 
 import { BaseChatModule } from "./BaseChatModule";
+import { TraceAll } from "../../util/Trace";
 import { ChatCommand, ChatMode, ChatContext } from "../types";
 import { ChatInteraction } from "../../types";
 import { Models } from "../../ai";
 import { services } from "../../services/index";
 import { Marked } from "../../utils/index";
 
+@TraceAll()
 export class AskModule extends BaseChatModule {
   name = "ask";
   description = "Basic AI question/answer functionality";

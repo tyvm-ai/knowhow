@@ -8,6 +8,7 @@ import { SessionsModule } from "../chat/modules/SessionsModule";
 import { SetupModule } from "../chat/modules/SetupModule";
 import { PlainRenderer } from "../chat/renderer/PlainRenderer";
 import { loadRenderer } from "../chat/renderer/loadRenderer";
+import { isReasoningEffort, REASONING_EFFORTS } from "../clients/types";
 import { getConfig } from "../config";
 
 async function setupRenderer(chatService: any, rendererSpecifier: string): Promise<void> {
@@ -54,7 +55,11 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
       "AI provider (openai, anthropic, google, xai)"
     )
     .option("--model <model>", "Specific model for the provider")
-    .option("--agent-name <name>", "Which agent to use", "Patcher")
+    .option("--agent-name <name>", "Which agent to use (default: Patcher)")
+    .option(
+      "--reasoning-effort <effort>",
+      `Reasoning effort: ${REASONING_EFFORTS.join(", ")}. Individual models support different subsets.`
+    )
     .option(
       "--max-time-limit <minutes>",
       "Time limit for agent execution (minutes)",
@@ -90,15 +95,19 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
     .option("--prompt-file <path>", "Custom prompt template file with {text}")
     .option("--input <text>", "Task input (fallback to stdin if not provided)")
     .option(
-      "--resume",
-      "Resume a previously started task using the --task-id (local FS or remote)"
-    )
-    .option(
       "--renderer <name>",
       "Renderer to use: basic, compact, fancy, or a path/package (default: from config or basic)"
     )
     .action(async (options) => {
       try {
+        if (
+          options.reasoningEffort !== undefined &&
+          !isReasoningEffort(options.reasoningEffort)
+        ) {
+          throw new Error(
+            `Invalid reasoning effort "${options.reasoningEffort}". Expected one of: ${REASONING_EFFORTS.join(", ")}.`
+          );
+        }
         const { setupServices } = await import("./services");
         await setupServices();
         const chatService = getChatService();
@@ -110,27 +119,6 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
         await setupRenderer(chatService, rendererSpecifier);
 
         const agentModule = new AgentModule();
-
-        if (options.resume) {
-          const threads = await agentModule.loadThreadsForTask(
-            options.taskId,
-            options.messageId
-          );
-          const resumeInput =
-            options.input || "Please continue from where you left off.";
-
-          await agentModule.initialize(chatService);
-          const { taskCompleted: resumed } =
-            await agentModule.resumeFromMessages({
-              agentName: options.agentName || "Patcher",
-              input: resumeInput,
-              threads,
-              messageId: options.messageId,
-              taskId: options.taskId,
-            });
-          await resumed;
-          return;
-        }
 
         let input = options.input;
 
@@ -205,9 +193,13 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
 
         const { taskCompleted } = await agentModule.setupAgent({
           ...options,
+          agentName: options.agentName ?? config.chat?.defaultAgent ?? "Patcher",
           input,
           maxTimeLimit: parseInt(options.maxTimeLimit, 10),
           maxSpendLimit: parseFloat(options.maxSpendLimit),
+          ...(options.reasoningEffort
+            ? { reasoningEffort: options.reasoningEffort }
+            : {}),
           ...(behaviorSystemPrompt ? { systemPrompt: behaviorSystemPrompt } : {}),
           ...(behaviorModel ? { model: behaviorModel } : {}),
           run: true,

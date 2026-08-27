@@ -54,6 +54,17 @@ async function main(initialCommand?: string) {
     // Create chat service with plugins
     const chatService = new CliChatService(config.plugins?.enabled ?? []);
 
+    // ── Default Agent / Model / Provider ──────────────────────────────────────
+    // If chat config specifies defaults, inject them into the context so
+    // AgentModule can pick them up during initialize().
+    if (config.chat?.defaultAgent || config.chat?.defaultModel || config.chat?.defaultProvider) {
+      chatService.setContext({
+        defaultAgent: config.chat?.defaultAgent,
+        defaultModel: config.chat?.defaultModel,
+        defaultProvider: config.chat?.defaultProvider,
+      });
+    }
+
     // ── Renderer ──────────────────────────────────────────────────────────────
     // Load a custom renderer if configured, otherwise use the default
     // ConsoleRenderer (already the default inside AgentModule).

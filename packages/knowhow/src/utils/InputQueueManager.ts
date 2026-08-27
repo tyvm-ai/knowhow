@@ -1,4 +1,5 @@
 import readline from "node:readline";
+import { logger } from "../logger";
 
 // Callback type for notifying when a new history entry is added
 type OnNewHistoryEntry = (entry: string) => void;
@@ -7,6 +8,7 @@ type AskOptions = {
   question: string;
   options?: string[];
   history?: string[];
+  footer?: string | (() => string);
   resolve: (value: string) => void;
 };
 
@@ -18,6 +20,8 @@ export class InputQueueManager {
 
   // Tab completion state
   private lastKeypressWasTab = false;
+  private outputDepth = 0;
+  private panelVisible = false;
 
   // We keep one "live" buffer shared across stacked questions
   // (so typing is preserved when questions change)
@@ -39,6 +43,10 @@ export class InputQueueManager {
   constructor() {
     // Store the current instance as the singleton
     InputQueueManager.instance = this;
+    logger.setOutputHooks(
+      () => this.beforeOutput(),
+      (state) => this.afterOutput(state === true)
+    );
   }
 
   /**
@@ -69,6 +77,11 @@ export class InputQueueManager {
 
     // When user presses Enter, buffer the line for paste detection
     InputQueueManager.rl.on("line", (line) => {
+      // Enter advances one row beyond readline's reported cursor position.
+      // Remove the whole submitted panel so its separator is not left behind.
+      if (this.peek()?.footer && process.stdout.isTTY) {
+        this.clearPanel(true);
+      }
       const current = this.peek();
       if (!current) return;
 
@@ -253,9 +266,17 @@ export class InputQueueManager {
     this.renderTopOrClose();
   }
 
-  async ask(question: string, options: string[] = [], history: string[] = []) {
+  async ask(
+    question: string,
+    options: string[] = [],
+    history: string[] = [],
+    footer?: string | (() => string)
+  ) {
     return new Promise<string>((resolve) => {
-      this.stack.push({ question, options, history, resolve });
+      // A newly stacked question replaces the visible panel; don't leave the
+      // previous multi-line prompt behind in terminal scrollback.
+      if (this.stack.length > 0) this.clearPanel();
+      this.stack.push({ question, options, history, footer, resolve });
       this.historyIndex = -1; // reset history nav when a new question is asked
 
       const rl = this.ensureRl();
@@ -271,6 +292,7 @@ export class InputQueueManager {
       this.replaceLine(this.currentLine);
 
       rl.prompt(true);
+      this.drawFooter();
     });
   }
 
@@ -395,6 +417,7 @@ export class InputQueueManager {
     }
 
     // Second consecutive tab: print the completions list
+    this.clearFooter();
     this.lastKeypressWasTab = false;
     const columns = process.stdout.columns || 80;
     const maxWidth = Math.max(...effectiveHits.map((h) => h.length)) + 2;
@@ -420,6 +443,7 @@ export class InputQueueManager {
     // internal `line` buffer and cursor position are correct.
     InputQueueManager.rl?.write(null, { ctrl: true, name: "u" });
     if (inputText) InputQueueManager.rl?.write(inputText);
+    this.drawFooter();
   }
 
   private render(): void {
@@ -430,6 +454,7 @@ export class InputQueueManager {
     // Make prompt be the question (readline manages wrapping/cursor)
     InputQueueManager.rl.setPrompt(current.question);
     InputQueueManager.rl.prompt(true);
+    this.panelVisible = true;
   }
 
   private renderTopOrClose(): void {
@@ -445,6 +470,65 @@ export class InputQueueManager {
     this.render();
     this.replaceLine(this.currentLine);
     InputQueueManager.rl?.prompt(true);
+    this.drawFooter();
+  }
+
+  private clearFooter(): void {
+    if (!this.peek()?.footer || !process.stdout.isTTY) return;
+    process.stdout.write("\x1b[s\x1b[1B\r\x1b[2K\x1b[u");
+  }
+
+  /** Draw a one-line status bar below the readline cursor, then restore it. */
+  private drawFooter(): void {
+    const footerValue = this.peek()?.footer;
+    const rl = InputQueueManager.rl;
+    if (!footerValue || !rl || !process.stdout.isTTY) return;
+    const footer = typeof footerValue === "function" ? footerValue() : footerValue;
+    const cursor = rl.getCursorPos();
+    process.stdout.write(`\r\n\x1b[2K${footer}`);
+    readline.moveCursor(process.stdout, 0, -1);
+    readline.cursorTo(process.stdout, cursor.cols);
+  }
+
+  private clearPanel(cursorAdvancedAfterEnter = false): void {
+    const rl = InputQueueManager.rl;
+    if (!rl || !process.stdout.isTTY || !this.panelVisible) return;
+    const cursor = rl.getCursorPos();
+    readline.cursorTo(process.stdout, 0);
+    const rowsToPanelTop = cursor.rows + (cursorAdvancedAfterEnter ? 1 : 0);
+    if (rowsToPanelTop > 0) {
+      readline.moveCursor(process.stdout, 0, -rowsToPanelTop);
+    }
+    readline.clearScreenDown(process.stdout);
+    this.panelVisible = false;
+  }
+
+  /**
+   * Temporarily remove the panel so asynchronous renderer output is always
+   * written above it instead of through its input/footer rows.
+   */
+  beforeOutput(): boolean {
+    if (!InputQueueManager.rl || this.stack.length === 0) return false;
+    this.outputDepth++;
+    if (this.outputDepth === 1) {
+      this.syncFromReadline();
+      this.clearPanel();
+    }
+    return true;
+  }
+
+  /** Restore the panel after an asynchronous log/render event. */
+  afterOutput(wasVisible: boolean): void {
+    const rl = InputQueueManager.rl;
+    if (!wasVisible) return;
+    this.outputDepth = Math.max(0, this.outputDepth - 1);
+    if (this.outputDepth > 0 || !rl || this.stack.length === 0) return;
+    const current = this.peek();
+    if (!current) return;
+    rl.setPrompt(current.question);
+    this.replaceLine(this.currentLine);
+    rl.prompt(true);
+    this.drawFooter();
   }
 
   private replaceLine(next: string): void {
@@ -477,8 +561,10 @@ export class InputQueueManager {
 
   private close(): void {
     if (!InputQueueManager.rl) return;
+    this.clearPanel();
     InputQueueManager.rl.close();
     InputQueueManager.rl = null;
+    this.currentLine = "";
     // Note: We don't reset keypressListenerSetup because the listener stays attached to process.stdin
     // and will continue to work for the next readline interface
 

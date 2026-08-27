@@ -3,6 +3,7 @@
  * Handles synchronization via filesystem files in .knowhow/processes/agents/taskId/
  */
 import { BaseAgent } from "../agents/base/base";
+import { TraceAll } from "../util/Trace";
 import { promises as fs } from "fs";
 import * as path from "path";
 import { watch } from "fs";
@@ -19,6 +20,7 @@ export interface FsSyncOptions {
  * AgentSyncFs handles filesystem-based synchronization for agent tasks
  * Creates files in .knowhow/processes/agents/{taskId}/ for status and input
  */
+@TraceAll()
 export class AgentSyncFs {
   /** Shared cleanup interval across all instances to avoid duplicate cleanup runs */
   private static sharedCleanupInterval: NodeJS.Timeout | null = null;
@@ -86,6 +88,47 @@ export class AgentSyncFs {
   }
 
   /**
+   * Clean up old managed-process directories (.knowhow/processes/<id>/) that
+   * were created by spawnManaged / execCommand.  These are identified by the
+   * presence of a status.json file inside the directory.  Only directories
+   * older than maxAgeMs are removed.
+   */
+  static async cleanupOldManagedProcessDirs(maxAgeMs: number): Promise<void> {
+    try {
+      const processesPath = path.dirname(AgentSyncFs.sharedBasePath);
+
+      try {
+        await fs.access(processesPath);
+      } catch {
+        return;
+      }
+
+      const entries = await fs.readdir(processesPath, { withFileTypes: true });
+      const now = Date.now();
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const dirPath = path.join(processesPath, entry.name);
+        const statusPath = path.join(dirPath, "status.json");
+
+        try {
+          await fs.access(statusPath);
+          const stats = await fs.stat(dirPath);
+          const age = now - stats.mtimeMs;
+          if (age > maxAgeMs) {
+            console.log(`🧹 Cleaning up old process directory: ${entry.name}`);
+            await fs.rm(dirPath, { recursive: true, force: true });
+          }
+        } catch {
+          // No status.json or can't stat — skip (e.g. the agents/ subdir)
+        }
+      }
+    } catch (error) {
+      console.error(`❌ Error during managed process dir cleanup:`, error);
+    }
+  }
+
+  /**
    * Update task status
    */
   private async writeStatus(status: string): Promise<void> {
@@ -122,9 +165,80 @@ export class AgentSyncFs {
 
     try {
       const metadataPath = path.join(this.taskPath, "metadata.json");
-      await fs.writeFile(metadataPath, JSON.stringify(data, null, 2), "utf8");
+      // Thread/status updates are partial snapshots. Merge them so stable
+      // orchestration identity written by createTask (taskId, pid and parent)
+      // is never discarded by a later update.
+      let existing: Record<string, unknown> = {};
+      try {
+        existing = JSON.parse(await fs.readFile(metadataPath, "utf8"));
+      } catch { /* first write or an interrupted legacy write */ }
+      await fs.writeFile(
+        metadataPath,
+        JSON.stringify({ ...existing, ...data }, null, 2),
+        "utf8"
+      );
     } catch (error) {
       console.error(`❌ Failed to write metadata:`, error);
+    }
+  }
+
+  /**
+   * Persist the remote identity alongside the local task. Keeping the local
+   * slug and remote UUID as separate fields lets resume reconnect without ever
+   * mistaking one for the other.
+   */
+  static async persistRemoteIdentity(
+    taskId: string,
+    remoteTaskId: string,
+    remoteMessageId?: string
+  ): Promise<void> {
+    const taskPath = path.join(AgentSyncFs.sharedBasePath, taskId);
+    await AgentSyncFs.writeRemoteIdentity(
+      taskPath,
+      remoteTaskId,
+      remoteMessageId
+    );
+  }
+
+  async setRemoteIdentity(
+    remoteTaskId: string,
+    remoteMessageId?: string
+  ): Promise<void> {
+    if (!this.taskPath) return;
+    await AgentSyncFs.writeRemoteIdentity(this.taskPath, remoteTaskId, remoteMessageId);
+  }
+
+  private static async writeRemoteIdentity(
+    taskPath: string,
+    remoteTaskId: string,
+    remoteMessageId?: string
+  ): Promise<void> {
+    try {
+      const metadataPath = path.join(taskPath, "metadata.json");
+      let metadata: any = {};
+      try {
+        metadata = JSON.parse(await fs.readFile(metadataPath, "utf8"));
+      } catch {
+        // The normal path already created metadata, but recover if it was
+        // removed or malformed while the task was running.
+      }
+
+      metadata.remoteTaskId = remoteTaskId;
+      // Preserve the established session field name for compatibility with
+      // callers that already read knowhowTaskId.
+      metadata.knowhowTaskId = remoteTaskId;
+      if (remoteMessageId) {
+        metadata.remoteMessageId = remoteMessageId;
+        metadata.knowhowMessageId = remoteMessageId;
+      }
+
+      await fs.writeFile(
+        metadataPath,
+        JSON.stringify(metadata, null, 2),
+        "utf8"
+      );
+    } catch (error) {
+      console.error(`❌ Failed to persist remote task identity:`, error);
     }
   }
 
@@ -133,6 +247,11 @@ export class AgentSyncFs {
    * that call) to usage.json. This is intended for debugging cache-hit
    * issues, where comparing the message chains and usage values between
    * consecutive calls can reveal when a cache prefix was invalidated.
+   *
+   * To prevent exponential file growth, if the new entry's message thread
+   * fully contains the previous entry's thread as a prefix, the previous
+   * thread is replaced with { PREV_CACHE_HIT: true } so only the new
+   * messages (the delta) are stored alongside the new usage data.
    */
   private async appendUsageEntry(entry: any): Promise<void> {
     if (!this.taskPath) return;
@@ -146,6 +265,27 @@ export class AgentSyncFs {
         entries = JSON.parse(existingData);
       } catch {
         // File doesn't exist or is invalid, start fresh
+      }
+
+      // If the new entry's messages are a superset of the last entry's
+      // messages (i.e. the last thread is a prefix of the new thread),
+      // collapse the last entry's messages to { PREV_CACHE_HIT: true }
+      // and store only the new delta — preventing exponential growth.
+      if (entries.length > 0) {
+        const lastEntry = entries[entries.length - 1];
+        const prevMessages: any[] = lastEntry?.messages;
+        const newMessages: any[] = entry?.messages;
+        if (
+          Array.isArray(prevMessages) &&
+          Array.isArray(newMessages) &&
+          prevMessages.length > 0 &&
+          newMessages.length >= prevMessages.length &&
+          JSON.stringify(newMessages.slice(0, prevMessages.length)) ===
+            JSON.stringify(prevMessages)
+        ) {
+          // Replace the previous full thread with a compact sentinel
+          lastEntry.messages = [{ PREV_CACHE_HIT: true }];
+        }
       }
 
       entries.push(entry);
@@ -180,6 +320,20 @@ export class AgentSyncFs {
       metadata.totalCostUsd = agent.getTotalCostUsd();
       metadata.tokenUsage = agent.getTokenUsage();
       metadata.agentName = agent.name;
+      // Record the model/provider actually in use at this sync so task
+      // history reflects the real model (including mid-run fallbacks), not
+      // just the named agent.
+      metadata.model = agent.getModel();
+      metadata.provider = agent.getProvider();
+      // Persist reasoning settings so a resume can restore the exact
+      // reasoning effort / summarize behavior the run was using. (The
+      // encrypted reasoning items + summaries themselves ride along on the
+      // thread messages via `_reasoning_details` / `reasoning_summary`.)
+      metadata.reasoningEffort = agent.getReasoningEffort?.();
+      metadata.summarizeReasoning = agent.getSummarizeReasoning?.();
+      // Tool schemas are part of the provider cache prefix. Preserve the exact
+      // request-visible list so resume/fork can recreate the same request.
+      metadata.enabledTools = agent.getEnabledToolNames();
       metadata.inProgress = inProgress;
       metadata.lastUpdate = new Date().toISOString();
 
@@ -504,6 +658,7 @@ export class AgentSyncFs {
 
       // Also clean up old execCommand background log files in .knowhow/processes/*.txt
       await AgentSyncFs.cleanupOldProcessLogs(threeDaysMs);
+      await AgentSyncFs.cleanupOldManagedProcessDirs(threeDaysMs);
     } catch (error) {
       console.error(`❌ Error during cleanup:`, error);
     }

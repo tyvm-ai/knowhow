@@ -3,8 +3,10 @@ import { IAgent } from "../agents/interface";
 import { EventService } from "./EventService";
 import { ToolsService } from "./Tools";
 import { ConfigAgent } from "../agents/configurable/ConfigAgent";
+import { TraceAll } from "../util/Trace";
 import { AgentContext } from "../agents/base/base";
 
+@TraceAll()
 export class AgentService {
   private agents: Map<string, IAgent> = new Map();
   private agentContext: AgentContext | null = null;
@@ -74,14 +76,14 @@ export class AgentService {
     return this.agentContext ?? { Tools: this.tools, Events: this.events };
   }
 
-  public getAgent(name: string): IAgent {
+  public getAgent<T extends IAgent = IAgent>(name: string): T {
     const agent = this.agents.get(name);
     if (!agent) {
       throw new Error(
         `Agent ${name} not found. Options are: ${this.listAgents()}`
       );
     }
-    return agent;
+    return agent as T;
   }
 
   public listAgents(): string[] {

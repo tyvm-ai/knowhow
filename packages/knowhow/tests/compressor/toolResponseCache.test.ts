@@ -111,7 +111,8 @@ describe("ToolResponseCache - MCP Format Support", () => {
     it("should filter data array with ._data | map(select(.private == true))", async () => {
       const result = await cache.queryToolResponse(
         "github-repos",
-        "._data | map(select(.private == true))"
+        "._data | map(select(.private == true))",
+        { maxCharacters: 50_000 }
       );
       
       // Parse and verify filtering worked

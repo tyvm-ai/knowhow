@@ -52,6 +52,15 @@ export class GenericXAIClient implements GenericClient {
     });
   }
 
+  resolveLegacyReasoningEffort(
+    effort: CompletionOptions["reasoning_effort"]
+  ): "low" | "medium" | "high" | undefined {
+    if (effort === undefined || effort === "none") return undefined;
+    if (effort === "minimal") return "low";
+    if (effort === "xhigh" || effort === "max") return "high";
+    return effort;
+  }
+
   async createChatCompletion(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
@@ -72,17 +81,18 @@ export class GenericXAIClient implements GenericClient {
       return msg as ChatCompletionMessageParam;
     });
 
+    const reasoningEffort = this.resolveLegacyReasoningEffort(options.reasoning_effort);
     const response = await this.client.chat.completions.create({
       model: options.model,
       messages: xaiMessages,
       max_tokens: options.max_tokens,
-      ...(XaiReasoningModels.includes(options.model) && options.reasoning_effort && options.reasoning_effort !== "none" && {
+      ...(XaiReasoningModels.includes(options.model) && reasoningEffort && {
         // grok-3-mini models support reasoning_effort: "low" | "medium" | "high"
-        reasoning_effort: options.reasoning_effort as "low" | "medium" | "high",
+        reasoning_effort: reasoningEffort,
       }),
-      ...(options.tools && {
+      ...(options.tools?.length && {
         tools: options.tools,
-        tool_choice: "auto",
+        tool_choice: options.tool_choice ?? "auto",
       }),
     });
 
@@ -116,6 +126,20 @@ export class GenericXAIClient implements GenericClient {
    * Used for grok-4.20 reasoning/non-reasoning and multi-agent models.
    * Translates Chat Completions message format to Responses API format.
    */
+  /**
+   * Resolve the xai-native reasoning items (Responses API `reasoning` items
+   * with encrypted_content) to re-inject for an assistant message, reading the
+   * provider-agnostic `_reasoning_details` slot only when it was produced by
+   * this provider.
+   */
+  private getReasoningItems(msg: any): any[] {
+    const details = msg?._reasoning_details;
+    if (details && details.provider === "xai" && Array.isArray(details.items)) {
+      return details.items;
+    }
+    return [];
+  }
+
   async createChatResponse(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
@@ -133,22 +157,46 @@ export class GenericXAIClient implements GenericClient {
       .trim() || undefined;
 
     // Convert chat messages to Responses API input items
+    // Responses API hard limit: 10,485,760 chars per function_call_output.output
+    const MAX_TOOL_OUTPUT = 10_485_000;
+    const truncateToolOutput = (s: string) =>
+      s.length > MAX_TOOL_OUTPUT
+        ? s.slice(0, MAX_TOOL_OUTPUT) + "\n\n[TRUNCATED: output exceeded 10MB API limit]"
+        : s;
     const input: any[] = nonSystemMessages.map((msg) => {
       if (msg.role === "tool") {
         return {
           type: "function_call_output",
           call_id: msg.tool_call_id,
-          output: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+          output: truncateToolOutput(typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content)),
         };
       }
       if (msg.role === "assistant" && msg.tool_calls?.length) {
-        return msg.tool_calls.map((tc) => ({
+        // Re-inject any captured reasoning items (encrypted_content) BEFORE the
+        // function_call items so the model keeps its chain-of-thought instead of
+        // re-deriving it from scratch each turn.
+        const reasoningItems = this.getReasoningItems(msg);
+        return [
+          ...reasoningItems,
+          ...msg.tool_calls.map((tc) => ({
           type: "function_call",
           id: tc.id.startsWith("fc") ? tc.id : `fc_${tc.id}`,
           call_id: tc.id,
           name: tc.function.name,
           arguments: tc.function.arguments,
-        }));
+          })),
+        ];
+      }
+      if (msg.role === "assistant" && this.getReasoningItems(msg).length) {
+        // assistant message (no tool calls) that carried reasoning items →
+        // re-inject reasoning items, then the visible message content.
+        return [
+          ...this.getReasoningItems(msg),
+          {
+            role: msg.role,
+            content: typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content),
+          },
+        ];
       }
       return {
         role: msg.role,
@@ -168,8 +216,17 @@ export class GenericXAIClient implements GenericClient {
     // Resolve reasoning effort, clamping to supported levels if defined in pricing
     const pricing = XaiTextPricing[options.model];
     const supportedLevels = pricing?.reasoningLevels;
-    let reasoningEffort: string | undefined = options.reasoning_effort;
-    if (supportedLevels?.length) {
+    const requestedEffort = options.reasoning_effort;
+    let reasoningEffort: string | undefined;
+    if (requestedEffort !== "none") {
+      reasoningEffort =
+        requestedEffort === "minimal"
+          ? "low"
+          : requestedEffort === "max"
+            ? "xhigh"
+            : requestedEffort;
+    }
+    if (requestedEffort !== "none" && supportedLevels?.length) {
       if (!reasoningEffort || !supportedLevels.includes(reasoningEffort)) {
         reasoningEffort = supportedLevels[0];
       }
@@ -181,8 +238,22 @@ export class GenericXAIClient implements GenericClient {
       ...(instructions && { instructions }),
       ...(options.max_tokens && { max_output_tokens: Math.max(options.max_tokens, 16_000) }),
       ...(reasoningEffort && { reasoning: { effort: reasoningEffort } }),
-      ...(tools?.length && { tools, tool_choice: "auto" }),
-      store: false,
+      ...(tools?.length && {
+        tools,
+        tool_choice: options.tool_choice ?? "auto",
+      }),
+      // Reasoning persistence (same construct as OpenAI's Responses API):
+      //  - store === true  → xAI persists the response; next turn passes
+      //    previous_response_id to continue the reasoning chain server-side.
+      //  - store !== true  → stateless; request encrypted reasoning content so
+      //    we can thread the reasoning items back into the next request ourselves.
+      store: options.store === true,
+      ...(options.previous_response_id && {
+        previous_response_id: options.previous_response_id,
+      }),
+      ...(options.store !== true && reasoningEffort && {
+        include: ["reasoning.encrypted_content"],
+      }),
     };
 
     const response = await fetch("https://api.x.ai/v1/responses", {
@@ -218,12 +289,27 @@ export class GenericXAIClient implements GenericClient {
     // Collect text content and tool calls from output items
     let textContent: string | null = null;
     const toolCalls: any[] = [];
+    // Reasoning items (with encrypted_content) to thread back into the next
+    // turn, plus a human-readable summary of the model's thinking (if present).
+    const reasoningItems: any[] = [];
+    let reasoningSummary: string | null = null;
 
     for (const item of data.output ?? []) {
       if (item.type === "message") {
         for (const part of item.content ?? []) {
           if (part.type === "output_text") {
             textContent = (textContent ?? "") + part.text;
+          }
+        }
+      } else if (item.type === "reasoning") {
+        // Keep the raw reasoning item so it can be re-injected next turn
+        // (carries encrypted_content when include was requested).
+        reasoningItems.push(item);
+        const summaryParts = item.summary ?? [];
+        for (const part of summaryParts) {
+          const text = typeof part === "string" ? part : part?.text;
+          if (text) {
+            reasoningSummary = (reasoningSummary ?? "") + text;
           }
         }
       } else if (item.type === "function_call") {
@@ -245,12 +331,17 @@ export class GenericXAIClient implements GenericClient {
             role: "assistant",
             content: textContent,
             ...(toolCalls.length > 0 && { tool_calls: toolCalls }),
+            ...(reasoningSummary && { reasoning_summary: reasoningSummary }),
+            ...(reasoningItems.length > 0 && {
+              _reasoning_details: { provider: "xai", items: reasoningItems },
+            }),
           },
         },
       ],
       model: options.model,
       usage,
       usd_cost: usdCost,
+      response_id: data.id,
     };
   }
 

@@ -3,6 +3,7 @@
  * Hides complexity of choosing and managing sync backends.
  */
 import { BaseAgent } from "../agents/base/base";
+import { TraceAll } from "../util/Trace";
 import { AgentSyncFs } from "./AgentSyncFs";
 import { AgentSyncKnowhowWeb } from "./AgentSyncKnowhowWeb";
 
@@ -11,12 +12,13 @@ export interface SyncerOptions {
   prompt: string;
   /** If provided → use web sync (unless syncFs is set) */
   messageId?: string;
+  /** Existing remote Knowhow task UUID. Never inferred from the local taskId. */
+  remoteTaskId?: string;
   /** Force fs sync even if messageId is provided */
   syncFs?: boolean;
   /**
-   * Push the agent's work to a remote Knowhow task. When set (and there is no
-   * messageId), the `taskId` is treated as the remote task ID to attach to and
-   * push updates to, rather than creating a new remote task.
+   * Push the agent's work to the existing `remoteTaskId`. The local taskId is
+   * always a filesystem identity and is never used as a remote identifier.
    */
   syncRemote?: boolean;
   /** Agent name to persist in metadata.json */
@@ -44,8 +46,9 @@ export interface AgentSyncer {
  * Decision logic:
  *   - Always sets up AgentSyncFs (primary local syncer)
  *   - If messageId is present AND syncFs is not forced → creates a new remote task via AgentSyncKnowhowWeb
- *   - If syncRemote is set (and no messageId) → attaches to the remote task identified by taskId
+ *   - If syncRemote and a valid remoteTaskId are set → attaches to that UUID
  */
+@TraceAll()
 export class SyncerService implements AgentSyncer {
   private fsSync: AgentSyncFs;
   private webSync: AgentSyncKnowhowWeb;
@@ -75,14 +78,16 @@ export class SyncerService implements AgentSyncer {
 
     // Determine whether to ATTACH to an already-existing remote task and push
     // local work to it (no creation needed). This is the "--sync-remote" path:
-    // the caller wants to push work to the remote task identified by taskId.
+    // the caller wants to push work to an explicitly identified remote task.
     // We only auto-attach when there is NO messageId (messageId always creates
     // a fresh remote task above).
     //
     // This is orthogonal to fs sync: we can push to the remote task AND keep
     // the local .knowhow/processes/agents/<id>/ files in sync at the same time.
     const shouldAttachExisting =
-      !!options.syncRemote && !options.messageId && !!options.taskId;
+      !!options.syncRemote &&
+      !options.messageId &&
+      isUuid(options.remoteTaskId);
 
     // Always create fs sync task first
     console.log(
@@ -104,6 +109,7 @@ export class SyncerService implements AgentSyncer {
 
       if (knowhowTaskId) {
         this.useWebSync = true;
+        await this.fsSync.setRemoteIdentity(knowhowTaskId, options.messageId);
         this.createdTaskId = knowhowTaskId;
         console.log(`🌐 Web sync task created: ${knowhowTaskId}`);
       }
@@ -112,9 +118,10 @@ export class SyncerService implements AgentSyncer {
     // Attach live web sync to an existing remote task (push updates to it).
     if (!shouldUseWebSync && shouldAttachExisting) {
       this.useWebSync = true;
-      this.createdTaskId = options.taskId;
+      await this.fsSync.setRemoteIdentity(options.remoteTaskId!);
+      this.createdTaskId = options.remoteTaskId;
       console.log(
-        `🌐 Attaching web sync to existing remote task: ${options.taskId}`
+        `🌐 Attaching web sync to existing remote task: ${options.remoteTaskId}`
       );
     }
 
@@ -173,4 +180,12 @@ export class SyncerService implements AgentSyncer {
   getCreatedWebTaskId(): string | undefined {
     return this.useWebSync ? this.createdTaskId : undefined;
   }
+}
+
+/** Remote task IDs are UUIDs; local filesystem IDs are timestamped slugs. */
+function isUuid(value: string | undefined): value is string {
+  return !!value &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value
+    );
 }
