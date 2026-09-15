@@ -528,13 +528,22 @@ export class InputQueueManager {
     rl.setPrompt(current.question);
     this.replaceLine(this.currentLine);
     rl.prompt(true);
+
+    // clearPanel() marks the panel hidden in beforeOutput(). This redraw makes
+    // it visible again, so restore the flag before the next asynchronous write.
+    // Without this, the next beforeOutput() skips clearing and stdout writes
+    // through the separator and input row (the footer itself is overwritten,
+    // which is why only those two lines tend to remain in scrollback).
+    this.panelVisible = true;
     this.drawFooter();
   }
 
   private replaceLine(next: string): void {
     if (!InputQueueManager.rl) return;
 
-    const safe = this.sanitizeHistoryEntry(next);
+    // This is live editor content, not a history entry. Preserve leading and
+    // trailing whitespace when async output causes the input panel to redraw.
+    const safe = next.replace(/[\r\n]+/g, " ");
 
     // Clear current line and write next input without affecting terminal scrollback
     InputQueueManager.rl.write(null, { ctrl: true, name: "u" }); // Ctrl+U clears the line

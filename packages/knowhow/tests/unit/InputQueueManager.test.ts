@@ -117,6 +117,62 @@ describe("InputQueueManager history ordering", () => {
     // Verify callback is stored (we can't easily test the actual Enter key behavior without mocking readline)
     expect((manager as any).onNewEntry).toBeDefined();
   });
+
+  test("preserves trailing spaces when restoring live input", () => {
+    const manager = new InputQueueManager();
+    const readlineState = InputQueueManager as any;
+    const previousRl = readlineState.rl;
+    const fakeRl = {
+      write: jest.fn(),
+    };
+
+    try {
+      readlineState.rl = fakeRl;
+
+      (manager as any).replaceLine("  partially typed ");
+
+      expect(fakeRl.write).toHaveBeenNthCalledWith(
+        1,
+        null,
+        { ctrl: true, name: "u" }
+      );
+      expect(fakeRl.write).toHaveBeenNthCalledWith(2, "  partially typed ");
+    } finally {
+      readlineState.rl = previousRl;
+    }
+  });
+
+  test("marks the input panel visible after restoring it around output", () => {
+    const manager = new InputQueueManager();
+    const readlineState = InputQueueManager as any;
+    const previousRl = readlineState.rl;
+    const fakeRl = {
+      setPrompt: jest.fn(),
+      prompt: jest.fn(),
+      write: jest.fn(),
+    };
+
+    try {
+      readlineState.rl = fakeRl;
+      (manager as any).stack = [
+        {
+          question: "separator\n❯ ",
+          options: [],
+          history: [],
+          resolve: () => {},
+        },
+      ];
+      (manager as any).outputDepth = 1;
+      (manager as any).panelVisible = false;
+
+      manager.afterOutput(true);
+
+      expect(fakeRl.prompt).toHaveBeenCalledWith(true);
+      expect((manager as any).panelVisible).toBe(true);
+    } finally {
+      readlineState.rl = previousRl;
+    }
+  });
 });
 
 describe("InputQueueManager with CliChatService integration pattern", () => {
