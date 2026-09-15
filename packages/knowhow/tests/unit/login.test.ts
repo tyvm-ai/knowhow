@@ -6,6 +6,7 @@ const registerPublicKey = jest.fn();
 const getOrCreatePublicKey = jest.fn();
 const getConfig = jest.fn();
 const updateConfig = jest.fn();
+const ask = jest.fn();
 
 jest.mock("../../src/utils/http", () => ({
   __esModule: true,
@@ -31,7 +32,7 @@ jest.mock("../../src/auth/keyManager", () => ({
   getOrCreatePublicKey,
 }));
 jest.mock("../../src/config", () => ({ getConfig, updateConfig }));
-jest.mock("../../src/utils", () => ({ ask: jest.fn() }));
+jest.mock("../../src/utils", () => ({ ask }));
 
 import fs from "fs";
 import os from "os";
@@ -123,6 +124,37 @@ describe("login public-key bootstrap", () => {
     expect(httpGet).toHaveBeenCalledWith(
       "http://localhost:4000/api/users/me",
       expect.any(Object)
+    );
+  });
+
+  it("refreshes the selected development remote JWT in .knowhow/.jwt.dev", async () => {
+    const devApiUrl = "https://api.dev.knowhow.tyvm.ai";
+    const jwtPath = path.join(workingDirectory, ".knowhow", ".jwt.dev");
+    fs.writeFileSync(jwtPath, "expired-token");
+    ask.mockResolvedValueOnce("fresh-dev-token");
+    getConfig.mockResolvedValue({ modelProviders: [] });
+
+    await login(true, undefined, devApiUrl, "dev");
+
+    expect(fs.readFileSync(jwtPath, "utf8")).toBe("fresh-dev-token");
+    expect(httpGet).toHaveBeenCalledWith(
+      `${devApiUrl}/api/users/me`,
+      expect.objectContaining({
+        headers: { Authorization: "Bearer fresh-dev-token" },
+      })
+    );
+    expect(updateConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activeRemote: "dev",
+        remotes: expect.objectContaining({
+          dev: {
+            name: "dev",
+            apiUrl: devApiUrl,
+            jwtPath: ".knowhow/.jwt.dev",
+            orgId: "org-1",
+          },
+        }),
+      })
     );
   });
 

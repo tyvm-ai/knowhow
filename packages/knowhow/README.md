@@ -50,16 +50,16 @@ knowhow login --jwt
 ```
 
 Authentication belongs to a named remote. `origin` is available by default and
-points to the production API. To use another compatible backend:
+points to the production API. The `dev` shortcut targets the development API
+without requiring prior remote setup:
 
 ```bash
-knowhow remote add dev https://api.dev.knowhow.tyvm.ai
-knowhow remote use dev
-knowhow login
+knowhow login --remote dev
 ```
 
-Use `knowhow remote list` to show remotes and `knowhow remote get-url` to show
-the selected API. Each entry in `.knowhow/knowhow.json` stores its name, API URL,
+Use `knowhow remote add <name> <api-url>` for another compatible backend,
+`knowhow remote list` to show remotes, and `knowhow remote get-url` to show the
+selected API. Each entry in `.knowhow/knowhow.json` stores its name, API URL,
 organization ID, and JWT path. Tokens remain independent: production uses
 `.knowhow/.jwt`, development uses `.knowhow/.jwt.dev`, localhost uses
 `.knowhow/.jwt.local`, and arbitrary hosts receive a host-specific filename.

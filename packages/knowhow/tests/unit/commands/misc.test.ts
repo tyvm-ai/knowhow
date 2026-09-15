@@ -3,6 +3,7 @@ import { Command } from "commander";
 const login = jest.fn().mockResolvedValue(undefined);
 const registerIdentity = jest.fn().mockResolvedValue(undefined);
 const ensureIdentityKeyPair = jest.fn();
+const getConfig = jest.fn();
 
 jest.mock("../../../src/login", () => ({ login }));
 jest.mock("../../../src/index", () => ({
@@ -10,6 +11,10 @@ jest.mock("../../../src/index", () => ({
   upload: jest.fn(),
   download: jest.fn(),
   purge: jest.fn(),
+}));
+jest.mock("../../../src/config", () => ({
+  ...jest.requireActual("../../../src/config"),
+  getConfig,
 }));
 jest.mock("../../../src/auth/registerIdentity", () => ({ registerIdentity }));
 jest.mock("../../../src/auth/keyManager", () => ({ ensureIdentityKeyPair }));
@@ -72,6 +77,18 @@ describe("login command", () => {
 
     const output = logSpy.mock.calls.map((call) => call.join(" ")).join("\n");
     expect(output).toContain("CLI identity keypair already exists");
+  });
+
+  it("logs in against the development remote without requiring prior configuration", async () => {
+    getConfig.mockResolvedValue({});
+    await program.parseAsync(["node", "knowhow", "login", "--remote", "dev"]);
+
+    expect(login).toHaveBeenCalledWith(
+      undefined,
+      undefined,
+      "https://api.dev.knowhow.tyvm.ai",
+      "dev"
+    );
   });
 
   it("rejects incompatible flag combinations with --key-gen", async () => {

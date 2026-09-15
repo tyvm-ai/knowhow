@@ -4,12 +4,13 @@ import { version } from "../../package.json";
 import { logger } from "../logger";
 import { embed, upload, download, purge } from "../index";
 import { generate, buildWaves, normalizeInputPattern, GenerateOptions } from "../generate";
-import { init } from "../config";
+import { getConfig, init } from "../config";
 import { login } from "../login";
 import { registerIdentity } from "../auth/registerIdentity";
 import { ensureIdentityKeyPair } from "../auth/keyManager";
 import { KnowhowSimpleClient } from "../services/KnowhowClient";
 import { startChat } from "../chat";
+import { getRemoteByName } from "../remotes";
 
 export function addInitCommand(program: Command): void {
   program
@@ -29,12 +30,14 @@ export function addLoginCommand(program: Command): void {
     .option("--register-identity", "Register an Ed25519 identity using the JWT in .knowhow/.jwt")
     .option("--key-gen", "Generate or validate the CLI Ed25519 identity keypair and exit")
     .option("--api-url <url>", "API base URL override (falls back to KNOWHOW_API_URL env)")
+    .option("--remote <name>", "Authenticate against a named remote (dev is built in)")
     .action(async (options: {
       jwt?: boolean;
       identity?: string;
       registerIdentity?: boolean;
       keyGen?: boolean;
       apiUrl?: string;
+      remote?: string;
     }) => {
       if (options.keyGen) {
         if (options.jwt || options.registerIdentity) {
@@ -55,15 +58,30 @@ export function addLoginCommand(program: Command): void {
         return;
       }
 
+      if (options.remote && options.apiUrl) {
+        throw new Error("--remote cannot be used with --api-url");
+      }
+
+      let apiUrl = options.apiUrl;
+      if (options.remote) {
+        const remote = getRemoteByName(await getConfig(), options.remote);
+        if (!remote) {
+          throw new Error(
+            `Unknown remote '${options.remote}'. Add it with: knowhow remote add ${options.remote} <api-url>`
+          );
+        }
+        apiUrl = remote.apiUrl;
+      }
+
       if (options.registerIdentity) {
         await registerIdentity({
           identityPath: options.identity,
-          apiUrl: options.apiUrl,
+          apiUrl,
         });
         return;
       }
 
-      await login(options.jwt, options.identity, options.apiUrl);
+      await login(options.jwt, options.identity, apiUrl, options.remote);
     });
 }
 

@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import path from "path";
 
 const getConfig = jest.fn();
 const updateConfig = jest.fn();
@@ -75,5 +76,21 @@ describe("remote command", () => {
 
     expect(config.activeRemote).toBe("local");
     expect(updateConfig).toHaveBeenCalledWith(config);
+  });
+
+  it("prints the absolute development JWT path for shell scripts", async () => {
+    getConfig.mockResolvedValue({});
+
+    await program.parseAsync([
+      "node",
+      "knowhow",
+      "remotes",
+      "get-jwt-path",
+      "dev",
+    ]);
+
+    expect(console.log).toHaveBeenCalledWith(
+      path.resolve(process.cwd(), ".knowhow/.jwt.dev")
+    );
   });
 });

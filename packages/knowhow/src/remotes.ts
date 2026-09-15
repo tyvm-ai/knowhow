@@ -4,6 +4,7 @@ import { Config, KnowhowRemote } from "./types";
 
 export const DEFAULT_REMOTE_NAME = "origin";
 export const DEFAULT_API_URL = "https://api.knowhow.tyvm.ai";
+export const DEVELOPMENT_API_URL = "https://api.dev.knowhow.tyvm.ai";
 
 export function normalizeApiUrl(apiUrl: string): string {
   const trimmed = apiUrl.trim().replace(/\/+$/, "");
@@ -44,6 +45,30 @@ export function getConfiguredRemotes(config: Config): Record<string, KnowhowRemo
   return config.remotes ?? {};
 }
 
+/** Resolve configured, legacy, and built-in remote names consistently. */
+export function getRemoteByName(
+  config: Config,
+  name: string
+): KnowhowRemote | undefined {
+  const configured = getConfiguredRemotes(config)[name];
+  if (configured) return configured;
+
+  const legacy = Object.entries(config.orgIds ?? {}).find(
+    ([apiUrl]) => inferRemoteName(apiUrl) === name
+  );
+  if (legacy) {
+    return { ...createRemote(name, legacy[0]), orgId: legacy[1] };
+  }
+
+  if (name === DEFAULT_REMOTE_NAME) {
+    return createRemote(DEFAULT_REMOTE_NAME, DEFAULT_API_URL);
+  }
+  if (name === "dev") {
+    return createRemote("dev", DEVELOPMENT_API_URL);
+  }
+  return undefined;
+}
+
 export function findRemoteForApi(config: Config, apiUrl: string): KnowhowRemote | undefined {
   const normalizedUrl = normalizeApiUrl(apiUrl);
   return Object.values(getConfiguredRemotes(config)).find(
@@ -68,7 +93,7 @@ export function getActiveRemote(config: Config): KnowhowRemote {
     return findRemoteForApi(config, envUrl) ?? createRemote(inferRemoteName(envUrl), envUrl);
   }
   const name = config.activeRemote ?? DEFAULT_REMOTE_NAME;
-  return config.remotes?.[name] ?? createRemote(DEFAULT_REMOTE_NAME, DEFAULT_API_URL);
+  return getRemoteByName(config, name) ?? createRemote(DEFAULT_REMOTE_NAME, DEFAULT_API_URL);
 }
 
 export function getActiveRemoteSync(): KnowhowRemote {
