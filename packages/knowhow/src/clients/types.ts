@@ -511,8 +511,8 @@ export interface GenericClient {
    * Returns the context window limit and compression threshold for a given model,
    * or undefined if the model is not known to this client.
    * - contextLimit: the maximum number of tokens the model can handle
-   * - threshold: the point at which compression should kick in; equals contextLimit
-   *   unless the model has tiered pricing (input_gt_200k), in which case it is 200_000
+   * - threshold: the point at which compression should kick in; equals the model's
+   *   long-context pricing threshold when tiered pricing applies, otherwise contextLimit
    */
   getContextLimit?(
     model: string

@@ -370,17 +370,26 @@ export class GenericXAIClient implements GenericClient {
       return undefined;
     }
 
-    const inputTokens = usage.prompt_tokens || 0;
-    const inputCost = (inputTokens * pricing.input) / 1e6;
-
+    const promptTokens = usage.prompt_tokens || 0;
+    const cachedTokens = usage.prompt_tokens_details?.cached_tokens || 0;
     const outputTokens = usage.completion_tokens || 0;
-    const outputCost = (outputTokens * pricing.output) / 1e6;
+    const modelPricing = pricing as import("./pricing/types").ModelPricing;
+    const useLongContextTier =
+      promptTokens > (modelPricing.long_context_threshold ?? 200_000) &&
+      modelPricing.input_gt_200k !== undefined;
+    const inputRate = useLongContextTier
+      ? modelPricing.input_gt_200k!
+      : (modelPricing.input ?? 0);
+    const cacheRate = useLongContextTier
+      ? (modelPricing.cache_hit_gt_200k ?? modelPricing.cache_hit ?? 0)
+      : (modelPricing.cache_hit ?? 0);
+    const outputRate = useLongContextTier
+      ? (modelPricing.output_gt_200k ?? modelPricing.output ?? 0)
+      : (modelPricing.output ?? 0);
 
-    const cacheToken = usage.prompt_tokens_details?.cached_tokens || 0;
-    const cacheCost = (cacheToken * (pricing.cache_hit || 0)) / 1e6;
-
-    const total = inputCost + outputCost + cacheCost;
-    return total;
+    return (((promptTokens - cachedTokens) * inputRate)
+      + (cachedTokens * cacheRate)
+      + (outputTokens * outputRate)) / 1e6;
   }
 
   async getModels(modality?: ModelModality): Promise<{ id: string }[]> {
@@ -685,9 +694,10 @@ export class GenericXAIClient implements GenericClient {
     const contextLimit = ContextLimits[model];
     if (contextLimit === undefined) return undefined;
     const pricing = XaiTextPricing[model];
-    // If the model has tiered pricing above 200k tokens, use 200k as the threshold
     const threshold =
-      pricing && "input_gt_200k" in pricing ? 200_000 : contextLimit;
+      pricing?.input_gt_200k !== undefined
+        ? (pricing.long_context_threshold ?? 200_000)
+        : contextLimit;
     return { contextLimit, threshold };
   }
 }

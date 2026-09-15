@@ -9,7 +9,9 @@ import { completions, ModelCatalogEntry, ModelPricing } from "./types";
 
 export const AnthropicModels = {
   // Active models
+  Fable5_1:  "claude-fable-5-1",
   Fable5:    "claude-fable-5",
+  Mythos5_1: "claude-mythos-5-1",
   // Short aliases (without date suffix) — Anthropic resolves these to the latest
   // dated version. Pricing entries for the short aliases are added to the pricing
   // table below so cost tracking works regardless of whether the user specifies
@@ -51,6 +53,7 @@ export const AnthropicModels = {
 // ─── Active (non-deprecated) text models ──────────────────────────────────────
 
 export const AnthropicTextModels: string[] = [
+  AnthropicModels.Fable5_1,
   AnthropicModels.Opus4_8,
   AnthropicModels.Fable5,
   AnthropicModels.Sonnet5,
@@ -68,6 +71,7 @@ export const AnthropicTextModels: string[] = [
 export const AnthropicLimitedAvailabilityModels: string[] = [
   AnthropicModels.Opus4_8Fast, // fast mode pricing
   AnthropicModels.Opus5Fast,   // fast mode pricing (research preview)
+  AnthropicModels.Mythos5_1,   // invitation-only (Project Glasswing)
   AnthropicModels.Mythos5,     // invitation-only (Project Glasswing)
   AnthropicModels.MythosPreview, // invitation-only (defensive cybersecurity)
   AnthropicModels.Opus4_6Fast, // 404 – not publicly available yet
@@ -102,6 +106,8 @@ const AnthropicAllModels: string[] = [
 // ─── Pricing (USD per 1M tokens) ──────────────────────────────────────────────
 
 export const AnthropicTextPricing: Record<string, ModelPricing> = {
+  [AnthropicModels.Fable5_1]:  { input: 10.0, cache_write: 12.5, cache_hit: 0.25, output: 50.0 },
+  [AnthropicModels.Mythos5_1]: { input: 10.0, cache_write: 12.5, cache_hit: 0.25, output: 50.0, limitedAvailability: true },
   [AnthropicModels.Opus4_8]:   { input: 5.0,  cache_write: 6.25,   cache_hit: 0.5,  output: 25.0 },
   [AnthropicModels.Opus4_8Fast]: { input: 10.0, cache_write: 12.5,  cache_hit: 1.0,  output: 50.0, limitedAvailability: true },
   // Claude Opus 5 (launched 2026-06-09) — recommended for complex agentic coding
@@ -109,7 +115,21 @@ export const AnthropicTextPricing: Record<string, ModelPricing> = {
   [AnthropicModels.Opus5Fast]: { input: 10.0, cache_write: 12.5,   cache_hit: 1.0,  output: 50.0, limitedAvailability: true },
   // Claude 5 generation (launched 2026-06-09)
   [AnthropicModels.Fable5]:    { input: 10.0, cache_write: 12.5,   cache_hit: 1.0,  output: 50.0 },
-  [AnthropicModels.Sonnet5]:   { input: 3.0,  cache_write: 3.75,   cache_hit: 0.3,  output: 15.0 },
+  [AnthropicModels.Sonnet5]: {
+    input: 2.0, cache_write: 2.5, cache_hit: 0.2, output: 10.0,
+    changelog: [
+      {
+        date: "2026-06-30",
+        note: "Launch introductory pricing, originally scheduled through August 31, 2026",
+        pricing: { input: 2.0, cache_write: 2.5, cache_hit: 0.2, output: 10.0 },
+      },
+      {
+        date: "2026-08-10",
+        note: "Anthropic made the introductory pricing permanent; the planned September 1 increase to $3 input / $15 output no longer applies",
+        pricing: { input: 2.0, cache_write: 2.5, cache_hit: 0.2, output: 10.0 },
+      },
+    ],
+  },
   [AnthropicModels.Mythos5]:   { input: 10.0, cache_write: 12.5,   cache_hit: 1.0,  output: 50.0, limitedAvailability: true },
   [AnthropicModels.MythosPreview]: { input: 10.0, cache_write: 12.5, cache_hit: 1.0, output: 50.0, limitedAvailability: true },
   [AnthropicModels.Opus4_7]:   { input: 5.0,  cache_write: 6.25,   cache_hit: 0.5,  output: 25.0 },

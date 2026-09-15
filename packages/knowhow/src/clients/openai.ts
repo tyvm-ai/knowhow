@@ -796,20 +796,32 @@ export class GenericOpenAiClient implements GenericClient {
       return undefined;
     }
 
+    const inputTokens = usage.prompt_tokens;
+    const useLongContextTier =
+      inputTokens > (pricing.long_context_threshold ?? 200_000) &&
+      pricing.input_gt_200k !== undefined;
     const cachedInputTokens =
       ("prompt_tokens_details" in usage &&
         usage.prompt_tokens_details?.cached_tokens) ||
       0;
+    const cachedInputRate = useLongContextTier
+      ? (pricing.cached_input_gt_200k ?? pricing.cached_input ?? 0)
+      : (pricing.cached_input ?? 0);
     const cachedInputCost =
-      (cachedInputTokens * (pricing.cached_input ?? 0)) / 1e6;
+      (cachedInputTokens * cachedInputRate) / 1e6;
 
-    const inputTokens = usage.prompt_tokens;
+    const inputRate = useLongContextTier
+      ? pricing.input_gt_200k!
+      : (pricing.input ?? 0);
     const inputCost =
-      ((inputTokens - cachedInputTokens) * (pricing.input ?? 0)) / 1e6;
+      ((inputTokens - cachedInputTokens) * inputRate) / 1e6;
 
     const outputTokens =
       ("completion_tokens" in usage && usage?.completion_tokens) || 0;
-    const outputCost = (outputTokens * (pricing.output ?? 0)) / 1e6;
+    const outputRate = useLongContextTier
+      ? (pricing.output_gt_200k ?? pricing.output ?? 0)
+      : (pricing.output ?? 0);
+    const outputCost = (outputTokens * outputRate) / 1e6;
 
     const total = cachedInputCost + inputCost + outputCost;
     return total;
@@ -1178,9 +1190,11 @@ export class GenericOpenAiClient implements GenericClient {
     const contextLimit = ContextLimits[model];
     if (contextLimit === undefined) return undefined;
     const pricing = OpenAiTextPricing[model];
-    // If the model has tiered pricing above 200k tokens, use 200k as the threshold
+    // Compress before entering a model's more expensive long-context tier.
     const threshold =
-      pricing && "input_gt_200k" in pricing ? 200_000 : contextLimit;
+      pricing?.input_gt_200k !== undefined
+        ? (pricing.long_context_threshold ?? 200_000)
+        : contextLimit;
     return { contextLimit, threshold };
   }
 }

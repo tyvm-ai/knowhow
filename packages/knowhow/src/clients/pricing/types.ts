@@ -24,12 +24,17 @@ export interface ModelPricing {
   input?: number;
   output?: number;
   cached_input?: number;
+  cached_input_gt_200k?: number;
   cache_write?: number;
+  cache_write_gt_200k?: number;
   cache_hit?: number;
+  cache_hit_gt_200k?: number;
   input_audio?: number;
   output_audio?: number;
   input_gt_200k?: number;
   output_gt_200k?: number;
+  /** Input-token threshold at which the long-context rates apply (defaults to 200K). */
+  long_context_threshold?: number;
   image_generation?: number;
   image_generation_per_1m_tokens?: number;
   video_generation?: number;

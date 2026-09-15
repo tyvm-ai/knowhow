@@ -28,12 +28,15 @@ type Usage = Anthropic.Usage;
 type ThinkingParam = Anthropic.Messages.ThinkingConfigParam;
 
 const alwaysOnModels: readonly string[] = [
-  AnthropicModels.Sonnet5,
+  AnthropicModels.Fable5_1,
   AnthropicModels.Fable5,
+  AnthropicModels.Mythos5_1,
   AnthropicModels.Mythos5,
   AnthropicModels.MythosPreview,
 ];
 const optInModels: readonly string[] = [
+  AnthropicModels.Opus5,
+  AnthropicModels.Sonnet5,
   AnthropicModels.Opus4_8,
   AnthropicModels.Opus4_7,
   AnthropicModels.Opus4_6,

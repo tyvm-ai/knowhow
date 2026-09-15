@@ -1058,7 +1058,9 @@ export class AIClient {
       if (contextLimit !== undefined) {
         const pricing = OpenAiTextPricing[candidate];
         const threshold =
-          pricing && "input_gt_200k" in pricing ? 200_000 : contextLimit;
+          pricing?.input_gt_200k !== undefined
+            ? (pricing.long_context_threshold ?? 200_000)
+            : contextLimit;
         return { contextLimit, threshold };
       }
     }

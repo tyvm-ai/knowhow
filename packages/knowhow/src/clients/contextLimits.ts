@@ -11,9 +11,11 @@ import { FireworksModels } from "./pricing/fireworks";
  */
 export const ContextLimits: Record<string, number> = {
   // ─── OpenAI ───────────────────────────────────────────────────────────────
-  [Models.openai.GPT_56_Sol]: 1_000_000,
-  [Models.openai.GPT_56_Terra]: 1_000_000,
-  [Models.openai.GPT_56_Luna]: 1_000_000,
+  [Models.openai.GPT_6_Astra]: 1_050_000,
+  [Models.openai.GPT_56_Sol]: 1_050_000,
+  [Models.openai.GPT_56_Terra]: 1_050_000,
+  [Models.openai.GPT_56_Luna]: 1_050_000,
+  [Models.openai.GPT_56_Cyber]: 400_000,
   [Models.openai.GPT_55]: 1_000_000,
   [Models.openai.GPT_54]: 1_000_000,
   [Models.openai.GPT_54_Mini]: 400_000,
@@ -85,6 +87,8 @@ export const ContextLimits: Record<string, number> = {
   [Models.openai.Sora_2_Pro]: 0,
 
   // ─── Anthropic ────────────────────────────────────────────────────────────
+  [Models.anthropic.Fable5_1]: 1_000_000,
+  [Models.anthropic.Mythos5_1]: 1_000_000,
   [Models.anthropic.Opus4_8Fast]: 1_000_000,
   [Models.anthropic.Opus4_8]: 1_000_000,
   // Claude Opus 5 (launched 2026-06-09, 1M context window)
@@ -180,12 +184,14 @@ export const ContextLimits: Record<string, number> = {
 
   // ─── xAI ──────────────────────────────────────────────────────────────────
   [Models.xai.Grok4_6]: 500_000,
+  [Models.xai.Grok4_3]: 1_000_000,
   [Models.xai.Grok4_1_Fast_Reasoning]: 2_000_000,
   [Models.xai.Grok4_1_Fast_NonReasoning]: 2_000_000,
-  [Models.xai.Grok_4_20_Reasoning]: 131_072,
-  [Models.xai.Grok_4_20_NonReasoning]: 131_072,
-  [Models.xai.Grok_4_20_MultiAgent]: 2_000_000,
-  [Models.xai.GrokCodeFast]: 2_000_000,
+  [Models.xai.Grok_4_20_Reasoning]: 1_000_000,
+  [Models.xai.Grok_4_20_NonReasoning]: 1_000_000,
+  [Models.xai.Grok_4_20_MultiAgent]: 1_000_000,
+  [Models.xai.GrokBuild]: 256_000,
+  [Models.xai.GrokCodeFast]: 256_000,
   [Models.xai.Grok4]: 131_072,
   [Models.xai.Grok3Beta]: 131_072,
   [Models.xai.Grok3MiniBeta]: 131_072,
