@@ -160,7 +160,13 @@ export function connectTunnelWebSocket(
     authService,
   } = options;
 
-  const tunnelConnection = new WebSocket(`${KNOWHOW_API_URL}/ws/tunnel`, { headers });
+  const allowedPorts = config.worker?.tunnel?.allowedPorts || [];
+  const tunnelConnection = new WebSocket(`${KNOWHOW_API_URL}/ws/tunnel`, {
+    headers: {
+      ...headers,
+      "Tunnel-Allowed-Ports": JSON.stringify(allowedPorts),
+    },
+  });
 
   tunnelConnection.on("open", async () => {
     console.log("Tunnel WebSocket connected");
@@ -175,8 +181,6 @@ export function connectTunnelWebSocket(
       stack.use(makeAuthMiddleware(authService));
       stack.wrapSocket(tunnelConnection);
     }
-
-    const allowedPorts = config.worker?.tunnel?.allowedPorts || [];
 
     // Create URL rewriter callback that returns the hostname (without protocol).
     // The tunnel package will add the protocol based on the useHttps config.

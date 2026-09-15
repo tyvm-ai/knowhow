@@ -1,5 +1,6 @@
 import http from "http";
 import https from "https";
+import net from "net";
 import * as fs from "fs";
 import WebSocket from "ws";
 import {
@@ -20,6 +21,7 @@ import {
   normalizeHeadersForLocal,
   serializeTunnelMessage,
   isPortAllowed,
+  getAllowedPortTransport,
 } from "./protocol";
 import { Logger, clearTimeoutSafe, formatBytes, formatDuration } from "./utils";
 import {
@@ -112,8 +114,8 @@ export class TunnelProxy {
     fs.appendFileSync("/tmp/tunnel-worker-debug.log", logMsg2);
 
     // Check if port is allowed
-    if (!isPortAllowed(port, this.config.allowedPorts)) {
-      this.logger.warn(`Port ${port} not allowed`);
+    if (!isPortAllowed(port, this.config.allowedPorts) || getAllowedPortTransport(port, this.config.allowedPorts) !== "http") {
+      this.logger.warn(`Port ${port} is not configured for HTTP`);
       this.sendError(streamId, `Port ${port} is not allowed`, 403);
       return;
     }
@@ -206,6 +208,71 @@ export class TunnelProxy {
       this.sendError(streamId, err.message, 500);
       this.cleanupStream(streamId);
     }
+  }
+
+  /** Bridge an external browser WebSocket to a local raw TCP service. */
+  private handleTcpUpgrade(upgrade: TunnelWsUpgrade): void {
+    const { streamId, port } = upgrade;
+    if (!isPortAllowed(port, this.config.allowedPorts) || getAllowedPortTransport(port, this.config.allowedPorts) !== "tcp") {
+      this.logger.warn(`Port ${port} is not configured for raw TCP`);
+      this.sendError(streamId, `Port ${port} is not allowed`, 403);
+      return;
+    }
+
+    const streamState: StreamState = {
+      streamId,
+      port,
+      method: "TCP",
+      path: upgrade.path,
+      startTime: Date.now(),
+      bytesReceived: 0,
+      bytesSent: 0,
+      isPaused: false,
+    };
+    const socket = net.createConnection({
+      host: this.config.localHost,
+      port: this.resolveLocalPort(port),
+    });
+    streamState.tcpClient = socket;
+    this.activeStreams.set(streamId, streamState);
+
+    socket.on("connect", () => {
+      this.logger.info(`Raw TCP connected for stream ${streamId}`);
+      const response: TunnelResponse = {
+        type: TunnelMessageType.RESPONSE,
+        streamId,
+        statusCode: 101,
+        statusMessage: "Switching Protocols",
+        headers: {},
+      };
+      this.sendMessage(serializeTunnelMessage(response));
+    });
+    socket.on("data", (data) => {
+      streamState.bytesSent += data.length;
+      const wsData: TunnelWsData = {
+        type: TunnelMessageType.WS_DATA,
+        streamId,
+        data,
+        isBinary: true,
+      };
+      this.sendMessage(serializeTunnelMessage(wsData));
+      this.resetIdleTimer(streamState);
+    });
+    socket.on("close", () => {
+      const close: TunnelWsClose = {
+        type: TunnelMessageType.WS_CLOSE,
+        streamId,
+        code: 1000,
+        reason: "TCP connection closed",
+      };
+      this.sendMessage(serializeTunnelMessage(close));
+      this.cleanupStream(streamId);
+    });
+    socket.on("error", (error) => {
+      this.logger.error(`Raw TCP error for stream ${streamId}:`, error.message);
+      this.sendError(streamId, error.message, 502);
+      this.cleanupStream(streamId);
+    });
   }
 
   /**
@@ -411,12 +478,17 @@ export class TunnelProxy {
   async handleWsUpgrade(upgrade: TunnelWsUpgrade): Promise<void> {
     const { streamId, port, path, headers } = upgrade;
 
+    if (upgrade.transport === "tcp") {
+      this.handleTcpUpgrade(upgrade);
+      return;
+    }
+
     this.logger.info(
       `WebSocket upgrade request: ${path} on port ${port} (stream: ${streamId})`
     );
 
     // Check if port is allowed
-    if (!isPortAllowed(port, this.config.allowedPorts)) {
+    if (!isPortAllowed(port, this.config.allowedPorts) || getAllowedPortTransport(port, this.config.allowedPorts) !== "http") {
       this.logger.warn(`Port ${port} not allowed for WebSocket`);
       this.sendError(streamId, `Port ${port} is not allowed`, 403);
       return;
@@ -515,25 +587,27 @@ export class TunnelProxy {
   handleWsData(streamId: string, data: Buffer, isBinary: boolean): void {
     const streamState = this.activeStreams.get(streamId);
 
-    if (!streamState || !streamState.wsClient) {
+    if (!streamState || (!streamState.wsClient && !streamState.tcpClient)) {
       this.logger.debug(
         `Received WS data for unknown stream: ${streamId} (likely from before reconnection)`
       );
 
-      // Send WS_CLOSE to tell server to stop sending data for this stream
       const wsClose: TunnelWsClose = {
         type: TunnelMessageType.WS_CLOSE,
         streamId,
         code: 1000,
         reason: "Stream not found on worker",
       };
-
       this.sendMessage(serializeTunnelMessage(wsClose));
       return;
     }
 
     streamState.bytesReceived += data.length;
-    streamState.wsClient.send(data, { binary: isBinary });
+    if (streamState.tcpClient) {
+      streamState.tcpClient.write(data);
+    } else {
+      streamState.wsClient!.send(data, { binary: isBinary });
+    }
     this.resetIdleTimer(streamState);
   }
 
@@ -543,25 +617,27 @@ export class TunnelProxy {
   handleWsClose(streamId: string, code?: number, reason?: string): void {
     const streamState = this.activeStreams.get(streamId);
 
-    if (!streamState || !streamState.wsClient) {
+    if (!streamState || (!streamState.wsClient && !streamState.tcpClient)) {
       this.logger.debug(
         `Received WS close for unknown stream: ${streamId} (likely from before reconnection)`
       );
 
-      // Acknowledge the close even if we don't have the stream
       const wsClose: TunnelWsClose = {
         type: TunnelMessageType.WS_CLOSE,
         streamId,
         code: code || 1000,
         reason: reason || "Stream not found on worker",
       };
-
       this.sendMessage(serializeTunnelMessage(wsClose));
       return;
     }
 
     this.logger.info(`Closing WebSocket for stream ${streamId}`);
-    streamState.wsClient.close(code, reason);
+    if (streamState.tcpClient) {
+      streamState.tcpClient.end();
+    } else {
+      streamState.wsClient!.close(code, reason);
+    }
     this.cleanupStream(streamId);
   }
 
@@ -621,9 +697,11 @@ export class TunnelProxy {
       streamState.response.destroy();
     }
 
-    // Close WebSocket
     if (streamState.wsClient) {
       streamState.wsClient.close();
+    }
+    if (streamState.tcpClient) {
+      streamState.tcpClient.destroy();
     }
 
     this.activeStreams.delete(streamId);

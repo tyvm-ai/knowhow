@@ -77,6 +77,13 @@ export type KnowhowRemote = {
   orgId?: string;
 };
 
+export type AllowedTunnelPort = number | {
+  port: number;
+  /** HTTP also supports WebSocket upgrades. Use TCP for raw byte streams. */
+  transport?: "http" | "tcp";
+  application?: string;
+};
+
 export type Config = {
   openaiBaseUrl?: string;
   promptsDir: string;
@@ -139,7 +146,7 @@ export type Config = {
     commandAuth?: { [toolName: string]: "always" | "session" | "never" };
     tunnel?: {
       enabled?: boolean;
-      allowedPorts?: number[];
+      allowedPorts?: AllowedTunnelPort[];
       maxConcurrentStreams?: number;
       portMapping?: { [containerPort: number]: number };
       localHost?: string;

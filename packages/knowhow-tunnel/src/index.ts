@@ -19,6 +19,7 @@ export {
   TunnelWsData,
   TunnelWsClose,
   UrlRewriterCallback,
+  AllowedTunnelPort,
   StreamState,
   // PTY types
   TunnelPtyOpen,
@@ -48,6 +49,7 @@ export {
   stripHopByHopHeaders,
   normalizeHeadersForLocal,
   isPortAllowed,
+  getAllowedPortTransport,
 } from "./protocol";
 export { Logger } from "./utils";
 export {

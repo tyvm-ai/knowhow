@@ -1,4 +1,5 @@
 import { IncomingHttpHeaders } from "http";
+import { Socket } from "net";
 import WebSocket from "ws";
 
 /**
@@ -91,6 +92,8 @@ export interface TunnelWsUpgrade {
   port: number;
   path: string;
   headers: Record<string, string | string[]>;
+  /** Bridge browser WebSocket frames directly to a raw TCP service (for example VNC/RFB). */
+  transport?: "websocket" | "tcp";
 }
 
 /**
@@ -128,12 +131,19 @@ export type TunnelMessage =
 
 export type UrlRewriterCallback = (port: number, metadata?: any) => string;
 
+export type AllowedTunnelPort = number | {
+  port: number;
+  /** HTTP includes ordinary requests and WebSocket upgrades. */
+  transport?: "http" | "tcp";
+  application?: string;
+};
+
 /**
  * Configuration for tunnel handler
  */
 export interface TunnelConfig {
   /** Allowed ports for tunneling. Empty array or undefined = no ports allowed (safe default) */
-  allowedPorts?: number[];
+  allowedPorts?: AllowedTunnelPort[];
   /** Maximum concurrent streams */
   maxConcurrentStreams?: number;
   /** Maximum response size per stream in bytes */
@@ -179,6 +189,7 @@ export interface StreamState {
   request?: any; // http.ClientRequest
   response?: any; // http.IncomingMessage
   wsClient?: WebSocket; // For WebSocket upgrades
+  tcpClient?: Socket; // For browser WebSocket-to-raw-TCP bridges
   isPaused: boolean;
   deadlineTimer?: NodeJS.Timeout;
   idleTimer?: NodeJS.Timeout;

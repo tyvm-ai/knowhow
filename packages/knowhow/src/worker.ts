@@ -343,7 +343,11 @@ export async function worker(options?: {
         "⚠️  Tunnel enabled but no allowedPorts configured. Add tunnel.allowedPorts to knowhow.json"
       );
     } else {
-      console.log(`🌐 Tunnel enabled for ports: ${tunnelPorts.join(", ")}`);
+      const descriptions = tunnelPorts.map((entry) => typeof entry === "number"
+        ? String(entry)
+        : `${entry.port} (${entry.transport || "http"}${entry.application ? `/${entry.application}` : ""})`
+      );
+      console.log(`🌐 Tunnel enabled for ports: ${descriptions.join(", ")}`);
     }
   } else {
     console.log(
