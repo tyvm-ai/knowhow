@@ -84,6 +84,10 @@ function isValidIdentifier(name: string): boolean {
 const RESERVED_GLOBALS = new Set([
   "callTool",
   "llm",
+  "decide",
+  "noul",
+  "choice",
+  "score",
   "agent",
   "sleep",
   "createArtifact",
@@ -212,6 +216,24 @@ export function generateScriptTypeDefs(tools: Tool[]): string {
   lines.push(
     "declare function llm(messages: LlmMessage[], options?: LlmOptions): Promise<any>;"
   );
+  lines.push("type DecisionContent = string | number | boolean | null | DecisionContent[] | { [key: string]: DecisionContent };");
+  lines.push('interface NoulQuestion { type: "noul"; instructions: DecisionContent; criteria?: { true?: DecisionContent; false?: DecisionContent }; }');
+  lines.push('interface ChoiceQuestion { type: "choice"; instructions: DecisionContent; criteria: Record<string, DecisionContent>; }');
+  lines.push('interface ScoreQuestion { type: "score"; instructions: DecisionContent; criteria: DecisionContent[]; }');
+  lines.push("type DecisionQuestion = NoulQuestion | ChoiceQuestion | ScoreQuestion;");
+  lines.push('interface NoulAnswer { type: "noul"; noul: number; }');
+  lines.push('interface ChoiceAnswer { type: "choice"; choice: string; probabilities: Record<string, number>; confidence: number; }');
+  lines.push('interface ScoreAnswer { type: "score"; score: number; legend: Record<string, string>; probabilities: Record<string, number>; confidence: number; }');
+  lines.push("type DecisionAnswer = NoulAnswer | ChoiceAnswer | ScoreAnswer;");
+  lines.push("interface DecisionResponse { model: string; answers: Record<string, DecisionAnswer>; usage: { input_tokens: number; output_tokens: number }; }");
+  lines.push("/** Evaluate named typed questions with a decision model. */");
+  lines.push('declare function decide(state: DecisionContent, questions: Record<string, DecisionQuestion>, options?: { provider?: string; model?: string }): Promise<DecisionResponse>;');
+  lines.push("/** Ask a yes/no question and return its probability answer. */");
+  lines.push('declare function noul(state: DecisionContent, instructions: DecisionContent, criteria?: NoulQuestion["criteria"]): Promise<NoulAnswer>;');
+  lines.push("/** Choose one option and return the choice and probability distribution. */");
+  lines.push('declare function choice(state: DecisionContent, instructions: DecisionContent, criteria: ChoiceQuestion["criteria"]): Promise<ChoiceAnswer>;');
+  lines.push("/** Score state against an ordered rubric. */");
+  lines.push('declare function score(state: DecisionContent, instructions: DecisionContent, criteria: ScoreQuestion["criteria"]): Promise<ScoreAnswer>;');
   lines.push(
     "/** Run another registered agent as a node and get its final answer string. */"
   );

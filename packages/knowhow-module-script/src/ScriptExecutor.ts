@@ -391,6 +391,18 @@ export class ScriptExecutor {
     await exposeAsync("llm", (messages, options) =>
       sandboxContext.llm(messages, options || {})
     );
+    await exposeAsync("decide", (state, questions, options) =>
+      sandboxContext.decide(state, questions, options || {})
+    );
+    await exposeAsync("noul", (state, instructions, criteria) =>
+      sandboxContext.noul(state, instructions, criteria)
+    );
+    await exposeAsync("choice", (state, instructions, criteria) =>
+      sandboxContext.choice(state, instructions, criteria)
+    );
+    await exposeAsync("score", (state, instructions, criteria) =>
+      sandboxContext.score(state, instructions, criteria)
+    );
     await exposeAsync("agent", (agentName, query) =>
       sandboxContext.agent(agentName as string, query as string)
     );
@@ -409,6 +421,10 @@ export class ScriptExecutor {
     const reserved = new Set([
       "callTool",
       "llm",
+      "decide",
+      "noul",
+      "choice",
+      "score",
       "agent",
       "sleep",
       "createArtifact",
@@ -587,6 +603,20 @@ export class ScriptExecutor {
             child.send({ type: "llm_result", id: msg.id, result: result ?? null });
           } catch (err: any) {
             child.send({ type: "llm_result", id: msg.id, result: null, error: err?.message ?? String(err) });
+          }
+        } else if (msg.type === "decision_call") {
+          try {
+            const result = await this.clients.decide(msg.options?.provider ?? "jev", {
+              state: msg.state,
+              questions: msg.questions,
+              model: msg.options?.model ?? "jev-latest",
+            });
+            child.send({ type: "decision_result", id: msg.id, result });
+          } catch (err: any) {
+            child.send({
+              type: "decision_result", id: msg.id, result: null,
+              error: err?.message ?? String(err),
+            });
           }
         } else if (msg.type === "agent_call") {
           // Bridge: run agent call via callTool('agentCall', ...)

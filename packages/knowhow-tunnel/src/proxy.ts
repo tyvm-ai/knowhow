@@ -31,6 +31,41 @@ import {
   UrlRewriterConfig,
 } from "./url-rewriter";
 
+export function getWebSocketProtocols(
+  headers: Record<string, string | string[]>
+): string[] {
+  const protocolHeader = Object.entries(headers).find(
+    ([name]) => name.toLowerCase() === "sec-websocket-protocol"
+  )?.[1];
+
+  return (Array.isArray(protocolHeader)
+    ? protocolHeader
+    : protocolHeader?.split(",") ?? []
+  )
+    .map((protocol) => protocol.trim())
+    .filter(Boolean);
+}
+
+const WEB_SOCKET_HOP_BY_HOP_HEADERS = new Set([
+  "connection",
+  "host",
+  "sec-websocket-extensions",
+  "sec-websocket-key",
+  "sec-websocket-protocol",
+  "sec-websocket-version",
+  "upgrade",
+]);
+
+export function getWebSocketForwardHeaders(
+  headers: Record<string, string | string[]>
+): Record<string, string | string[]> {
+  return Object.fromEntries(
+    Object.entries(headers).filter(
+      ([name]) => !WEB_SOCKET_HOP_BY_HOP_HEADERS.has(name.toLowerCase())
+    )
+  );
+}
+
 /**
  * HTTP Proxy Handler
  * Handles incoming tunnel requests and proxies them to local services
@@ -512,10 +547,19 @@ export class TunnelProxy {
     this.activeStreams.set(streamId, streamState);
 
     try {
+      // `ws` must receive requested subprotocols via its protocols argument.
+      // Forwarding Sec-WebSocket-Protocol only as a raw header means `ws` does
+      // not record the offer and rejects a valid server selection (for example
+      // Vite's `vite-hmr`) with "Server sent a subprotocol but none was requested".
+      const protocols = getWebSocketProtocols(headers);
+      // Generate a fresh local handshake instead of reusing the outer
+      // connection's key, host, upgrade, and protocol headers.
+      const forwardHeaders = getWebSocketForwardHeaders(headers);
+
       // Create WebSocket connection to local service
       const wsUrl = `ws://${this.config.localHost}:${localPort}${path}`;
-      const ws = new WebSocket(wsUrl, {
-        headers: headers as any,
+      const ws = new WebSocket(wsUrl, protocols, {
+        headers: forwardHeaders,
       });
 
       streamState.wsClient = ws;
@@ -535,6 +579,9 @@ export class TunnelProxy {
 
       ws.on("message", (data: Buffer, isBinary: boolean) => {
         streamState.bytesSent += data.length;
+        this.logger.debug(
+          `Forwarding WebSocket message for stream ${streamId}: ${data.length} bytes (${isBinary ? "binary" : "text"})`
+        );
 
         const wsData: TunnelWsData = {
           type: TunnelMessageType.WS_DATA,

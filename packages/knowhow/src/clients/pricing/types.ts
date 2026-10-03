@@ -17,6 +17,7 @@ export type ModelType =
   | "image"
   | "audio"
   | "video"
+  | "decision"
   | "transaction"
   | "live";
 
@@ -108,6 +109,7 @@ export const embeddings   = (ids: string[], provider: string, pricing: Record<st
 export const images       = (ids: string[], provider: string, pricing: Record<string, ModelPricing>, dep?: DeprecationOptions) => makeEntries("image",        ids, provider, pricing, dep);
 export const videos       = (ids: string[], provider: string, pricing: Record<string, ModelPricing>, dep?: DeprecationOptions) => makeEntries("video",        ids, provider, pricing, dep);
 export const audios       = (ids: string[], provider: string, pricing: Record<string, ModelPricing>, dep?: DeprecationOptions) => makeEntries("audio",        ids, provider, pricing, dep);
+export const decisions    = (ids: string[], provider: string, pricing: Record<string, ModelPricing>, dep?: DeprecationOptions) => makeEntries("decision",     ids, provider, pricing, dep);
 export const transactions = (ids: string[], provider: string, pricing: Record<string, ModelPricing>, dep?: DeprecationOptions) => makeEntries("transaction",  ids, provider, pricing, dep);
 export const liveApi      = (ids: string[], provider: string, pricing: Record<string, ModelPricing>, dep?: DeprecationOptions) => makeEntries("live",         ids, provider, pricing, dep);
 

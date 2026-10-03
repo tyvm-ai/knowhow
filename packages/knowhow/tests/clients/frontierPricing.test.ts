@@ -31,6 +31,29 @@ describe("frontier model tiered pricing", () => {
     expect(cost).toBeCloseTo(1.6);
   });
 
+  it("includes the latest GPT-6 and Claude 5.5 standard pricing", () => {
+    expect(OpenAiTextPricing[OpenAiModels.GPT_6_Sol]).toEqual(
+      expect.objectContaining({
+        input: 2, cached_input: 0.2, cache_write: 2.5, output: 10,
+        input_gt_200k: 4, cached_input_gt_200k: 0.4,
+        cache_write_gt_200k: 5, output_gt_200k: 15,
+      })
+    );
+    expect(OpenAiTextPricing[OpenAiModels.GPT_6_Luna]).toEqual(
+      expect.objectContaining({
+        input: 0.1, cached_input: 0.01, cache_write: 0.125, output: 0.5,
+        input_gt_200k: 0.2, cached_input_gt_200k: 0.02,
+        cache_write_gt_200k: 0.25, output_gt_200k: 0.75,
+      })
+    );
+    expect(AnthropicTextPricing[AnthropicModels.Opus5_5]).toEqual(
+      expect.objectContaining({ input: 4, cache_write: 5, cache_hit: 0.2, output: 20 })
+    );
+    expect(AnthropicTextPricing[AnthropicModels.Sonnet5_5]).toEqual(
+      expect.objectContaining({ input: 2, cache_write: 2.5, cache_hit: 0.2, output: 10 })
+    );
+  });
+
   it("bills xAI cached tokens instead of double-counting them as uncached", () => {
     const client = new GenericXAIClient("test-key");
     const cost = client.calculateCost(XaiModels.Grok4_3, {
@@ -47,6 +70,8 @@ describe("frontier model tiered pricing", () => {
   it("uses the documented Claude 5.1 and Claude 5 thinking behavior", () => {
     const client = new GenericAnthropicClient("test-key");
 
+    expect(client.getThinkingParam(AnthropicModels.Opus5_5, "high")).toEqual({ type: "adaptive" });
+    expect(client.getThinkingParam(AnthropicModels.Sonnet5_5, "high")).toEqual({ type: "adaptive" });
     expect(client.getThinkingParam(AnthropicModels.Fable5_1)).toEqual({ type: "adaptive" });
     expect(client.getThinkingParam(AnthropicModels.Mythos5_1)).toEqual({ type: "adaptive" });
     expect(client.getThinkingParam(AnthropicModels.Sonnet5)).toBeUndefined();

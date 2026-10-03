@@ -15,6 +15,8 @@ export const executeScriptDefinition: Tool = {
   - scriptArgs: Read-only JSON arguments supplied by the caller
   - callTool(toolName, parameters): Call any available tool
   - llm(messages, options): Make LLM calls
+  - decide(state, questions, options): Evaluate one or more named noul/choice/score questions with a decision model
+  - noul(...), choice(...), score(...): Convenience decision primitives that return one typed answer
   - agent(agentName, query): Run another registered agent as a node (it can use tools/loop/keep context) and get its final answer string back. Great for graph-based agents. Compose with Promise.all for concurrent agent nodes.
   - createArtifact(name, content, type): Create downloadable artifacts
   - console: Standard console logging
@@ -41,6 +43,12 @@ export const executeScriptDefinition: Tool = {
     { role: 'user', content: 'Explain quantum computing' }
   ], { model: 'gpt-4o-mini', maxTokens: 100 });
   console.log('LLM response:', response.choices[0].message.content);
+
+  // Use Jev's decision primitives (requires TYPESAFE_API_KEY)
+  const urgency = await noul(searchResult, 'Does this require immediate action?');
+  const priority = await choice(searchResult, 'Choose a priority', {
+    low: 'Can wait', high: 'Act immediately'
+  });
 
   // Create an artifact
   createArtifact('summary.md', '# Summary\\nThis is a test', 'markdown');

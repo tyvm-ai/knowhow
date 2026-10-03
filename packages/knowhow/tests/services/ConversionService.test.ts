@@ -2,7 +2,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { ConversionService } from "../../src/services/conversion/ConversionService";
-import { Converter, ConvertInput, ConverterContext, ConvertResult } from "../../src/services/conversion/types";
+import { Converter, ConvertInput, ConverterContext, ConvertResult, InputResolver } from "../../src/services/conversion/types";
 
 // Minimal stubs
 const stubClients = {} as any;
@@ -28,6 +28,70 @@ describe("ConversionService", () => {
       svc.register(conv);
       expect(svc.list().length).toBe(initial + 1);
       expect(svc.list().find((c) => c.name === "fake-pdf-to-text")).toBeDefined();
+    });
+  });
+
+  describe("input resolvers", () => {
+    it("uses the built-in fs resolver for local paths", async () => {
+      const svc = makeService();
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "resolver-fs-"));
+      const filePath = path.join(tmpDir, "input.txt");
+      fs.writeFileSync(filePath, "hello");
+
+      const resolved = await svc.resolveInput(filePath);
+
+      expect(resolved).toEqual({ filePath, resolver: "fs" });
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it("resolves custom inputs before running the converter chain", async () => {
+      const svc = makeService();
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "resolver-url-"));
+      const videoPath = path.join(tmpDir, "download.mp4");
+      fs.writeFileSync(videoPath, "fake video");
+
+      const resolver: InputResolver = {
+        name: "test-url",
+        canHandle: (input) => input.startsWith("test://"),
+        resolvePath: async () => videoPath,
+      };
+      svc.registerResolver(resolver);
+
+      const result = await svc.convert("test://video/123", "text", {
+        force: true,
+      });
+
+      expect(result.text).toBe("chunk1\nchunk2");
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it("supports selecting a resolver explicitly by name", async () => {
+      const svc = makeService();
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "resolver-named-"));
+      const filePath = path.join(tmpDir, "input.txt");
+      fs.writeFileSync(filePath, "named resolver");
+
+      svc.registerResolver({
+        name: "named",
+        canHandle: () => true,
+        resolvePath: () => filePath,
+      });
+
+      const text = await svc.convertToText("anything", {
+        force: true,
+        inputResolver: "named",
+      });
+
+      expect(text).toBe("named resolver");
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it("reports unknown explicitly selected resolvers", async () => {
+      const svc = makeService();
+
+      await expect(
+        svc.resolveInput("anything", "missing")
+      ).rejects.toThrow('Unknown input resolver "missing"');
     });
   });
 

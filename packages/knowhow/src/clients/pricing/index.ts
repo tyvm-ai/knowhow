@@ -25,6 +25,11 @@ export {
   XaiTextModels, XaiImageModels, XaiVideoModels,
 } from "./xai";
 
+export {
+  JevModels,
+  JevDecisionPricing, JEV_MODEL_CATALOG,
+} from "./jev";
+
 // ─── Other provider pricing ───────────────────────────────────────────────────
 export { GroqTextPricing } from "./groq";
 export { DeepSeekTextPricing } from "./deepseek";
@@ -41,4 +46,4 @@ export { MetaTextPricing, MetaWebSearchPricingPer1000Queries } from "./meta";
 // ─── Combined catalog ─────────────────────────────────────────────────────────
 export { ALL_MODEL_CATALOG, USAGE_MARKUP_PERCENT } from "./models";
 export type { ModelCatalogEntry, ModelType, ModelPricing as CatalogModelPricing } from "./types";
-export { completions, embeddings, images, videos, audios, transactions, liveApi } from "./types";
+export { completions, embeddings, images, videos, audios, decisions, transactions, liveApi } from "./types";

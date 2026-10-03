@@ -4,7 +4,8 @@ export type ModelModality =
   | "image"
   | "audio"
   | "video"
-  | "transcription";
+  | "transcription"
+  | "decision";
 
 export type MessageContent =
   | { type: "text"; text: string }
@@ -472,6 +473,69 @@ export interface FileDownloadResponse {
   mimeType?: string;
 }
 
+// ─── Decision API ────────────────────────────────────────────────────────────
+
+/** JSON-compatible structured content accepted as decision state/instructions. */
+export type DecisionContent =
+  | string
+  | number
+  | boolean
+  | null
+  | DecisionContent[]
+  | { [key: string]: DecisionContent };
+
+export type NoulQuestion = {
+  type: "noul";
+  instructions: DecisionContent;
+  criteria?: { true?: DecisionContent; false?: DecisionContent };
+};
+
+export type ChoiceQuestion = {
+  type: "choice";
+  instructions: DecisionContent;
+  criteria: Record<string, DecisionContent>;
+};
+
+export type ScoreQuestion = {
+  type: "score";
+  instructions: DecisionContent;
+  criteria: DecisionContent[];
+};
+
+export type DecisionQuestion = NoulQuestion | ChoiceQuestion | ScoreQuestion;
+
+export interface DecisionOptions extends RetryOptions {
+  state: DecisionContent;
+  model?: string;
+  questions: Record<string, DecisionQuestion>;
+}
+
+export type NoulAnswer = { type: "noul"; noul: number };
+export type ChoiceAnswer = {
+  type: "choice";
+  choice: string;
+  probabilities: Record<string, number>;
+  confidence: number;
+};
+export type ScoreAnswer = {
+  type: "score";
+  score: number;
+  legend: Record<string, string>;
+  probabilities: Record<string, number>;
+  confidence: number;
+};
+export type DecisionAnswer = NoulAnswer | ChoiceAnswer | ScoreAnswer;
+
+export interface DecisionResponse {
+  model: string;
+  answers: Record<string, DecisionAnswer>;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+  };
+  usd_cost?: number;
+}
+
 export interface GenericClient {
   setKey(key: string): void;
   createChatCompletion(options: CompletionOptions): Promise<CompletionResponse>;
@@ -500,6 +564,12 @@ export interface GenericClient {
   uploadFile?(options: FileUploadOptions): Promise<FileUploadResponse>;
   /** Download a file from the provider's file storage */
   downloadFile?(options: FileDownloadOptions): Promise<FileDownloadResponse>;
+  /**
+   * Evaluate typed yes/no, choice, or score questions. Providers that do not
+   * expose a decision endpoint leave this method undefined; AIClient supplies
+   * the standardized unsupported-provider error.
+   */
+  decide?(options: DecisionOptions): Promise<DecisionResponse>;
   /**
    * When modality is provided, return only models for that modality (static list).
    * When omitted, return ALL models (backward compat — may do a live API call).

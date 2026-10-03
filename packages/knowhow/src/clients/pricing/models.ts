@@ -8,6 +8,7 @@ import { ANTHROPIC_MODEL_CATALOG } from "./anthropic";
 import { GOOGLE_MODEL_CATALOG } from "./google";
 import { XAI_MODEL_CATALOG } from "./xai";
 import { FIREWORKS_MODEL_CATALOG } from "./fireworks";
+import { JEV_MODEL_CATALOG } from "./jev";
 
 export { ModelPricing, ModelType, ModelCatalogEntry };
 
@@ -22,4 +23,5 @@ export const ALL_MODEL_CATALOG: ModelCatalogEntry[] = [
   ...GOOGLE_MODEL_CATALOG,
   ...XAI_MODEL_CATALOG,
   ...FIREWORKS_MODEL_CATALOG,
+  ...JEV_MODEL_CATALOG,
 ];

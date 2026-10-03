@@ -2,6 +2,23 @@ import { AIClient } from "../../clients";
 
 export type Modality = "text" | "html" | "image" | "audio" | "video";
 
+/**
+ * Resolves an arbitrary conversion input (for example a URL) to a local file.
+ * Resolvers are checked in registration order unless one is selected by name.
+ */
+export interface InputResolver {
+  name: string;
+  canHandle: (input: string) => boolean | Promise<boolean>;
+  resolvePath: (input: string) => string | Promise<string>;
+}
+
+export interface ResolvedInput {
+  /** Absolute path to the local file produced by the resolver. */
+  filePath: string;
+  /** Name of the resolver that handled the input. */
+  resolver: string;
+}
+
 export interface ConvertInput {
   filePath: string;       // source file on disk
   inputExt: string;       // e.g. "pdf"
@@ -71,6 +88,11 @@ export interface ConvertOptions {
   startTime?: number;
   endTime?: number;
   onProgress?: (stage: string, fraction: number) => void;
+  /**
+   * Force a specific registered input resolver instead of auto-detecting one.
+   * CLI: --input-resolver <name>
+   */
+  inputResolver?: string;
   /**
    * Options scoped to a specific converter, keyed by converter name.
    * e.g. { "image-to-text": { model: "gpt-4o" }, "pdf-to-img": { scale: 2 } }

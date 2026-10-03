@@ -12,6 +12,8 @@ import { FireworksModels } from "./pricing/fireworks";
 export const ContextLimits: Record<string, number> = {
   // ─── OpenAI ───────────────────────────────────────────────────────────────
   [Models.openai.GPT_6_Astra]: 1_050_000,
+  [Models.openai.GPT_6_Sol]: 1_050_000,
+  [Models.openai.GPT_6_Luna]: 1_050_000,
   [Models.openai.GPT_56_Sol]: 1_050_000,
   [Models.openai.GPT_56_Terra]: 1_050_000,
   [Models.openai.GPT_56_Luna]: 1_050_000,
@@ -88,6 +90,8 @@ export const ContextLimits: Record<string, number> = {
 
   // ─── Anthropic ────────────────────────────────────────────────────────────
   [Models.anthropic.Fable5_1]: 1_000_000,
+  [Models.anthropic.Opus5_5]: 1_000_000,
+  [Models.anthropic.Sonnet5_5]: 1_000_000,
   [Models.anthropic.Mythos5_1]: 1_000_000,
   [Models.anthropic.Opus4_8Fast]: 1_000_000,
   [Models.anthropic.Opus4_8]: 1_000_000,

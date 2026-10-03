@@ -35,6 +35,8 @@ const alwaysOnModels: readonly string[] = [
   AnthropicModels.MythosPreview,
 ];
 const optInModels: readonly string[] = [
+  AnthropicModels.Opus5_5,
+  AnthropicModels.Sonnet5_5,
   AnthropicModels.Opus5,
   AnthropicModels.Sonnet5,
   AnthropicModels.Opus4_8,

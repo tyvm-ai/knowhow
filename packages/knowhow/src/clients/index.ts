@@ -20,6 +20,8 @@ import {
   FileDownloadOptions,
   FileDownloadResponse,
   ModelModality,
+  DecisionOptions,
+  DecisionResponse,
 } from "./types";
 import { GenericOpenAiClient } from "./openai";
 import { GenericAnthropicClient } from "./anthropic";
@@ -61,6 +63,7 @@ import { GenericLlamaClient } from "./llama";
 import { GenericFireworksClient } from "./fireworks";
 import { GenericMetaClient } from "./meta";
 import { GenericQwenClient } from "./qwen";
+import { GenericJevClient } from "./jev";
 import { TraceAll } from "../util/Trace";
 export {
   OpenAiTextPricing,
@@ -109,6 +112,7 @@ const BUILT_IN_PROVIDER_REGISTRY: Record<string, ProviderRegistryEntry> = {
   fireworks: { clientClass: GenericFireworksClient },
   meta: { clientClass: GenericMetaClient },
   qwen: { clientClass: GenericQwenClient },
+  jev: { clientClass: GenericJevClient },
   knowhow: {
     createClient: (entry: ModelProvider) => {
       if (!loadKnowhowJwt()) {
@@ -131,6 +135,7 @@ const BUILT_IN_PROVIDER_REGISTRY: Record<string, ProviderRegistryEntry> = {
 // No envKey means the provider uses its own check (e.g. knowhow uses JWT file).
 // ---------------------------------------------------------------------------
 const DEFAULT_PROVIDERS: ModelProvider[] = [
+  { provider: "jev", envKey: "TYPESAFE_API_KEY" },
   { provider: "openai", envKey: "OPENAI_API_KEY" },
   { provider: "anthropic", envKey: "ANTHROPIC_API_KEY" },
   { provider: "google", envKey: "GEMINI_API_KEY" },
@@ -160,6 +165,7 @@ export class AIClient {
   imageModels: Record<string, string[]> = {};
   audioModels: Record<string, string[]> = {};
   videoModels: Record<string, string[]> = {};
+  decisionModels: Record<string, string[]> = {};
 
   /** Internal registry: provider name → how to create + what models it has */
   private providerRegistry: Record<string, ProviderRegistryEntry> = {
@@ -268,6 +274,7 @@ export class AIClient {
       "image",
       "audio",
       "video",
+      "decision",
     ];
     for (const modality of modalities) {
       try {
@@ -291,6 +298,9 @@ export class AIClient {
             break;
           case "video":
             this._mergeModels(this.videoModels, provider, models);
+            break;
+          case "decision":
+            this._mergeModels(this.decisionModels, provider, models);
             break;
         }
         this._mergeModels(this.clientModels, provider, models);
@@ -391,6 +401,7 @@ export class AIClient {
     delete this.imageModels[provider];
     delete this.audioModels[provider];
     delete this.videoModels[provider];
+    delete this.decisionModels[provider];
   }
 
   /**
@@ -479,6 +490,26 @@ export class AIClient {
           models.filter((m) => !m.includes("embed"))
         )
       )
+    );
+  }
+
+  async decide(
+    provider: string,
+    options: DecisionOptions
+  ): Promise<DecisionResponse> {
+    const requestedModel = options.model ?? "jev-latest";
+    const { client, model } = this.getClient(provider, requestedModel);
+    if (!client?.decide) {
+      throw new Error(`Provider ${provider} does not support decisions.`);
+    }
+    if (!model) {
+      throw new Error(
+        `Model ${requestedModel} not registered for provider ${provider}.`
+      );
+    }
+    return withRetry(
+      (signal) => client.decide!({ ...options, model, signal }),
+      options
     );
   }
 
@@ -1020,6 +1051,10 @@ export class AIClient {
     return this.videoModels;
   }
 
+  listAllDecisionModels() {
+    return this.decisionModels;
+  }
+
   listAllModelsWithProvider(options?: { pricing?: boolean }) {
     const models = options?.pricing
       ? this._filterByPricing(this.clientModels)
@@ -1153,3 +1188,4 @@ export * from "./copilot";
 export * from "./fireworks";
 export * from "./meta";
 export * from "./qwen";
+export * from "./jev";

@@ -24,6 +24,8 @@ export const AnthropicModels = {
   MythosPreview: "claude-mythos-preview",
   Opus5:     "claude-opus-5",
   Opus5Fast: "claude-opus-5-fast",
+  Opus5_5:   "claude-opus-5-5",
+  Sonnet5_5: "claude-sonnet-5-5",
   Opus4_8:   "claude-opus-4-8",
   Opus4_8Fast: "claude-opus-4-8-fast",
   Opus4_7:   "claude-opus-4-7",
@@ -54,6 +56,8 @@ export const AnthropicModels = {
 
 export const AnthropicTextModels: string[] = [
   AnthropicModels.Fable5_1,
+  AnthropicModels.Opus5_5,
+  AnthropicModels.Sonnet5_5,
   AnthropicModels.Opus4_8,
   AnthropicModels.Fable5,
   AnthropicModels.Sonnet5,
@@ -108,6 +112,8 @@ const AnthropicAllModels: string[] = [
 export const AnthropicTextPricing: Record<string, ModelPricing> = {
   [AnthropicModels.Fable5_1]:  { input: 10.0, cache_write: 12.5, cache_hit: 0.25, output: 50.0 },
   [AnthropicModels.Mythos5_1]: { input: 10.0, cache_write: 12.5, cache_hit: 0.25, output: 50.0, limitedAvailability: true },
+  [AnthropicModels.Opus5_5]:   { input: 4.0, cache_write: 5.0, cache_hit: 0.2, output: 20.0 },
+  [AnthropicModels.Sonnet5_5]: { input: 2.0, cache_write: 2.5, cache_hit: 0.2, output: 10.0 },
   [AnthropicModels.Opus4_8]:   { input: 5.0,  cache_write: 6.25,   cache_hit: 0.5,  output: 25.0 },
   [AnthropicModels.Opus4_8Fast]: { input: 10.0, cache_write: 12.5,  cache_hit: 1.0,  output: 50.0, limitedAvailability: true },
   // Claude Opus 5 (launched 2026-06-09) — recommended for complex agentic coding

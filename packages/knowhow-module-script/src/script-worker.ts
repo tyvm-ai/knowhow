@@ -12,6 +12,7 @@
  *   { type: 'run', script, args, quotas, policy, availableTools }
  *   { type: 'tool_result',  id, result?, error? }
  *   { type: 'llm_result',   id, result?, error? }
+ *   { type: 'decision_result', id, result?, error? }
  *   { type: 'agent_result', id, result?, error? }
  *   { type: 'script_message', message }          — inbound message for onMessage/waitForMessage
  *   { type: 'wait_for_message_result', id, message }  — reply to a wait_for_message request
@@ -23,6 +24,7 @@
  *   { type: 'script_event', eventType, data }    — emit() calls from inside the script
  *   { type: 'tool_call',  id, toolName, params }
  *   { type: 'llm_call',   id, messages, options }
+ *   { type: 'decision_call', id, state, questions, options }
  *   { type: 'agent_call', id, agentName, query }
  *   { type: 'wait_for_message', id, messageType?, afterSequence?, timeoutMs? }
  *   { type: 'done',  result }
@@ -170,6 +172,29 @@ async function setupIsolatedContext(
     return await ipcCall("llm_call", { messages, options: options || {} });
   });
 
+  // Decision primitives — all route through the client's single decide method.
+  await exposeAsync("decide", async (state: any, questions: any, options: any) =>
+    ipcCall("decision_call", { state, questions, options: options || {} })
+  );
+  await exposeAsync("noul", async (state: any, instructions: any, criteria: any) => {
+    const response = await ipcCall("decision_call", {
+      state, questions: { answer: { type: "noul", instructions, criteria } }, options: {},
+    });
+    return response.answers.answer;
+  });
+  await exposeAsync("choice", async (state: any, instructions: any, criteria: any) => {
+    const response = await ipcCall("decision_call", {
+      state, questions: { answer: { type: "choice", instructions, criteria } }, options: {},
+    });
+    return response.answers.answer;
+  });
+  await exposeAsync("score", async (state: any, instructions: any, criteria: any) => {
+    const response = await ipcCall("decision_call", {
+      state, questions: { answer: { type: "score", instructions, criteria } }, options: {},
+    });
+    return response.answers.answer;
+  });
+
   // agent — delegates to parent's agent runner via IPC
   await exposeAsync("agent", async (agentName: string, query: string) => {
     return await ipcCall("agent_call", { agentName, query });
@@ -281,7 +306,7 @@ async function setupIsolatedContext(
 
   // Shorthand tool globals (same pattern as SandboxContext)
   const reserved = new Set([
-    "callTool", "llm", "agent", "sleep", "createArtifact",
+    "callTool", "llm", "decide", "noul", "choice", "score", "agent", "sleep", "createArtifact",
     "getQuotaUsage", "console", "globalThis", "executeScript",
     "scriptArgs", "emit", "waitForMessage", "onMessage", "offMessage", "isCancelled", "untilCancelled",
   ]);
@@ -429,6 +454,7 @@ process.on("message", async (msg: any) => {
   } else if (
     msg.type === "tool_result" ||
     msg.type === "llm_result" ||
+    msg.type === "decision_result" ||
     msg.type === "agent_result" ||
     msg.type === "wait_for_message_result"
   ) {

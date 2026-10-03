@@ -10,7 +10,7 @@ knowhow script --input-file ./my-script.js --allow-network
 knowhow script --input-file ./my-script.js --artifact-dir .knowhow/artifacts/my-script
 ```
 
-Scripts run in an isolated-vm sandbox with access to `callTool`, `llm`, `sleep`, `createArtifact`, and `console`.
+Scripts run in an isolated-vm sandbox with access to `callTool`, `llm`, decision primitives, `sleep`, `createArtifact`, and `console`.
 
 ### Durable local artifacts
 
@@ -174,6 +174,34 @@ const result = await callTool('toolName', { param: 'value' });
 
 // Call an LLM
 const response = await llm([{ role: 'user', content: 'Hello' }]);
+
+// Ask one or more typed decision questions (defaults to jev/jev-latest)
+const decisions = await decide(
+  { message: 'Help! My payouts have failed for 3 days.' },
+  {
+    urgent: { type: 'noul', instructions: 'Is this urgent?' },
+    department: {
+      type: 'choice',
+      instructions: 'Which team should handle this?',
+      criteria: { billing: 'Payments', technical: 'Bugs' }
+    },
+    frustration: {
+      type: 'score',
+      instructions: 'How frustrated is the customer?',
+      criteria: ['Calm', 'Frustrated', 'Very angry']
+    }
+  }
+);
+
+// Convenience forms return the single typed answer directly
+const urgency = await noul('Fix this now!', 'Is this urgent?');
+const team = await choice('My card was charged twice', 'Which team?', {
+  billing: 'Payment issues',
+  technical: 'Product bugs'
+});
+const sentiment = await score('This keeps breaking!', 'Rate frustration', [
+  'Calm', 'Frustrated', 'Very angry'
+]);
 
 // Sleep (max 2000ms)
 await sleep(500);

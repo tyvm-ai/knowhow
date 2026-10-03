@@ -93,6 +93,7 @@ const defaultConfig = {
     { provider: "anthropic", envKey: "ANTHROPIC_API_KEY" },
     { provider: "google", envKey: "GEMINI_API_KEY" },
     { provider: "xai", envKey: "XAI_API_KEY" },
+    { provider: "jev", envKey: "TYPESAFE_API_KEY" },
     { provider: "knowhow" },
     { provider: "lms", url: "http://localhost:1234" },
   ],
