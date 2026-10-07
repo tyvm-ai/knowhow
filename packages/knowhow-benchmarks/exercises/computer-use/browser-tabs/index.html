@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Browser tabs</title>
+    <style>
+      body {
+        font: 16px sans-serif;
+        max-width: 850px;
+        margin: 2rem;
+      }
+
+      button {
+        padding: 0.45rem;
+        margin: 0.2rem;
+      }
+
+      .tab {
+        border: 1px solid #888;
+        padding: 0.6rem;
+        display: inline-block;
+      }
+
+      .active {
+        background: #def;
+        font-weight: bold;
+      }
+
+      #view {
+        border: 1px solid #888;
+        padding: 1rem;
+        min-height: 70px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Browser tab manager</h1>
+      <p>Manage the synthetic tabs and navigation controls below.</p>
+
+      <section aria-label="Tabs">
+        <div id="tabs">
+          <button class="tab active" id="home">Home</button>
+          <button class="tab" id="docs">Docs</button>
+        </div>
+        <button id="openSettings">Open Settings tab</button>
+        <button id="openReports">Open Reports tab</button>
+        <button id="switchReports">Switch to Reports</button>
+        <button id="closeDocs">Close Docs</button>
+      </section>
+
+      <section aria-label="Navigation">
+        <button id="back">Back</button>
+        <button id="forward">Forward</button>
+        <button id="menu">Open menu</button>
+      </section>
+
+      <section id="view">Home page</section>
+      <p id="navStatus">Navigation: Home</p>
+
+      <h2>Checklist</h2>
+      <ol>
+        <li id="a">□ Open Settings and Reports tabs</li>
+        <li id="b">□ Switch to Reports</li>
+        <li id="c">□ Close Docs</li>
+        <li id="d">□ Use Back then Forward</li>
+        <li id="e">□ Final active tab Reports; order Home, Settings, Reports</li>
+      </ol>
+
+      <p id="status">Incomplete (0/5)</p>
+      <button id="submit">Submit result</button>
+    </main>
+
+    <script>
+      const refs = {
+        tabs: document.getElementById('tabs'),
+        home: document.getElementById('home'),
+        docs: document.getElementById('docs'),
+        openSettings: document.getElementById('openSettings'),
+        openReports: document.getElementById('openReports'),
+        switchReports: document.getElementById('switchReports'),
+        closeDocs: document.getElementById('closeDocs'),
+        back: document.getElementById('back'),
+        forward: document.getElementById('forward'),
+        menu: document.getElementById('menu'),
+        view: document.getElementById('view'),
+        navStatus: document.getElementById('navStatus'),
+        status: document.getElementById('status'),
+        submit: document.getElementById('submit'),
+      };
+
+      const state = {
+        settingsOpen: false,
+        reportsOpen: false,
+        opened: false,
+        switched: false,
+        closed: false,
+        backUsed: false,
+        forwardUsed: false,
+        final: false,
+      };
+
+      const completed = new Set();
+      const events = [];
+
+      function recordEvent(action, details = {}) {
+        events.push({
+          index: events.length + 1,
+          action,
+          ...details,
+        });
+      }
+
+      function updateStatus() {
+        refs.status.textContent = `${completed.size === 5 ? 'SUCCESS' : 'Incomplete'} (${completed.size}/5)`;
+      }
+
+      function mark(key, elementId, text) {
+        if (completed.has(key)) {
+          return;
+        }
+
+        completed.add(key);
+        document.getElementById(elementId).textContent = `✓ ${text}`;
+        updateStatus();
+      }
+
+      function getTabOrder() {
+        return Array.from(refs.tabs.querySelectorAll('.tab')).map((tab) => tab.textContent.trim());
+      }
+
+      function activateTab(id, label, source) {
+        const target = document.getElementById(id);
+        if (!target) {
+          return;
+        }
+
+        refs.tabs.querySelectorAll('.tab').forEach((tab) => {
+          tab.classList.remove('active');
+        });
+
+        target.classList.add('active');
+        refs.view.textContent = `${label} page`;
+        refs.navStatus.textContent = `Navigation: ${label}`;
+        recordEvent('activate-tab', { tab: label, source });
+      }
+
+      function addTab(id, label) {
+        if (document.getElementById(id)) {
+          return;
+        }
+
+        const tab = document.createElement('button');
+        tab.className = 'tab';
+        tab.id = id;
+        tab.textContent = label;
+        tab.addEventListener('click', () => {
+          activateTab(id, label, 'tab-button');
+        });
+        refs.tabs.appendChild(tab);
+      }
+
+      function evaluateOpened() {
+        if (!state.settingsOpen || !state.reportsOpen || state.opened) {
+          return;
+        }
+
+        state.opened = true;
+        mark('opened', 'a', 'Open Settings and Reports tabs');
+      }
+
+      function evaluateFinal() {
+        const activeTab = refs.tabs.querySelector('.tab.active')?.textContent.trim();
+        const tabOrder = getTabOrder();
+        const correctOrder = tabOrder.join(',') === 'Home,Settings,Reports';
+
+        if (
+          !state.forwardUsed ||
+          state.final ||
+          activeTab !== 'Reports' ||
+          !correctOrder
+        ) {
+          return;
+        }
+
+        state.final = true;
+        recordEvent('final-state', { activeTab, tabOrder });
+        mark('final', 'e', 'Final active tab Reports; order Home, Settings, Reports');
+      }
+
+      refs.home.addEventListener('click', () => {
+        activateTab('home', 'Home', 'tab-button');
+      });
+
+      refs.docs.addEventListener('click', () => {
+        activateTab('docs', 'Docs', 'tab-button');
+      });
+
+      refs.openSettings.addEventListener('click', () => {
+        if (state.settingsOpen) {
+          return;
+        }
+
+        addTab('settings', 'Settings');
+        state.settingsOpen = true;
+        recordEvent('open-tab', { tab: 'Settings', tabOrder: getTabOrder() });
+        evaluateOpened();
+      });
+
+      refs.openReports.addEventListener('click', () => {
+        if (state.reportsOpen) {
+          return;
+        }
+
+        addTab('reports', 'Reports');
+        state.reportsOpen = true;
+        recordEvent('open-tab', { tab: 'Reports', tabOrder: getTabOrder() });
+        evaluateOpened();
+      });
+
+      refs.switchReports.addEventListener('click', () => {
+        if (!state.opened || state.switched) {
+          return;
+        }
+
+        activateTab('reports', 'Reports', 'switch-button');
+        state.switched = true;
+        mark('switched', 'b', 'Switch to Reports');
+      });
+
+      refs.closeDocs.addEventListener('click', () => {
+        recordEvent('close-tab', { tab: 'Docs' });
+
+        if (!state.switched || state.closed || !document.getElementById('docs')) {
+          return;
+        }
+
+        document.getElementById('docs').remove();
+        state.closed = true;
+        mark('closed', 'c', 'Close Docs');
+      });
+
+      refs.back.addEventListener('click', () => {
+        recordEvent('navigate', { direction: 'back' });
+
+        if (!state.closed || state.backUsed) {
+          return;
+        }
+
+        state.backUsed = true;
+        refs.navStatus.textContent = 'Navigation: Back';
+      });
+
+      refs.forward.addEventListener('click', () => {
+        recordEvent('navigate', { direction: 'forward' });
+
+        if (!state.backUsed || state.forwardUsed) {
+          return;
+        }
+
+        state.forwardUsed = true;
+        refs.navStatus.textContent = 'Navigation: Forward';
+        mark('navigation', 'd', 'Use Back then Forward');
+        activateTab('reports', 'Reports', 'forward-button');
+        evaluateFinal();
+      });
+
+      refs.menu.addEventListener('click', () => {
+        recordEvent('open-menu');
+      });
+
+      refs.submit.addEventListener('click', async () => {
+        await fetch('/api/results', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            score: completed.size,
+            complete: completed.size === 5,
+            steps: {
+              opened: state.opened ? 1 : 0,
+              switched: state.switched ? 1 : 0,
+              closed: state.closed ? 1 : 0,
+              backForward: state.backUsed && state.forwardUsed ? 1 : 0,
+              final: state.final ? 1 : 0,
+            },
+            events,
+            tabOrder: getTabOrder(),
+          }),
+        });
+
+        refs.status.textContent += ' · recorded';
+      });
+
+      updateStatus();
+    </script>
+  </body>
+</html>

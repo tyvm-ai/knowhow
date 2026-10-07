@@ -1,0 +1,7 @@
+{
+  "name": "click-grid",
+  "kind": "visible-gui",
+  "description": "Visually click a seeded sequence of numbered canvas-rendered circular nodes.",
+  "windowMode": "fullscreen-primary",
+  "entrypoint": "index.html"
+}

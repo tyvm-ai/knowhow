@@ -514,6 +514,35 @@ fn dict_f64(dict: &CFDictionary<CFString, CFType>, key: &str) -> Option<f64> {
 /// Enumerate on-screen application windows using CoreGraphics, front-to-back.
 /// The first normal (layer 0) window is flagged `active` — it is the focused
 /// window of the frontmost app, so no AppleScript / arbitrary ordering.
+/// Owner PID of the frontmost normal (layer 0, ≥100×100) window, via
+/// CoreGraphics. Used as a fallback when the Accessibility system-wide
+/// element cannot report a focused application.
+pub(crate) fn frontmost_window_pid() -> Option<i32> {
+    let option = K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY | K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS;
+    let array_ref = unsafe { CGWindowListCopyWindowInfo(option, K_CG_NULL_WINDOW_ID) };
+    if array_ref.is_null() {
+        return None;
+    }
+    let array: CFArray<CFType> = unsafe { CFArray::wrap_under_create_rule(array_ref) };
+    for item in array.iter() {
+        let dict: CFDictionary<CFString, CFType> =
+            unsafe { CFDictionary::wrap_under_get_rule(item.as_CFTypeRef() as CFDictionaryRef) };
+        if dict_i64(&dict, "kCGWindowLayer").unwrap_or(0) != 0 {
+            continue;
+        }
+        let Some(bounds) = dict_bounds(&dict) else { continue };
+        if bounds.width < 100.0 || bounds.height < 100.0 {
+            continue;
+        }
+        if let Some(pid) = dict_i64(&dict, "kCGWindowOwnerPID") {
+            if pid > 0 {
+                return Some(pid as i32);
+            }
+        }
+    }
+    None
+}
+
 fn list_windows_cg() -> Result<Vec<WindowInfo>> {
     let option = K_CG_WINDOW_LIST_OPTION_ON_SCREEN_ONLY | K_CG_WINDOW_LIST_EXCLUDE_DESKTOP_ELEMENTS;
     let array_ref = unsafe { CGWindowListCopyWindowInfo(option, K_CG_NULL_WINDOW_ID) };
@@ -524,7 +553,6 @@ fn list_windows_cg() -> Result<Vec<WindowInfo>> {
     let array: CFArray<CFType> = unsafe { CFArray::wrap_under_create_rule(array_ref) };
 
     let mut out: Vec<WindowInfo> = Vec::new();
-    let mut active_assigned = false;
     for item in array.iter() {
         // Each item is a CFDictionaryRef.
         let dict: CFDictionary<CFString, CFType> =
@@ -539,6 +567,7 @@ fn list_windows_cg() -> Result<Vec<WindowInfo>> {
 
         let app = dict_string(&dict, "kCGWindowOwnerName").unwrap_or_default();
         let title = dict_string(&dict, "kCGWindowName").unwrap_or_default();
+        let id = dict_i64(&dict, "kCGWindowNumber").unwrap_or(0) as u32;
         let bounds = dict_bounds(&dict).unwrap_or(Region {
             x: 0.0,
             y: 0.0,
@@ -551,17 +580,35 @@ fn list_windows_cg() -> Result<Vec<WindowInfo>> {
             continue;
         }
 
-        let active = !active_assigned;
-        if active {
-            active_assigned = true;
-        }
-
         out.push(WindowInfo {
+            id,
             title,
             app,
             bounds,
-            active,
+            active: false,
         });
+    }
+
+    // Apps such as Chrome expose full-size, untitled layer-0 companion windows
+    // alongside their real document windows. They can sit first in z-order and
+    // produce an unstable ID after an otherwise successful AXRaise. Suppress an
+    // untitled companion when the same owner has a titled document window.
+    let owners_with_titled_windows: Vec<String> = out
+        .iter()
+        .filter(|window| !window.title.trim().is_empty())
+        .map(|window| window.app.clone())
+        .collect();
+    out.retain(|window| {
+        !window.title.trim().is_empty()
+            || !owners_with_titled_windows
+                .iter()
+                .any(|owner| owner == &window.app)
+    });
+    if let Some(front) = out
+        .iter_mut()
+        .find(|window| window.bounds.width >= 100.0 && window.bounds.height >= 100.0)
+    {
+        front.active = true;
     }
 
     Ok(out)
@@ -599,6 +646,10 @@ fn ansi_char_keycode(c: char) -> Option<CGKeyCode> {
         '7' => 0x1A,
         '8' => 0x1C,
         '0' => 0x1D,
+        '=' | '+' => 0x18,
+        '-' | '_' => 0x1B,
+        ']' | '}' => 0x1E,
+        '[' | '{' => 0x21,
         'o' => 0x1F,
         'u' => 0x20,
         'i' => 0x22,
@@ -606,8 +657,15 @@ fn ansi_char_keycode(c: char) -> Option<CGKeyCode> {
         'l' => 0x25,
         'j' => 0x26,
         'k' => 0x28,
+        ';' | ':' => 0x29,
+        '\\' | '|' => 0x2A,
+        ',' | '<' => 0x2B,
+        '/' | '?' => 0x2C,
         'n' => 0x2D,
         'm' => 0x2E,
+        '.' | '>' => 0x2F,
+        '`' | '~' => 0x32,
+        '\'' | '"' => 0x27,
         _ => return None,
     };
     Some(code)

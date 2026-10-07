@@ -810,10 +810,14 @@ export abstract class BaseAgent implements IAgent {
 
   async healthCheck() {
     try {
-      const canCallProvider = await this.getClient().createChatCompletion({
-        messages: [{ role: "user", content: "Hello!" }],
+      await this.getClient().createChatCompletion({
+        messages: [{ role: "user", content: "Reply with OK." }],
         model: this.getModel(),
-        max_tokens: 2,
+        // Leave enough room for the short answer while keeping this probe cheap.
+        max_tokens: 8,
+        // In particular, prevent always-on Anthropic thinking from consuming
+        // the probe's entire output budget before it emits any text.
+        reasoning_effort: "none",
       });
       return true;
     } catch (e) {
@@ -834,7 +838,6 @@ export abstract class BaseAgent implements IAgent {
       this.nextModel();
       healthy = await this.healthCheck();
     }
-    await this.healthCheck();
   }
 
   isRequiredToolMissing() {
@@ -906,6 +909,7 @@ export abstract class BaseAgent implements IAgent {
 
   async kill() {
     this.log("Killing agent");
+    const wasPaused = this.status === this.eventTypes.pause;
     if (
       this.status === this.eventTypes.kill ||
       this.status === this.eventTypes.done
@@ -923,6 +927,12 @@ export abstract class BaseAgent implements IAgent {
       role: "user",
       content: `<Workflow>The user has requested the task to end, please call ${this.requiredToolNames} with a report of your ending state</Workflow>`,
     } as Message);
+    // A paused loop is waiting for this event. Emit it without calling
+    // unpause(), which would incorrectly replace the terminal kill status with
+    // in-progress after the shutdown instruction has been queued.
+    if (wasPaused) {
+      this.agentEvents.emit(this.eventTypes.unpause, this);
+    }
   }
 
   /**
@@ -1127,6 +1137,14 @@ export abstract class BaseAgent implements IAgent {
             JSON.stringify(response);
           throw new Error(`AI response error: ${errMsg}`);
         }
+      }
+
+      // Provider adapters must not return an empty set of choices. Fail with a
+      // useful error instead of dereferencing choices[0] later in the turn.
+      if (!response?.choices?.length) {
+        throw new Error(
+          `AI response contained no assistant choices (model: ${model})`
+        );
       }
 
       this.log("agent response cost: " + response?.usd_cost);

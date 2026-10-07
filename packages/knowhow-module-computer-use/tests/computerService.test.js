@@ -64,6 +64,47 @@ describe("ComputerService scaled capture", () => {
   );
 });
 
+describe("ComputerService virtual desktop input", () => {
+  test("preserves coordinates on a secondary display", async () => {
+    const service = new ComputerService();
+    const driver = {
+      getDisplays: jest.fn().mockResolvedValue([
+        { id: 1, primary: true, bounds: { x: 0, y: 0, width: 3840, height: 2160 } },
+        { id: 2, primary: false, bounds: { x: 3840, y: 30, width: 3008, height: 1662 } },
+      ]),
+      moveMouse: jest.fn().mockResolvedValue(undefined),
+      drag: jest.fn().mockResolvedValue(undefined),
+    };
+    service.getDriver = jest.fn().mockResolvedValue(driver);
+
+    await service.moveMouse({ x: 4300, y: 500 });
+    await service.drag({ x: 4400, y: 600 }, { x: 4700, y: 900 });
+
+    expect(driver.moveMouse).toHaveBeenCalledWith({ x: 4300, y: 500 }, undefined);
+    expect(driver.drag).toHaveBeenCalledWith(
+      { x: 4400, y: 600 },
+      { x: 4700, y: 900 },
+      undefined
+    );
+  });
+
+  test("clamps coordinates in a display gap to the nearest display", async () => {
+    const service = new ComputerService();
+    const driver = {
+      getDisplays: jest.fn().mockResolvedValue([
+        { id: 1, primary: true, bounds: { x: 0, y: 0, width: 100, height: 100 } },
+        { id: 2, primary: false, bounds: { x: 200, y: 0, width: 100, height: 100 } },
+      ]),
+      moveMouse: jest.fn().mockResolvedValue(undefined),
+    };
+    service.getDriver = jest.fn().mockResolvedValue(driver);
+
+    await service.moveMouse({ x: 180, y: 150 });
+
+    expect(driver.moveMouse).toHaveBeenCalledWith({ x: 200, y: 99 }, undefined);
+  });
+});
+
 describe("ComputerService batch pixel sampling", () => {
   test("samples desktop points from one frame with offset and scale mapping", async () => {
     const service = new ComputerService();
@@ -162,12 +203,13 @@ describe("ComputerService OCR", () => {
 
       await service.readText({ displayId: 5, recognitionLevel: "fast" });
 
-      expect(service.ocrTile).toHaveBeenCalledTimes(2);
-      expect(service.ocrTile.mock.calls.map((call) => call[3])).toEqual([
-        "fast",
-        "fast",
-      ]);
-      expect(peak).toBe(2);
+      expect(service.ocrTile).toHaveBeenCalledTimes(8);
+      expect(service.ocrTile.mock.calls.every((call) => call[3] === "fast")).toBe(true);
+      const tiles = service.ocrTile.mock.calls.map((call) => call[1]);
+      expect(tiles.every((tile) => tile.width <= 1200 && tile.height <= 1200)).toBe(true);
+      expect(new Set(tiles.map((tile) => tile.x)).size).toBe(4);
+      expect(new Set(tiles.map((tile) => tile.y)).size).toBe(2);
+      expect(peak).toBe(8);
     } finally {
       if (platform) Object.defineProperty(process, "platform", platform);
     }

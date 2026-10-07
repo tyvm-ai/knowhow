@@ -3,7 +3,7 @@
 // Usage: swift ocr.swift <image_path> [fast|accurate]
 // Reads a PNG/JPEG image and outputs JSON array of recognized text regions.
 // Recognition defaults to accurate when the optional mode is omitted.
-// Each region: { text, confidence, x, y, w, h }
+// Each region: { text, confidence, x, y, w, h, words: [{ text, x, y, w, h }] }
 // Coordinates are NORMALIZED (0-1), origin bottom-left (Vision convention).
 // The TS caller converts to absolute pixel coords using image dimensions.
 import Vision
@@ -34,6 +34,24 @@ var results: [[String: Any]] = []
 for obs in (request.results ?? []) {
   guard let top = obs.topCandidates(1).first else { continue }
   let box = obs.boundingBox
+  // Per-word boxes so callers can target one word inside a line (menu bars,
+  // toolbars). Vision's .fast level may return coarse boxes; callers should
+  // treat these as approximate.
+  var words: [[String: Any]] = []
+  let s = top.string
+  s.enumerateSubstrings(in: s.startIndex..<s.endIndex, options: .byWords) { sub, range, _, _ in
+    guard let sub = sub, !sub.isEmpty else { return }
+    if let wb = try? top.boundingBox(for: range) {
+      let r = wb.boundingBox
+      words.append([
+        "text": sub,
+        "x": Double(r.origin.x),
+        "y": Double(r.origin.y),
+        "w": Double(r.width),
+        "h": Double(r.height),
+      ])
+    }
+  }
   results.append([
     "text": top.string,
     "confidence": Double(top.confidence),
@@ -41,6 +59,7 @@ for obs in (request.results ?? []) {
     "y": Double(box.origin.y),
     "w": Double(box.width),
     "h": Double(box.height),
+    "words": words,
   ])
 }
 

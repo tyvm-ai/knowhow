@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Inbox</title>
+    <style>
+      body {
+        font: 16px sans-serif;
+        max-width: 900px;
+        margin: 2rem;
+      }
+
+      button,
+      input {
+        padding: 0.45rem;
+        margin: 0.2rem;
+      }
+
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+
+      td,
+      th {
+        border: 1px solid #aaa;
+        padding: 0.6rem;
+        text-align: left;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Inbox</h1>
+
+      <label for="search">Search mail</label>
+      <input id="search" placeholder="sender or subject">
+      <button id="searchBtn">Search</button>
+      <p id="searchResult">Showing all messages</p>
+
+      <table>
+        <caption>Mailbox</caption>
+        <thead>
+          <tr>
+            <th>Sender</th>
+            <th>Subject</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr id="row1">
+            <td>Ada Lovelace</td>
+            <td>Quarterly fixture review</td>
+            <td id="st1">Unread</td>
+            <td>
+              <button id="open1">Open</button>
+              <button id="star1">☆ Star</button>
+            </td>
+          </tr>
+          <tr id="row2">
+            <td>Grace Hopper</td>
+            <td>Release checklist</td>
+            <td id="st2">Read</td>
+            <td>
+              <button id="unread2">Mark unread</button>
+            </td>
+          </tr>
+          <tr id="row3">
+            <td>Alan Turing</td>
+            <td>Archive policy update</td>
+            <td id="st3">Read</td>
+            <td>
+              <button id="archive3">Archive</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <article id="message" hidden>
+        <h2>Quarterly fixture review</h2>
+        <p>From Ada Lovelace · The deterministic fixture is ready.</p>
+      </article>
+
+      <h2>Checklist</h2>
+      <ol>
+        <li id="a">□ Open Ada Lovelace — “Quarterly fixture review”</li>
+        <li id="b">□ Star that message</li>
+        <li id="c">□ Mark Grace Hopper — “Release checklist” unread</li>
+        <li id="d">□ Archive Alan Turing — “Archive policy update”</li>
+        <li id="e">□ Search exactly `fixture review`</li>
+      </ol>
+
+      <p id="status">Incomplete (0/5)</p>
+      <button id="submit">Submit result</button>
+    </main>
+
+    <script>
+      const refs = {
+        search: document.getElementById('search'),
+        searchBtn: document.getElementById('searchBtn'),
+        searchResult: document.getElementById('searchResult'),
+        row1: document.getElementById('row1'),
+        row3: document.getElementById('row3'),
+        st2: document.getElementById('st2'),
+        open1: document.getElementById('open1'),
+        star1: document.getElementById('star1'),
+        unread2: document.getElementById('unread2'),
+        archive3: document.getElementById('archive3'),
+        message: document.getElementById('message'),
+        status: document.getElementById('status'),
+        submit: document.getElementById('submit'),
+      };
+
+      const state = {
+        opened: false,
+        starred: false,
+        unread: false,
+        archived: false,
+        searched: false,
+      };
+
+      const completed = new Set();
+      const events = [];
+
+      function recordEvent(action, details = {}) {
+        events.push({
+          index: events.length + 1,
+          action,
+          ...details,
+        });
+      }
+
+      function updateStatus() {
+        refs.status.textContent = `${completed.size === 5 ? 'SUCCESS' : 'Incomplete'} (${completed.size}/5)`;
+      }
+
+      function mark(key, elementId, text) {
+        if (completed.has(key)) {
+          return;
+        }
+
+        completed.add(key);
+        document.getElementById(elementId).textContent = `✓ ${text}`;
+        updateStatus();
+      }
+
+      refs.open1.addEventListener('click', () => {
+        if (state.opened) {
+          return;
+        }
+
+        state.opened = true;
+        refs.message.hidden = false;
+        recordEvent('open-message', {
+          sender: 'Ada Lovelace',
+          subject: 'Quarterly fixture review',
+        });
+        mark('opened', 'a', 'Open Ada Lovelace — “Quarterly fixture review”');
+      });
+
+      refs.star1.addEventListener('click', () => {
+        if (!state.opened || state.starred) {
+          return;
+        }
+
+        state.starred = true;
+        refs.star1.textContent = '★ Starred';
+        recordEvent('star-message', {
+          sender: 'Ada Lovelace',
+          subject: 'Quarterly fixture review',
+        });
+        mark('starred', 'b', 'Star that message');
+      });
+
+      refs.unread2.addEventListener('click', () => {
+        if (!state.starred || state.unread) {
+          return;
+        }
+
+        state.unread = true;
+        refs.st2.textContent = 'Unread';
+        recordEvent('mark-unread', {
+          sender: 'Grace Hopper',
+          subject: 'Release checklist',
+        });
+        mark('unread', 'c', 'Mark Grace Hopper — “Release checklist” unread');
+      });
+
+      refs.archive3.addEventListener('click', () => {
+        if (!state.unread || state.archived) {
+          return;
+        }
+
+        state.archived = true;
+        refs.row3.hidden = true;
+        recordEvent('archive-message', {
+          sender: 'Alan Turing',
+          subject: 'Archive policy update',
+        });
+        mark('archived', 'd', 'Archive Alan Turing — “Archive policy update”');
+      });
+
+      refs.searchBtn.addEventListener('click', () => {
+        const query = refs.search.value;
+        recordEvent('search-click', { query });
+
+        if (!state.archived || state.searched || query !== 'fixture review') {
+          return;
+        }
+
+        state.searched = true;
+        refs.searchResult.textContent = 'Search results for: fixture review';
+        refs.row1.hidden = false;
+        mark('searched', 'e', 'Search exactly `fixture review`');
+      });
+
+      refs.submit.addEventListener('click', async () => {
+        await fetch('/api/results', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            score: completed.size,
+            complete: completed.size === 5,
+            steps: {
+              opened: state.opened ? 1 : 0,
+              starred: state.starred ? 1 : 0,
+              unread: state.unread ? 1 : 0,
+              archived: state.archived ? 1 : 0,
+              searched: state.searched ? 1 : 0,
+            },
+            events,
+          }),
+        });
+
+        refs.status.textContent += ' · recorded';
+      });
+
+      updateStatus();
+    </script>
+  </body>
+</html>

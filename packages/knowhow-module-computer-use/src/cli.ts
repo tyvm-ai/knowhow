@@ -22,6 +22,7 @@ import {
   isWindowRelativeRegion,
 } from "./regions";
 import { storedBounds, isRegionShape, toShape } from "./regionShape";
+import { ExtensionsService } from "@tyvm/knowhow/ts_build/src/services/ExtensionsService";
 
 /**
  * Register `knowhow computer <verb>` CLI subcommands on the passed Program.
@@ -638,11 +639,44 @@ export function registerComputerCli(
       }
       params = parsed;
     }
+    // Gracefully try to pick up the ExtensionsService from the global
+    // singletons (populated when the full services graph is running). The
+    // standalone CLI phase won't have it, which is fine — extensions just
+    // won't be available in that case.
+    let cliExtensions: ExtensionsService | undefined;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { services } = require("@tyvm/knowhow/ts_build/src/services/index") as { services(): any };
+      const singletons = services();
+      if (singletons?.Extensions instanceof ExtensionsService) {
+        cliExtensions = singletons.Extensions;
+      }
+    } catch { /* standalone CLI — ExtensionsService not available */ }
+    // Lightweight module load: register voice/gaze extensions from modules config
+    // without the heavy setupServices() path (no MCP, no AI clients, no agents).
+    // This ensures sdk.ext.gaze and sdk.ext.voice are available in automations
+    // that import the voice-control module's extensions (e.g. fruitNinjaGazeSlice).
+    if (cliExtensions) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { ModulesService } = require("@tyvm/knowhow/ts_build/src/services/modules/index") as { ModulesService: any };
+        const ms = new ModulesService();
+        // Pass only Extensions + Program so module register() runs and extensions
+        // get registered. Other context keys (Agents, Clients, etc.) are left
+        // undefined — module init() calls that need them will skip gracefully.
+        await ms.loadModulesFromConfig({ Extensions: cliExtensions });
+      } catch (modErr: any) {
+        // Non-fatal: if module loading fails (e.g. a module needs full context),
+        // the automation still runs — extensions just won't be available.
+        console.warn(`[computer] Extension load warning: ${modErr?.message ?? modErr}`);
+      }
+    }
     const runner = new AutomationRunner(spec, svc, {
       maxDurationMs: opts.maxMs ? Number(opts.maxMs) : undefined,
       params,
       dryRun: !!opts.dryRun,
       onLog: (e) => console.log(`t+${e.t}ms ${JSON.stringify(e.data)}`),
+      extensions: cliExtensions,
     });
     console.log(
       `${opts.dryRun ? "DRY-RUN" : "RUN"} automation "${name}"${

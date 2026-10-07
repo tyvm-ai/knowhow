@@ -134,6 +134,114 @@ async function testLocalConnections(mcps: McpConfig[]): Promise<Record<string, {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// Direct tool access (mcp tools / mcp call)
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** Connect to one configured local server (regardless of autoConnect). */
+async function withLocalServer<T>(
+  name: string,
+  timeoutMs: number,
+  fn: (client: any) => Promise<T>
+): Promise<T> {
+  const config = await getConfig();
+  const mcpConfig = (config.mcps || []).find((m) => m.name === name);
+  if (!mcpConfig) {
+    const names = (config.mcps || []).map((m) => m.name).join(", ") || "(none)";
+    throw new Error(`MCP server '${name}' not found in local config. Configured: ${names}`);
+  }
+  const service = new McpService();
+  try {
+    await service.createStdioClients([{ ...mcpConfig, autoConnect: false }]);
+    const result = await service.connectSingle(name, timeoutMs);
+    if (!result.success) {
+      throw new Error(`Could not connect to '${name}': ${result.error}`);
+    }
+    return await fn(service.clients[0]);
+  } finally {
+    await service.closeAll().catch(() => undefined);
+  }
+}
+
+function parseToolArgs(raw?: string, file?: string): Record<string, unknown> {
+  const text = file ? fs.readFileSync(file, "utf8") : raw;
+  if (!text || !text.trim()) return {};
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("arguments must be a JSON object");
+    }
+    return parsed;
+  } catch (err: any) {
+    throw new Error(`Invalid tool arguments JSON: ${err.message}`);
+  }
+}
+
+function summariseSchema(schema: any): string {
+  const props = schema?.properties || {};
+  const required = new Set<string>(schema?.required || []);
+  return Object.entries(props)
+    .map(([key, p]: [string, any]) => {
+      const type = p?.enum ? p.enum.join("|") : p?.type || "any";
+      return `${key}${required.has(key) ? "" : "?"}: ${type}`;
+    })
+    .join(", ");
+}
+
+async function listServerTools(name: string, opts: any) {
+  const timeout = Number(opts.timeout) || 30000;
+  const tools = await withLocalServer(name, timeout, async (client) => {
+    const res = await client.listTools();
+    return res.tools as any[];
+  });
+  const filter = opts.filter ? String(opts.filter).toLowerCase() : "";
+  const shown = filter
+    ? tools.filter((t) => `${t.name} ${t.description || ""}`.toLowerCase().includes(filter))
+    : tools;
+  if (opts.json) {
+    console.log(JSON.stringify(shown, null, 2));
+    return;
+  }
+  console.log(`\n${name}: ${shown.length} tool(s)${filter ? ` matching "${opts.filter}"` : ""}\n`);
+  for (const t of shown) {
+    console.log(`  ${t.name}(${summariseSchema(t.inputSchema)})`);
+    if (t.description) {
+      const desc = String(t.description).replace(/\s+/g, " ").trim();
+      console.log(`      ${desc.length > 200 ? desc.slice(0, 197) + "..." : desc}`);
+    }
+    if (opts.schema) {
+      console.log(
+        JSON.stringify(t.inputSchema, null, 2)
+          .split("\n")
+          .map((l) => `      ${l}`)
+          .join("\n")
+      );
+    }
+  }
+  console.log("");
+}
+
+async function callServerTool(name: string, tool: string, rawArgs: string | undefined, opts: any) {
+  const args = parseToolArgs(rawArgs, opts.argsFile);
+  const timeout = Number(opts.timeout) || 60000;
+  const result = await withLocalServer(name, timeout, (client) =>
+    client.callTool({ name: tool, arguments: args }, undefined, {
+      timeout,
+      maxTotalTimeout: timeout,
+    })
+  );
+  if (opts.json) {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    for (const item of (result as any)?.content || []) {
+      if (item.type === "text") console.log(item.text);
+      else if (item.type === "image") console.log(`[image ${item.mimeType}, ${String(item.data || "").length} base64 chars]`);
+      else console.log(JSON.stringify(item, null, 2));
+    }
+  }
+  if ((result as any)?.isError) process.exitCode = 1;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // Main command registrar
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -224,6 +332,44 @@ export function addMcpCommands(program: Command): void {
       } else {
         await getLocalMcp(name);
       }
+    });
+
+  // ── mcp tools ──────────────────────────────────────────────────────────────
+  mcp
+    .command("tools <name>")
+    .description("Connect to a local MCP server and list its tools")
+    .option("--json", "Print the raw tool list (names, descriptions, input schemas) as JSON")
+    .option("--schema", "Include each tool's full input schema")
+    .option("--filter <text>", "Only show tools whose name/description contains <text>")
+    .option("--timeout <ms>", "Connection timeout in ms", "30000")
+    .action(async (name: string, opts: any) => {
+      try {
+        await listServerTools(name, opts);
+      } catch (err: any) {
+        console.error(`✗ ${err.message}`);
+        process.exitCode = 1;
+      }
+      process.exit(process.exitCode ?? 0);
+    });
+
+  // ── mcp call ───────────────────────────────────────────────────────────────
+  mcp
+    .command("call <name> <tool> [args]")
+    .description(
+      "Call a tool on a local MCP server. [args] is a JSON object, e.g. " +
+        `knowhow mcp call browser browser_tabs '{"action":"list"}'`
+    )
+    .option("--args-file <path>", "Read the JSON arguments from a file")
+    .option("--json", "Print the raw MCP result as JSON instead of the text content")
+    .option("--timeout <ms>", "Connect + call timeout in ms", "60000")
+    .action(async (name: string, tool: string, rawArgs: string | undefined, opts: any) => {
+      try {
+        await callServerTool(name, tool, rawArgs, opts);
+      } catch (err: any) {
+        console.error(`✗ ${err.message}`);
+        process.exitCode = 1;
+      }
+      process.exit(process.exitCode ?? 0);
     });
 
   // ── mcp secrets ────────────────────────────────────────────────────────────

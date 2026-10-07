@@ -1,0 +1,35 @@
+{
+  "name": "@tyvm/knowhow-module-voice-control",
+  "version": "0.0.1",
+  "description": "Interactive voice-agent transport and terminal prototype for Knowhow",
+  "main": "ts_build/index.js",
+  "types": "ts_build/index.d.ts",
+  "scripts": {
+    "build": "npm run compile",
+    "compile": "npm run clean && tsc && cp src/eyeTrackingWorker.py ts_build/eyeTrackingWorker.py",
+    "clean": "rm -rf ts_build",
+    "test": "jest --runInBand",
+    "prepublishOnly": "npm run compile"
+  },
+  "keywords": [
+    "knowhow",
+    "voice",
+    "accessibility",
+    "agent"
+  ],
+  "author": "Tyvm AI",
+  "license": "MIT",
+  "peerDependencies": {
+    "@tyvm/knowhow": "*"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.13",
+    "@types/node": "^24.0.0",
+    "jest": "^29.1.1",
+    "ts-jest": "^29.1.1",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.21"
+  }
+}

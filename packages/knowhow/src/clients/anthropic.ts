@@ -494,44 +494,61 @@ export class GenericAnthropicClient implements GenericClient {
 
     const tools = this.transformTools(options.tools, longTtl);
     try {
-      const result = await this.client.messages
-        .create(
-          {
-            model: options.model,
-            messages: claudeMessages,
-            system: systemMessage
-              ? [
-                  {
-                    text: systemMessage,
-                    cache_control: longTtl
-                      ? ({ type: "ephemeral", ttl: "1h" } as any)
-                      : { type: "ephemeral" },
-                    type: "text",
-                  },
-                ]
-              : undefined,
-            max_tokens: options.max_tokens || 8000,
-            ...(thinkingParam && { thinking: thinkingParam }),
-            ...(effortOutputConfig && { output_config: effortOutputConfig }),
-            ...(tools.length && {
-              tool_choice: {
-                type: options.tool_choice ?? "auto",
-              },
-              tools,
-            }),
-          },
-          { signal: options.signal }
-        )
-        .withResponse();
-      const { data: response, response: nativeResponse, request_id } = result;
-      emitResponseMetadata(options, {
-        statusCode: nativeResponse.status,
-        headers: nativeResponse.headers,
-        requestId: request_id,
-      });
-
-      if (!response.content || !response.content.length) {
-        console.log("no content in Anthropic response", response);
+      let maxTokens = options.max_tokens || 8000;
+      let retryCost = 0;
+      let retryUsage: Usage | undefined;
+      let response: Anthropic.Message;
+      // A max_tokens response can consist entirely of unfinished thinking.
+      // Re-request with a larger budget rather than exposing it as an answer
+      // or appending an incomplete assistant turn to the conversation.
+      for (let attempt = 0; ; attempt++) {
+        const result = await this.client.messages
+          .create(
+            {
+              model: options.model,
+              messages: claudeMessages,
+              system: systemMessage
+                ? [
+                    {
+                      text: systemMessage,
+                      cache_control: longTtl
+                        ? ({ type: "ephemeral", ttl: "1h" } as any)
+                        : { type: "ephemeral" },
+                      type: "text",
+                    },
+                  ]
+                : undefined,
+              max_tokens: maxTokens,
+              ...(thinkingParam && { thinking: thinkingParam }),
+              ...(effortOutputConfig && { output_config: effortOutputConfig }),
+              ...(tools.length && {
+                tool_choice: {
+                  type: options.tool_choice ?? "auto",
+                },
+                tools,
+              }),
+            },
+            { signal: options.signal }
+          )
+          .withResponse();
+        response = result.data;
+        emitResponseMetadata(options, {
+          statusCode: result.response.status,
+          headers: result.response.headers,
+          requestId: result.request_id,
+        });
+        const actionable = response.content?.some(
+          (c) => c.type !== "thinking" && c.type !== "redacted_thinking"
+        );
+        if (actionable) break;
+        if (response.stop_reason !== "max_tokens" || attempt > 0) {
+          throw new Error(
+            `Anthropic returned no text or tool use (stop_reason: ${response.stop_reason ?? "unknown"}, max_tokens: ${maxTokens}). Increase max_tokens or reduce reasoning effort.`
+          );
+        }
+        retryCost += this.calculateCost(options.model, response.usage) ?? 0;
+        retryUsage = response.usage;
+        maxTokens *= 2;
       }
 
       // Capture thinking / redacted_thinking blocks verbatim (with their
@@ -565,6 +582,7 @@ export class GenericAnthropicClient implements GenericClient {
         (c) => c.type === "tool_use"
       );
       const carryIdx = firstToolUseIdx >= 0 ? firstToolUseIdx : 0;
+      const completionCost = this.calculateCost(options.model, response.usage);
 
       return {
         choices: nonThinking.map((c, idx) => {
@@ -612,17 +630,25 @@ export class GenericAnthropicClient implements GenericClient {
         model: options.model,
         usage: response.usage
           ? {
-              input_tokens: response.usage.input_tokens ?? 0,
-              output_tokens: response.usage.output_tokens ?? 0,
-              prompt_tokens: response.usage.input_tokens ?? 0,
-              completion_tokens: response.usage.output_tokens ?? 0,
+              input_tokens:
+                (retryUsage?.input_tokens ?? 0) + (response.usage.input_tokens ?? 0),
+              output_tokens:
+                (retryUsage?.output_tokens ?? 0) + (response.usage.output_tokens ?? 0),
+              prompt_tokens:
+                (retryUsage?.input_tokens ?? 0) + (response.usage.input_tokens ?? 0),
+              completion_tokens:
+                (retryUsage?.output_tokens ?? 0) + (response.usage.output_tokens ?? 0),
               total_tokens:
+                (retryUsage?.input_tokens ?? 0) +
+                (retryUsage?.output_tokens ?? 0) +
                 (response.usage.input_tokens ?? 0) +
                 (response.usage.output_tokens ?? 0),
               cache_creation_input_tokens:
-                response.usage.cache_creation_input_tokens ?? 0,
+                (retryUsage?.cache_creation_input_tokens ?? 0) +
+                (response.usage.cache_creation_input_tokens ?? 0),
               cache_read_input_tokens:
-                response.usage.cache_read_input_tokens ?? 0,
+                (retryUsage?.cache_read_input_tokens ?? 0) +
+                (response.usage.cache_read_input_tokens ?? 0),
               ...((response.usage as any).thinking_input_tokens != null ||
               (response.usage as any).output_tokens_details?.thinking_tokens !=
                 null
@@ -638,7 +664,7 @@ export class GenericAnthropicClient implements GenericClient {
                 : {}),
             }
           : undefined,
-        usd_cost: this.calculateCost(options.model, response.usage),
+        usd_cost: completionCost === undefined ? undefined : retryCost + completionCost,
       };
     } catch (err) {
       this.emitErrorMetadata(options, err);

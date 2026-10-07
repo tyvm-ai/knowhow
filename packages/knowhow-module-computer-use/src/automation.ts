@@ -2,6 +2,8 @@ import * as fs from "fs";
 import * as path from "path";
 import sharpFactory, { Sharp, SharpOptions } from "sharp";
 import * as ts from "typescript";
+import { ExtensionsService } from "@tyvm/knowhow/ts_build/src/services/ExtensionsService";
+import { AutomationExtensions, AUTOMATION_SDK_EXTENSION, AutomationSdkExtension, AutomationExtensionContext, buildExtProxy, resolveExtensions } from "./automationExtensions";
 import {
   AccessibilityElement,
   AccessibilityOptions,
@@ -352,6 +354,16 @@ export interface AutomationSDK {
    * `await sdk.callTool("prologQuery", args)` or `await prologQuery(args)` works.
    */
   callTool(toolName: string, parameters?: Record<string, unknown>): Promise<any>;
+
+  // ── extension APIs ──
+  /**
+   * Access a registered automation SDK extension by name.
+   * Throws a helpful error (listing available names) if the name is unknown.
+   * Use sdk.extensions() to list all available extensions at runtime.
+   */
+  readonly ext: AutomationExtensions & Record<string, any>;
+  /** List all registered extensions (name + description) for this run. */
+  extensions(): { name: string; description: string }[];
 }
 
 /**
@@ -974,6 +986,8 @@ export interface RunOptions {
   clickSettleMs?: number;
   /** Registered Knowhow tools exposed to the authored automation. */
   toolsService?: ToolsService;
+  /** ExtensionsService to resolve automation-sdk extensions from. Gracefully absent. */
+  extensions?: ExtensionsService;
 }
 
 /**
@@ -1001,6 +1015,8 @@ export class AutomationRunner {
   private streamDisposers = new Set<() => void>();
   private stopReason: "duration" | "manual" | "completed" | "error" | null =
     null;
+  private disposeCallbacks: Array<() => void | Promise<void>> = [];
+  private extApis: Map<string, unknown> = new Map();
 
   readonly ctl: AutomationControl = {
     paused: false,
@@ -1238,7 +1254,7 @@ export class AutomationRunner {
     return !this.ctl.stopped && !this.ctl.paused && !this.opts.dryRun;
   }
 
-  private buildSDK(): AutomationSDK {
+  private buildSDK(extApis: Map<string, unknown>): AutomationSDK {
     const svc = this.svc;
     const self = this;
     const freezeJson = (value: any): any => {
@@ -1650,6 +1666,11 @@ export class AutomationRunner {
       elapsed: () => self.elapsed(),
       log: (data) => self.emit(data),
       callTool: (toolName, parameters = {}) => self.callTool(toolName, parameters),
+      ext: buildExtProxy(extApis),
+      extensions: () => {
+        const exts = (self.opts.extensions?.list(AUTOMATION_SDK_EXTENSION) ?? []) as unknown as readonly AutomationSdkExtension[];
+        return exts.map((e) => ({ name: e.name, description: e.description }));
+      },
     };
     return sdk;
   }
@@ -1678,7 +1699,25 @@ export class AutomationRunner {
     }, maxDurationMs);
     if (this.durationTimer.unref) this.durationTimer.unref();
 
-    const sdk = this.buildSDK();
+    // Build the extension context (shared across all extensions for this run).
+    // Extensions are created before the script starts so the first line can
+    // already use sdk.ext.* without awaiting anything.
+    const abortController = new AbortController();
+    const extCtx: import("./automationExtensions").AutomationExtensionContext = {
+      automationName: this.spec.name,
+      dryRun: !!this.opts.dryRun,
+      signal: abortController.signal,
+      isPaused: () => this.ctl.paused,
+      log: (data) => this.emit(data),
+      onDispose: (fn) => { this.disposeCallbacks.push(fn); },
+      sdk: undefined as any, // filled below after sdk is built
+    };
+    this.extApis = await resolveExtensions(this.opts.extensions ?? null, extCtx);
+    const sdk = this.buildSDK(this.extApis);
+    // Now that sdk exists, back-fill it on the context so extensions that
+    // lazily reference ctx.sdk (e.g. in onCommand handlers) get the real one.
+    (extCtx as any).sdk = sdk;
+
     const reserved = new Set(["sdk", "callTool", "executeScript"]);
     const toolNames = (this.opts.toolsService?.getFunctionNames() ?? []).filter(
       (name) =>
@@ -1715,6 +1754,15 @@ export class AutomationRunner {
       }
     } finally {
       this.ctl.stopped = true;
+      // Abort the extension signal so extensions can tear down async work.
+      try { abortController.abort(); } catch { /* best-effort */ }
+      // Run extension dispose callbacks (in registration order).
+      for (const fn of this.disposeCallbacks) {
+        try { await fn(); } catch (e: any) {
+          this.emit({ extensionDisposeError: e?.message ?? String(e) });
+        }
+      }
+      this.disposeCallbacks = [];
       if (this.gateTimer) clearInterval(this.gateTimer);
       if (this.durationTimer) clearTimeout(this.durationTimer);
       if (this.pauseStartedAt) {

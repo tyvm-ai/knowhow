@@ -14,16 +14,24 @@
 
 const http = require('http');
 const crypto = require('crypto');
+const url = require('url');
 
 const PORT = process.env.BENCH_PORT ? parseInt(process.env.BENCH_PORT) : 7434;
 
 // --- Game Configuration ---
+const MODE = process.env.GAME_MODE || 'normal';   // 'normal' | 'gaze'
 const ARENA_W = 1200;
 const ARENA_H = 700;
 const GRAVITY = 980;          // px/s^2
 const TOTAL_FRUIT = 20;
 const SPAWN_INTERVAL_MS = 1500;
 const FRUIT_RADIUS = 35;      // px
+
+// Gaze-mode physics overrides (slower, fewer fruit, longer hang-time)
+const GAZE_SPEED_MULTIPLIER = parseFloat(process.env.GAZE_SPEED || '0.5');
+const GAZE_TOTAL_FRUIT = parseInt(process.env.GAZE_TOTAL_FRUIT || '10');
+const GAZE_SPAWN_INTERVAL_MS = parseInt(process.env.GAZE_SPAWN_MS || '2500');
+const GAZE_GRAVITY = GRAVITY * GAZE_SPEED_MULTIPLIER * GAZE_SPEED_MULTIPLIER;  // slower arc
 
 // Fruit types (cosmetic only — all are circles for hit detection)
 const FRUIT_TYPES = [
@@ -41,8 +49,9 @@ const FRUIT_TYPES = [
 
 function fruitPosition(fruit, nowMs) {
   const t = (nowMs - fruit.spawnedAt) / 1000; // seconds
+  const g = fruit.gravity !== undefined ? fruit.gravity : GRAVITY;
   const x = fruit.x0 + fruit.vx * t;
-  const y = fruit.y0 + fruit.vy * t + 0.5 * GRAVITY * t * t;
+  const y = fruit.y0 + fruit.vy * t + 0.5 * g * t * t;
   return { x, y, t };
 }
 
@@ -93,26 +102,32 @@ function segmentIntersectsCircle(x1, y1, x2, y2, cx, cy, r) {
 
 // --- Fruit generation ---
 
-function spawnFruit(index, sessionStartMs) {
+function spawnFruit(index, sessionStartMs, isGazeMode) {
   // Fruit spawn from bottom half of screen, flying upward with an arc
   const type = FRUIT_TYPES[Math.floor(Math.random() * FRUIT_TYPES.length)];
   const id = String(index + 1);
+
+  const gravity = isGazeMode ? GAZE_GRAVITY : GRAVITY;
+  const spawnInterval = isGazeMode ? GAZE_SPAWN_INTERVAL_MS : SPAWN_INTERVAL_MS;
+  const speedScale = isGazeMode ? GAZE_SPEED_MULTIPLIER : 1.0;
 
   // Spawn position: random x along bottom band, y just below visible area
   const x0 = FRUIT_RADIUS + Math.random() * (ARENA_W - FRUIT_RADIUS * 2);
   const y0 = ARENA_H + FRUIT_RADIUS;
 
   // Initial velocity: upward (negative vy) with some horizontal drift
-  // Peak height target: between 100px and 450px from top
-  const peakY = 100 + Math.random() * 350;
+  // Gaze mode: gentler peaks (more hang time), slower horizontal drift
+  const peakYMin = isGazeMode ? 50 : 100;
+  const peakYRange = isGazeMode ? 300 : 350;
+  const peakY = peakYMin + Math.random() * peakYRange;
   // Using vy^2 = 2*g*(y0-peakY): vy = -sqrt(2*g*(y0-peakY))
-  const vy = -Math.sqrt(2 * GRAVITY * (y0 - peakY));
+  const vy = -Math.sqrt(2 * gravity * (y0 - peakY));
 
-  // Horizontal velocity: -300 to +300 px/s
-  const vx = (Math.random() - 0.5) * 600;
+  // Horizontal velocity: scaled down in gaze mode
+  const vx = (Math.random() - 0.5) * 600 * speedScale;
 
   // Schedule spawn time
-  const spawnedAt = sessionStartMs + index * SPAWN_INTERVAL_MS;
+  const spawnedAt = sessionStartMs + index * spawnInterval;
 
   return {
     id,
@@ -121,6 +136,7 @@ function spawnFruit(index, sessionStartMs) {
     highlight: type.highlight,
     seeds: type.seeds,
     radius: FRUIT_RADIUS,
+    gravity,
     x0, y0,
     vx, vy,
     spawnedAt,
@@ -137,20 +153,32 @@ function createSession(config = {}) {
   const sessionId = crypto.randomUUID();
   const startMs = Date.now();
 
+  // Determine mode: config.mode overrides env MODE
+  const mode = config.mode || MODE;
+  const isGazeMode = mode === 'gaze';
+  const totalFruit = isGazeMode
+    ? (config.totalFruit || GAZE_TOTAL_FRUIT)
+    : (config.totalFruit || TOTAL_FRUIT);
+
   const fruits = [];
-  for (let i = 0; i < TOTAL_FRUIT; i++) {
-    fruits.push(spawnFruit(i, startMs));
+  for (let i = 0; i < totalFruit; i++) {
+    fruits.push(spawnFruit(i, startMs, isGazeMode));
   }
 
   const session = {
     sessionId,
+    mode,
+    isGazeMode,
     config,
     fruits,
     score: 0,
     slashed: 0,
     missed: 0,
+    intentHits: 0,   // gaze mode: hit the fruit nearest gaze at spokenAt
+    intentTotal: 0,  // gaze mode: slashes with gaze metadata
     combo: 0,
     maxCombo: 0,
+    latencies: [],   // gaze mode: spokenAt -> slash latency (ms)
     slashes: [],
     startedAt: startMs,
     finishedAt: null,
@@ -210,6 +238,7 @@ function buildSessionState(session) {
         y0: f.y0,
         vx: f.vx,
         vy: f.vy,
+        gravity: f.gravity !== undefined ? f.gravity : GRAVITY,
         spawnedAt: f.spawnedAt,
         t: Math.round(t * 1000) / 1000,
       };
@@ -230,11 +259,17 @@ function buildSessionState(session) {
   const total = session.slashed + session.missed;
   const accuracy = total > 0 ? session.slashed / total : null;
 
+  const latencies = session.latencies || [];
+  const medianLatency = latencies.length > 0
+    ? latencies.slice().sort((a, b) => a - b)[Math.floor(latencies.length / 2)]
+    : null;
+
   return {
     sessionId: session.sessionId,
+    mode: session.mode || 'normal',
     arenaW: session.arenaW,
     arenaH: session.arenaH,
-    totalFruit: TOTAL_FRUIT,
+    totalFruit: session.fruits.length,
     score: session.score,
     slashed: session.slashed,
     missed: session.missed,
@@ -257,10 +292,42 @@ function buildSessionState(session) {
       : Date.now() - session.startedAt,
     slashes: session.slashes,
     serverTime: now,
+    ...(session.isGazeMode ? {
+      gazeSummary: {
+        hits: session.slashed,
+        misses: session.missed,
+        intentHits: session.intentHits,
+        intentTotal: session.intentTotal,
+        intentAccuracy: session.intentTotal > 0 ? session.intentHits / session.intentTotal : null,
+        medianLatencyMs: medianLatency,
+      },
+    } : {}),
   };
 }
 
-function processSlash(session, { x1, y1, x2, y2, reactionMs }) {
+/**
+ * Find the fruit id nearest a gaze point at a given epoch time.
+ * Uses anisotropic distance: dx/errX, dy/errY.
+ * Returns null if no active fruit within 2.5σ gate.
+ */
+function nearestFruitToGaze(session, gazeX, gazeY, spokenAt, errX, errY) {
+  if (gazeX == null || gazeY == null || spokenAt == null) return null;
+  const atMs = spokenAt;
+  let bestId = null;
+  let bestDist = 2.5; // gate in sigma units
+  for (const fruit of session.fruits) {
+    if (fruit.slashed || fruit.missed) continue;
+    if (fruit.spawnedAt > atMs) continue;
+    const { x: fx, y: fy } = fruitPosition(fruit, atMs);
+    const dx = (gazeX - fx) / errX;
+    const dy = (gazeY - fy) / errY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < bestDist) { bestDist = dist; bestId = fruit.id; }
+  }
+  return bestId;
+}
+
+function processSlash(session, { x1, y1, x2, y2, reactionMs, intendedFruitId, gaze, spokenAt, source }) {
   if (session.finished) return buildSessionState(session);
 
   const now = Date.now();
@@ -308,17 +375,80 @@ function processSlash(session, { x1, y1, x2, y2, reactionMs }) {
     session.combo = 0;
   }
 
+  // --- Gaze intent analysis ---
+  let gazeIntentResult = null;
+  if (session.isGazeMode && gaze != null && spokenAt != null) {
+    session.intentTotal++;
+    const errX = 200, errY = 260; // default error radius px (arena coords)
+
+    // Find which fruit was nearest the gaze at spokenAt
+    const nearestId = nearestFruitToGaze(session, gaze.x, gaze.y, spokenAt, errX, errY);
+
+    // The "intended" fruit: explicit override wins, else computed nearest
+    const resolvedIntendedId = intendedFruitId || nearestId;
+
+    // Was the intended fruit actually hit?
+    const hitIds = hits.map(h => h.fruitId);
+    const intentCorrect = resolvedIntendedId != null && hitIds.includes(resolvedIntendedId);
+    if (intentCorrect) session.intentHits++;
+
+    // Latency: spokenAt → now
+    const latencyMs = now - spokenAt;
+    session.latencies.push(latencyMs);
+
+    // Gaze-to-nearest-fruit distance at spokenAt (arena px, Euclidean)
+    let gazeFruitDistPx = null;
+    if (nearestId) {
+      const nearestFruit = session.fruits.find(f => f.id === nearestId);
+      if (nearestFruit) {
+        const { x: fx, y: fy } = fruitPosition(nearestFruit, spokenAt);
+        gazeFruitDistPx = Math.round(Math.hypot(gaze.x - fx, gaze.y - fy));
+      }
+    }
+
+    gazeIntentResult = {
+      hit: anyHit,
+      intentCorrect,
+      intendedFruitId: resolvedIntendedId,
+      nearestFruitIdAtSpokenAt: nearestId,
+      latencyMs,
+      gazeFruitDistPx,
+      gaze: { x: Math.round(gaze.x), y: Math.round(gaze.y) },
+      source: source || null,
+    };
+  }
+
+  const latencies = session.latencies;
+  const medianLatency = latencies.length > 0
+    ? latencies.slice().sort((a, b) => a - b)[Math.floor(latencies.length / 2)]
+    : null;
+
   const slashRecord = {
     x1, y1, x2, y2,
     reactionMs: typeof reactionMs === 'number' ? reactionMs : null,
     hits,
     hitCount: hits.length,
     timestamp: now,
+    gazeIntent: gazeIntentResult,
   };
   session.slashes.push(slashRecord);
 
   checkFinished(session);
-  return { ...buildSessionState(session), lastSlash: slashRecord };
+  const state = buildSessionState(session);
+  return {
+    ...state,
+    lastSlash: slashRecord,
+    ...(session.isGazeMode ? {
+      gazeSummary: {
+        hits: session.slashed,
+        misses: session.missed,
+        intentHits: session.intentHits,
+        intentTotal: session.intentTotal,
+        intentAccuracy: session.intentTotal > 0 ? session.intentHits / session.intentTotal : null,
+        medianLatencyMs: medianLatency,
+      },
+    } : {}),
+  };
 }
 
 // --- HTTP Server ---
@@ -370,15 +500,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   // POST /api/slash
+  // Accepts optional gaze-mode fields: intendedFruitId, gaze:{x,y}, spokenAt, source
   if (req.method === 'POST' && path === '/api/slash') {
     const body = await readBody(req);
-    const { sessionId, x1, y1, x2, y2, reactionMs } = body;
+    const { sessionId, x1, y1, x2, y2, reactionMs, intendedFruitId, gaze, spokenAt, source } = body;
     const session = sessions.get(sessionId);
     if (!session) return json(res, { error: 'Session not found' }, 404);
     if (x1 == null || y1 == null || x2 == null || y2 == null) {
       return json(res, { error: 'Missing coordinates: x1, y1, x2, y2 required' }, 400);
     }
-    const result = processSlash(session, { x1, y1, x2, y2, reactionMs });
+    const result = processSlash(session, { x1, y1, x2, y2, reactionMs, intendedFruitId, gaze, spokenAt, source });
     return json(res, result);
   }
 
@@ -419,16 +550,226 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // POST /api/canvas-info — page reports its canvas desktop screen position
+  // so hub gaze (desktop px) can be mapped to arena coords for intent scoring
+  if (req.method === 'POST' && path === '/api/canvas-info') {
+    const body = await readBody(req);
+    if (body && body.width && body.height) {
+      if (global.__fruitNinjaCanvasInfo) global.__fruitNinjaCanvasInfo(body);
+      return json(res, { ok: true });
+    }
+    return json(res, { error: 'width and height required' }, 400);
+  }
+
   res.writeHead(404); res.end('Not found');
 });
 
 server.listen(PORT, '0.0.0.0', () => {
+  // Start hub integration after server is ready
+  if (process.env.HUB_URL !== 'none') {
+    startHubIntegration();
+  }
+
+  const modeLabel = MODE === 'gaze' ? `gaze (speed=${GAZE_SPEED_MULTIPLIER}, fruit=${GAZE_TOTAL_FRUIT})` : 'normal';
   console.log(`🍉 Fruit Ninja Benchmark Server listening on http://localhost:${PORT}`);
+  console.log(`   Mode: ${modeLabel}`);
   console.log(`   Open http://localhost:${PORT} in a browser to play manually`);
+  console.log(`   Open http://localhost:${PORT}/?mode=gaze for gaze mode`);
   console.log(`   API: POST /api/start | GET /api/state | POST /api/slash | GET /api/results`);
+  console.log(`   Gaze slash: POST /api/slash with { intendedFruitId, gaze:{x,y}, spokenAt, source }`);
+  console.log(`   Hub integration: HUB_URL=${process.env.HUB_URL || 'http://127.0.0.1:7465 (default)'}`);
 });
 
 server.on('error', (e) => {
   console.error('Server error:', e.message);
   process.exit(1);
 });
+
+// ── Hub Integration ─────────────────────────────────────────────────────────
+/**
+ * Optionally subscribe to the hub's SSE stream (GET /api/voice/events) and
+ * poll /api/gaze/history so the server can correlate voice "slice" commands
+ * with gaze data for intent accuracy, even when the slash POST body doesn't
+ * include explicit gaze/spokenAt metadata.
+ *
+ * Set HUB_URL env var to the hub base URL (default: http://127.0.0.1:7465).
+ * Set HUB_URL=none to disable hub integration.
+ *
+ * When a "slice" voice.command arrives from the SSE stream, it is stored in
+ * a ring buffer (MAX_PENDING=20, TTL=3s). When a /api/slash request arrives
+ * without explicit gaze data, the most recent unconsumed "slice" command
+ * within 2.5s is matched, and its gaze is used for intent scoring.
+ *
+ * Canvas screen position (for desktop→arena conversion) is reported by the
+ * client via GET /api/canvas-info (optional). The page may POST or the
+ * automation may set it. If not set, hub gaze coordinates are assumed to
+ * already be in arena coordinates (0–1200, 0–700).
+ */
+
+const HUB_URL = (process.env.HUB_URL && process.env.HUB_URL !== 'none')
+  ? process.env.HUB_URL.replace(/\/$/, '')
+  : 'http://127.0.0.1:7465';
+
+// Pending voice commands from hub (unconsumed, newest last)
+const pendingVoiceCommands = [];
+const MAX_PENDING_COMMANDS = 20;
+const VOICE_COMMAND_TTL_MS = 3000;
+
+// Last gaze snapshot from hub (polled every 100ms)
+let hubGazeLatest = null;
+
+// Canvas info (desktop screen coords for arena offset conversion)
+// Posted by the page or automation via POST /api/canvas-info
+let canvasInfo = null; // { x, y, width, height, arenaW, arenaH }
+
+/**
+ * Get the most recent unconsumed hub voice command within TTL ms.
+ * Marks it as consumed (removes from buffer).
+ */
+function consumeLatestVoiceCommand(maxAgeMs = 2500) {
+  const now = Date.now();
+  // Prune expired commands
+  while (pendingVoiceCommands.length > 0 && now - pendingVoiceCommands[0].spokenAt > VOICE_COMMAND_TTL_MS) {
+    pendingVoiceCommands.shift();
+  }
+  // Find most recent within maxAgeMs
+  for (let i = pendingVoiceCommands.length - 1; i >= 0; i--) {
+    const cmd = pendingVoiceCommands[i];
+    if (now - cmd.spokenAt <= maxAgeMs) {
+      pendingVoiceCommands.splice(i, 1);
+      return cmd;
+    }
+  }
+  return null;
+}
+
+/**
+ * Convert hub gaze (typically desktop screen coords) to arena coords.
+ * If canvasInfo is set, uses it; otherwise passes through as-is.
+ */
+function hubGazeToArena(gaze) {
+  if (!gaze) return null;
+  if (!canvasInfo) return { x: gaze.x, y: gaze.y }; // assume already arena
+  const scaleX = (canvasInfo.arenaW || ARENA_W) / canvasInfo.width;
+  const scaleY = (canvasInfo.arenaH || ARENA_H) / canvasInfo.height;
+  return {
+    x: (gaze.x - canvasInfo.x) * scaleX,
+    y: (gaze.y - canvasInfo.y) * scaleY,
+  };
+}
+
+/** Inject hub gaze+voice data into a slash call that lacks explicit metadata. */
+function enrichSlashFromHub(slashParams) {
+  if (slashParams.gaze && slashParams.spokenAt) return slashParams; // already has metadata
+  const cmd = consumeLatestVoiceCommand();
+  if (cmd) {
+    const arenaGaze = hubGazeToArena(cmd.gaze || hubGazeLatest);
+    return {
+      ...slashParams,
+      gaze: arenaGaze,
+      spokenAt: cmd.spokenAt,
+      source: 'hub-sse',
+    };
+  }
+  if (hubGazeLatest) {
+    const arenaGaze = hubGazeToArena(hubGazeLatest);
+    return { ...slashParams, gaze: arenaGaze, source: 'hub-gaze-poll' };
+  }
+  return slashParams;
+}
+
+// Monkey-patch processSlash to enrich from hub when possible
+const _originalProcessSlash = processSlash;
+// processSlash is already defined above and used by the HTTP handler,
+// so we need to wrap the handler's call. Since server.js is CJS with a single
+// exported server, we patch the module-level function reference used in routes
+// by reassigning via a wrapper reference used in the route handler.
+// The route handler calls `processSlash` by name so we store a wrapper.
+
+// Expose enrichment so the route handler can call it
+global.__fruitNinjaEnrichSlash = enrichSlashFromHub;
+
+function subscribeToHubSSE() {
+  const sseUrl = `${HUB_URL}/api/voice/events`;
+  const parsedUrl = new url.URL(sseUrl);
+  const opts = { hostname: parsedUrl.hostname, port: parsedUrl.port, path: parsedUrl.pathname, method: 'GET' };
+  const req = http.request(opts, (res) => {
+    if (res.statusCode !== 200) {
+      console.warn(`[hub-sse] Connect failed: HTTP ${res.statusCode} — retrying in 5s`);
+      res.resume();
+      setTimeout(subscribeToHubSSE, 5000);
+      return;
+    }
+    console.log(`[hub-sse] Connected to ${sseUrl}`);
+    let buf = '';
+    res.on('data', (chunk) => {
+      buf += chunk.toString();
+      const parts = buf.split('\n\n');
+      buf = parts.pop(); // keep incomplete last chunk
+      for (const part of parts) {
+        const dataLine = part.split('\n').find(l => l.startsWith('data:'));
+        if (!dataLine) continue;
+        try {
+          const event = JSON.parse(dataLine.slice('data:'.length).trim());
+          const phrase = (event.phrase || event.text || '').toLowerCase();
+          const isSlice = ['slice', 'slice it', 'slash', 'cut', 'hit'].includes(phrase);
+          if (isSlice && event.spokenAt) {
+            pendingVoiceCommands.push(event);
+            if (pendingVoiceCommands.length > MAX_PENDING_COMMANDS) pendingVoiceCommands.shift();
+            console.log(`[hub-sse] voice.command: "${phrase}" spokenAt=${event.spokenAt}`);
+          }
+        } catch { /* ignore parse errors */ }
+      }
+    });
+    res.on('end', () => {
+      console.log('[hub-sse] Stream ended — reconnecting in 2s');
+      setTimeout(subscribeToHubSSE, 2000);
+    });
+    res.on('error', (e) => {
+      console.warn(`[hub-sse] Stream error: ${e.message} — reconnecting in 5s`);
+      setTimeout(subscribeToHubSSE, 5000);
+    });
+  });
+  req.on('error', (e) => {
+    // Hub not running yet — retry silently
+    setTimeout(subscribeToHubSSE, 5000);
+  });
+  req.end();
+}
+
+function pollHubGaze() {
+  const gazeUrl = `${HUB_URL}/api/gaze`;
+  const parsedUrl = new url.URL(gazeUrl);
+  const req = http.request(
+    { hostname: parsedUrl.hostname, port: parsedUrl.port, path: parsedUrl.pathname, method: 'GET' },
+    (res) => {
+      let raw = '';
+      res.on('data', (d) => raw += d);
+      res.on('end', () => {
+        try {
+          const sample = JSON.parse(raw);
+          if (sample && sample.x != null) hubGazeLatest = sample;
+        } catch { /* ignore */ }
+      });
+    }
+  );
+  req.on('error', () => { /* hub may be offline */ });
+  req.end();
+}
+
+function startHubIntegration() {
+  subscribeToHubSSE();
+  // Poll gaze every 100ms as a fallback for when SSE commands lack gaze data
+  const gazeTimer = setInterval(pollHubGaze, 100);
+  if (gazeTimer.unref) gazeTimer.unref();
+  console.log(`[hub] Integration started — HUB_URL=${HUB_URL}`);
+}
+
+// ── Canvas info endpoint ─────────────────────────────────────────────────────
+// The page can POST its canvas screen coordinates here so hub gaze (desktop px)
+// can be converted to arena coords for intent scoring.
+// POST /api/canvas-info { x, y, width, height, arenaW?, arenaH? }
+// This is also called from the automation if it has access to window offsets.
+// The HTTP handler for this is inserted into the main server handler above;
+// since we need to share state we use global.__fruitNinjaCanvasInfo.
+global.__fruitNinjaCanvasInfo = (info) => { canvasInfo = info; };

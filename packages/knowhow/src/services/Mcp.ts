@@ -2,8 +2,10 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import Anthropic from "@anthropic-ai/sdk";
 import { spawn } from "child_process";
+import crypto from "crypto";
 
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { McpConfig } from "../types";
 import { Tool } from "../clients";
@@ -69,45 +71,92 @@ async function isUrlReachable(url: string, timeoutMs = 2000): Promise<boolean> {
   });
 }
 
+const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+function startupLockPath(url: string) {
+  const id = crypto.createHash("sha256").update(url).digest("hex").slice(0, 24);
+  return path.join(os.tmpdir(), `knowhow-mcp-start-${id}.lock`);
+}
+
+function removeStaleStartupLock(lockPath: string) {
+  try {
+    const pid = Number.parseInt(fs.readFileSync(lockPath, "utf8"), 10);
+    if (!Number.isInteger(pid) || pid <= 0) {
+      fs.unlinkSync(lockPath);
+      return;
+    }
+    process.kill(pid, 0);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH" || code === "ENOENT") {
+      try {
+        fs.unlinkSync(lockPath);
+      } catch {
+        // Another process already removed it.
+      }
+    }
+  }
+}
+
 /**
  * If an MCP config has both a localhost `url` and a `command`, this function
- * ensures the server is running: checks reachability, and if not up, spawns
- * the command and waits until the URL is reachable (or timeout expires).
+ * ensures the server is running. A cross-process lock prevents process storms.
  */
-async function ensureLocalServer(mcp: McpConfig): Promise<void> {
-  if (!mcp.url || !mcp.command || !isLocalhostUrl(mcp.url)) return;
-
-  const alreadyUp = await isUrlReachable(mcp.url);
-  if (alreadyUp) {
-    console.log(`MCP '${mcp.name}': server already running at ${mcp.url}`);
-    return;
+export async function ensureLocalServer(mcp: McpConfig): Promise<void> {
+  if (!mcp.url || !mcp.command) return;
+  if (!isLocalhostUrl(mcp.url)) {
+    throw new Error(`MCP '${mcp.name}': refusing to auto-start a command for non-local URL ${mcp.url}`);
   }
+  if (await isUrlReachable(mcp.url)) return;
 
-  console.log(`MCP '${mcp.name}': starting server with command: ${mcp.command} ${(mcp.args || []).join(" ")}`);
-
-  const child = spawn(mcp.command, mcp.args || [], {
-    detached: true,
-    stdio: "ignore",
-    env: mcp.env ? { ...process.env, ...mcp.env } : process.env,
-  });
-  child.unref(); // don't keep the knowhow process alive just for this child
-
-  // Wait up to 30s for the server to become reachable
-  const maxWait = 30_000;
-  const interval = 500;
+  const lockPath = startupLockPath(mcp.url);
   const started = Date.now();
+  const maxWait = 30_000;
+  let lockFd: number | undefined;
 
   while (Date.now() - started < maxWait) {
-    await new Promise((r) => setTimeout(r, interval));
-    const up = await isUrlReachable(mcp.url!);
-    if (up) {
-      console.log(`MCP '${mcp.name}': server is up at ${mcp.url}`);
-      return;
+    if (await isUrlReachable(mcp.url)) return;
+    try {
+      lockFd = fs.openSync(lockPath, "wx", 0o600);
+      fs.writeFileSync(lockFd, String(process.pid));
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      removeStaleStartupLock(lockPath);
+      await sleep(250);
+    }
+  }
+
+  if (lockFd !== undefined) {
+    try {
+      console.log(`MCP '${mcp.name}': starting server with command: ${mcp.command} ${(mcp.args || []).join(" ")}`);
+      const child = spawn(mcp.command, mcp.args || [], {
+        detached: true,
+        stdio: "ignore",
+        env: mcp.env ? { ...process.env, ...mcp.env } : process.env,
+      });
+      let startupFailure: Error | undefined;
+      child.once("error", (error) => { startupFailure = error; });
+      child.once("exit", (code, signal) => {
+        startupFailure = new Error(
+          `MCP '${mcp.name}': startup command exited before ${mcp.url} was ready (code ${code}, signal ${signal})`
+        );
+      });
+      child.unref();
+
+      while (Date.now() - started < maxWait) {
+        await sleep(250);
+        if (await isUrlReachable(mcp.url)) return;
+        if (startupFailure) throw startupFailure;
+      }
+    } finally {
+      fs.closeSync(lockFd);
+      try { fs.unlinkSync(lockPath); } catch { /* already removed */ }
     }
   }
 
   throw new Error(
-    `MCP '${mcp.name}': timed out waiting for server to start at ${mcp.url} (command: ${mcp.command} ${(mcp.args || []).join(" ")})`
+    `MCP '${mcp.name}': timed out waiting for server at ${mcp.url} (command: ${mcp.command} ${(mcp.args || []).join(" ")})`
   );
 }
 

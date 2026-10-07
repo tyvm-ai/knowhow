@@ -12,6 +12,128 @@ Unlike the coding benchmarks which test text-based problem solving, these benchm
 
 ## Exercises
 
+### Deterministic interaction suite
+
+The following isolated, dependency-free exercises use the visible browser UI and
+record results with `POST /api/results`: `media-controls`, `email-inbox`,
+`task-management`, `checkout`, and `browser-tabs`. Each has an exact ordered
+prompt, native semantic controls, a visible partial-score checklist, and a
+deterministic `SUCCESS` status. Start one directly (for example,
+`npm run computer:media-server`) or use `npm run computer:run -- --exercise
+email-inbox`. Every server also exposes `GET /health` and `GET /api/sessions`.
+
+From `packages/knowhow-benchmarks`, run a bounded Luna evaluation with one of:
+
+```bash
+npm run computer:media    -- --max-time 3 --max-spend 0.10 --require-complete
+npm run computer:email    -- --max-time 3 --max-spend 0.10 --require-complete
+npm run computer:tasks    -- --max-time 3 --max-spend 0.10 --require-complete
+npm run computer:checkout -- --max-time 3 --max-spend 0.10 --require-complete
+npm run computer:tabs     -- --max-time 3 --max-spend 0.10 --require-complete
+npm run computer:ui-basics -- --max-time 5 --max-spend 0.15 --require-complete
+```
+
+The scripts select `ComputerUseAgent`, OpenAI, and `gpt-5.6-luna`; direct runner
+invocations can override `--agent`, `--provider`, and `--model`. `--max-time` is
+in minutes, `--max-spend` is in dollars, and `--require-complete` exits nonzero
+unless the server recorded a complete submitted session.
+
+Result JSON, the generated task prompt, and the agent transcript are written to
+`benchmarks/results/computer-use/`. These are local run artifacts and should be
+reviewed before being retained or published.
+
+### Voice-parity discovery evaluation
+
+The click-grid precision benchmark has two deliberately separate modes:
+
+- `computer:precision` is a guided tool/aiming-procedure experiment. It measures
+  execution of a known strategy and must not be cited as ordinary agent discovery.
+- `computer:precision:voice-parity` supplies only the natural request below,
+  switches focus back to the app that was active before the game opened, and
+  requires `ComputerUseAgent` to find Chrome, understand the visible UI, and
+  complete all rounds using its normal general-purpose prompt and tools.
+
+```text
+Look at the game open in Chrome and beat all 10 rounds.
+```
+
+Run an unseen seed with bounded cost/time:
+
+```bash
+npm run computer:precision:voice-parity -- \
+  --seed 51001 --max-time 8 --max-spend 0.30 --require-complete
+```
+
+This path invokes `knowhow voice-control --once`, so it uses the same registered
+`ComputerUseAgent` and interactive runtime as voice control while intentionally
+bypassing microphone/STT and TTS. The runner passes explicit model/provider
+overrides, opens one tracked window in the existing Chrome session, and restores
+the previously focused app before the utterance is delivered. This isolates
+desktop discovery and computer use without behavior matching or chat-plugin
+prompt expansion from the separate `knowhow agent` command.
+
+The result records the invocation path, prompt mode and hash, exact natural
+prompt, Chrome-session mode, and initially focused app. Use multiple unseen
+seeds; never mix these results with guided-prompt results. `--natural-discovery`
+is shorthand for natural prompt, voice invocation, existing Chrome, and
+voice-parity focus restoration.
+
+Visible web exercises launch in a temporary Chrome profile, force browser
+accessibility on, and focus a `1280×900` window at `(40,40)` on the primary
+display unless `--use-existing-chrome` or `--natural-discovery` is selected.
+Ordinary UI scores therefore do not depend on a secondary monitor.
+Display enumeration, capture domains, negative display origins, and native
+window movement belong in the separate multi-monitor/desktop evaluation.
+
+### Real-site evaluations (manual/volatile)
+
+The runner also supports opt-in exercises against live sites with a signed-in
+Chrome profile. A real-site exercise sets `"kind": "real-site"` in its
+`exercise.json`, provides an https `url`, and lists `checkpoints` whose ids must
+all be named in `prompt.md`; the agent's final report is scored against them.
+No real-site exercises are currently checked in.
+
+Validate an exercise's metadata and prompt without opening Chrome or starting an
+agent with `ts-node exercises/computer-use/runner.ts --exercise <name> --validate-only`.
+
+These runs start an agent and may incur cost; do not use them as smoke tests.
+Passing `--use-existing-chrome` creates and tracks one new window in the
+currently running, signed-in Chrome process, and cleanup closes only that
+window. Search/watch history can still be recorded by the site.
+
+Disposable clone mode is available by invoking `computer:run` without
+`--use-existing-chrome`. Select a source profile folder (commonly `Default` or
+`Profile 1`) like this:
+
+```bash
+npm run computer:run -- --exercise <real-site-exercise> --agent ComputerUseAgent \
+  --model gpt-5.6-luna --provider openai --chrome-profile-directory "Profile 1" \
+  --max-time 5 --max-spend 0.15
+```
+
+Safe signed-in profile reuse and cloning are currently macOS-only; other
+platforms fail closed. In clone mode the runner copies `Local State` plus the
+selected profile into a temporary user-data directory, excluding lock and cache
+paths, launches Chrome Sync-disabled, and deletes the clone during cleanup. The
+source profile is read-only to the runner. A clone can be stale when Chrome is
+running; authentication may be absent and sites can require CAPTCHA or re-login.
+Profile isolation cannot prevent server-side browsing history. Use a dedicated
+evaluation account if that matters.
+
+Live inventories, leagues, UI experiments, account entitlements, and video
+availability change. Consequently these are checkpoint evaluations rather than
+fully deterministic tests. Each prompt requires one `BENCHMARK_RESULT` JSON
+line with every declared checkpoint and visible evidence. The runner scores
+only exact checkpoint ids marked `passed: true` with non-empty evidence; it
+stores that report, full stdout/stderr transcript, generated prompt, elapsed
+time, parsed cost, and tool-call counts in `benchmarks/results/computer-use/`.
+Transcripts/evidence can contain account-visible or personalized page text;
+review and redact artifacts before publishing them. Evidence remains
+reviewable rather than being treated as ground truth. In
+particular, YouTube's built-in summary may be account/region/experiment gated;
+the correct result in that situation is a failed checkpoint with the visible
+blocker, not an agent-authored substitute.
+
 ### 🎯 mouse-precision
 
 A Fitts's Law-style clicking game. A colored square appears at a random position on screen. The agent must:
@@ -185,6 +307,34 @@ Each run saves a JSON file to `benchmarks/results/computer-use/`:
 
 ---
 
+### Fruit Ninja (visual) and Fruit Ninja Gaze (voice + gaze)
+
+`fruit-ninja/` is a real-time fruit-slashing benchmark. The scoring server runs on port 7434
+(default) and exposes `/api/start`, `/api/state`, `/api/slash`, and `/api/results`. The
+`fruitNinjaFull.ts` automation plays visually using `sdk.trackObjects`.
+
+`fruit-ninja-gaze/` is the voice + gaze variant. Start the server in gaze mode:
+
+```bash
+BENCH_PORT=7434 GAME_MODE=gaze node fruit-ninja/server.js
+```
+
+Gaze mode slows physics (speed multiplier 0.5, 10 fruit, 2500 ms spawn interval) so ~1 s voice
+latency is playable. The `/api/slash` endpoint accepts optional gaze metadata:
+`{ intendedFruitId, gaze:{x,y}, spokenAt, source }`. The response includes per-slash intent
+analysis (`gazeIntent`) and a running `gazeSummary` with intent accuracy and median latency.
+
+**Synthetic harness** (CI-able, no human/mic/camera):
+```bash
+node fruit-ninja-gaze/harness.js
+```
+
+**Live human protocol**: `knowhow eye-tracking` → Recenter → `knowhow voice-agent` →
+`knowhow computer fruitNinjaGazeSlice` → open `http://localhost:7434/?mode=gaze` → say "slice"
+while looking at a fruit. See `fruit-ninja-gaze/prompt.md` for full details.
+
+---
+
 ## Agent Strategy Guide
 
 ### Naive approach (what most agents do first)
@@ -210,6 +360,14 @@ This is the ideal demonstration of the "fast process + smart process" architectu
 ---
 
 ## Adding New Exercises
+
+### UI Basics
+
+`ui-basics/` is a deterministic, dependency-free browser exercise for common desktop actions:
+tabs and menu navigation, labeled text/email/select/checkbox controls, descending sort, drag and
+drop, and final submission. Run `node ui-basics/server.js` and open `http://localhost:7432/` on
+either monitor; refresh the page to reset. Its `GET /health`, `GET /api/results`, and runner-
+compatible `GET /api/sessions` endpoints keep result state in memory.
 
 Create a new folder under `exercises/computer-use/<name>/`:
 

@@ -13,8 +13,8 @@ export class ResearcherAgent extends BaseAgent {
     // fallbacks, an unregistered "google" provider causes the health-check loop
     // to immediately throw "We have exhausted all model preferences."
     this.setModelPreferences([
-      { model: Models.openai.GPT_56_Terra, provider: "openai" },
-      { model: Models.anthropic.Sonnet4_6, provider: "anthropic" },
+      { model: Models.openai.GPT_6_Sol, provider: "openai" },
+      { model: Models.anthropic.Sonnet5_5, provider: "anthropic" },
       { model: Models.google.Gemini_35_Flash_Lite, provider: "google" },
     ]);
     this.disableTool("patchFile");

@@ -164,5 +164,5 @@ export async function setupServices() {
     process.exit(0);
   });
 
-  return { Tools, Clients, modulesService };
+  return { Tools, Clients, Agents, Events, MediaProcessor, modulesService };
 }

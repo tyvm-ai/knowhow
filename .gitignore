@@ -30,3 +30,4 @@ dist
 **/tests/manual/modalities/outputs
 regions.png
 .playwright-mcp
+__pycache__/

@@ -97,9 +97,30 @@ static void knowhow_on_main(void (^block)(void)) {
 }
 
 static void knowhow_clear_panels(void) {
-  for (NSPanel *panel in knowhowPanels) [panel orderOut:nil];
+  // orderOut alone is not enough: this process never runs an AppKit event
+  // loop, so the removal was never committed to WindowServer and old labels
+  // stayed on screen until the next show. Close the panels and drain the
+  // queue so the change is flushed now.
+  for (NSPanel *panel in knowhowPanels) {
+    [panel orderOut:nil];
+    [panel close];
+  }
   [knowhowPanels removeAllObjects];
 }
+static void knowhow_drain_events(void) {
+  NSApplication *application = [NSApplication sharedApplication];
+  NSDate *deadline = [NSDate dateWithTimeIntervalSinceNow:0.02];
+  NSEvent *event = nil;
+  do {
+    event = [application nextEventMatchingMask:NSEventMaskAny
+                                     untilDate:deadline
+                                        inMode:NSDefaultRunLoopMode
+                                       dequeue:YES];
+    if (event) [application sendEvent:event];
+  } while (event);
+  [application updateWindows];
+}
+
 
 
 void knowhow_overlay_show(const KnowhowOverlayPrimitive *items, size_t count) {
@@ -122,7 +143,10 @@ void knowhow_overlay_show(const KnowhowOverlayPrimitive *items, size_t count) {
   knowhow_on_main(^{
     if (!knowhowPanels) knowhowPanels = [NSMutableArray array];
     knowhow_clear_panels();
-    if (primitives.count == 0) return;
+    if (primitives.count == 0) {
+      knowhow_drain_events();
+      return;
+    }
 
     NSApplication *application = [NSApplication sharedApplication];
     // Command-line processes default to the prohibited activation policy,
@@ -144,6 +168,8 @@ void knowhow_overlay_show(const KnowhowOverlayPrimitive *items, size_t count) {
                   styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
                     backing:NSBackingStoreBuffered
                       defer:NO];
+      panel.releasedWhenClosed = NO;
+      panel.animationBehavior = NSWindowAnimationBehaviorNone;
       panel.opaque = NO;
       panel.backgroundColor = NSColor.clearColor;
       panel.hasShadow = NO;
@@ -189,6 +215,9 @@ void knowhow_overlay_show(const KnowhowOverlayPrimitive *items, size_t count) {
 
 void knowhow_overlay_clear(void) {
   knowhow_on_main(^{
-    if (knowhowPanels) knowhow_clear_panels();
+    if (knowhowPanels) {
+      knowhow_clear_panels();
+      knowhow_drain_events();
+    }
   });
 }

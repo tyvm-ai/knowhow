@@ -28,6 +28,19 @@
     .hud-item { display: flex; flex-direction: column; align-items: center; }
     .hud-label { font-size: 10px; color: #7d8590; text-transform: uppercase; letter-spacing: 1px; }
     .hud-value { font-size: 20px; font-weight: bold; color: #58a6ff; }
+    #gaze-mode-badge {
+      display: none;
+      position: fixed;
+      top: 10px; right: 16px;
+      background: #f0883e;
+      color: #0d1117;
+      font-weight: bold;
+      font-size: 13px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      z-index: 150;
+      letter-spacing: 1px;
+    }
     #arena {
       position: fixed;
       top: 60px; left: 0; right: 0; bottom: 0;
@@ -109,6 +122,8 @@
 </head>
 <body>
 
+<div id="gaze-mode-badge">👁 GAZE MODE</div>
+
 <div id="hud">
   <div class="hud-item">
     <span class="hud-label">Score</span>
@@ -162,6 +177,7 @@
   <div class="result-grid" id="result-grid"></div>
   <button onclick="location.reload()" style="margin-top:16px;padding:10px 28px;background:#238636;color:white;border:none;border-radius:6px;font-size:15px;cursor:pointer;font-family:inherit;">Play Again</button>
 </div>
+<div id="intent-result" style="display:none;margin-top:12px;font-size:14px;color:#7d8590;"></div>
 
 <div id="log-panel"></div>
 
@@ -178,6 +194,18 @@ let slashStart = null;
 let slashEnd = null;
 let slashFx = []; // { x1,y1,x2,y2,alpha }
 let burstFx = []; // { x,y,r,alpha,color }
+let gazeMode = false;
+
+// ── Gaze mode detection from URL ─────────────────────────────────────────────
+(function detectGazeMode() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('mode') === 'gaze') {
+    gazeMode = true;
+    document.getElementById('gaze-mode-badge').style.display = 'block';
+    document.title = 'Fruit Ninja Benchmark [GAZE MODE]';
+  }
+})();
+
 let isDragging = false;
 
 const canvas = document.getElementById('canvas');
@@ -216,7 +244,11 @@ function updateHUD(state) {
 function getFruitPos(f, nowMs) {
   const t = (nowMs - f.spawnedAt) / 1000;
   const x = f.x0 + f.vx * t;
-  const y = f.y0 + f.vy * t + 0.5 * GRAVITY * t * t;
+  // Gaze mode spawns fruit with a reduced per-fruit gravity (server sends it);
+  // using the global constant made gaze-mode fruit barely clear the bottom edge
+  // and vanish after ~0.9 s while the server still thought they were mid-arc.
+  const g = f.gravity !== undefined ? f.gravity : GRAVITY;
+  const y = f.y0 + f.vy * t + 0.5 * g * t * t;
   return { x, y };
 }
 
@@ -438,13 +470,32 @@ async function startGame() {
   const r = await fetch(`${API_BASE}/api/start`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({})
+    body: JSON.stringify({ config: gazeMode ? { mode: 'gaze' } : {} })
   });
   const data = await r.json();
   sessionId = data.sessionId;
   gameState = data;
   overlay.style.display = 'none';
   log('Game started: ' + sessionId.slice(0,8));
+  // Report canvas screen position to server so hub gaze (desktop px) can be
+  // mapped to arena coords for intent accuracy scoring.
+  try {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    await fetch(`${API_BASE}/api/canvas-info`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        x: Math.round(window.screenX + rect.left),
+        y: Math.round(window.screenY + rect.top),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+        arenaW: 1200,
+        arenaH: 700,
+        dpr,
+      }),
+    });
+  } catch(e) { /* canvas-info is best-effort */ }
   updateHUD(data);
   animate();
   pollState();
@@ -454,6 +505,14 @@ function showResults(state) {
   cancelAnimationFrame(animFrame);
   resultsPanel.style.display = 'flex';
   const grid = document.getElementById('result-grid');
+  const gazeSummary = state.gazeSummary;
+  const intentEl = document.getElementById('intent-result');
+  if (gazeMode && gazeSummary) {
+    const ia = gazeSummary.intentAccuracy != null ? (gazeSummary.intentAccuracy * 100).toFixed(1) + '%' : '--';
+    intentEl.textContent = `👁 Gaze Intent Accuracy: ${ia}  (${gazeSummary.intentHits}/${gazeSummary.intentTotal} correct)`;
+    intentEl.style.display = 'block';
+    resultsPanel.appendChild(intentEl);
+  }
   const items = [
     ['Final Score', state.score],
     ['Slashed', state.slashed],
@@ -462,6 +521,10 @@ function showResults(state) {
     ['Max Combo', state.maxCombo],
     ['Total Fruit', state.totalFruit],
     ['Total Time', state.elapsedMs != null ? (state.elapsedMs / 1000).toFixed(1) + 's' : '--'],
+    ...(gazeMode && gazeSummary ? [
+      ['Intent Accuracy', gazeSummary.intentAccuracy != null ? (gazeSummary.intentAccuracy * 100).toFixed(1) + '%' : '--'],
+      ['Median Latency', gazeSummary.medianLatencyMs != null ? gazeSummary.medianLatencyMs.toFixed(0) + 'ms' : '--'],
+    ] : []),
     ['Session', state.sessionId ? state.sessionId.slice(0,8) : '--'],
   ];
   grid.innerHTML = items.map(([k,v]) =>
@@ -473,6 +536,15 @@ document.getElementById('start-btn').addEventListener('click', startGame);
 document.addEventListener('keydown', (e) => {
   if ((e.key === 's' || e.key === 'S') && overlay.style.display !== 'none') startGame();
 });
+
+// ── Auto-start in gaze mode ───────────────────────────────────────────────────
+// If ?mode=gaze is in the URL, auto-start after a short delay so the automation
+// doesn't need to click the Start button.
+if (gazeMode) {
+  window.addEventListener('load', () => {
+    setTimeout(startGame, 800);
+  });
+}
 </script>
 </body>
 </html>

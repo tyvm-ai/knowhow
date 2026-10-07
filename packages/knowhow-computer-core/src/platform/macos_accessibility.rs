@@ -227,7 +227,9 @@ fn focused_application() -> Option<AxOwned> {
     let mut pid = 0;
     let status = unsafe { GetFrontProcess(&mut psn) };
     if status != 0 || unsafe { GetProcessPID(&psn, &mut pid) } != 0 || pid <= 0 {
-        return None;
+        // GetFrontProcess is deprecated and fails in plain CLI processes.
+        // Fall back to the owner of the frontmost on-screen window.
+        pid = crate::platform::macos::frontmost_window_pid()?;
     }
     let app = unsafe { AXUIElementCreateApplication(pid) };
     (!app.is_null()).then_some(AxOwned(app))
@@ -246,6 +248,18 @@ fn focused_window() -> Result<AxOwned> {
             "No focused accessibility application",
         )
     })?;
+    // Chromium lazily omits web-content descendants until an accessibility
+    // client explicitly opts in. Unsupported applications simply reject this
+    // private compatibility attribute, so it is safe to attempt best-effort.
+    let manual = CFBoolean::true_value();
+    let key = CFString::new("AXManualAccessibility");
+    unsafe {
+        AXUIElementSetAttributeValue(
+            app.0,
+            key.as_concrete_TypeRef(),
+            manual.as_CFTypeRef(),
+        );
+    }
     copy_element_attr(app.0, "AXFocusedWindow")
         .ok_or_else(|| Error::new(Status::GenericFailure, "No focused accessibility window"))
 }

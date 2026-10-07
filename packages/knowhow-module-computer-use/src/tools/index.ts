@@ -2,8 +2,11 @@ import { ComputerUseService } from "@tyvm/knowhow";
 import {
   ClickColorSequenceOptions,
   ComputerService,
+  ReadTextOptions,
+  appNameMatches,
 } from "../ComputerService";
 import { ToolsService } from "@tyvm/knowhow/ts_build/src/services/Tools";
+import { ExtensionsService } from "@tyvm/knowhow/ts_build/src/services/ExtensionsService";
 import { Region } from "@tyvm/knowhow/ts_build/src/services/modules/computerUse";
 import * as fs from "fs";
 import { runMacro, MacroStep, parseMacroFile } from "../macro";
@@ -25,6 +28,7 @@ import {
   listRunning,
   validateScript,
 } from "../automation";
+import { AUTOMATION_SDK_EXTENSION, AutomationSdkExtension } from "../automationExtensions";
 
 /**
  * Resolve the ComputerUse service from the bound ToolsService context.
@@ -46,6 +50,18 @@ function getService(self: unknown): ComputerUseService {
     );
   }
   return svc;
+}
+
+/**
+ * Resolve the ExtensionsService from the ToolsService context. Gracefully
+ * absent: returns undefined when running standalone (e.g. knowhow computer CLI
+ * without a full services setup).
+ */
+function getExtensions(self: unknown): ExtensionsService | undefined {
+  const toolService = self as ToolsService | undefined;
+  if (!toolService || typeof toolService.getContext !== "function") return undefined;
+  const ctx = toolService.getContext() as any;
+  return ctx?.Extensions instanceof ExtensionsService ? ctx.Extensions : undefined;
 }
 
 // ── screen / capture ───────────────────────────────────────────────────────
@@ -79,15 +95,23 @@ export async function computerUseScreenshot(
   const opts: any = {};
   if (displayId !== undefined) opts.displayId = displayId;
   if (region) opts.region = region;
-  if (scale !== undefined) opts.scale = scale;
+  if (scale !== undefined) opts.captureScale = scale;
 
   let buf: Buffer;
-  if ((grid || crosshair) && typeof svc.screenshotAnnotated === "function") {
-    if (grid) opts.grid = true;
-    if (crosshair) opts.crosshair = crosshair;
-    buf = await svc.screenshotAnnotated(opts);
-  } else {
-    buf = await svc.screenshot(Object.keys(opts).length ? opts : undefined);
+  try {
+    if ((grid || crosshair) && typeof svc.screenshotAnnotated === "function") {
+      if (grid) opts.grid = true;
+      if (crosshair) opts.crosshair = crosshair;
+      buf = await svc.screenshotAnnotated(opts);
+    } else {
+      buf = await svc.screenshot(Object.keys(opts).length ? opts : undefined);
+    }
+  } catch (error) {
+    const domain = displayId === undefined ? "the virtual desktop" : `display ${displayId}`;
+    const crop = region ? ` region ${JSON.stringify(region)}` : "";
+    const message = error instanceof Error ? error.message : String(error);
+    return `Capture failed for ${domain}${crop}: ${message}. ` +
+      "Confirm the display ID with computerUseGetDisplays and keep the region inside that display's bounds.";
   }
 
   // Optionally persist to disk (mirrors the CLI --out flag).
@@ -104,11 +128,9 @@ export async function computerUseScreenshot(
   // a pixel off a 1920-wide image of a 3840-wide desktop and clicks at half the
   // real coordinate. When grid=true the labels already fold this in, but we emit
   // the mapping unconditionally so plain (grid-less) shots are unambiguous too.
-  let mappingText: string | undefined;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const sharp = require("sharp");
-    const meta = await sharp(buf).metadata();
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const sharp = require("sharp");
+  const meta = await sharp(buf).metadata();
     const outW = meta.width || 0;
     const outH = meta.height || 0;
     // The captured desktop-space size this image represents: the requested
@@ -124,7 +146,7 @@ export async function computerUseScreenshot(
     }
     const scaleX = outW && regionW ? outW / regionW : 1;
     const scaleY = outH && regionH ? outH / regionH : 1;
-    mappingText = JSON.stringify({
+  const mappingText = JSON.stringify({
       coordinateMapping:
         "desktopX = regionX + imageX / scaleX; desktopY = regionY + imageY / scaleY",
       regionX,
@@ -137,10 +159,7 @@ export async function computerUseScreenshot(
       scaleY: Number(scaleY.toFixed(4)),
       note:
         "This image is downscaled by scaleX/scaleY. Multiply an image pixel by 1/scale (and add regionX/regionY) to get the absolute desktop coordinate to pass to clickAt. If grid=true, the printed grid labels are ALREADY these desktop coordinates — read them directly.",
-    });
-  } catch {
-    // sharp is optional; fall back to image-only if metadata can't be read.
-  }
+  });
 
   const parts: (
     | { type: "text"; text: string }
@@ -151,6 +170,75 @@ export async function computerUseScreenshot(
     type: "image_url",
     image_url: { url: `data:image/jpeg;base64,${b64}` },
   });
+  return parts;
+}
+
+/** Capture a verified window as a row-major set of native-resolution tiles. */
+export async function computerUseScreenshotWindowTiles(
+  this: ToolsService, windowId: number, columns = 2, rows = 2
+): Promise<(TextPart | ImagePart)[]> {
+  const service = getService(this) as any;
+  if (!Number.isInteger(columns) || !Number.isInteger(rows) || columns < 1 || rows < 1 || columns > 8 || rows > 8)
+    throw new Error("Tile columns and rows must be integers between 1 and 8");
+  const listed = (await service.listWindows()).find((candidate: any) => candidate.id === windowId);
+  if (!listed?.bounds) throw new Error(`Unknown, stale, or unbounded window ID: ${windowId}`);
+  if (!(await service.focusWindowById(windowId))) throw new Error(`Could not focus window ID ${windowId}`);
+  const active = await requireExpectedWindow(service, undefined, windowId);
+  if (!active?.bounds || JSON.stringify(active.bounds) !== JSON.stringify(listed.bounds))
+    throw new Error(`Window ID ${windowId} is stale or changed geometry while focusing`);
+  const current = (await service.listWindows()).find((candidate: any) => candidate.id === windowId);
+  const bounds = current?.bounds;
+  if (!bounds || JSON.stringify(bounds) !== JSON.stringify(listed.bounds))
+    throw new Error(`Window ID ${windowId} changed geometry while focusing; retry with a fresh window ID`);
+  const displays = await service.getDisplays();
+  const display = displays.find((d: any) => {
+    const b = d.bounds;
+    return b && bounds.x >= b.x && bounds.y >= b.y && bounds.x + bounds.width <= b.x + b.width && bounds.y + bounds.height <= b.y + b.height;
+  });
+  if (!display) throw new Error(`Window ID ${windowId} is clipped or crosses display boundaries`);
+  const parts: (TextPart | ImagePart)[] = [];
+  const tiles: any[] = [];
+  const sharp = require("sharp");
+  for (let row = 0; row < rows; row++) for (let col = 0; col < columns; col++) {
+    const left = Math.floor(bounds.width * col / columns);
+    const top = Math.floor(bounds.height * row / rows);
+    const right = Math.floor(bounds.width * (col + 1) / columns);
+    const bottom = Math.floor(bounds.height * (row + 1) / rows);
+    const region = { x: bounds.x + left, y: bounds.y + top, width: right - left, height: bottom - top };
+    if (region.width < 1 || region.height < 1) throw new Error("Window is too small for requested tile grid");
+    const buf = await service.screenshot({ displayId: display.id, region, captureScale: 1, scale: 1 });
+    const meta = await sharp(buf).metadata();
+    tiles.push({ order: tiles.length, row, column: col, windowId, windowTitle: current.title, application: current.app,
+      displayId: display.id, displayBounds: display.bounds, absoluteBounds: region, absoluteDesktopBounds: region,
+      windowRelativeBounds: { x: left, y: top, width: region.width, height: region.height },
+      imageWidth: meta.width, imageHeight: meta.height, imageDimensions: { width: meta.width, height: meta.height },
+      scaleX: (meta.width || 0) / region.width, scaleY: (meta.height || 0) / region.height,
+      imageScale: { x: (meta.width || 0) / region.width, y: (meta.height || 0) / region.height } });
+    parts.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${buf.toString("base64")}` } });
+  }
+  parts.unshift({ type: "text", text: JSON.stringify({ windowId, windowBounds: bounds, windowTitle: current.title, application: current.app,
+    displayId: display.id, displayBounds: display.bounds, columns, rows, tileCount: tiles.length, tiles }) });
+  return parts;
+}
+
+export async function computerUseScreenshotWindow(
+  this: ToolsService,
+  windowId: number,
+  grid?: boolean
+): Promise<({ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } })[]> {
+  const service = getService(this) as ComputerService;
+  const window = (await service.listWindows()).find(candidate => candidate.id === windowId);
+  if (!window?.bounds) throw new Error(`Unknown, stale, or unbounded window ID: ${windowId}`);
+  if (!(await service.focusWindowById(windowId))) throw new Error(`Could not focus window ID ${windowId}`);
+  await requireExpectedWindow(service, undefined, windowId);
+  const { x, y, width, height } = window.bounds;
+  const parts = await computerUseScreenshotRegion.call(this, x, y, width, height, undefined, grid);
+  const metadata = JSON.parse((parts[0] as { type: "text"; text: string }).text);
+  metadata.windowId = windowId;
+  metadata.windowBounds = window.bounds;
+  metadata.windowTitle = window.title;
+  metadata.application = window.app;
+  (parts[0] as { type: "text"; text: string }).text = JSON.stringify(metadata);
   return parts;
 }
 
@@ -169,7 +257,29 @@ export async function computerUseScreenshotRegion(
   )[]
 > {
   const svc = getService(this) as any;
-  const opts: any = { region: { x, y, width, height } };
+  if (![x, y, width, height].every(Number.isFinite) || width < 2 || height < 2)
+    throw new Error("Screenshot region must use finite coordinates and dimensions of at least 2x2");
+  const displays = await svc.getDisplays();
+  const containingDisplay = displays.find((display: any) => {
+    const bounds = display.bounds;
+    return x >= bounds.x && y >= bounds.y &&
+      x + width <= bounds.x + bounds.width &&
+      y + height <= bounds.y + bounds.height;
+  });
+  if (!containingDisplay)
+    throw new Error(
+      `Requested region ${JSON.stringify({ x, y, width, height })} is not fully contained in one display; ` +
+      "cross-display and clipped captures are rejected"
+    );
+  // Region captures are already bounded and are primarily used for aiming.
+  // Keep them at 1:1 desktop pixels so image coordinates remain directly
+  // usable as desktop coordinates instead of silently applying the service's
+  // bandwidth-oriented default downscale.
+  const opts: any = {
+    region: { x, y, width, height },
+    captureScale: 1,
+    scale: 1,
+  };
   if (displayId !== undefined) opts.displayId = displayId;
   let buf: Buffer;
   if (grid && typeof svc.screenshotAnnotated === "function") {
@@ -177,7 +287,6 @@ export async function computerUseScreenshotRegion(
   } else {
     buf = await svc.screenshot(opts);
   }
-  const b64 = buf.toString("base64");
   // Attach an exact pixel->desktop coordinate mapping so the agent never has to
   // GUESS the output size or scale. It measures a target's pixel position in the
   // returned image, then applies these constants to get an absolute desktop
@@ -186,9 +295,29 @@ export async function computerUseScreenshotRegion(
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const sharp = require("sharp");
-    const meta = await sharp(buf).metadata();
+    let meta = await sharp(buf).metadata();
+    // HiDPI displays (e.g. a 3008x1692 "looks like" scaled 4K panel) return
+    // physical pixels at the display's backing scale. That is an exact uniform
+    // scale, not clipping: downsample back to 1:1 desktop pixels so image
+    // coordinates stay directly clickable.
+    const rawW = meta.width || width;
+    const rawH = meta.height || height;
+    const ratioX = rawW / width;
+    const ratioY = rawH / height;
+    if ((rawW !== width || rawH !== height) && ratioX > 1 &&
+      Math.abs(ratioX - ratioY) < 0.01 &&
+      Math.abs(ratioX - Math.round(ratioX * 4) / 4) < 0.01) {
+      buf = await sharp(buf).resize(width, height).png().toBuffer();
+      meta = await sharp(buf).metadata();
+    }
     const outW = meta.width || width;
     const outH = meta.height || height;
+    if (outW !== width || outH !== height) {
+      throw new Error(
+        `Invalid region capture: requested ${width}x${height} but received ${outW}x${outH}; ` +
+        "the capture was clipped or scaled unexpectedly"
+      );
+    }
     const scaleX = outW / width;
     const scaleY = outH / height;
     mappingText = JSON.stringify({
@@ -196,6 +325,10 @@ export async function computerUseScreenshotRegion(
         "desktopX = regionX + imageX / scaleX; desktopY = regionY + imageY / scaleY",
       regionX: x,
       regionY: y,
+      requestedRegion: { x, y, width, height },
+      actualCapturedRegion: { x, y, width: outW, height: outH },
+      displayId: containingDisplay.id,
+      clipped: false,
       imageWidth: outW,
       imageHeight: outH,
       scaleX: Number(scaleX.toFixed(4)),
@@ -203,7 +336,11 @@ export async function computerUseScreenshotRegion(
       note:
         "Pass the resulting desktop x/y directly to clickAt. Do not add any extra offset or scale. If grid=true, the printed grid labels are already these desktop coordinates.",
     });
-  } catch {
+  } catch (error) {
+    // Geometry mismatches are unsafe to aim from; never disguise them as a
+    // successful image-only response.
+    if (error instanceof Error && error.message.startsWith("Invalid region capture:"))
+      throw error;
     // sharp is optional; fall back to image-only if metadata can't be read.
   }
   const parts: (
@@ -211,6 +348,7 @@ export async function computerUseScreenshotRegion(
     | { type: "image_url"; image_url: { url: string } }
   )[] = [];
   if (mappingText) parts.push({ type: "text", text: mappingText });
+  const b64 = buf.toString("base64");
   parts.push({
     type: "image_url",
     image_url: { url: `data:image/jpeg;base64,${b64}` },
@@ -224,6 +362,40 @@ export async function computerUseGetPixelColor(
   y: number
 ): Promise<string> {
   return getService(this).pixelColor({ x, y });
+}
+
+/** Read visible text with macOS Vision OCR and return concise desktop-coordinate results. */
+export async function computerUseReadText(
+  this: ToolsService,
+  regionOrOptions?: Region | string | ReadTextOptions,
+  displayId?: number,
+  activeWindow?: boolean,
+  minConfidence?: number,
+  recognitionLevel?: "fast" | "accurate"
+): Promise<string> {
+  const svc = getService(this) as ComputerService;
+  // Accept an options object as well as positional properties. The former is
+  // convenient for programmatic callers; the latter matches the tool schema.
+  const options = regionOrOptions && typeof regionOrOptions === "object" &&
+    ("displayId" in regionOrOptions || "activeWindow" in regionOrOptions ||
+      "minConfidence" in regionOrOptions || "recognitionLevel" in regionOrOptions ||
+      "region" in regionOrOptions)
+    ? regionOrOptions as ReadTextOptions
+    : { region: regionOrOptions as Region | string | undefined, displayId, activeWindow, minConfidence, recognitionLevel };
+  const results = await svc.readText({
+    ...options,
+  } satisfies ReadTextOptions);
+  return JSON.stringify(results.map(({ text, confidence, bounds, center }) => ({
+    text, confidence, bounds, center,
+  })));
+}
+
+/** Sample all requested points from one frame for consistent, low-latency colors. */
+export async function computerUseGetPixelColors(
+  this: ToolsService,
+  points: Array<{ x: number; y: number }>
+): Promise<string> {
+  return JSON.stringify(await (getService(this) as ComputerService).pixelColors(points));
 }
 
 export async function computerUseFindColorRegions(
@@ -271,7 +443,7 @@ export async function computerUseListWindows(this: ToolsService): Promise<string
   if (!windows.length)
     return "No windows found (or window listing unsupported on this platform/session).";
   return windows
-    .map((w) => `- ${w.app ? `[${w.app}] ` : ""}${w.title}`)
+    .map((w) => JSON.stringify(w))
     .join("\n");
 }
 
@@ -284,9 +456,11 @@ export async function computerUseAccessibilityElements(
   this: ToolsService,
   maxDepth?: number,
   maxElements?: number,
-  interactiveOnly?: boolean
+  interactiveOnly?: boolean,
+  expectedWindowId?: number
 ): Promise<string> {
   const service = getService(this);
+  await requireExpectedWindow(service, undefined, expectedWindowId);
   if (!(await service.accessibilityTrusted())) {
     throw new Error("macOS Accessibility permission is not granted");
   }
@@ -306,6 +480,56 @@ export async function computerUseSetAccessibilityValue(
   return `Set accessibility value for ${id}`;
 }
 
+export async function computerUseSelectAccessibilityOption(
+  this: ToolsService,
+  id: string,
+  option: string
+): Promise<string> {
+  await getService(this).selectAccessibilityOption(id, option);
+  return `Selected ${option} for ${id}`;
+}
+
+export async function computerUseActivateAccessibilityElement(
+  this: ToolsService,
+  id: string,
+  expectedText?: string
+): Promise<string> {
+  const service = getService(this);
+  const elements = await service.accessibilityElements({
+    interactiveOnly: true,
+    maxElements: 1000,
+  });
+  const element = elements.find((candidate) => candidate.id === id);
+  if (!element) throw new Error(`Unknown or stale accessibility ID: ${id}`);
+  if (expectedText) {
+    const semanticText = `${element.title ?? ""} ${element.description ?? ""} ${element.value ?? ""}`.toLowerCase();
+    if (!semanticText.includes(expectedText.toLowerCase())) {
+      throw new Error(`Stale or mismatched accessibility ID ${id}: expected text ${JSON.stringify(expectedText)}, found ${JSON.stringify(semanticText.trim())}`);
+    }
+  }
+
+  const actions = element.actions ?? [];
+  const action = ["AXPress", "AXConfirm", "AXPick"].find((candidate) =>
+    actions.includes(candidate)
+  );
+  if (action) {
+    await service.performAccessibilityAction(id, action);
+    return `Performed ${action} on ${id}`;
+  }
+
+  const { bounds } = element;
+  if (!bounds || bounds.width <= 0 || bounds.height <= 0) {
+    throw new Error(`Element ${id} has no activatable action or usable bounds`);
+  }
+  const center = {
+    x: bounds.x + bounds.width / 2,
+    y: bounds.y + bounds.height / 2,
+  };
+  await service.moveMouse(center);
+  await service.click("left");
+  return `Clicked bounds center of ${id} at (${center.x}, ${center.y})`;
+}
+
 export async function computerUsePerformAccessibilityAction(
   this: ToolsService,
   id: string,
@@ -323,11 +547,57 @@ export async function computerUseFocusWindow(
   return ok ? `Focused/activated: ${match}` : `Could not focus: ${match}`;
 }
 
+export async function computerUseFocusWindowById(
+  this: ToolsService,
+  windowId: number
+): Promise<string> {
+  const service = getService(this) as ComputerService;
+  const ok = await service.focusWindowById(windowId);
+  return ok
+    ? `Focused and verified window ID ${windowId}`
+    : `Could not focus and verify window ID ${windowId}`;
+}
+
+export async function computerUseGetActiveBrowserTab(this: ToolsService): Promise<string> {
+  const service = getService(this) as ComputerService;
+  return JSON.stringify(await service.getActiveBrowserTab());
+}
+
+export async function computerUseNavigateActiveBrowser(
+  this: ToolsService,
+  url: string,
+  expectedWindowId?: number
+): Promise<string> {
+  const service = getService(this) as ComputerService;
+  return JSON.stringify(await service.navigateActiveBrowser(url, expectedWindowId));
+}
+
 // ── mouse ──────────────────────────────────────────────────────────────────
 
 type ImagePart = { type: "image_url"; image_url: { url: string } };
 type TextPart = { type: "text"; text: string };
 type VisualFeedbackPart = ImagePart | TextPart;
+
+async function requireExpectedWindow(
+  svc: ComputerUseService,
+  expectedWindow?: string,
+  expectedWindowId?: number
+): Promise<Awaited<ReturnType<ComputerUseService["getActiveWindow"]>>> {
+  const active = await svc.getActiveWindow();
+  const activeWithId = active as (typeof active & { id?: number });
+  if (expectedWindowId !== undefined && activeWithId?.id !== expectedWindowId) {
+    throw new Error(`Refusing input: expected active window ID ${expectedWindowId}, but found ${activeWithId ? JSON.stringify({ id: activeWithId.id, app: activeWithId.app, title: activeWithId.title }) : "no active window"}`);
+  }
+  if (!expectedWindow) return active;
+  const needle = expectedWindow.toLowerCase();
+  if (!active || !`${active.app ?? ""} ${active.title}`.toLowerCase().includes(needle)) {
+    throw new Error(
+      `Refusing input: expected active window containing ${JSON.stringify(expectedWindow)}, ` +
+      `but found ${active ? JSON.stringify({ app: active.app, title: active.title }) : "no active window"}`
+    );
+  }
+  return active;
+}
 
 export interface ActionVisualFeedbackOptions {
   /** Enabled by default. Set false to preserve the legacy text-only response. */
@@ -494,7 +764,10 @@ export async function computerUseClickAt(
   x: number,
   y: number,
   button?: "left" | "right" | "middle",
-  feedback: ActionVisualFeedbackOptions = {}
+  feedback: ActionVisualFeedbackOptions = {},
+  expectedWindow?: string,
+  expectedWindowId?: number,
+  app?: string
 ): Promise<string | VisualFeedbackPart[]> {
   if (!Number.isFinite(x) || !Number.isFinite(y)) {
     throw new Error(
@@ -502,11 +775,15 @@ export async function computerUseClickAt(
     );
   }
   const svc = getService(this);
+  await activateInputTarget(svc, "coordinate click", app, expectedWindowId);
+  const activeWindowBefore = await requireExpectedWindow(svc, expectedWindow, expectedWindowId);
   await svc.moveMouse({ x, y });
 
   if (feedback?.enabled === false) {
     await svc.click(button ?? "left");
-    return `Clicked ${button ?? "left"} at (${x}, ${y})`;
+    const activeWindowAfter = await requireExpectedWindow(svc, expectedWindow, expectedWindowId);
+    return `Clicked ${button ?? "left"} at (${x}, ${y}); active window before/after: ` +
+      `${activeWindowBefore?.title ?? "unknown"} / ${activeWindowAfter?.title ?? "unknown"}`;
   }
 
   const { before: beforeRegion, displayBounds } = await beforeFeedbackRegion(
@@ -553,12 +830,16 @@ export async function computerUseClickAt(
     sameContext &&
     beforeContext.length === after.length &&
     beforeContext.equals(after);
+  const activeWindowAfter = await requireExpectedWindow(svc, expectedWindow, expectedWindowId);
 
   const metadata = {
     action: "clickAt",
     button: button ?? "left",
     point: { x, y },
     coordinateSpace: "absolute-desktop-pixels",
+    expectedWindow,
+    activeWindowBefore,
+    activeWindowAfter,
     before: { bounds: beforeRegion, scale: beforeScale },
     after: {
       bounds: afterRegion,
@@ -620,28 +901,114 @@ export async function computerUseSmoothScroll(
 
 // ── keyboard ───────────────────────────────────────────────────────────────
 
+/**
+ * Keystrokes and clicks go to the frontmost app. Instead of hoping the right
+ * app is in front, the caller names the app it intends to drive (and
+ * optionally an exact window ID). We activate that target first and verify it
+ * is frontmost, so input can never silently land in another app (e.g. the
+ * terminal running the agent). Naming the terminal itself (app: "Ghostty") is
+ * fine when that is genuinely the target.
+ */
+export async function activateInputTarget(
+  svc: ComputerUseService,
+  action: string,
+  app?: string,
+  windowId?: number
+): Promise<Awaited<ReturnType<ComputerUseService["getActiveWindow"]>>> {
+  const wantedApp = typeof app === "string" && app.trim() ? app.trim() : undefined;
+  if (!wantedApp && windowId === undefined) {
+    throw new Error(
+      `Refusing ${action} without a target: pass \`app\` (the application name from computerUseListWindows, ` +
+      `e.g. "Obsidian" or "Google Chrome"). It is activated before input so keystrokes land in the right app.`
+    );
+  }
+  const describe = (w: any) => w ? JSON.stringify({ id: w.id, app: w.app, title: w.title }) : "no active window";
+  const isTarget = (w: any) =>
+    !!w && (windowId === undefined || w.id === windowId) && (!wantedApp || appNameMatches(w.app, wantedApp));
+
+  let active = await svc.getActiveWindow();
+  if (isTarget(active)) return active;
+
+  const service = svc as any;
+  if (windowId !== undefined) {
+    if (typeof service.focusWindowById !== "function" || !(await service.focusWindowById(windowId))) {
+      throw new Error(`Refusing ${action}: could not activate window ID ${windowId}; active window is ${describe(active)}`);
+    }
+  } else if (typeof service.activateApp === "function") {
+    if (!(await service.activateApp(wantedApp))) {
+      throw new Error(`Refusing ${action}: could not activate app ${JSON.stringify(wantedApp)}; active window is ` +
+        `${describe(await svc.getActiveWindow())}. Check the exact app name with computerUseListWindows.`);
+    }
+  } else if (typeof service.focusWindow !== "function" || !(await service.focusWindow(wantedApp))) {
+    throw new Error(`Refusing ${action}: could not activate app ${JSON.stringify(wantedApp)}`);
+  }
+
+  active = await svc.getActiveWindow();
+  if (!isTarget(active)) {
+    const want = [wantedApp && `app ${JSON.stringify(wantedApp)}`, windowId !== undefined && `window ID ${windowId}`]
+      .filter(Boolean).join(" / ");
+    throw new Error(`Refusing ${action}: expected ${want} to be frontmost after activating it, but found ${describe(active)}`);
+  }
+  return active;
+}
+
 export async function computerUseTypeText(
   this: ToolsService,
-  text: string
+  text: string,
+  expectedWindow?: string,
+  requireEditableFocus?: boolean,
+  expectedWindowId?: number,
+  app?: string
 ): Promise<string> {
-  await getService(this).typeText(text);
-  return `Typed ${text.length} chars`;
+  const svc = getService(this);
+  await activateInputTarget(svc, "text input", app, expectedWindowId);
+  const activeWindow = await requireExpectedWindow(svc, expectedWindow, expectedWindowId);
+  let focusNote = "";
+  if (requireEditableFocus) {
+    const elements = await svc.accessibilityElements({
+      interactiveOnly: false,
+      maxElements: 1000,
+    });
+    const focused = elements.find(element => element.focused);
+    const editableRoles = new Set(["AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"]);
+    if (!focused) {
+      // Electron/web apps (Obsidian, Slack, VS Code, …) often expose no focused
+      // AX element at all even when a contenteditable editor has the caret, so
+      // "none" means unknown, not "not editable".
+      focusNote = " (focused element unknown to accessibility; verify the text landed)";
+    } else if (!editableRoles.has(focused.role)) {
+      throw new Error(
+        `Refusing to type: the focused accessibility element is not editable (` +
+        `${focused.role} ${JSON.stringify(focused.title ?? "")})`
+      );
+    }
+  }
+  await svc.typeText(text);
+  return `Typed ${text.length} chars in ${activeWindow?.app ?? "unknown app"} — ${activeWindow?.title ?? "unknown window"}${focusNote}`;
 }
 
 export async function computerUsePressKey(
   this: ToolsService,
-  key: string
+  key: string,
+  app?: string,
+  expectedWindowId?: number
 ): Promise<string> {
-  await getService(this).pressKey(key);
-  return `Pressed ${key}`;
+  const svc = getService(this);
+  const active = await activateInputTarget(svc, `key press ${key}`, app, expectedWindowId);
+  await svc.pressKey(key);
+  return `Pressed ${key} in ${active?.app ?? "unknown app"}`;
 }
 
 export async function computerUseHotkey(
   this: ToolsService,
-  keys: string[]
+  keys: string[],
+  app?: string,
+  expectedWindowId?: number
 ): Promise<string> {
-  await getService(this).hotkey(...keys);
-  return `Hotkey ${keys.join("+")}`;
+  const svc = getService(this);
+  const active = await activateInputTarget(svc, `hotkey ${keys.join("+")}`, app, expectedWindowId);
+  await svc.hotkey(...keys);
+  return `Hotkey ${keys.join("+")} in ${active?.app ?? "unknown app"}`;
 }
 
 // ── batch / macro ───────────────────────────────────────────────────────────
@@ -649,12 +1016,23 @@ export async function computerUseHotkey(
 export async function computerUseRunComputerMacro(
   this: ToolsService,
   steps: MacroStep[],
-  continueOnError?: boolean
+  continueOnError?: boolean,
+  expectedWindowId?: number,
+  app?: string
 ): Promise<string> {
   const svc = getService(this);
+  await activateInputTarget(svc, "macro input", app, expectedWindowId);
   const results = await runMacro(svc, steps, {
     continueOnError: !!continueOnError,
   });
+  // A macro may legitimately switch apps via {action:'focus'}; only verify the
+  // starting target when the macro didn't do that itself.
+  if (!steps.some((step: any) => step?.action === "focus")) {
+    const active = await svc.getActiveWindow();
+    const ok = !!active && (expectedWindowId === undefined || (active as any).id === expectedWindowId) &&
+      (!app || appNameMatches(active.app, app));
+    if (!ok) throw new Error(`Macro finished but the target app lost focus; active window is now ${JSON.stringify({ app: active?.app, title: active?.title })}`);
+  }
   const failed = results.filter((r) => !r.ok);
   const lines = results.map(
     (r) =>
@@ -967,6 +1345,7 @@ export async function computerUseRunAutomation(
     maxDurationMs,
     params,
     toolsService: this,
+    extensions: getExtensions(this),
   });
   const result = await runner.run();
   return summarizeRun(result);
@@ -992,6 +1371,7 @@ export async function computerUseTestAutomation(
     params,
     toolsService: this,
     dryRun: true,
+    extensions: getExtensions(this),
   });
   const result = await runner.run();
   return summarizeRun(result);
@@ -1015,4 +1395,25 @@ export async function computerUseDeleteAutomation(
   if (runner) runner.ctl.stop();
   const ok = deleteAutomation(name);
   return ok ? `Deleted automation "${name}".` : `No automation named "${name}".`;
+}
+
+/**
+ * List all registered automation SDK extensions (name, description, typings).
+ * Use this to discover what sdk.ext.* APIs are available before writing an
+ * automation that uses them.
+ */
+export async function computerUseListAutomationExtensions(
+  this: ToolsService
+): Promise<string> {
+  const extensions = getExtensions(this);
+  if (!extensions) {
+    return JSON.stringify({ extensions: [], note: "ExtensionsService not available in this context." }, null, 2);
+  }
+  const exts = extensions.list(AUTOMATION_SDK_EXTENSION) as unknown as readonly AutomationSdkExtension[];
+  if (!exts.length) {
+    return JSON.stringify({ extensions: [], note: "No automation SDK extensions are registered." }, null, 2);
+  }
+  return JSON.stringify({
+    extensions: exts.map((e) => ({ name: e.name, description: e.description, typings: e.typings ?? null })),
+  }, null, 2);
 }

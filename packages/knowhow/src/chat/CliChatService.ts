@@ -40,7 +40,7 @@ export class CliChatService implements ChatService {
     this.context = {
       debugMode: false,
       agentMode: false,
-      currentAgent: "Patcher",
+      currentAgent: "Developer",
       searchMode: false,
       voiceMode: false,
       multilineMode: false,

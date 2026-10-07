@@ -7,14 +7,22 @@ import { ComputerService } from "./ComputerService";
 import { RustCoreDriver } from "./drivers/RustCoreDriver";
 import { computerToolDefinitions } from "./tools/definitions";
 import { registerComputerCli } from "./cli";
+import { ComputerUseAgent } from "./ComputerUseAgent";
 import * as computerTools from "./tools";
 
 export { ComputerService } from "./ComputerService";
 export { RustCoreDriver } from "./drivers/RustCoreDriver";
+export { ComputerUseAgent } from "./ComputerUseAgent";
 export * from "./tools";
 export * from "./tracking";
 export * from "./gridVision";
 export { computerToolDefinitions } from "./tools/definitions";
+export {
+  AUTOMATION_SDK_EXTENSION,
+  AutomationExtensions,
+  AutomationExtensionContext,
+  AutomationSdkExtension,
+} from "./automationExtensions";
 // `sdk` is an editor/type binding for .knowhow/automations/*.ts files; the
 // automation runner replaces its import with the live SDK at execution time.
 export { sdk, AutomationSDK, AutomationControl, WindowMatch } from "./automation";
@@ -108,6 +116,19 @@ const computerUseModule: KnowhowModule = {
       await computerUseModule.register!(params);
     }
     try {
+      if (
+        params.context?.Agents &&
+        !params.context.Agents.listAgents().includes("ComputerUseAgent")
+      ) {
+        const configured = getAgentCliOptions(params.config);
+        params.context.Agents.registerAgent(
+          new ComputerUseAgent(
+            params.context.Agents.getAgentContext(),
+            configured.agentModel,
+            configured.agentProvider
+          )
+        );
+      }
       const driver = await service!.getDriver();
       params.context?.Events?.log(
         "computer-use",

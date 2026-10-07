@@ -1,0 +1,20 @@
+{"desk":{"x":3840,"y":30,"width":3008,"height":1662},"items":[
+["X logo",4573,193,30,32,"icon"],["Home",4570,265,130,36,"nav"],["Explore",4570,340,145,34,"nav"],["Notifications",4570,412,210,34,"nav"],["Chat",4570,485,115,34,"nav"],["Grok",4570,558,115,34,"nav"],["Premium",4570,630,165,34,"nav"],["Money",4570,703,140,34,"nav"],["History",4570,775,145,34,"nav"],["Creator Studio",4570,848,230,34,"nav"],["Articles",4570,921,150,34,"nav"],["Profile",4570,993,135,34,"nav"],["More",4570,1066,120,34,"nav"],["Post",4556,1145,290,64,"button"],["Account switcher",4570,1610,215,50,"button"],
+["Turn off in settings",5450,130,140,30,"button"],["banner close",6806,133,22,22,"icon"],
+["back",4910,194,26,24,"icon"],["report",5485,195,24,24,"icon"],["share header",5531,193,24,26,"icon"],["header more",5575,193,26,20,"icon"],
+["video play",4990,620,18,20,"icon"],["video mute",5443,620,22,22,"icon"],["video settings",5488,620,24,22,"icon"],["video pip",5533,620,24,22,"icon"],["video fullscreen",5578,620,22,22,"icon"],
+["t1 reply",4971,677,22,21,"icon"],["t1 repost",5116,677,26,21,"icon"],["t1 like",5264,677,23,21,"icon"],["t1 views",5410,677,49,22,"text"],["t1 bookmark",5558,675,21,24,"icon"],["t1 share",5596,675,22,24,"icon"],
+["Peter avatar",4910,732,50,48,"icon"],["Peter Archibong",4971,733,146,20,"text"],["@ArchibongHQ",5123,733,170,20,"text"],["t2 grok",5562,731,24,24,"icon"],["t2 more",5596,731,22,18,"icon"],
+["t2 reply",4971,799,22,22,"icon"],["t2 repost",5116,799,26,22,"icon"],["t2 like",5264,799,23,22,"icon"],["t2 views",5410,799,49,22,"text"],["t2 bookmark",5558,798,21,24,"icon"],["t2 share",5596,798,22,24,"icon"],
+["Eric avatar",4910,855,50,48,"icon"],["Eric",4971,856,34,20,"text"],["@ericjung",5010,856,135,20,"text"],["t3 grok",5562,854,24,24,"icon"],["t3 more",5596,856,22,18,"icon"],
+["quote pwnmachine",5022,942,115,20,"text"],["quote @princechaddha",5192,942,181,20,"text"],["quote video",4990,1130,600,340,"media"],
+["t3 reply",4971,1499,22,22,"icon"],["t3 repost",5116,1499,26,22,"icon"],["t3 like",5264,1499,23,22,"icon"],["t3 views",5410,1499,49,22,"text"],["t3 bookmark",5558,1498,21,24,"icon"],["t3 share",5596,1498,22,24,"icon"],
+["Alex avatar",4910,1555,50,48,"icon"],["Alex",4971,1556,40,20,"text"],["@DevOuterReaches",5042,1556,208,20,"text"],["t4 grok",5562,1554,24,24,"icon"],["t4 more",5596,1556,22,18,"icon"],["nested pwnmachine",5022,1666,115,20,"text"],
+["Search",5678,185,437,45,"input"],
+["@pdnuclei",5840,258,90,22,"text"],["@neo_ai_engineer",5758,283,149,22,"text"],["pwnmachine avatar",5698,337,50,50,"icon"],["pwnmachine",5758,338,117,22,"text"],["@princechaddha",5758,365,147,20,"text"],["Follow 1",5996,342,96,40,"button"],["@pdiscoveryio",5758,395,127,22,"text"],["pwnmachine.me",5758,420,143,20,"text"],
+["Geekboy avatar",5698,473,50,50,"icon"],["Geekboy",5758,475,82,22,"text"],["@emgeekboy",5758,502,117,20,"text"],["Follow 2",5996,478,96,40,"button"],["@pdiscoveryio 2",5937,532,125,20,"text"],["@Hacker0x01",5758,582,120,20,"text"],
+["News close",6063,664,22,23,"icon"],["News 1",5698,733,360,80,"card"],["News 2",5698,860,360,80,"card"],["News 3",5698,988,360,80,"card"],
+["Trend 1",5698,1190,360,70,"card"],["Trend 1 more",6068,1196,26,16,"icon"],["Guillermo, Ezra",5805,1243,112,20,"text"],["Trend 2",5698,1290,360,45,"card"],["Trend 2 more",6068,1298,26,16,"icon"],["Trend 3",5698,1370,360,45,"card"],["Trend 3 more",6068,1376,26,16,"icon"],["Show more",5698,1456,95,20,"text"],
+["Terms",5698,1527,37,15,"text"],["Privacy",5765,1527,45,15,"text"],["Cookies",5840,1527,50,15,"text"],["Accessibility",5920,1527,80,15,"text"],["Ads info",5779,1557,51,15,"text"],["More footer",5860,1557,48,15,"text"],
+["Grok floating",6743,1530,62,60,"button"],["Messages floating",6743,1612,62,60,"button"]
+]}

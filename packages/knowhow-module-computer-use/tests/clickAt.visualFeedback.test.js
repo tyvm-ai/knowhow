@@ -8,8 +8,8 @@ function makeHarness({ sameContext = false, displays, activeWindows } = {}) {
     { id: 1, bounds: { x: 0, y: 0, width: 1920, height: 1080 }, scaleFactor: 1, primary: true },
   ];
   const configuredWindows = activeWindows || {
-    before: { title: "Chrome", bounds: { x: 100, y: 50, width: 1600, height: 900 } },
-    after: { title: "Chrome", bounds: { x: 100, y: 50, width: 1600, height: 900 } },
+    before: { id: 42, title: "Chrome", bounds: { x: 100, y: 50, width: 1600, height: 900 } },
+    after: { id: 42, title: "Chrome", bounds: { x: 100, y: 50, width: 1600, height: 900 } },
   };
   const service = {
     async getDisplays() {
@@ -42,7 +42,7 @@ function makeHarness({ sameContext = false, displays, activeWindows } = {}) {
 describe("clickAt action-attached visual feedback", () => {
   test("returns bounded before/after images with absolute metadata", async () => {
     const { tools, calls } = makeHarness();
-    const result = await computerUseClickAt.call(tools, 500, 400, "left", { delayMs: 0 });
+    const result = await computerUseClickAt.call(tools, 500, 400, "left", { delayMs: 0 }, undefined, 42);
 
     expect(result.map((part) => part.type)).toEqual([
       "text",
@@ -57,7 +57,7 @@ describe("clickAt action-attached visual feedback", () => {
       coordinateSpace: "absolute-desktop-pixels",
       before: { bounds: { x: 380, y: 280, width: 240, height: 240 }, scale: 1 },
       after: { bounds: { x: 100, y: 50, width: 1600, height: 900 }, scale: 0.25 },
-    });
+    }, undefined, 42);
     expect(calls.map((call) => call[0])).toEqual([
       "move",
       "screenshot",
@@ -71,7 +71,7 @@ describe("clickAt action-attached visual feedback", () => {
     const result = await computerUseClickAt.call(tools, 500, 400, "left", {
       delayMs: 0,
       omitUnchanged: true,
-    });
+    }, undefined, 42);
     expect(result.filter((part) => part.type === "image_url")).toHaveLength(1);
     expect(JSON.parse(result[0].text).after.omitted).toBe(true);
   });
@@ -87,12 +87,12 @@ describe("clickAt action-attached visual feedback", () => {
   test("resolves the default context from the active window after clicking", async () => {
     const { tools } = makeHarness({
       activeWindows: {
-        before: { title: "Chrome", bounds: { x: 100, y: 50, width: 1600, height: 900 } },
-        after: { title: "Dialog", bounds: { x: 300, y: 200, width: 800, height: 600 } },
+        before: { id: 42, title: "Chrome", bounds: { x: 100, y: 50, width: 1600, height: 900 } },
+        after: { id: 42, title: "Dialog", bounds: { x: 300, y: 200, width: 800, height: 600 } },
       },
     });
 
-    const result = await computerUseClickAt.call(tools, 500, 400, "left", { delayMs: 0 });
+    const result = await computerUseClickAt.call(tools, 500, 400, "left", { delayMs: 0 }, undefined, 42);
 
     expect(JSON.parse(result[0].text).after.bounds).toEqual({
       x: 300,
@@ -109,12 +109,12 @@ describe("clickAt action-attached visual feedback", () => {
         { id: 2, bounds: { x: 1920, y: 0, width: 1920, height: 1080 }, primary: false },
       ],
       activeWindows: {
-        before: { title: "Chrome", bounds: { x: 100, y: 50, width: 1600, height: 900 } },
-        after: { title: "Chrome", bounds: { x: 100, y: 50, width: 1600, height: 900 } },
+        before: { id: 42, title: "Chrome", bounds: { x: 100, y: 50, width: 1600, height: 900 } },
+        after: { id: 42, title: "Chrome", bounds: { x: 100, y: 50, width: 1600, height: 900 } },
       },
     });
 
-    const result = await computerUseClickAt.call(tools, 2500, 400, "left", { delayMs: 0 });
+    const result = await computerUseClickAt.call(tools, 2500, 400, "left", { delayMs: 0 }, undefined, 42);
 
     expect(JSON.parse(result[0].text).after.bounds).toEqual({
       x: 100,

@@ -589,7 +589,7 @@ export class KnowhowSimpleClient {
   async listOrgFiles() {
     await this.checkJwt();
     return http.get<
-      { id: string; fileName: string; folderPath: string; name: string }[]
+      { id: string; fileName: string; folderPath: string; name: string; updatedAt: string }[]
     >(`${this.baseUrl}/api/org-files`, { headers: this.headers });
   }
 
@@ -639,7 +639,7 @@ export class KnowhowSimpleClient {
    */
   async findOrgFileByPath(
     remotePath: string
-  ): Promise<{ id: string; fileName: string; folderPath: string } | null> {
+  ): Promise<{ id: string; fileName: string; folderPath: string; updatedAt: string } | null> {
     const lastSlash = remotePath.lastIndexOf("/");
     const rawFolder =
       lastSlash >= 0 ? remotePath.substring(0, lastSlash + 1) : "/";

@@ -39,6 +39,13 @@ import { RegionShape, shapeToSvg, shapeBounds } from "./regionShape";
 import * as path from "path";
 const execFileAsync = promisify(execFile);
 
+/** Case-insensitive app-name match; "Chrome" matches "Google Chrome". */
+export function appNameMatches(actual: string | undefined, wanted: string): boolean {
+  const a = (actual ?? "").trim().toLowerCase().replace(/\.app$/, "");
+  const w = wanted.trim().toLowerCase().replace(/\.app$/, "");
+  return !!a && !!w && (a === w || a.includes(w));
+}
+
 export interface ComputerServiceOptions {
   /** Default screenshot format returned by screenshot()/screenshotBase64(). */
   screenshotFormat?: "png" | "jpeg";
@@ -135,6 +142,12 @@ export interface OcrResult {
   bounds: Region;
   /** Center of the bounding box in desktop coords (ready for clickAt). */
   center: { x: number; y: number };
+  /**
+   * Per-word boxes in ABSOLUTE DESKTOP coordinates, when the OCR helper can
+   * provide them. Useful for targeting one item in a menu bar / toolbar row
+   * that Vision reports as a single line.
+   */
+  words?: Array<{ text: string; bounds: Region; center: { x: number; y: number } }>;
 }
 
 export interface ReadTextOptions {
@@ -148,6 +161,12 @@ export interface ReadTextOptions {
   minConfidence?: number;
   /** Vision recognition mode. `accurate` is the compatibility default. */
   recognitionLevel?: "fast" | "accurate";
+  /**
+   * Overlap between OCR tiles on large areas (px, default 24). With a larger
+   * overlap (e.g. 300) text crossing a tile edge is read whole by the
+   * neighbouring tile, and the cut fragments are discarded.
+   */
+  tileOverlap?: number;
 }
 
 /**
@@ -242,6 +261,29 @@ export class ComputerService implements ComputerUseService {
   }
 
   private async clamp(p: Point): Promise<Point> {
+    const displays = await this.getDisplays();
+    if (displays.length) {
+      const containing = displays.find(({ bounds }) =>
+        p.x >= bounds.x &&
+        p.x < bounds.x + bounds.width &&
+        p.y >= bounds.y &&
+        p.y < bounds.y + bounds.height
+      );
+      if (containing) return p;
+
+      // Virtual desktops can contain gaps and negative origins. Clamp to the
+      // nearest real display, not to the primary display's dimensions.
+      return displays
+        .map(({ bounds }) => ({
+          x: Math.max(bounds.x, Math.min(p.x, bounds.x + bounds.width - 1)),
+          y: Math.max(bounds.y, Math.min(p.y, bounds.y + bounds.height - 1)),
+        }))
+        .sort((a, b) =>
+          Math.hypot(a.x - p.x, a.y - p.y) -
+          Math.hypot(b.x - p.x, b.y - p.y)
+        )[0];
+    }
+
     const size = this.cachedSize ?? (await this.screenSize());
     return {
       x: Math.max(0, Math.min(p.x, size.width - 1)),
@@ -833,10 +875,11 @@ export class ComputerService implements ComputerUseService {
     let pipeline = sharp(raw.data, {
       raw: { width: raw.width, height: raw.height, channels: 4 },
     });
-    // Region crop (in captured-image pixel space). The native core currently
-    // returns the full display, so we crop here via sharp. Clamp to bounds so
-    // an out-of-range region doesn't throw.
-    if (opts?.region) {
+    // Some adapter drivers return a full display and rely on this layer to
+    // crop. The native core captures the requested region itself; cropping it
+    // again using desktop coordinates caused severely clipped and even 1x1
+    // images whenever region.x/y were non-zero.
+    if (opts?.region && !raw.regionApplied) {
       const rx = Math.max(
         0,
         Math.min(Math.round(opts.region.x), raw.width - 1)
@@ -975,7 +1018,9 @@ export class ComputerService implements ComputerUseService {
       parts.push(
         `<line x1="${cx}" y1="0" x2="${cx}" y2="${h}" stroke="rgba(0,180,255,0.9)" stroke-width="2"/>` +
           `<line x1="0" y1="${cy}" x2="${w}" y2="${cy}" stroke="rgba(0,180,255,0.9)" stroke-width="2"/>` +
-          `<circle cx="${cx}" cy="${cy}" r="6" fill="none" stroke="rgba(0,180,255,1)" stroke-width="2"/>` +
+          `<circle cx="${cx}" cy="${cy}" r="9" fill="none" stroke="white" stroke-width="5"/>` +
+          `<circle cx="${cx}" cy="${cy}" r="9" fill="none" stroke="rgba(0,180,255,1)" stroke-width="3"/>` +
+          `<circle cx="${cx}" cy="${cy}" r="2" fill="rgba(0,180,255,1)"/>` +
           `<text x="${cx + 8}" y="${
             cy - 8
           }" fill="rgba(0,180,255,1)" font-size="13" font-family="monospace">${desktopX},${desktopY}</text>`
@@ -1150,18 +1195,24 @@ export class ComputerService implements ComputerUseService {
         : display.bounds;
       if (!area) continue;
       const grabbed = await this.grabRawFrame(display.id);
-      // Vision can return no observations for a dense full-display image. OCR
-      // bounded tiles instead; per-display capture also handles mixed DPI safely.
-      // Tiles are independent, so run them concurrently. A 4K display normally
-      // needs two tiles; awaiting each one serially doubled OCR latency.
+      // Vision drops most observations on dense, very wide images. Bound both
+      // dimensions rather than only making horizontal strips: a 3840x1200
+      // strip is still too dense to recover small canvas labels reliably.
+      // A small overlap avoids losing text that crosses a tile boundary.
       const tiles: Region[] = [];
-      for (let top = area.y; top < area.y + area.height; top += 1176) {
-        tiles.push({
-          x: area.x,
-          y: top,
-          width: area.width,
-          height: Math.min(1200, area.y + area.height - top),
-        });
+      const overlap = Math.max(24, Math.min(600, opts?.tileOverlap ?? 24));
+      const step = 1200 - overlap;
+      for (let left = area.x; ; left += step) {
+        for (let top = area.y; ; top += step) {
+          tiles.push({
+            x: left,
+            y: top,
+            width: Math.min(1200, area.x + area.width - left),
+            height: Math.min(1200, area.y + area.height - top),
+          });
+          if (top + 1200 >= area.y + area.height) break;
+        }
+        if (left + 1200 >= area.x + area.width) break;
       }
       const tileResults = await Promise.all(
         tiles.map((tile) =>
@@ -1173,7 +1224,11 @@ export class ComputerService implements ComputerUseService {
           )
         )
       );
-      results.push(...tileResults.flat());
+      results.push(
+        ...(overlap > 24 && tiles.length > 1
+          ? this.preferWholeLines(tiles, tileResults, area)
+          : tileResults.flat())
+      );
     }
     const unique = results.filter(
       (r, i, all) =>
@@ -1189,6 +1244,49 @@ export class ComputerService implements ComputerUseService {
     return unique.sort(
       (a, b) => a.bounds.y - b.bounds.y || a.bounds.x - b.bounds.x
     );
+  }
+
+  /**
+   * With overlapping tiles, a line touching a tile's inner edge was cut by
+   * that tile; drop it when another tile read the same place without
+   * touching an edge.
+   */
+  private preferWholeLines(
+    tiles: Region[],
+    tileResults: OcrResult[][],
+    area: Region
+  ): OcrResult[] {
+    const EDGE = 6;
+    const whole: OcrResult[] = [];
+    const cut: OcrResult[] = [];
+    tileResults.forEach((lines, i) => {
+      const t = tiles[i];
+      for (const l of lines) {
+        const b = l.bounds;
+        const touches =
+          (t.x > area.x && b.x <= t.x + EDGE) ||
+          (t.x + t.width < area.x + area.width &&
+            b.x + b.width >= t.x + t.width - EDGE) ||
+          (t.y > area.y && b.y <= t.y + EDGE) ||
+          (t.y + t.height < area.y + area.height &&
+            b.y + b.height >= t.y + t.height - EDGE);
+        (touches ? cut : whole).push(l);
+      }
+    });
+    const frac = (a: Region, b: Region) => {
+      const i = this.intersection(a, b);
+      if (!i) return 0;
+      return (
+        (i.width * i.height) /
+        Math.max(1, Math.min(a.width * a.height, b.width * b.height))
+      );
+    };
+    const out: OcrResult[] = [];
+    for (const l of whole)
+      if (!out.some((k) => frac(k.bounds, l.bounds) > 0.5)) out.push(l);
+    for (const l of cut)
+      if (!out.some((k) => frac(k.bounds, l.bounds) > 0.3)) out.push(l);
+    return out;
   }
 
   private intersection(a: Region, b: Region): Region | undefined {
@@ -1267,6 +1365,23 @@ export class ComputerService implements ComputerUseService {
           width: r.w * tile.width,
           height: r.h * tile.height,
         };
+        const words = Array.isArray(r.words)
+          ? r.words
+              .filter((w: any) => w?.text && Number.isFinite(w.x) && Number.isFinite(w.w))
+              .map((w: any) => {
+                const wb: Region = {
+                  x: tile.x + w.x * tile.width,
+                  y: tile.y + (1 - w.y - w.h) * tile.height,
+                  width: w.w * tile.width,
+                  height: w.h * tile.height,
+                };
+                return {
+                  text: String(w.text),
+                  bounds: wb,
+                  center: { x: wb.x + wb.width / 2, y: wb.y + wb.height / 2 },
+                };
+              })
+          : undefined;
         return {
           text: r.text,
           confidence: r.confidence,
@@ -1275,6 +1390,7 @@ export class ComputerService implements ComputerUseService {
             x: bounds.x + bounds.width / 2,
             y: bounds.y + bounds.height / 2,
           },
+          ...(words && words.length ? { words } : {}),
         };
       });
   }
@@ -1341,6 +1457,7 @@ export class ComputerService implements ComputerUseService {
   }
 
   async getActiveWindow(): Promise<{
+    id?: number;
     title: string;
     app?: string;
     bounds?: Region;
@@ -1641,7 +1758,7 @@ export class ComputerService implements ComputerUseService {
   }
 
   async listWindows(): Promise<
-    Array<{ title: string; app?: string; bounds?: Region }>
+    Array<{ id?: number; title: string; app?: string; bounds?: Region }>
   > {
     const driver = await this.getDriver();
     if (driver.listWindows) return driver.listWindows();
@@ -1696,7 +1813,22 @@ export class ComputerService implements ComputerUseService {
 
   async focusWindow(match: string): Promise<boolean> {
     const driver = await this.getDriver();
-    if (driver.focusWindow) return driver.focusWindow(match);
+    const verify = async (): Promise<boolean> => {
+      for (let attempt = 0; attempt < 6; attempt++) {
+        if (attempt) await new Promise(resolve => setTimeout(resolve, 100));
+        const active = await driver.getActiveWindow?.();
+        const needle = match.toLowerCase();
+        if (active && (
+          active.title.toLowerCase().includes(needle) ||
+          active.app?.toLowerCase().includes(needle)
+        )) return true;
+      }
+      return false;
+    };
+    if (driver.focusWindow) {
+      if (!(await driver.focusWindow(match))) return false;
+      return verify();
+    }
     if (process.platform === "darwin") {
       // Prefer a window-title match. Merely activating an app is insufficient
       // when it owns multiple windows (for example, Chrome plus an extension
@@ -1713,6 +1845,10 @@ tell application "System Events"
         if name of appWindow contains needle then
           set frontmost of appProc to true
           perform action "AXRaise" of appWindow
+           try
+             set value of attribute "AXMain" of appWindow to true
+             set value of attribute "AXFocused" of appWindow to true
+           end try
           return "true"
         end if
       end try
@@ -1723,7 +1859,7 @@ return "false"
 end run`,
           match,
         ]);
-        if (stdout.trim() === "true") return true;
+        if (stdout.trim() === "true") return verify();
       } catch {
         // Fall through to application-name activation.
       }
@@ -1734,12 +1870,117 @@ end run`,
           "-e",
           `tell application "${match.replace(/"/g, '\\"')}" to activate`,
         ]);
-        return true;
+        return verify();
       } catch {
         return false;
       }
     }
     return false;
+  }
+
+  /** Focus one exact OS window and verify the same stable window ID is active. */
+  async focusWindowById(id: number): Promise<boolean> {
+    const target = (await this.listWindows()).find(window => window.id === id);
+    if (!target) return false;
+    if (process.platform === "darwin" && target.bounds && target.app) {
+      const script = `on run argv
+set appName to item 1 of argv
+set targetX to (item 2 of argv) as integer
+set targetY to (item 3 of argv) as integer
+set targetWidth to (item 4 of argv) as integer
+set targetHeight to (item 5 of argv) as integer
+tell application "System Events" to tell application process appName
+  repeat with w in windows
+    try
+      set p to position of w
+      set s to size of w
+      if (item 1 of p is targetX) and (item 2 of p is targetY) and (item 1 of s is targetWidth) and (item 2 of s is targetHeight) then
+        set frontmost to true
+        perform action "AXRaise" of w
+        set value of attribute "AXMain" of w to true
+        set value of attribute "AXFocused" of w to true
+        return "true"
+      end if
+    end try
+  end repeat
+end tell
+return "false"
+end run`;
+      const { stdout } = await execFileAsync("osascript", ["-e", script, target.app,
+        String(target.bounds.x), String(target.bounds.y), String(target.bounds.width), String(target.bounds.height)]);
+      if (stdout.trim() !== "true") return false;
+    } else if (!(await this.focusWindow(target.title || target.app || ""))) return false;
+    const active = await this.getActiveWindow();
+    return active?.id === id;
+  }
+
+  /**
+   * Bring an application (by its process/app name, e.g. "Obsidian", "Google
+   * Chrome", "Ghostty") to the front and verify it owns the active window.
+   * Unlike focusWindow(), this never matches window titles, so "Obsidian"
+   * can't accidentally raise a Chrome tab titled "Obsidian docs".
+   */
+  async activateApp(app: string): Promise<boolean> {
+    const matches = async () => appNameMatches((await this.getActiveWindow())?.app, app);
+    if (await matches()) return true;
+    if (process.platform === "darwin") {
+      const attempts: string[][] = [
+        ["-e", `on run argv
+tell application "System Events"
+  set procs to (application processes whose name is (item 1 of argv))
+  if (count of procs) is 0 then return "false"
+  set frontmost of (item 1 of procs) to true
+end tell
+return "true"
+end run`, app],
+        ["-e", `on run argv
+tell application (item 1 of argv) to activate
+return "true"
+end run`, app],
+      ];
+      for (const args of attempts) {
+        try {
+          const { stdout } = await execFileAsync("osascript", args);
+          if (stdout.trim() !== "true") continue;
+        } catch {
+          continue;
+        }
+        for (let attempt = 0; attempt < 8; attempt++) {
+          if (await matches()) return true;
+          await new Promise(resolve => setTimeout(resolve, 75));
+        }
+      }
+      return false;
+    }
+    return (await this.focusWindow(app)) && (await matches());
+  }
+
+  /** Read title/URL from the front tab without scraping page DOM. */
+  async getActiveBrowserTab(): Promise<{ title: string; url: string; windowId?: number }> {
+    if (process.platform !== "darwin")
+      throw new Error("Browser tab primitives are currently implemented on macOS only");
+    const active = await this.getActiveWindow();
+    if (!active?.app?.toLowerCase().includes("chrome"))
+      throw new Error(`Active window is not Chrome: ${active?.app ?? "none"}`);
+    const { stdout } = await execFileAsync("osascript", ["-e",
+      'tell application "Google Chrome" to return (title of active tab of front window) & linefeed & (URL of active tab of front window)'
+    ]);
+    const [title = "", ...urlLines] = stdout.trim().split("\n");
+    return { title, url: urlLines.join("\n"), windowId: active.id };
+  }
+
+  /** Navigate only the verified front Chrome tab; never searches/cycles tabs. */
+  async navigateActiveBrowser(url: string, expectedWindowId?: number): Promise<{ title: string; url: string; windowId?: number }> {
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol))
+      throw new Error("Browser navigation only supports http(s) URLs");
+    const active = await this.getActiveWindow();
+    if (expectedWindowId !== undefined && active?.id !== expectedWindowId)
+      throw new Error(`Refusing navigation: expected window ${expectedWindowId}, active window is ${active?.id ?? "none"}`);
+    await this.getActiveBrowserTab();
+    await execFileAsync("osascript", ["-e", 'on run argv\ntell application "Google Chrome" to set URL of active tab of front window to item 1 of argv\nend run', url]);
+    await new Promise(resolve => setTimeout(resolve, 250));
+    return this.getActiveBrowserTab();
   }
 
   async dispose(): Promise<void> {

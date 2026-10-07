@@ -125,8 +125,8 @@ export interface ComputerDriver {
   keyUp(key: string): Promise<void>;
 
   // windows (optional / capability-gated)
-  getActiveWindow?(): Promise<{ title: string; app?: string; bounds?: Region } | null>;
-  listWindows?(): Promise<Array<{ title: string; app?: string; bounds?: Region }>>;
+  getActiveWindow?(): Promise<{ id?: number; title: string; app?: string; bounds?: Region } | null>;
+  listWindows?(): Promise<Array<{ id?: number; title: string; app?: string; bounds?: Region }>>;
   focusWindow?(match: string): Promise<boolean>;
 
   accessibilityTrusted?(): Promise<boolean>;
@@ -196,12 +196,13 @@ export interface ComputerUseService {
   ): Promise<Buffer>;
 
   getActiveWindow(): Promise<{
+    id?: number;
     title: string;
     app?: string;
     bounds?: Region;
   } | null>;
   listWindows(): Promise<
-    Array<{ title: string; app?: string; bounds?: Region }>
+    Array<{ id?: number; title: string; app?: string; bounds?: Region }>
   >;
   focusWindow(match: string): Promise<boolean>;
 

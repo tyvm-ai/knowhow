@@ -19,6 +19,50 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
+      name: "computerUseListAutomationExtensions",
+      description:
+        "List all registered automation SDK extensions — the sdk.ext.* APIs that automations can use. " +
+        "Returns name, description, and optional TypeScript typings for each extension. " +
+        "Call this before writing an automation that uses sdk.ext to discover what extensions are available (e.g. sdk.ext.gaze, sdk.ext.voice). " +
+        "Extensions are contributed by loaded modules (e.g. knowhow-module-voice-control registers sdk.ext.gaze and sdk.ext.voice).",
+      parameters: noArgs,
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseScreenshotWindow",
+      description: "Focus and capture one exact stable OS window at 1:1 pixels. Returns verified window and coordinate metadata and rejects stale IDs, clipping, or geometry mismatches.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          windowId: { type: "number", description: "Stable ID from computerUseListWindows." },
+          grid: { type: "boolean", description: "Overlay absolute desktop coordinate labels." },
+        },
+        required: ["windowId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseScreenshotWindowTiles",
+      description: "Focus and capture an exact window as non-overlapping native-resolution tiles for high-resolution visual inspection. Rejects stale, clipped, or cross-display windows.",
+      parameters: {
+        type: "object", positional: true,
+        properties: {
+          windowId: { type: "number", description: "Stable ID from computerUseListWindows." },
+          columns: { type: "number", description: "Tile columns (default 2, maximum 8)." },
+          rows: { type: "number", description: "Tile rows (default 2, maximum 8)." },
+        },
+        required: ["windowId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "computerUseGetDisplays",
       description: "List all connected displays with bounds and scale factors.",
       parameters: noArgs,
@@ -80,6 +124,82 @@ export const computerToolDefinitions: Tool[] = [
   {
     type: "function",
     function: {
+      name: "computerUseFocusWindowById",
+      description: "Focus one exact OS window by the stable ID returned by listWindows, then verify it is active.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: { windowId: { type: "number", description: "Stable OS window ID." } },
+        required: ["windowId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseGetActiveBrowserTab",
+      description: "Read the front Chrome tab title, URL, and stable window ID without inspecting page DOM.",
+      parameters: noArgs,
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseNavigateActiveBrowser",
+      description: "Navigate only the verified front Chrome tab directly to an http(s) URL.",
+      parameters: {
+        type: "object", positional: true,
+        properties: {
+          url: { type: "string" },
+          expectedWindowId: { type: "number", description: "Refuse unless this exact window is active." },
+        },
+        required: ["url"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseSelectAccessibilityOption",
+      description:
+        "Select an exact option in a native or web select control. Prefer this over opening the popup and navigating with separate clicks/keys.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          id: { type: "string", description: "Fresh accessibility element ID." },
+          option: { type: "string", description: "Exact visible option text." },
+        },
+        required: ["id", "option"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseActivateAccessibilityElement",
+      description:
+        "Activate a fresh accessibility element reliably. Uses AXPress/AXConfirm/AXPick when exposed, otherwise clicks the element's bounds center. Prefer this for ordinary buttons, links, checkboxes, tabs, and menu items.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          id: {
+            type: "string",
+            description: "Fresh ID from computerUseAccessibilityElements.",
+          },
+          expectedText: {
+            type: "string",
+            description: "Visible title, description, or value expected on that fresh ID; activation is refused on mismatch.",
+          },
+        },
+        required: ["id", "expectedText"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "computerUseScreenshotRegion",
       description:
         "Capture a cropped region of the screen (x, y, width, height in pixels) and return it as an image. Use this to zoom into a specific area (e.g. a timeline column) instead of reasoning over a full 4K frame. Set grid=true to overlay a labeled coordinate grid to help you aim clicks. Grid labels are ABSOLUTE DESKTOP coordinates (they include this region's x/y offset), so read a value off the grid and pass it directly to computerUseClickAt — no offset math required.",
@@ -114,7 +234,41 @@ export const computerToolDefinitions: Tool[] = [
           x: { type: "number", description: "X coordinate" },
           y: { type: "number", description: "Y coordinate" },
         },
-        required: ["x", "y"],
+        required: ["x", "y", "expectedWindowId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseReadText",
+      description: "Read visible text with OCR. Returns text, confidence, and absolute desktop bounds/centers for precise follow-up actions.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          region: { type: "object", description: "Optional desktop region {x,y,width,height} or named region." },
+          displayId: { type: "number", description: "Optional display id." },
+          activeWindow: { type: "boolean", description: "Restrict recognition to the focused window." },
+          minConfidence: { type: "number", description: "Minimum OCR confidence from 0 to 1 (default 0.3)." },
+          recognitionLevel: { type: "string", enum: ["fast", "accurate"], description: "Vision recognition level (default accurate)." },
+        },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseGetPixelColors",
+      description: "Sample multiple desktop points from one screenshot frame and return colors in the same order.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          points: { type: "array", items: { type: "object", properties: { x: { type: "number" }, y: { type: "number" } } }, description: "Desktop points to sample." },
+        },
+        required: ["points"],
       },
     },
   },
@@ -208,6 +362,7 @@ export const computerToolDefinitions: Tool[] = [
           maxDepth: { type: "number", description: "Maximum tree depth (default 12)." },
           maxElements: { type: "number", description: "Maximum returned controls (default 500)." },
           interactiveOnly: { type: "boolean", description: "Only return interactive controls (default true)." },
+          expectedWindowId: { type: "number", description: "Refuse traversal unless this exact window is active." },
         },
       },
     },
@@ -395,8 +550,20 @@ export const computerToolDefinitions: Tool[] = [
               },
             },
           },
+          expectedWindow: {
+            type: "string",
+            description: "Refuse the click unless the active app/title contains this text before and after.",
+          },
+          expectedWindowId: {
+            type: "number",
+            description: "Optional exact stable window ID. If given it is focused before the click and must still be active after.",
+          },
+          app: {
+            type: "string",
+            description: "Name of the application this input is meant for, exactly as computerUseListWindows reports it (e.g. \"Obsidian\", \"Google Chrome\", \"Ghostty\"). It is activated (brought to the front) before clicking, and the call is refused if it can't be made frontmost, so input never lands in the wrong app.",
+          },
         },
-        required: ["x", "y"],
+        required: ["x", "y", "app"],
       },
     },
   },
@@ -423,7 +590,7 @@ export const computerToolDefinitions: Tool[] = [
     function: {
       name: "computerUseScroll",
       description:
-        "Scroll by (dx, dy) wheel deltas. Positive dy scrolls down, negative up.",
+        "Scroll by (dx, dy) wheel deltas. Negative dy scrolls down (toward later content), positive dy scrolls up — native macOS wheel convention, verified live.",
       parameters: {
         type: "object",
         positional: true,
@@ -440,7 +607,7 @@ export const computerToolDefinitions: Tool[] = [
     function: {
       name: "computerUseSmoothScroll",
       description:
-        "Scroll smoothly by repeating a small (dx, dy) delta N times with a pause between each step. Best for scrolling a feed a controlled amount (e.g. dy=-3, repeat=10). Positive dy scrolls down, negative up.",
+        "Scroll smoothly by repeating a small (dx, dy) delta N times with a pause between each step. Best for scrolling a feed a controlled amount (e.g. dy=-3, repeat=10). Negative dy scrolls down (toward later content), positive dy scrolls up — native macOS wheel convention, verified live.",
       parameters: {
         type: "object",
         positional: true,
@@ -461,14 +628,30 @@ export const computerToolDefinitions: Tool[] = [
     type: "function",
     function: {
       name: "computerUseTypeText",
-      description: "Type a string of text at the current focus.",
+      description: "Activate `app`, then type a string of text at its current focus. Click into the target field first if needed. Newlines (\\n) press Return and tabs (\\t) press Tab, so multi-line lists type as separate lines/list items.",
       parameters: {
         type: "object",
         positional: true,
         properties: {
           text: { type: "string", description: "Text to type" },
+          expectedWindow: {
+            type: "string",
+            description: "Refuse to type unless the active app/title contains this text.",
+          },
+          requireEditableFocus: {
+            type: "boolean",
+            description: "Refuse to type unless accessibility reports a focused editable control.",
+          },
+          expectedWindowId: {
+            type: "number",
+            description: "Optional exact stable window ID; if given that window is focused before typing.",
+          },
+          app: {
+            type: "string",
+            description: "Name of the application this input is meant for, exactly as computerUseListWindows reports it (e.g. \"Obsidian\", \"Google Chrome\", \"Ghostty\"). It is activated (brought to the front) before typing, and the call is refused if it can't be made frontmost, so input never lands in the wrong app.",
+          },
         },
-        required: ["text"],
+        required: ["text", "app"],
       },
     },
   },
@@ -483,8 +666,16 @@ export const computerToolDefinitions: Tool[] = [
         positional: true,
         properties: {
           key: { type: "string", description: "Key name" },
+          app: {
+            type: "string",
+            description: "Name of the application this input is meant for, exactly as computerUseListWindows reports it (e.g. \"Obsidian\", \"Google Chrome\", \"Ghostty\"). It is activated (brought to the front) before the key press, and the call is refused if it can't be made frontmost, so input never lands in the wrong app.",
+          },
+          expectedWindowId: {
+            type: "number",
+            description: "Optional exact stable window ID to focus before the key press.",
+          },
         },
-        required: ["key"],
+        required: ["key", "app"],
       },
     },
   },
@@ -503,8 +694,16 @@ export const computerToolDefinitions: Tool[] = [
             items: { type: "string" },
             description: "Keys to press together (modifiers first).",
           },
+          app: {
+            type: "string",
+            description: "Name of the application this input is meant for, exactly as computerUseListWindows reports it (e.g. \"Obsidian\", \"Google Chrome\", \"Ghostty\"). It is activated (brought to the front) before the chord, and the call is refused if it can't be made frontmost, so input never lands in the wrong app.",
+          },
+          expectedWindowId: {
+            type: "number",
+            description: "Optional exact stable window ID to focus before the chord.",
+          },
         },
-        required: ["keys"],
+        required: ["keys", "app"],
       },
     },
   },
@@ -528,8 +727,16 @@ export const computerToolDefinitions: Tool[] = [
             type: "boolean",
             description: "Keep running past failed steps (default false).",
           },
+          expectedWindowId: {
+            type: "number",
+            description: "Optional exact stable window ID to focus before the macro (and verify after, unless the macro has a focus step).",
+          },
+          app: {
+            type: "string",
+            description: "Name of the application this input is meant for, exactly as computerUseListWindows reports it (e.g. \"Obsidian\", \"Google Chrome\", \"Ghostty\"). It is activated (brought to the front) before the macro runs, and the call is refused if it can't be made frontmost, so input never lands in the wrong app.",
+          },
         },
-        required: ["steps"],
+        required: ["steps", "app"],
       },
     },
   },

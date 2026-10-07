@@ -22,6 +22,7 @@ import { ConversionService } from "./conversion/ConversionService";
 import { TracingService } from "./TracingService";
 
 export * from "./AgentService";
+export * from "./InteractiveAgentRuntime";
 export * from "./EventService";
 export * from "./flags";
 export * from "./EmbeddingsService";
@@ -110,6 +111,7 @@ export const services = (): typeof Singletons => {
       Plugins,
       Clients,
       Behaviors,
+      Extensions: Singletons.Extensions,
     });
   }
 

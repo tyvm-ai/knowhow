@@ -30,6 +30,8 @@ export interface RawScreenshot {
   width: number;
   height: number;
   data: Buffer;
+  /** The native backend already applied ScreenshotOptions.region. */
+  regionApplied?: boolean;
 }
 
 export interface NativeScreenStreamOptions {
@@ -99,6 +101,7 @@ export class RustCoreDriver implements ComputerDriver {
   }
 
   async getActiveWindow(): Promise<{
+    id?: number;
     title: string;
     app?: string;
     bounds?: { x: number; y: number; width: number; height: number };
@@ -108,6 +111,7 @@ export class RustCoreDriver implements ComputerDriver {
     const w = core.activeWindow();
     if (!w) return null;
     return {
+      id: w.id,
       title: w.title || w.app || "",
       app: w.app,
       bounds: w.bounds
@@ -123,6 +127,7 @@ export class RustCoreDriver implements ComputerDriver {
 
   async listWindows(): Promise<
     Array<{
+      id?: number;
       title: string;
       app?: string;
       bounds?: { x: number; y: number; width: number; height: number };
@@ -132,6 +137,7 @@ export class RustCoreDriver implements ComputerDriver {
     if (typeof core.listWindows !== "function") return [];
     const list = core.listWindows() as Array<any>;
     return list.map((w) => ({
+      id: w.id,
       title: w.title || w.app || "",
       app: w.app,
       bounds: w.bounds
@@ -223,6 +229,7 @@ export class RustCoreDriver implements ComputerDriver {
       width: raw.width,
       height: raw.height,
       data: Buffer.from(raw.data),
+      regionApplied: Boolean(opts?.region),
     };
     return envelope as unknown as Buffer;
   }
@@ -290,13 +297,35 @@ export class RustCoreDriver implements ComputerDriver {
   async drag(
     from: Point,
     to: Point,
-    opts?: { button?: MouseButton }
+    opts?: { button?: MouseButton; duration?: number }
   ): Promise<void> {
     const core = this.ensureCore();
     const button = opts?.button ?? "left";
+    const distance = Math.hypot(to.x - from.x, to.y - from.y);
+    const steps = Math.max(2, Math.min(30, Math.ceil(distance / 20)));
+    // `duration` (ms) is the budget for the pointer path itself. Without it each
+    // step waits 8 ms (~240 ms for a long drag). Fast canvas slashes pass a small
+    // duration so a long stroke completes in a few tens of milliseconds.
+    const stepPause = typeof opts?.duration === "number" && Number.isFinite(opts.duration) && opts.duration >= 0
+      ? Math.max(1, opts.duration / steps)
+      : 8;
+    const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
     core.moveMouse(from.x, from.y);
     core.mouseButton(button, true);
-    core.moveMouse(to.x, to.y);
+    // Browsers generally do not synthesize dragstart/dragover when the pointer
+    // teleports directly from source to target in the same event-loop turn.
+    // Emit a short, human-like path so native and HTML drag targets can react.
+    await pause(35);
+    for (let step = 1; step <= steps; step++) {
+      const ratio = step / steps;
+      core.moveMouse(
+        Math.round(from.x + (to.x - from.x) * ratio),
+        Math.round(from.y + (to.y - from.y) * ratio)
+      );
+      await pause(stepPause);
+    }
+    await pause(35);
     core.mouseButton(button, false);
   }
 
@@ -310,6 +339,26 @@ export class RustCoreDriver implements ComputerDriver {
       throw new Error("typeText delay must be a non-negative finite number");
     }
     const core = this.ensureCore();
+    // Unicode injection posts "\n"/"\t" as a character on keycode 0, which
+    // rich editors (Google Docs, Notion, Slack, Electron apps) ignore or treat
+    // as a literal character: multi-line text collapses onto one line. Press
+    // real Return/Tab keys for line breaks and tabs so paragraphs, list items
+    // and auto-formatting ("- " -> bullet) behave like a human typing.
+    if (/[\r\n\t]/.test(text)) {
+      const parts = text.split(/(\r\n|\r|\n|\t)/);
+      for (const part of parts) {
+        if (!part) continue;
+        if (part === "\t") core.pressKey("tab");
+        else if (part === "\n" || part === "\r" || part === "\r\n") core.pressKey("enter");
+        else {
+          await this.typeText(part, opts);
+          continue;
+        }
+        // Give the editor a moment to create the new paragraph/list item.
+        await new Promise(resolve => setTimeout(resolve, Math.max(15, delay)));
+      }
+      return;
+    }
     if (delay === 0) {
       core.typeText(text);
       return;

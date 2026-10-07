@@ -55,6 +55,8 @@ pub struct OverlayPrimitive {
 #[napi(object)]
 #[derive(Clone, Debug)]
 pub struct WindowInfo {
+    /// OS window number, stable for the lifetime of this window.
+    pub id: u32,
     /// Window title (may be empty; the TS layer falls back to `app`).
     pub title: String,
     /// Owning application / process name.

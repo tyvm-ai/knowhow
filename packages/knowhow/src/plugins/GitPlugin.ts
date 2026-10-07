@@ -32,6 +32,10 @@ export class GitPlugin extends PluginBase {
     this.setupEventListeners();
   }
 
+  protected customEnableCheck(): boolean {
+    return process.env.KNOWHOW_DISABLE_GIT_PLUGIN !== "1";
+  }
+
   async call(input: string): Promise<string> {
     // Get current project git status
     const projectGitStatus = this.getProjectGitStatus();

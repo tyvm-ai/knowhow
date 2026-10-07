@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Task board</title>
+    <style>
+      body {
+        font: 16px sans-serif;
+        max-width: 900px;
+        margin: 2rem;
+      }
+
+      button,
+      select,
+      input {
+        padding: 0.45rem;
+        margin: 0.2rem;
+      }
+
+      .board {
+        display: flex;
+        gap: 1rem;
+      }
+
+      .column {
+        border: 1px solid #888;
+        padding: 1rem;
+        min-width: 220px;
+        min-height: 130px;
+      }
+
+      article {
+        border: 1px solid #aaa;
+        padding: 0.6rem;
+        margin: 0.5rem 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Task board</h1>
+      <p>Update the named task using the controls, then move it to the requested column.</p>
+
+      <section aria-label="Task controls">
+        <label for="taskSelect">Task</label>
+        <select id="taskSelect">
+          <option>Prepare release notes</option>
+          <option>Fix login redirect</option>
+        </select>
+        <button id="open">Open task</button>
+        <p id="detail">No task open.</p>
+
+        <label for="priority">Priority</label>
+        <select id="priority">
+          <option>Low</option>
+          <option>Medium</option>
+          <option>High</option>
+        </select>
+
+        <label for="assignee">Assignee</label>
+        <select id="assignee">
+          <option>Alex</option>
+          <option>Morgan</option>
+          <option>Riley</option>
+        </select>
+
+        <fieldset>
+          <legend>Checklist for Prepare release notes</legend>
+          <label><input id="check1" type="checkbox"> Draft release summary</label>
+          <label><input id="check2" type="checkbox"> Verify version numbers</label>
+        </fieldset>
+
+        <label for="column">Move to column</label>
+        <select id="column">
+          <option>Backlog</option>
+          <option>In progress</option>
+          <option>Review</option>
+          <option>Done</option>
+        </select>
+        <button id="move">Move task</button>
+      </section>
+
+      <section class="board" aria-label="Task board columns">
+        <div class="column">
+          <h2>Backlog</h2>
+          <div id="backlog"></div>
+        </div>
+        <div class="column">
+          <h2>In progress</h2>
+          <div id="progress"></div>
+        </div>
+        <div class="column">
+          <h2>Review</h2>
+          <div id="review"></div>
+        </div>
+        <div class="column">
+          <h2>Done</h2>
+          <div id="done"></div>
+        </div>
+      </section>
+
+      <h2>Checklist</h2>
+      <ol>
+        <li id="a">□ Open “Prepare release notes”</li>
+        <li id="b">□ Set priority High</li>
+        <li id="c">□ Assign Morgan</li>
+        <li id="d">□ Complete both checklist items</li>
+        <li id="e">□ Move exact task to Review</li>
+      </ol>
+
+      <p id="status">Incomplete (0/5)</p>
+      <button id="submit">Submit result</button>
+    </main>
+
+    <script>
+      const refs = {
+        taskSelect: document.getElementById('taskSelect'),
+        open: document.getElementById('open'),
+        detail: document.getElementById('detail'),
+        priority: document.getElementById('priority'),
+        assignee: document.getElementById('assignee'),
+        check1: document.getElementById('check1'),
+        check2: document.getElementById('check2'),
+        column: document.getElementById('column'),
+        move: document.getElementById('move'),
+        review: document.getElementById('review'),
+        status: document.getElementById('status'),
+        submit: document.getElementById('submit'),
+      };
+
+      const state = {
+        opened: false,
+        priority: false,
+        assignee: false,
+        checklist: false,
+        column: false,
+      };
+
+      const completed = new Set();
+      const events = [];
+
+      function recordEvent(action, details = {}) {
+        events.push({
+          index: events.length + 1,
+          action,
+          ...details,
+        });
+      }
+
+      function updateStatus() {
+        refs.status.textContent = `${completed.size === 5 ? 'SUCCESS' : 'Incomplete'} (${completed.size}/5)`;
+      }
+
+      function mark(key, elementId, text) {
+        if (completed.has(key)) {
+          return;
+        }
+
+        completed.add(key);
+        document.getElementById(elementId).textContent = `✓ ${text}`;
+        updateStatus();
+      }
+
+      refs.open.addEventListener('click', () => {
+        const selectedTask = refs.taskSelect.value;
+        recordEvent('open-task', { task: selectedTask });
+
+        if (selectedTask !== 'Prepare release notes' || state.opened) {
+          return;
+        }
+
+        state.opened = true;
+        refs.detail.textContent = 'Open: Prepare release notes';
+        mark('opened', 'a', 'Open “Prepare release notes”');
+      });
+
+      function evaluatePriority() {
+        recordEvent('set-priority', { value: refs.priority.value });
+
+        if (!state.opened || state.priority || refs.priority.value !== 'High') {
+          return;
+        }
+
+        state.priority = true;
+        mark('priority', 'b', 'Set priority High');
+      }
+
+      function evaluateAssignee() {
+        recordEvent('set-assignee', { value: refs.assignee.value });
+
+        if (!state.priority || state.assignee || refs.assignee.value !== 'Morgan') {
+          return;
+        }
+
+        state.assignee = true;
+        mark('assignee', 'c', 'Assign Morgan');
+      }
+
+      function evaluateChecklist(eventName) {
+        recordEvent(eventName, {
+          draftReleaseSummary: refs.check1.checked,
+          verifyVersionNumbers: refs.check2.checked,
+        });
+
+        if (!state.assignee || state.checklist || !refs.check1.checked || !refs.check2.checked) {
+          return;
+        }
+
+        state.checklist = true;
+        mark('checklist', 'd', 'Complete both checklist items');
+      }
+
+      refs.priority.addEventListener('input', evaluatePriority);
+      refs.priority.addEventListener('change', evaluatePriority);
+      refs.assignee.addEventListener('input', evaluateAssignee);
+      refs.assignee.addEventListener('change', evaluateAssignee);
+      refs.check1.addEventListener('input', () => evaluateChecklist('toggle-checklist-item'));
+      refs.check1.addEventListener('change', () => evaluateChecklist('toggle-checklist-item'));
+      refs.check2.addEventListener('input', () => evaluateChecklist('toggle-checklist-item'));
+      refs.check2.addEventListener('change', () => evaluateChecklist('toggle-checklist-item'));
+
+      refs.move.addEventListener('click', () => {
+        recordEvent('move-task', { column: refs.column.value });
+
+        if (!state.checklist || state.column || refs.column.value !== 'Review') {
+          return;
+        }
+
+        state.column = true;
+        refs.review.innerHTML = '<article>Prepare release notes · High · Morgan</article>';
+        mark('column', 'e', 'Move exact task to Review');
+      });
+
+      refs.submit.addEventListener('click', async () => {
+        await fetch('/api/results', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            score: completed.size,
+            complete: completed.size === 5,
+            steps: {
+              opened: state.opened ? 1 : 0,
+              priority: state.priority ? 1 : 0,
+              assignee: state.assignee ? 1 : 0,
+              checklist: state.checklist ? 1 : 0,
+              column: state.column ? 1 : 0,
+            },
+            events,
+          }),
+        });
+
+        refs.status.textContent += ' · recorded';
+      });
+
+      updateStatus();
+    </script>
+  </body>
+</html>

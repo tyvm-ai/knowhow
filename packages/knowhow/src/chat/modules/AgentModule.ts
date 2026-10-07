@@ -27,16 +27,7 @@ import {
 } from "../../clients/types";
 import { ChatInteraction } from "../../types";
 import { Marked } from "../../utils/index";
-import { TokenCompressor } from "../../processors/TokenCompressor";
-import { ToolResponseCache } from "../../processors/ToolResponseCache";
-import {
-  CustomVariables,
-  XmlToolCallProcessor,
-  HarmonyToolProcessor,
-  GemmaToolProcessor,
-  Base64ImageProcessor,
-  MinimalToolsMessageProcessor,
-} from "../../processors/index";
+import { applyDefaultMessageProcessors } from "../../processors/defaultProcessors";
 import { TaskInfo } from "../types";
 import { createAgent, agentConstructors, AgentName } from "../../agents";
 import { ToolCallEvent } from "../../agents/base/base";
@@ -353,9 +344,9 @@ export class AgentModule extends BaseChatModule {
     );
 
     // Determine the default agent from context (set by chat.ts from config.chat.defaultAgent)
-    // falling back to "Patcher" if not configured.
+    // falling back to "Developer" if not configured.
     const context = this.chatService?.getContext();
-    const defaultAgentName = context?.defaultAgent ?? "Patcher";
+    const defaultAgentName = context?.defaultAgent ?? "Developer";
     await this.handleAgentCommand([defaultAgentName]);
 
     // Apply defaultModel and defaultProvider if configured
@@ -1069,36 +1060,7 @@ export class AgentModule extends BaseChatModule {
         10 // Priority level
       );
 
-      const caching = [
-        new ToolResponseCache(agent.tools).createProcessor(),
-        new TokenCompressor(agent.tools).createProcessor((msg) =>
-          Boolean(msg.role === "tool" && msg.tool_call_id)
-        ),
-      ];
-
-      const customVariables = new CustomVariables(agent.tools);
-
-      agent.messageProcessor.setProcessors("pre_call", [
-        new Base64ImageProcessor(agent.tools).createProcessor(),
-        ...caching,
-        customVariables.createProcessor(),
-      ]);
-
-      agent.messageProcessor.setProcessors("post_call", [
-        new XmlToolCallProcessor().createProcessor(),
-        new HarmonyToolProcessor().createProcessor(),
-        new GemmaToolProcessor().createProcessor(),
-      ]);
-
-      agent.messageProcessor.setProcessors("pre_tools", [
-        new MinimalToolsMessageProcessor().createProcessor(),
-      ]);
-
-      agent.messageProcessor.setProcessors("post_tools", [
-        new Base64ImageProcessor(agent.tools).createProcessor(),
-        ...caching,
-        customVariables.createRepetitionHintProcessor(),
-      ]);
+      applyDefaultMessageProcessors(agent);
 
       // Set up event listeners
       // Each task gets a fresh agent instance (via createAgent), so no stale listeners exist.

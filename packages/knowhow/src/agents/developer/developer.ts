@@ -10,11 +10,11 @@ export class DeveloperAgent extends BaseAgent {
     super(context);
     this.setModelPreferences([
       {
-        model: Models.anthropic.Sonnet4_6,
+        model: Models.anthropic.Opus5_5,
         provider: "anthropic",
       },
       {
-        model: Models.openai.GPT_56_Sol,
+        model: Models.openai.GPT_6_Sol,
         provider: "openai",
       },
     ]);

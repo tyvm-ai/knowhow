@@ -50,6 +50,7 @@ export interface ToolContext {
   Mcp?: McpService;
   Behaviors?: BehaviorsService;
   ComputerUse?: import("./modules/computerUse").ComputerUseService;
+  Extensions?: import("./ExtensionsService").ExtensionsService;
   metadata?: { [key: string]: any };
 }
 
