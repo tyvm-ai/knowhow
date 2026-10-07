@@ -7,14 +7,11 @@
  *   - audio cap on hover-hint and click-hint commands
  */
 
-import {
-  deriveShortName,
-  filterAndDedupeElements,
-  AXElement,
-  Rect,
-} from "../src/smartSelector";
+import { deriveShortName } from "../src/hints/labels";
+import { filterAndDedupeElements } from "../src/hints/ranking";
+import { AXElement, Rect } from "../src/hints/types";
 import { spotifyLabel } from "../src/adapters/spotify";
-import { HINTS_PACK } from "../src/packs/hints";
+import { HINTS_PACK } from "../src/hints/commands";
 import { BUILTIN_VOICE_COMMANDS } from "../src/voiceCommands";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -208,7 +205,8 @@ describe("audio cap on hover-hint and click-hint commands", () => {
 
 // ─── findPlayButton helper (mocked adapter) ────────────────────────────────────
 
-import { rankCandidates, Candidate } from "../src/smartSelector";
+import { rankCandidates } from "../src/hints/ranking";
+import { Candidate } from "../src/hints/types";
 import { findPlayButton } from "../src/adapters/spotify";
 import { PointerMemory } from "../src/services";
 

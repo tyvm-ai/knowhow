@@ -18,14 +18,14 @@ import { getConfigSync } from "@tyvm/knowhow/sdk";
 import type { GazeSample } from "./eyeTracking";
 import type { MouseMover } from "./commandMode";
 import { defineVoicePack } from "./packs/define";
-import { aliasesWithSynonyms, defineCommand, VOICE_COMMAND_EXTENSION } from "./commands/define";
+import { aliasesWithSynonyms, defineCommand, VOICE_COMMAND_EXTENSION, VOICE_PACK_EXTENSION } from "./commands/define";
 import { analyzeCommands, applyOverrides } from "./commands/registry";
 import { runDoubleClick } from "./commands/doubleClick";
 import { performClick } from "./targeting/act";
 import type { CommandConflict } from "./commands/registry";
 import { mergeSynonyms } from "./grammar/compile";
 
-export { VOICE_COMMAND_EXTENSION };
+export { VOICE_COMMAND_EXTENSION, VOICE_PACK_EXTENSION };
 
 export type VoiceCommandMode = "command" | "agent";
 
@@ -420,8 +420,29 @@ export function collectVoiceCommandReport(options: CollectVoiceCommandsOptions =
     if (isVoiceCommandExtension(item)) add(item, sourceFor(item));
     else options.warn?.(`ignoring invalid ${VOICE_COMMAND_EXTENSION} extension`);
   }
+  // Whole packs contributed by third-party modules ("voice-control.pack"): their commands join the registry.
+  for (const pack of options.extensions?.list(VOICE_PACK_EXTENSION) ?? []) {
+    if ((pack as { type?: string })?.type !== VOICE_PACK_EXTENSION) continue;
+    const packCommands = (pack as { extensions?: unknown }).extensions;
+    if (!Array.isArray(packCommands)) {
+      options.warn?.(`ignoring invalid ${VOICE_PACK_EXTENSION} extension`);
+      continue;
+    }
+    const owner = (pack as { owner?: string }).owner;
+    for (const item of packCommands) {
+      if (isVoiceCommandExtension(item)) add(item, owner || (pack as { name?: string }).name || "module");
+      else options.warn?.(`ignoring invalid command in ${VOICE_PACK_EXTENSION} "${(pack as { name?: string }).name}"`);
+    }
+  }
   for (const { owner, extension } of options.moduleExtensions ?? []) {
-    if ((extension as any)?.type !== VOICE_COMMAND_EXTENSION) continue;
+    const type = (extension as any)?.type;
+    if (type === VOICE_PACK_EXTENSION) {
+      for (const item of ((extension as any).extensions ?? []) as unknown[]) {
+        if (isVoiceCommandExtension(item)) add(item, owner);
+      }
+      continue;
+    }
+    if (type !== VOICE_COMMAND_EXTENSION) continue;
     if (isVoiceCommandExtension(extension)) add(extension, sourceFor(extension, owner));
   }
   for (const ext of options.builtins ?? BUILTIN_VOICE_COMMANDS) add(ext, "built-in");

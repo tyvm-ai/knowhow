@@ -4,15 +4,12 @@
  * labels, duplicate icon+label hints, hint density commands, and the
  * scroll commands (which previously never scrolled).
  */
-import {
-  fuseVisualElements,
-  mergeSplitLines,
-  dropTinyText,
-  OcrLineLike,
-} from "../src/visualElements";
-import { rankCandidates, AXElement, HINT_DENSITY } from "../src/smartSelector";
+import { fuseVisualElements, mergeSplitLines, dropTinyText, OcrLineLike } from "../src/hints/perception/visual";
+import { rankCandidates } from "../src/hints/ranking";
+import { AXElement } from "../src/hints/types";
+import { HINT_DENSITY } from "../src/hints/density";
 import { parseUtterance } from "../src/grammar";
-import { HINTS_PACK } from "../src/packs/hints";
+import { HINTS_PACK } from "../src/hints/commands";
 import { GAZE_MOUSE_PACK } from "../src/packs/gazeMouse";
 import { DarwinPlatformActions } from "../src/actions/darwin";
 

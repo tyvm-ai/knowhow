@@ -32,6 +32,7 @@
  */
 
 import { defineCommand } from "../commands/define";
+import type { ConfigSchema, ConfigValues } from "../config/schema";
 import type { CommandDefinition } from "../commands/define";
 import { registerNormaliser } from "../grammar/normalise";
 import type { NormaliseRule } from "../grammar/normalise";
@@ -42,21 +43,24 @@ import type { VoiceServices } from "../services";
 import type { VoiceCommandContext, VoiceCommandExtension } from "../voiceCommands";
 
 /** The context a pack command's `run` receives: the base ctx plus services + the pack's state. */
-export type PackCommandContext<S = void> = VoiceCommandContext & {
+export type PackCommandContext<S = void, CV = {}> = VoiceCommandContext & {
   services: VoiceServices;
   state: S;
+  /** This pack's settings, resolved (env > knowhow.json > default) each time a property is read. */
+  config: CV;
 };
 
-export type VoiceCommandDefinition<S = void> = CommandDefinition<PackCommandContext<S>>;
+export type VoiceCommandDefinition<S = void, CV = {}> = CommandDefinition<PackCommandContext<S, CV>>;
 
-export interface PackApi<S = void> {
+export interface PackApi<S = void, CV = {}> {
   /** Define a command in this pack (prefix + defaults + state binding applied). */
-  command(def: VoiceCommandDefinition<S>): VoiceCommandExtension;
+  command(def: VoiceCommandDefinition<S, CV>): VoiceCommandExtension;
 }
 
-export interface PackLifecycleContext<S = void> {
+export interface PackLifecycleContext<S = void, CV = {}> {
   services: VoiceServices;
   state: S;
+  config: CV;
   log: VoiceServices["log"];
 }
 
@@ -66,17 +70,23 @@ export interface SlotTypeDef {
   matcher: Parameters<typeof registerSlotType>[1];
 }
 
-export interface VoicePackDefinition<S = void> {
+export interface VoicePackDefinition<S = void, C extends ConfigSchema = {}> {
   /** Unique pack name (also the key of its state in `services.packs`). */
   name: string;
   description?: string;
   /** Prepended to every command name, e.g. "voice-control.text.". */
   prefix?: string;
   /** Applied to every command unless it sets the same field. */
-  defaults?: Partial<Omit<VoiceCommandDefinition<S>, "name" | "description" | "run">>;
+  defaults?: Partial<Omit<VoiceCommandDefinition<S, ConfigValues<C>>, "name" | "description" | "run">>;
   /** Per-session state; replaces module-level `let` variables. */
   createState?(services: VoiceServices): S;
-  commands: VoiceCommandDefinition<S>[] | ((api: PackApi<S>) => VoiceCommandExtension[]);
+  /**
+   * Settings this pack exposes: default + optional env override + validation, resolved env > knowhow.json
+   * (`voiceControl.packs.<pack>.<key>`) > default, read at use time as `ctx.config.<key>`.
+   * Listed by `knowhow voice-control config`.
+   */
+  config?: C;
+  commands: VoiceCommandDefinition<S, ConfigValues<C>>[] | ((api: PackApi<S, ConfigValues<C>>) => VoiceCommandExtension[]);
   /** Slot types to register (instead of a registerXSlot() side effect). */
   slots?: SlotTypeDef[];
   /** Vocabulary synonyms applied to every command of the pack. */
@@ -85,20 +95,20 @@ export interface VoicePackDefinition<S = void> {
   normalisers?: NormaliseRule[];
   /** Intent recoverers run by the session's `RecoveryEngine` (see src/recovery/). */
   recoverers?: IntentRecoverer[];
-  onSessionStart?(ctx: PackLifecycleContext<S>): void | Promise<void>;
-  onSessionStop?(ctx: PackLifecycleContext<S>): void | Promise<void>;
+  onSessionStart?(ctx: PackLifecycleContext<S, ConfigValues<C>>): void | Promise<void>;
+  onSessionStop?(ctx: PackLifecycleContext<S, ConfigValues<C>>): void | Promise<void>;
 }
 
 /** A defined pack: the definition plus the ready-to-register command extensions. */
-export interface VoicePack<S = void> extends VoicePackDefinition<S> {
+export interface VoicePack<S = void, C extends ConfigSchema = {}> extends VoicePackDefinition<S, C> {
   /** The command extensions (what `ExtensionsService` registers). */
   readonly extensions: VoiceCommandExtension[];
 }
 
-export function defineVoicePack<S = void>(def: VoicePackDefinition<S>): VoicePack<S> {
+export function defineVoicePack<S = void, C extends ConfigSchema = {}>(def: VoicePackDefinition<S, C>): VoicePack<S, C> {
   const stateful = { name: def.name, createState: def.createState };
 
-  const bind = (command: VoiceCommandDefinition<S>): VoiceCommandExtension => {
+  const bind = (command: VoiceCommandDefinition<S, ConfigValues<C>>): VoiceCommandExtension => {
     const run = command.run;
     const merged = {
       ...(def.synonyms ? { synonyms: def.synonyms } : {}),
@@ -108,19 +118,24 @@ export function defineVoicePack<S = void>(def: VoicePackDefinition<S>): VoicePac
       pack: def.name,
       run: (ctx: VoiceCommandContext) => {
         const services = ctx.services ?? getDefaultServices();
-        return run({ ...ctx, services, state: services.packs.get(stateful) } as PackCommandContext<S>);
+        return run({ ...ctx, services, state: services.packs.get(stateful), config: packConfigView(services, def.name, def.config) } as PackCommandContext<S, ConfigValues<C>>);
       },
     } as CommandDefinition;
     return defineCommand(merged);
   };
 
-  const api: PackApi<S> = { command: bind };
+  const api: PackApi<S, ConfigValues<C>> = { command: bind };
   const extensions = Array.isArray(def.commands) ? def.commands.map(bind) : def.commands(api);
   return { ...def, extensions };
 }
 
+/** The live typed view of a pack's settings (`{}` when the pack declares none). */
+export function packConfigView<C extends ConfigSchema>(services: VoiceServices, pack: string, schema: C | undefined): ConfigValues<C> {
+  return services.config.view({ kind: "packs", name: pack }, schema ?? ({} as C));
+}
+
 /** Anything that looks like a pack (so third-party packs can be run by `PackRuntime` too). */
-export type AnyVoicePack = VoicePack<any>;
+export type AnyVoicePack = VoicePack<any, any>;
 
 /** Register every pack's slot types with the grammar engine (idempotent). */
 export function registerPackSlots(packs: readonly AnyVoicePack[]): void {
@@ -149,6 +164,7 @@ export class PackRuntime {
     return {
       services: this.services,
       state: this.services.packs.get(pack),
+      config: packConfigView(this.services, pack.name, pack.config),
       log: this.services.log.child(pack.name),
     };
   }

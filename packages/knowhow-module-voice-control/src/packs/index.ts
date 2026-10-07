@@ -16,7 +16,7 @@ import TEXT_PACK from "./text";
 import KEYS_PACK from "./keys";
 import { WINDOWS_PACK } from "./windows";
 import { SYSTEM_PACK } from "./system";
-import { HINTS_PACK } from "./hints";
+import { HINTS_PACK } from "../hints/commands";
 import { TMUX_PACK } from "./tmux";
 import { BROWSER_PACK } from "./browser";
 import { SMART_TYPE_PACK } from "./smartType";

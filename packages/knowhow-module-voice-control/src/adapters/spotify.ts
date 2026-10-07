@@ -11,8 +11,10 @@
  *  - `playTarget`: resolves "play <song>" to the song's play button.
  */
 
-import type { AXElement, Candidate, ComputerUseAdapter } from "../smartSelector";
-import { activateElement, deriveShortName, filterAndDedupeElements, nameFuzzyScore, rankCandidates } from "../smartSelector";
+import type { AXElement, Candidate, ComputerUseAdapter } from "../hints/types";
+import { activateElement } from "../hints/activate";
+import { deriveShortName } from "../hints/labels";
+import { filterAndDedupeElements, nameFuzzyScore, rankCandidates } from "../hints/ranking";
 import type { AppAdapter } from "../targeting/adapter";
 
 export const SPOTIFY_APP = /spotify/i;

@@ -19,10 +19,8 @@ export const META_PACK = defineVoicePack({
         // Print to terminal
         const registered = (ctx as any).commands as VoiceCommandExtension[] | undefined;
         if (registered?.length) {
-          console.log("\n[voice] Available commands:");
-          for (const c of registered.slice(0, 40)) {
-            console.log(`  ${c.phrase}${c.description ? " — " + c.description : ""}`);
-          }
+          const shown = registered.slice(0, 40).map((c) => `  ${c.phrase}${c.description ? " — " + c.description : ""}`);
+          ctx.services.log.info(`Available commands:\n${shown.join("\n")}${registered.length > shown.length ? `\n  … +${registered.length - shown.length} more` : ""}`);
         }
       },
       aliases: [

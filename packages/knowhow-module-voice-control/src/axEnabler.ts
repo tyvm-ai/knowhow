@@ -1,3 +1,4 @@
+import { stderrSink, taggedLogger } from "./services/logger";
 /**
  * axEnabler.ts — Auto-enable web accessibility for Chromium/Electron apps.
  *
@@ -184,13 +185,13 @@ function ensureSwiftBinary(): boolean {
       { timeout: 30000, encoding: "utf8" },
     );
     if (compile.status !== 0) {
-      process.stderr.write(`[ax-enabler] swiftc failed: ${compile.stderr}\n`);
+      taggedLogger("ax-enabler", stderrSink).error(`swiftc failed: ${compile.stderr}`);
       return false;
     }
     writeFileSync(AX_HASH_FILE, hash);
     return true;
   } catch (e) {
-    process.stderr.write(`[ax-enabler] compile error: ${e}\n`);
+    taggedLogger("ax-enabler", stderrSink).error(`compile error: ${e}`);
     return false;
   }
 }

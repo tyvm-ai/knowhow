@@ -6,7 +6,7 @@
 
 import { PackRuntime, defineVoicePack, registerPackSlots } from "../src/packs/define";
 import { allPacks, voiceCommandExtensions } from "../src/packs/index";
-import { HINTS_PACK } from "../src/packs/hints";
+import { HINTS_PACK } from "../src/hints/commands";
 import GAZE_MOUSE_PACK from "../src/packs/gazeMouse";
 import { SMART_TYPE_PACK } from "../src/packs/smartType";
 import { getSlotMatcher } from "../src/grammar/slots";

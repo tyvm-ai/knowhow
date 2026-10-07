@@ -1,0 +1,21 @@
+// tmux mishearings seen in real logs (see tests/intentRecovery.test.ts). In a terminal the guess just runs.
+{"heard":"too much love.","frontApp":"Ghostty","expected":{"command":"voice-control.tmux.pane-left","recovered":"tmux left"}}
+{"heard":"15 months left.","frontApp":"Ghostty","expected":{"command":"voice-control.tmux.pane-left","recovered":"tmux left"}}
+{"heard":"15 months down.","frontApp":"Ghostty","expected":{"command":"voice-control.tmux.pane-down","recovered":"tmux down"}}
+{"heard":"Team Max love.","frontApp":"Ghostty","expected":{"command":"voice-control.tmux.pane-left","recovered":"tmux left"}}
+{"heard":"tmarks down","frontApp":"Ghostty","expected":{"command":"voice-control.tmux.pane-down","recovered":"tmux down"}}
+// …the normaliser already fixes these, so they match without a recovery
+{"heard":"team marks left.","frontApp":"Ghostty","expected":{"command":"voice-control.tmux.pane-left"}}
+{"heard":"teammates right","frontApp":"Ghostty","expected":{"command":"voice-control.tmux.pane-right"}}
+{"heard":"two mouse up","frontApp":"Ghostty","expected":{"command":"voice-control.tmux.pane-up"}}
+{"heard":"tea much write","frontApp":"Ghostty","expected":{"command":"voice-control.tmux.pane-right"}}
+{"heard":"tmux left","expected":{"command":"voice-control.tmux.pane-left"}}
+// outside a terminal the same guess is only proposed ("did you mean tmux left?")
+{"heard":"too much love.","frontApp":"Google Chrome","expected":{"rejected":"asked"},"note":"asks before running"}
+// ordinary phrases are left alone
+{"heard":"two months left of my contract","frontApp":"Ghostty","expected":{"rejected":true}}
+{"heard":"move left","frontApp":"Ghostty","expected":{"rejected":true}}
+{"heard":"the max down","frontApp":"Ghostty","expected":{"rejected":true}}
+// a bare "tmux" waits for the direction
+{"heard":"too much","frontApp":"Ghostty","expected":{"rejected":"latched"}}
+{"heard":"love","frontApp":"Ghostty","previous":["too much"],"expected":{"command":"voice-control.tmux.pane-left","recovered":"tmux left"},"note":"completes the latch armed by the bare tmux"}

@@ -4,7 +4,7 @@
  * Integrates compile, match, normalise, dictation, chain.
  */
 
-export { registerSlotType, getSlotMatcher, APP_ALIASES } from "./slots";
+export { registerSlotType, getSlotMatcher, APP_ALIASES, addLearnedAppAlias, resetLearnedAppAliases, lookupAppAlias } from "./slots";
 export { compilePattern, mergeSynonyms, normaliseSynonyms, expandPhraseSynonyms } from "./compile";
 export type { Synonyms } from "./compile";
 export { matchPattern } from "./match";

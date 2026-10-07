@@ -4,7 +4,7 @@ import {
   ContinuousTranscriptSource,
   PcmFrame,
   UtteranceRecognizer,
-} from "../src/continuous";
+} from "../src/audio";
 import {
   PlaybackHandle,
   SpeechOutput,

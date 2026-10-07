@@ -24,16 +24,14 @@
 import { runAppleScriptSync, runJxaSync, escapeAppleScriptString } from "./actions/osa";
 import { enableAXForPid } from "./axEnabler";
 import { createVoiceServices } from "./services";
-import {
-  collectCandidates,
-  buildHintOverlayPrimitives,
-  HINT_DENSITY,
-  HintDensity,
-  Candidate,
-  ComputerUseAdapter,
-  HintSource,
-  SelectorState,
-} from "./smartSelector";
+import { stderrSink, taggedLogger } from "./services/logger";
+import { packConfigView } from "./packs/define";
+import { HINTS_CONFIG } from "./hints/config";
+import { collectCandidates } from "./hints/perception/collect";
+import { buildHintOverlayPrimitives } from "./hints/overlay";
+import { HINT_DENSITY, HintDensity } from "./hints/density";
+import { Candidate, ComputerUseAdapter, HintSource } from "./hints/types";
+import { SelectorState } from "./hints/selectorState";
 import { GazeClient, GAZE_ERROR_RADIUS, GAZE_TIMEOUT } from "./gaze";
 
 export interface HintsCliOptions {
@@ -141,7 +139,7 @@ function formatCandidate(c: Candidate, index: number): string {
 // ─── Main entry point ─────────────────────────────────────────────────────────
 
 export async function runHintsCli(opts: HintsCliOptions = {}): Promise<void> {
-  const log = (msg: string) => process.stderr.write(msg + "\n");
+  const log = (msg: string) => taggedLogger("hints-cli", stderrSink).info(msg);
 
   // 1. Get gaze point
   const gaze = await getGazePoint(opts);
@@ -153,7 +151,7 @@ export async function runHintsCli(opts: HintsCliOptions = {}): Promise<void> {
   const services = createVoiceServices();
   const adapter = buildAdapter(services.computer, opts.app);
   if (!adapter) {
-    process.stderr.write("[hints-cli] No computer-use adapter available. Is ComputerUse service loaded?\n");
+    taggedLogger("hints-cli", stderrSink).error("No computer-use adapter available. Is ComputerUse service loaded?");
     process.exit(1);
   }
 
@@ -188,7 +186,7 @@ export async function runHintsCli(opts: HintsCliOptions = {}): Promise<void> {
       log,
       appName: opts.app,
       adapters: services.adapters,
-      source: opts.source,
+      source: opts.source ?? packConfigView(services, "hints", HINTS_CONFIG).source,
       scanFactor: density.scanFactor,
       maxCandidates: Math.max(20, density.labels),
       fullParse: !!density.full,
@@ -248,7 +246,7 @@ export async function runHintsCli(opts: HintsCliOptions = {}): Promise<void> {
       await adapter.clearOverlay();
     } catch (e) {
       if (!opts.json) {
-        process.stderr.write(`[hints-cli] Overlay error: ${e}\n`);
+        taggedLogger("hints-cli", stderrSink).error(`Overlay error: ${e}`);
       }
     }
   }

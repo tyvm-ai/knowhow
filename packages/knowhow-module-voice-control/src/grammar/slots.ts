@@ -298,8 +298,8 @@ registerSlotType("monitor", {
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 
-/** Common spoken-name → bundle/display-name aliases. Extended at runtime. */
-export const APP_ALIASES: Record<string, string> = {
+/** Common spoken-name → bundle/display-name aliases that ship with voice-control (read-only). */
+export const APP_ALIASES: Readonly<Record<string, string>> = Object.freeze({
   terminal: "Ghostty",
   ghostty: "Ghostty",
   chrome: "Google Chrome",
@@ -325,15 +325,37 @@ export const APP_ALIASES: Record<string, string> = {
   crome: "Google Chrome",
   krome: "Google Chrome",
   crown: "Google Chrome",
-};
+});
+
+/**
+ * Aliases the user confirmed at runtime ("ghosting" → Ghostty). The persistent source of truth is the
+ * learned store (`services.learned`, key `app-name`); this overlay is the grammar's in-process view of it,
+ * (re)built by the app-name recoverer's `onLearned`. The shipped table above is never mutated.
+ */
+const learnedAppAliases = new Map<string, string>();
+
+export function addLearnedAppAlias(spoken: string, app: string): void {
+  if (spoken && app && !(spoken in APP_ALIASES)) learnedAppAliases.set(spoken, app);
+}
+
+export function resetLearnedAppAliases(): void {
+  learnedAppAliases.clear();
+}
+
+/** Shipped alias first, then a learned one. */
+export function lookupAppAlias(spoken: string): string | undefined {
+  return Object.prototype.hasOwnProperty.call(APP_ALIASES, spoken) ? APP_ALIASES[spoken] : learnedAppAliases.get(spoken);
+}
 
 registerSlotType("app", {
   match(tokens, index) {
     // Try two-word app names first, then one-word.
     const twoWord = tokens.slice(index, index + 2).join(" ");
-    if (twoWord in APP_ALIASES) return { value: APP_ALIASES[twoWord], consumed: 2 };
+    const twoWordApp = lookupAppAlias(twoWord);
+    if (twoWordApp) return { value: twoWordApp, consumed: 2 };
     const oneWord = tokens[index];
-    if (oneWord && oneWord in APP_ALIASES) return { value: APP_ALIASES[oneWord], consumed: 1 };
+    const oneWordApp = oneWord ? lookupAppAlias(oneWord) : undefined;
+    if (oneWordApp) return { value: oneWordApp, consumed: 1 };
     // Accept any capitalized or known app-looking word as a raw app name.
     if (oneWord && /^[a-z]/.test(oneWord) && oneWord.length > 2) {
       return { value: oneWord, consumed: 1 };

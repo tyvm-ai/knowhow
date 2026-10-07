@@ -29,7 +29,7 @@ import KEYS_PACK from "../src/packs/keys";
 import META_PACK from "../src/packs/meta";
 import GAZE_MOUSE_PACK from "../src/packs/gazeMouse";
 import { SYSTEM_PACK } from "../src/packs/system";
-import { HINTS_PACK } from "../src/packs/hints";
+import { HINTS_PACK } from "../src/hints/commands";
 import type { HintRef } from "../src/grammar/slots";
 
 // ─── Fake PlatformActions ─────────────────────────────────────────────────────

@@ -7,7 +7,8 @@ import { AppAdapterRegistry, adaptersFromExtensions, APP_ADAPTER_EXTENSION } fro
 import type { AppAdapter } from "../src/targeting/adapter";
 import { performClick } from "../src/targeting/act";
 import { builtinAdapters, spotifyAdapter, chromeAdapter } from "../src/adapters/index";
-import { collectCandidates, SelectorState } from "../src/smartSelector";
+import { collectCandidates } from "../src/hints/perception/collect";
+import { SelectorState } from "../src/hints/selectorState";
 import { createTestServices, createFakePlatform } from "./helpers/services";
 
 const noteRow = (id = "n1") =>

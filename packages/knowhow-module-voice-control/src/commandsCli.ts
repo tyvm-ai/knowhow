@@ -13,6 +13,7 @@ import { formatConflicts } from "./commands/registry";
 import {
   ExtensionsLike,
   VOICE_COMMAND_EXTENSION,
+  VOICE_PACK_EXTENSION,
   collectVoiceCommandReport,
   commandRows,
   formatVoiceCommandsTable,
@@ -88,7 +89,7 @@ export async function readModuleVoiceExtensions(
     const extensions = (mod?.default ?? mod)?.extensions;
     if (!Array.isArray(extensions)) continue;
     for (const extension of extensions) {
-      if (extension?.type === VOICE_COMMAND_EXTENSION) out.push({ owner: modulePath, extension });
+      if (extension?.type === VOICE_COMMAND_EXTENSION || extension?.type === VOICE_PACK_EXTENSION) out.push({ owner: modulePath, extension });
     }
   }
   return out;

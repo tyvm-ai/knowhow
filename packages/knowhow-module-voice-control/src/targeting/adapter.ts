@@ -18,7 +18,7 @@
  * extensions (`APP_ADAPTER_EXTENSION`); see `adaptersFromExtensions`.
  */
 
-import type { AXElement } from "../smartSelector";
+import type { AXElement } from "../hints/types";
 import type { VoiceServices } from "../services";
 import type { Target } from "./resolver";
 
@@ -57,7 +57,7 @@ export interface AppAdapter {
     query: string[],
     gaze: { x: number; y: number },
     services: VoiceServices
-  ): Promise<import("../smartSelector").Candidate | undefined>;
+  ): Promise<import("../hints/types").Candidate | undefined>;
 }
 
 /** Registered adapters, consulted in registration order (later registrations win ties). */

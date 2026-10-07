@@ -10,7 +10,7 @@ import {
   TranscriptEvent,
   TranscriptSource,
 } from "./types";
-import type { UtteranceRecognizer } from "./continuous";
+import type { UtteranceRecognizer } from "./audio";
 
 export interface AudioTranscriptionClient {
   createAudioTranscription(

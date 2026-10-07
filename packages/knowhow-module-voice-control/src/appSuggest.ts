@@ -13,7 +13,7 @@ import { readdirSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { spawnOsa } from "./actions/osa";
-import { APP_ALIASES } from "./grammar/slots";
+import { APP_ALIASES, addLearnedAppAlias } from "./grammar/slots";
 import type { IntentRecoverer, RecoveryResult } from "./recovery/types";
 
 /** Similarity needed before we suggest anything (0..1). */
@@ -160,7 +160,7 @@ export const appNameRecoverer: IntentRecoverer = {
   stage: "matched",
   onLearned(key) {
     const [spoken, app] = key.split("=>");
-    if (spoken && app && !(spoken in APP_ALIASES)) APP_ALIASES[spoken] = app;
+    if (spoken && app) addLearnedAppAlias(spoken, app);
   },
   async recover({ text, match }, { services }): Promise<RecoveryResult | undefined> {
     const spoken = typeof match?.slots.app === "string" ? match.slots.app.trim() : "";

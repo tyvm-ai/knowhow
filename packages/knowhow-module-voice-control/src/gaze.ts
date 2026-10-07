@@ -6,7 +6,8 @@
  * file, so the hub URL, timeouts, sample validation and error radius are
  * defined exactly once.
  *
- * Hub URL resolution (first match wins):
+ * Hub URL resolution (config service `gaze.url`; first match wins):
+ *   0. knowhow.json → voiceControl.services.gaze.url (only when no env var below is set)
  *   1. `KNOWHOW_EYE_HUB_URL`            — the canonical setting
  *   2. `KNOWHOW_EYE_URL`                — DEPRECATED legacy alias
  *   3. `KNOWHOW_GAZE_URL`               — DEPRECATED legacy alias (a full
@@ -16,8 +17,9 @@
  */
 
 import type { GazeSample } from "./eyeTracking";
+import { ConfigResolver, DEFAULT_HUB_URL, GAZE_SERVICE_CONFIG, getDefaultConfig } from "./config";
 
-export const DEFAULT_HUB_URL = "http://127.0.0.1:7465";
+export { DEFAULT_HUB_URL };
 
 /**
  * Gaze estimate error radius in desktop pixels (x, y). The single shared
@@ -41,10 +43,14 @@ export const GAZE_TIMEOUT = {
 export type GazeTimeoutPreset = keyof typeof GAZE_TIMEOUT;
 
 /** Resolve the hub base URL (no trailing slash). Evaluated on every call. */
-export function resolveGazeHubUrl(env: NodeJS.ProcessEnv = process.env): string {
-  const gazeEndpoint = env.KNOWHOW_GAZE_URL?.replace(/\/api\/gaze\/?$/, "");
-  const raw = env.KNOWHOW_EYE_HUB_URL || env.KNOWHOW_EYE_URL || gazeEndpoint || DEFAULT_HUB_URL;
-  return raw.replace(/\/$/, "");
+export function resolveGazeHubUrl(source?: NodeJS.ProcessEnv | ConfigResolver): string {
+  const config =
+    source instanceof ConfigResolver
+      ? source
+      : source
+        ? new ConfigResolver({ env: () => source, json: () => ({}) })
+        : getDefaultConfig();
+  return config.get({ kind: "services", name: "gaze" }, "url", GAZE_SERVICE_CONFIG.url);
 }
 
 export interface GazeRequestOptions {
@@ -64,6 +70,8 @@ export interface GazeAtOptions extends GazeRequestOptions {
 
 export interface GazeClientOptions {
   hubUrl?: string;
+  /** Where the hub URL comes from when `hubUrl` isn't given (read at call time). Default: the process-wide resolver. */
+  config?: ConfigResolver;
   /** Test seam; defaults to global fetch. */
   fetch?: typeof fetch;
 }
@@ -85,12 +93,19 @@ export function nearestSample<T extends { timestamp: number }>(samples: T[], epo
 }
 
 export class GazeClient {
-  readonly hubUrl: string;
+  private readonly fixedUrl?: string;
+  private readonly config?: ConfigResolver;
   private readonly fetchImpl?: typeof fetch;
 
   constructor(opts: GazeClientOptions = {}) {
-    this.hubUrl = (opts.hubUrl ?? resolveGazeHubUrl()).replace(/\/$/, "");
+    this.fixedUrl = opts.hubUrl?.replace(/\/$/, "");
+    this.config = opts.config;
     this.fetchImpl = opts.fetch;
+  }
+
+  /** The hub base URL: the explicit one, else resolved from config on every use. */
+  get hubUrl(): string {
+    return this.fixedUrl ?? resolveGazeHubUrl(this.config);
   }
 
   private doFetch(path: string, init: RequestInit & { timeoutMs: number }): Promise<Response> {

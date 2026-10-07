@@ -2,21 +2,13 @@
  * Screenshot ("visual") hint provider: OCR + box fusion, ranking integration,
  * and the auto fallback in collectCandidates when accessibility is empty.
  */
-import {
-  fuseVisualElements,
-  segmentOcrLines,
-  dedupeAgainstAX,
-  OcrLineLike,
-} from "../src/visualElements";
-import {
-  rankCandidates,
-  collectCandidates,
-  SelectorState,
-  ComputerUseAdapter,
-  AXElement,
-} from "../src/smartSelector";
+import { fuseVisualElements, segmentOcrLines, dedupeAgainstAX, OcrLineLike } from "../src/hints/perception/visual";
+import { rankCandidates } from "../src/hints/ranking";
+import { collectCandidates } from "../src/hints/perception/collect";
+import { SelectorState } from "../src/hints/selectorState";
+import { ComputerUseAdapter, AXElement } from "../src/hints/types";
 import { parseUtterance } from "../src/grammar";
-import { HINTS_PACK } from "../src/packs/hints";
+import { HINTS_PACK } from "../src/hints/commands";
 
 const word = (text: string, x: number, y = 100, w = text.length * 8, h = 14) => ({ text, bounds: { x, y, width: w, height: h } });
 const line = (words: ReturnType<typeof word>[]): OcrLineLike => {

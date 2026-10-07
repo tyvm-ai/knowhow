@@ -18,7 +18,7 @@
  */
 
 import { appleScriptString, runAppleScriptSync } from "../actions/osa";
-import type { AXElement, Candidate, Rect } from "../smartSelector";
+import type { AXElement, Candidate, Rect } from "../hints/types";
 import type { AppAdapter } from "../targeting/adapter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────

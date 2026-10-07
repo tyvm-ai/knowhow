@@ -7,11 +7,12 @@
  * answers POST /inference in ≈80 ms for a one-word command.
  */
 
+import { taggedLogger } from "./services/logger";
 import { ChildProcessWithoutNullStreams, spawn as nodeSpawn } from "child_process";
 import { createServer } from "net";
 import { existsSync } from "fs";
 import { basename } from "path";
-import { CommandUtteranceRecognizer, UtteranceRecognizer } from "./continuous";
+import { CommandUtteranceRecognizer, UtteranceRecognizer } from "./audio";
 
 export type ServerSpawn = (command: string, args: readonly string[]) => ChildProcessWithoutNullStreams;
 
@@ -97,6 +98,8 @@ const defaultSpawn: ServerSpawn = (command, args) =>
   nodeSpawn(command, [...args], { stdio: ["pipe", "pipe", "pipe"] });
 
 export interface WhisperServerRecognizerOptions {
+  /** Where "[voice] rejected …" lines go (default: the tagged `voice` logger). */
+  log?: (message: string) => void;
   /**
    * Prompt-bias guard hook: "is the plain (unprompted) transcription something intent recovery
    * can work with?" (`RecoveryEngine.canRecover`). Default: never.
@@ -159,8 +162,11 @@ export class WhisperServerRecognizer implements UtteranceRecognizer {
   private readonly fetchImpl: typeof fetch;
   private readonly onProcessExit = () => this.kill();
 
+  private readonly log: (message: string) => void;
+
   constructor(private readonly options: WhisperServerRecognizerOptions) {
     this.fetchImpl = options.fetch ?? fetch;
+    this.log = options.log ?? ((message) => taggedLogger("voice").info(message));
   }
 
   get url(): string {
@@ -236,10 +242,10 @@ export class WhisperServerRecognizer implements UtteranceRecognizer {
         // vs unprompted "cube control get"). If a recoverer can work with the unprompted pass,
         // hand that on so intent recovery can use it.
         if (plain.trim() && this.options.recoverable?.(plain, [text])) {
-          console.log(`[voice] prompt bias: "${text}" vs unprompted "${plain.trim()}" — using unprompted`);
+          this.log(`prompt bias: "${text}" vs unprompted "${plain.trim()}" — using unprompted`);
           return plain.trim();
         }
-        console.log(`[voice] rejected (prompt bias): "${text}" but unprompted heard "${plain.trim() || "(nothing)"}"`);
+        this.log(`rejected (prompt bias): "${text}" but unprompted heard "${plain.trim() || "(nothing)"}"`);
         return "";
       }
     }
@@ -270,7 +276,7 @@ export class WhisperServerRecognizer implements UtteranceRecognizer {
       if (useVerbose && parsed && typeof parsed.text === "string" && Array.isArray(parsed.segments)) {
         const check = checkVerboseJsonConfidence(parsed as WhisperVerboseJson);
         if (!check.ok) {
-          if (!quiet) console.log(`[voice] rejected (whisper confidence): ${check.reason} — "${parsed.text.trim()}"`);
+          if (!quiet) this.log(`rejected (whisper confidence): ${check.reason} — "${parsed.text.trim()}"`);
           return "";
         }
         return parsed.text.trim();
@@ -409,6 +415,7 @@ export async function createWhisperRecognizer(
     prompt: options.prompt,
     verboseJson: options.verboseJson,
     recoverable: options.recoverable,
+    log: options.log,
   };
   const server = options.createServer ? options.createServer(serverOptions) : new WhisperServerRecognizer(serverOptions);
   const startedAt = Date.now();

@@ -11,9 +11,9 @@
  */
 
 import { services } from "@tyvm/knowhow/sdk";
-import type { ComputerUseAdapter } from "./smartSelector";
+import type { ComputerUseAdapter } from "./hints/types";
 
-export type { ComputerUseAdapter } from "./smartSelector";
+export type { ComputerUseAdapter } from "./hints/types";
 
 /**
  * Build a standalone ComputerService backed by the native Rust core driver

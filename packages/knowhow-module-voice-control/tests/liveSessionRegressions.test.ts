@@ -6,7 +6,7 @@
 import { checkVerboseJsonConfidence, isNonSpeechTranscript, unpromptedAgrees } from "../src/whisperServer";
 import { parseUtterance } from "../src/grammar";
 import { WINDOWS_PACK } from "../src/packs/windows";
-import { HINTS_PACK } from "../src/packs/hints";
+import { HINTS_PACK } from "../src/hints/commands";
 
 const commands = [...WINDOWS_PACK.extensions, ...HINTS_PACK.extensions];
 

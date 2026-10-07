@@ -147,6 +147,11 @@ export interface VoiceSessionOptions {
   services?: import("./services").VoiceServices;
   /** Packs whose lifecycle hooks this session runs. Default: every shipped pack. */
   packs?: readonly import("./packs/define").AnyVoicePack[];
+  /**
+   * The core extension registry. At session start, "voice-control.app-adapter" extensions are registered on
+   * `services.adapters` and "voice-control.pack" extensions run as packs (lifecycle, slots, normalisers, recoverers).
+   */
+  extensions?: { list(type: string): readonly unknown[] } | null;
   /** Intent-recovery engine (misheard commands). Default: one built from the recoverers of `packs`. */
   recovery?: import("./recovery/engine").RecoveryEngine;
   /** Injected mouse mover — avoids a direct require of computer-use in VoiceSession. */

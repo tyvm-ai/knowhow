@@ -6,7 +6,7 @@
 import { VoiceSession } from "../src/VoiceSession";
 import type { TranscriptEvent, TranscriptSource, VoiceAgentRuntime } from "../src/types";
 import { defineVoicePack } from "../src/packs/define";
-import { HINTS_PACK } from "../src/packs/hints";
+import { HINTS_PACK } from "../src/hints/commands";
 import GAZE_MOUSE_PACK from "../src/packs/gazeMouse";
 import { createTestContext, createTestHarness } from "./helpers/services";
 

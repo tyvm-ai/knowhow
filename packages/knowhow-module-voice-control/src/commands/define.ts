@@ -20,6 +20,8 @@ import { expandPhraseSynonyms } from "../grammar/compile";
 
 /** Extension type tag (re-exported from voiceCommands.ts; lives here to avoid an import cycle). */
 export const VOICE_COMMAND_EXTENSION = "voice-control.command" as const;
+/** Extension type under which a module contributes a whole `VoicePack` (commands, slots, normalisers, recoverers, lifecycle). */
+export const VOICE_PACK_EXTENSION = "voice-control.pack" as const;
 
 export interface CommandDefinition<Ctx = VoiceCommandContext> {
   /** Unique id. With `pack(prefix)` the prefix is prepended. */

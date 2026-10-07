@@ -31,11 +31,13 @@ import type { CommandSource, UtteranceTiming } from "./types";
 import { appendCommandDecision } from "./commandLog";
 import { PackRuntime } from "./packs/define";
 import { allPacks } from "./packs/index";
+import { applyContributions, readContributions } from "./contributions";
 import { createVoiceLogger, createVoiceServices } from "./services";
 import type { TimerHandle } from "./services";
 import type { VoiceServices } from "./services";
 import { RecoveryEngine, collectRecoverers } from "./recovery/engine";
-import { normaliseTranscript } from "./grammar/normalise";
+import { recoverUtterance } from "./pipeline";
+import type { RecoverDeps } from "./pipeline";
 
 interface ActivePlayback {
   generationId: string;
@@ -100,9 +102,13 @@ export class VoiceSession {
           ? { log: createVoiceLogger({ sink: (_level, line) => options.log?.(line) }) }
           : {},
       );
-    const packs = options.packs ?? allPacks();
+    // Third-party adapters / packs registered as module extensions join this session.
+    const contributions = readContributions(options.extensions);
+    applyContributions(this.services, contributions);
+    const packs = [...(options.packs ?? allPacks()), ...contributions.packs];
     this.packRuntime = new PackRuntime(this.services, packs);
     this.recovery = options.recovery ?? new RecoveryEngine({ recoverers: collectRecoverers(packs), services: this.services });
+    this.recovery.addRecoverers(collectRecoverers(contributions.packs));
     // Mishearings you've confirmed before ("ghosting" → Ghostty) are applied again.
     this.recovery.init();
 
@@ -156,6 +162,11 @@ export class VoiceSession {
     return actions.frontmostApp({ maxWaitMs: 400 }).catch(() => undefined);
   }
 
+  /** What the shared pipeline (`recoverUtterance`, also used by `parse` / `replay`) needs from this session. */
+  private recoverDeps(): RecoverDeps {
+    return { recovery: this.recovery, frontApp: () => this.frontmostAppQuick(), run: (t) => this.dispatchText(t) };
+  }
+
   /** Dispatch a (recovered) command text as if it had just been heard. */
   private async dispatchText(text: string): Promise<void> {
     const spokenAt = Date.now();
@@ -173,10 +184,7 @@ export class VoiceSession {
    * consumed (latch armed / confirmation asked), or undefined.
    */
   private async recoverUnmatched(text: string, utteranceId: string): Promise<string | "handled" | undefined> {
-    const outcome = await this.recovery.recover(
-      { text, normalised: normaliseTranscript(text) },
-      { frontApp: () => this.frontmostAppQuick(), run: (t) => this.dispatchText(t) },
-    );
+    const outcome = await recoverUtterance(text, this.recoverDeps());
     if (outcome.kind === "rewrite") return outcome.text;
     if (outcome.kind !== "handled") return undefined;
     if (outcome.asked) {
@@ -214,10 +222,9 @@ export class VoiceSession {
     });
     // A matched command may still be worth a second look (e.g. a misheard {app}
     // slot): recoverers ask, rewrite or let it through.
-    const recovered = await this.recovery.recover(
-      { text: invocation.text, normalised: normaliseTranscript(invocation.text), match: { command: command.name, slots: ctx.slots ?? {} } },
-      { frontApp: () => this.frontmostAppQuick(), run: (t) => this.dispatchText(t) },
-    );
+    const recovered = await recoverUtterance(invocation.text, this.recoverDeps(), {
+      match: { command: command.name, slots: ctx.slots ?? {} },
+    });
     if (recovered.kind === "handled") return;
     if (recovered.kind === "rewrite") return this.dispatchText(recovered.text);
     // Handle repeatable commands: run repeat times if repeat > 1.
@@ -475,7 +482,7 @@ export class VoiceSession {
 
       if (!recoveredCommand && voicedMs !== undefined && voicedMs < minVoicedMs) {
         const reason = `voicedMs=${voicedMs} < minVoicedMs=${minVoicedMs}`;
-        console.log(`[voice] rejected (F1 gate): ${reason} — "${text}"`);
+        this.services.log.info(`rejected (F1 gate): ${reason} — "${text}"`);
         void appendCommandDecision({
           ts: Date.now(), utteranceId: event.utteranceId, text, decision: "rejected",
           rejectedReason: reason, voicedMs, audioMs,
@@ -485,7 +492,7 @@ export class VoiceSession {
       }
       if (maxAudioMs !== undefined && audioMs !== undefined && audioMs > maxAudioMs) {
         const reason = `audioMs=${audioMs} > maxAudioMs=${maxAudioMs}`;
-        console.log(`[voice] rejected (F1 gate): ${reason} — "${text}"`);
+        this.services.log.info(`rejected (F1 gate): ${reason} — "${text}"`);
         void appendCommandDecision({
           ts: Date.now(), utteranceId: event.utteranceId, text, decision: "rejected",
           rejectedReason: reason, voicedMs, audioMs,
@@ -535,7 +542,7 @@ export class VoiceSession {
           phrase: result.phrase, source: result.source,
           voicedMs, audioMs,
         });
-        console.log(`[voice] accepted: "${result.phrase}" (voiced=${voicedMs ?? "?"}ms, audio=${audioMs ?? "?"}ms)`);
+        this.services.log.info(`accepted: "${result.phrase}" (voiced=${voicedMs ?? "?"}ms, audio=${audioMs ?? "?"}ms)`);
         this.reportLatency(event.utteranceId, result.phrase, result.source, text, event.timing, {
           dispatchedAt: result.dispatchedAt ?? Date.now(),
           ...(gazeMs !== undefined ? { gazeMs } : {}),
@@ -551,7 +558,7 @@ export class VoiceSession {
           ts: Date.now(), utteranceId: event.utteranceId, text, decision: "rejected",
           rejectedReason: "no-match", voicedMs, audioMs,
         });
-        console.log(`[voice] unmatched: "${text}" (voiced=${voicedMs ?? "?"}ms, audio=${audioMs ?? "?"}ms)`);
+        this.services.log.info(`unmatched: "${text}" (voiced=${voicedMs ?? "?"}ms, audio=${audioMs ?? "?"}ms)`);
       }
       return;
     }

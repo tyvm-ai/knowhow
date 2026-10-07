@@ -2,8 +2,11 @@
  * The map stays up until "hide map", keeps stable numbers, and can be refreshed.
  */
 
-import { mapChangeFraction, HINTS_PACK } from "../src/packs/hints";
-import { showHintOverlay, buildHintOverlayPrimitives, SelectorState, type Candidate } from "../src/smartSelector";
+import { mapChangeFraction } from "../src/hints/map";
+import { HINTS_PACK } from "../src/hints/commands";
+import { showHintOverlay, buildHintOverlayPrimitives } from "../src/hints/overlay";
+import { SelectorState } from "../src/hints/selectorState";
+import { type Candidate } from "../src/hints/types";
 import { FakeClock } from "./helpers/services";
 
 function cand(i: number, name = `Item ${i}`, dy = 0): Candidate {

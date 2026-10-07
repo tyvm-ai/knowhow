@@ -1,6 +1,8 @@
-import { stabilizeLabels, duplicateLabels, resolveHintRef, Candidate } from "../src/smartSelector";
+import { stabilizeLabels, duplicateLabels } from "../src/hints/labels";
+import { resolveHintRef } from "../src/hints/refs";
+import { Candidate } from "../src/hints/types";
 import { suggestApp, appNameSimilarity, namesRunningApp, appNameRecoverer } from "../src/appSuggest";
-import { APP_ALIASES } from "../src/grammar/slots";
+import { lookupAppAlias, resetLearnedAppAliases } from "../src/grammar/slots";
 import { RecoveryEngine, RECOVERY_CONFIRM_TTL_MS } from "../src/recovery/engine";
 import { createFakePlatform, createTestHarness } from "./helpers/services";
 
@@ -83,8 +85,8 @@ describe("app name suggestions", () => {
     expect(ran).toEqual(["maximize ghostty"]);
     // remembered in the shared learned store, and applied to the grammar's aliases
     expect(services.learned.list("app-name")).toEqual(["ghosting=>ghostty"]);
-    expect(APP_ALIASES["ghosting"]).toBe("ghostty");
-    delete APP_ALIASES["ghosting"];
+    expect(lookupAppAlias("ghosting")).toBe("ghostty");
+    resetLearnedAppAliases();
   });
 
   test("a held suggestion is dropped after its TTL on the injected clock, and nothing is persisted in tests", async () => {
@@ -104,10 +106,10 @@ describe("app name suggestions", () => {
 
   test("learned aliases are re-applied at engine init", () => {
     const { engine, services } = setup();
-    delete APP_ALIASES["zzz-heard"];
+    resetLearnedAppAliases();
     services.learned.reset({ "app-name": ["zzz-heard=>ghostty"] });
     engine.init();
-    expect(APP_ALIASES["zzz-heard"]).toBe("ghostty");
-    delete APP_ALIASES["zzz-heard"];
+    expect(lookupAppAlias("zzz-heard")).toBe("ghostty");
+    resetLearnedAppAliases();
   });
 });

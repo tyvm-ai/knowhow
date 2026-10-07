@@ -17,7 +17,7 @@ the contracts below; C integrates both.
 - `packages/knowhow-module-computer-use/src/automation.ts` — `AutomationSDK`, `AutomationRunner`
   (builds `sdk`, runs scripts via `AsyncFunction`, `streamDisposers` cleanup, `RunOptions.toolsService`).
   Runner constructed in `src/tools/index.ts` (~L1247, ~L1271) and `src/cli.ts` (~L641).
-- `packages/knowhow-module-voice-control/src/` — `continuous.ts` (VAD + wake gating, emits
+- `packages/knowhow-module-voice-control/src/` — `audio/` (was `continuous.ts`: VAD + wake gating, emits
   `TranscriptEvent`s), `VoiceSession.ts` (routes finals to the agent), `command.ts`
   (`knowhow voice-agent` CLI), `eyeTracking.ts` (local server on 127.0.0.1:7465, `/api/gaze` GET/POST,
   `/api/correct`), `GazePlugin.ts`.

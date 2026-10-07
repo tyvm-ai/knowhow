@@ -17,18 +17,21 @@ import { resolveComputerService } from "../computerService";
 import type { ComputerUseAdapter } from "../computerService";
 import { builtinAdapters } from "../adapters/index";
 import { AppSuggestState } from "../appSuggest";
+import { createConfigResolver } from "../config";
+import type { ConfigResolver } from "../config";
 import { GazeClient } from "../gaze";
 import { LatchStore } from "../recovery/latch";
 import { LearnedStore } from "../recovery/learned";
 import type { SmartTypeServices } from "../smartTypeService";
 import type { Clock } from "./clock";
 import { systemClock } from "./clock";
-import { createVoiceLogger } from "./logger";
+import { createVoiceLogger, resolveLogLevel } from "./logger";
 import type { VoiceLogger } from "./logger";
 import { PackStateStore } from "./packState";
 import { PendingActionStore } from "./pending";
 import { PointerMemory } from "./pointer";
 import { TypingMemory } from "./typing";
+import { VoiceStore } from "./voiceStore";
 import { AppAdapterRegistry } from "../targeting/adapter";
 import { TargetResolver } from "../targeting/resolver";
 
@@ -38,17 +41,22 @@ export { TargetResolver } from "../targeting/resolver";
 export type { Clock, TimerHandle } from "./clock";
 export { systemClock } from "./clock";
 export type { VoiceLogger, LogLevel } from "./logger";
-export { createVoiceLogger, createMemoryLogger } from "./logger";
+export { createVoiceLogger, createMemoryLogger, taggedLogger, stderrSink, formatList } from "./logger";
 export { PackStateStore } from "./packState";
 export { PendingActionStore } from "./pending";
 export type { PendingAction } from "./pending";
 export { PointerMemory, PLACED_POINTER_MAX_AGE_MS } from "./pointer";
 export { TypingMemory } from "./typing";
+export { VoiceStore } from "./voiceStore";
 
 /** Call a connected MCP tool by bare method name (suffix lookup, timeout) — core's `callByMethod`. */
 export type McpCallByMethod = (method: string, args?: object, opts?: McpCallOptions) => Promise<McpCallResult>;
 
 export interface VoiceServices {
+  /** Settings: env > knowhow.json (voiceControl.packs.<pack>.<key> / voiceControl.services.<service>.<key>) > default. */
+  config: ConfigResolver;
+  /** Runtime state under `~/.knowhow/voice/` (learned intents, app aliases) + per-session memories. */
+  store: VoiceStore;
   /** Front app, focus, osa, running apps, keys/typing, windows. */
   platform: PlatformActions;
   gaze: GazeClient;
@@ -94,19 +102,23 @@ export function createVoiceServices(overrides: Partial<VoiceServices> = {}): Voi
   const clock = overrides.clock ?? systemClock;
   const packs = overrides.packs ?? new PackStateStore();
   const pointer = overrides.pointer ?? new PointerMemory(clock);
+  const config = overrides.config ?? createConfigResolver();
+  const store = overrides.store ?? VoiceStore.fromConfig(config);
   const services = {
-    gaze: overrides.gaze ?? new GazeClient(),
+    config,
+    store,
+    gaze: overrides.gaze ?? new GazeClient({ config }),
     mcp: overrides.mcp ?? coreMcp,
     pointer,
     adapters: overrides.adapters ?? new AppAdapterRegistry(builtinAdapters()),
     targets: overrides.targets ?? new TargetResolver({ pointer }),
     pending: overrides.pending ?? new PendingActionStore(),
     typing: overrides.typing ?? new TypingMemory(),
-    learned: overrides.learned ?? new LearnedStore(),
+    learned: overrides.learned ?? new LearnedStore({ config, store }),
     latch: overrides.latch ?? new LatchStore(clock),
     appSuggest: overrides.appSuggest ?? new AppSuggestState(),
     packs,
-    log: overrides.log ?? createVoiceLogger(),
+    log: overrides.log ?? createVoiceLogger({ level: resolveLogLevel(config) }),
     clock,
     ai: overrides.ai,
   } as VoiceServices;

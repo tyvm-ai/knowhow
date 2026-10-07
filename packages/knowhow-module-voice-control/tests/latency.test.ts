@@ -10,7 +10,7 @@ import {
   SoxAudioBackend,
   UtteranceRecognizer,
   summariseNoiseFloor,
-} from "../src/continuous";
+} from "../src/audio";
 import {
   appendLatencyRecord,
   buildLatencyRecord,

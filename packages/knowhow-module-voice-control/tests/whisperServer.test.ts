@@ -7,7 +7,7 @@ import {
   parseSttBackend,
   siblingWhisperServer,
 } from "../src/whisperServer";
-import type { UtteranceRecognizer } from "../src/continuous";
+import type { UtteranceRecognizer } from "../src/audio";
 
 function fakeChild() {
   const child: any = new EventEmitter();

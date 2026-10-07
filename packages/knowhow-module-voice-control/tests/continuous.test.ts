@@ -7,7 +7,7 @@ import {
   pcmRms,
   pcmToWav,
   preflightContinuousVoice,
-} from "../src/continuous";
+} from "../src/audio";
 import type { TranscriptEvent } from "../src/types";
 
 const SAMPLE_RATE = 1_000;

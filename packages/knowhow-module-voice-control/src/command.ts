@@ -1,7 +1,10 @@
 import { existsSync } from "fs";
+import { stderrSink, taggedLogger } from "./services/logger";
 import { homedir } from "os";
 import { basename, join } from "path";
 import { buildSmartTypeAi } from "./smartTypeService";
+import { SMART_TYPE_CONFIG, SMART_TYPE_PACK } from "./packs/smartType";
+import { packConfigView } from "./packs/define";
 import { createVoiceLogger, createVoiceServices } from "./services";
 import { ensureDefaultMic, services, setupServices } from "@tyvm/knowhow/sdk";
 import type { AgentInput, AgentService } from "@tyvm/knowhow/sdk";
@@ -17,7 +20,7 @@ import {
   SoxAudioBackend,
   UtteranceRecognizer,
   preflightContinuousVoice,
-} from "./continuous";
+} from "./audio";
 import { createWhisperRecognizer } from "./whisperServer";
 import { collectVoiceCommands, readKnowhowConfig } from "./voiceCommands";
 import { DEFAULT_LATENCY_LOG, formatLatencyLine } from "./latency";
@@ -33,6 +36,11 @@ import { RecoveryEngine, collectRecoverers } from "./recovery/engine";
 import { mouseMoverFromComputerService } from "./commandMode";
 import { createStandaloneComputerService } from "./computerService";
 import { SpeechOutput, VoiceAgentRuntime, VoiceSessionEvent } from "./types";
+
+/** The agent front-end logs to stderr (stdout carries --json event lines). */
+const cliLog = taggedLogger("voice", stderrSink);
+const toolLog = taggedLogger("tool", stderrSink);
+const costLog = taggedLogger("cost", stderrSink);
 
 export interface VoiceAgentCommandOptions {
   agent: string;
@@ -89,23 +97,21 @@ function renderEvent(event: VoiceSessionEvent, json = false): void {
 
   if (event.type === "session.state") {
     if (["listening", "thinking", "speaking"].includes(event.state)) {
-      process.stderr.write(`[voice] ${event.state}\n`);
+      cliLog.info(`${event.state}`);
     }
     return;
   }
 
   if (event.type === "wake.activated") {
-    process.stderr.write(
-      `[voice] wake word detected; listening for your request (no need to repeat it)\n`
-    );
+    cliLog.info(`wake word detected; listening for your request (no need to repeat it)`);
     return;
   }
   if (event.type === "wake.deactivated") {
-    process.stderr.write("[voice] sleeping; say the wake word when you need me\n");
+    cliLog.info("sleeping; say the wake word when you need me");
     return;
   }
   if (event.type === "echo.suppressed") {
-    process.stderr.write("[voice] ignored likely playback echo\n");
+    cliLog.info("ignored likely playback echo");
     return;
   }
   if (event.type === "transcript") {
@@ -116,38 +122,38 @@ function renderEvent(event: VoiceSessionEvent, json = false): void {
     if (event.event.type === "output.completed") {
       process.stdout.write(`assistant: ${event.event.text}\n`);
     } else if (event.event.type === "tool.started") {
-      process.stderr.write(`[tool] ${event.event.name}\n`);
+      toolLog.info(`${event.event.name}`);
     } else if (event.event.type === "cost.updated") {
-      process.stderr.write(`[cost] task $${event.event.costUsd.toFixed(6)}\n`);
+      costLog.info(`task $${event.event.costUsd.toFixed(6)}`);
     }
     return;
   }
   if (event.type === "playback.interrupted") {
-    process.stderr.write(`[voice] playback interrupted after ${event.progress.elapsedMs}ms\n`);
+    cliLog.info(`playback interrupted after ${event.progress.elapsedMs}ms`);
     return;
   }
   if (event.type === "session.error") {
-    process.stderr.write(`[voice] error: ${event.message}\n`);
+    cliLog.info(`error: ${event.message}`);
     return;
   }
   if (event.type === "mode.changed") {
-    process.stderr.write(`[voice] mode: ${event.mode}\n`);
+    cliLog.info(`mode: ${event.mode}`);
     return;
   }
   if (event.type === "command.matched") {
-    process.stderr.write(`[voice] command: ${event.phrase} (${event.source})\n`);
+    cliLog.info(`command: ${event.phrase} (${event.source})`);
     return;
   }
   if (event.type === "command.unmatched") {
-    process.stderr.write(`[voice] unmatched: ${event.text}\n`);
+    cliLog.info(`unmatched: ${event.text}`);
     return;
   }
   if (event.type === "command.dispatched") {
-    process.stderr.write(`[voice] dispatched: ${event.event.phrase}\n`);
+    cliLog.info(`dispatched: ${event.event.phrase}`);
     return;
   }
   if (event.type === "command.latency") {
-    process.stderr.write(`${formatLatencyLine(event.phrase, event.timing)}\n`);
+    stderrSink("info", formatLatencyLine(event.phrase, event.timing), "latency", "");
   }
 }
 
@@ -250,45 +256,45 @@ export async function runVoiceAgent(options: VoiceAgentCommandOptions): Promise<
   }
   if (options.preflight) {
     let hasErrors = false;
-    process.stderr.write("[voice] module registration: ok (voice-control command loaded)\n");
+    cliLog.info("module registration: ok (voice-control command loaded)");
     if (
       localCommand &&
       basename(localCommand).includes("whisper") &&
       (!localModel || !existsSync(localModel))
     ) {
       hasErrors = true;
-      process.stderr.write(
-        `[voice] error: local whisper.cpp model not found${localModel ? ` at ${localModel}` : ""}\n` +
-          `        Use --local-stt-model <path> or install ${DEFAULT_LOCAL_WHISPER_MODEL}\n`
+      cliLog.error(
+        `error: local whisper.cpp model not found${localModel ? ` at ${localModel}` : ""}\n` +
+          `        Use --local-stt-model <path> or install ${DEFAULT_LOCAL_WHISPER_MODEL}`
       );
     } else if (localModel && !options.localSttModel) {
-      process.stderr.write(`[voice] info: discovered local whisper model ${localModel}\n`);
+      cliLog.info(`info: discovered local whisper model ${localModel}`);
     }
     if (options.speak && options.tts === "mlx") {
       const python = discoverMlxPython(options.ttsPython);
       const model = discoverMlxModel(options.ttsModel);
       const check = checkMlxAudio(python, model);
-      process.stderr.write(`[voice] info: MLX-Audio Python ${python}\n`);
-      process.stderr.write(`[voice] info: MLX-Audio model ${model}\n`);
+      cliLog.info(`info: MLX-Audio Python ${python}`);
+      cliLog.info(`info: MLX-Audio model ${model}`);
       if (!check.ok) {
         hasErrors = true;
-        process.stderr.write(
-          `[voice] error: mlx_audio is unavailable: ${check.message}\n` +
+        cliLog.error(
+          `error: mlx_audio is unavailable: ${check.message}\n` +
           `        Install with: brew install python@3.11 espeak-ng && ` +
           `python3.11 -m venv ${join(homedir(), ".cache", "knowhow", "mlx-audio")} && ` +
-          `${join(homedir(), ".cache", "knowhow", "mlx-audio", "bin", "pip")} install mlx-audio 'misaki[en]'\n`
+          `${join(homedir(), ".cache", "knowhow", "mlx-audio", "bin", "pip")} install mlx-audio 'misaki[en]'`
         );
       } else if (model.startsWith("/") && !existsSync(model)) {
         hasErrors = true;
-        process.stderr.write(`[voice] error: MLX-Audio model not found at ${model}\n`);
+        cliLog.info(`error: MLX-Audio model not found at ${model}`);
       }
     } else if (options.speak) {
       const speechCommand = process.platform === "darwin" ? "/usr/bin/say" : "/usr/bin/espeak";
       if (existsSync(speechCommand)) {
-        process.stderr.write(`[voice] info: found TTS command ${speechCommand}\n`);
+        cliLog.info(`info: found TTS command ${speechCommand}`);
       } else {
         hasErrors = true;
-        process.stderr.write(`[voice] error: TTS command not found at ${speechCommand}\n`);
+        cliLog.info(`error: TTS command not found at ${speechCommand}`);
       }
     }
     const diagnostics = await preflightContinuousVoice({
@@ -298,8 +304,8 @@ export async function runVoiceAgent(options: VoiceAgentCommandOptions): Promise<
       wakePhrase: options.wakeWord,
     });
     for (const diagnostic of diagnostics) {
-      process.stderr.write(`[voice] ${diagnostic.level}: ${diagnostic.message}\n`);
-      if (diagnostic.remedy) process.stderr.write(`        ${diagnostic.remedy}\n`);
+      cliLog.info(`${diagnostic.level}: ${diagnostic.message}`);
+      if (diagnostic.remedy) cliLog.info(`        ${diagnostic.remedy}`);
       if (diagnostic.level === "error") hasErrors = true;
     }
     if (hasErrors) {
@@ -320,21 +326,17 @@ export async function runVoiceAgent(options: VoiceAgentCommandOptions): Promise<
   const wakeWindowMs = numberOption(options.wakeWindowMs, 30_000, "--wake-window-ms");
   const commandSilenceMs = numberOption(options.commandSilenceMs, 350, "--command-silence-ms");
   if (useContinuous) {
-    process.stderr.write(`[voice] input device: ${device}\n`);
-    process.stderr.write(
-      `[voice] endpointing: RMS ${vadThreshold}, command mode ${commandSilenceMs}ms silence (active at start), agent mode ${vadSilenceMs}ms silence\n`
-    );
-    process.stderr.write(
-      `[voice] transcription: ${localCommand ? `local (${localCommand})` : "OpenAI whisper-1"}\n`
-    );
+    cliLog.info(`input device: ${device}`);
+    cliLog.info(`endpointing: RMS ${vadThreshold}, command mode ${commandSilenceMs}ms silence (active at start), agent mode ${vadSilenceMs}ms silence`);
+    cliLog.info(`transcription: ${localCommand ? `local (${localCommand})` : "OpenAI whisper-1"}`);
     if (localModel) {
-      process.stderr.write(`[voice] transcription model: ${localModel}\n`);
+      cliLog.info(`transcription model: ${localModel}`);
     }
   }
 
   // One services container for the whole run (platform, gaze, pointer, pending, clock, logger…).
   const voiceServices = createVoiceServices({
-    log: createVoiceLogger({ sink: (_level, line) => void process.stderr.write(`${line}\n`) }),
+    log: createVoiceLogger({ sink: stderrSink }),
   });
   const voiceLog = (message: string) => voiceServices.log.info(message);
   // One recovery engine for the run: the session uses it, and so does the whisper prompt-bias guard.
@@ -368,13 +370,11 @@ export async function runVoiceAgent(options: VoiceAgentCommandOptions): Promise<
 
   // Wire up smarttype AI services
   {
-    const config = readKnowhowConfig() as any;
-    const stConfig = config?.voiceControl?.smartType ?? {};
-    const atConfig = config?.voiceControl?.agentType ?? {};
-    const stProvider = process.env.KNOWHOW_SMARTTYPE_PROVIDER ?? stConfig.provider ?? "anthropic";
-    const stModel = process.env.KNOWHOW_SMARTTYPE_MODEL ?? stConfig.model ?? "claude-sonnet-4-6";
+    const stConfig = packConfigView(voiceServices, SMART_TYPE_PACK.name, SMART_TYPE_CONFIG);
+    const stProvider = stConfig.provider;
+    const stModel = stConfig.model;
     // agenttype runs the same agent "hey knowhow" talks to unless overridden.
-    const atAgentName = atConfig.agent ?? options.agent;
+    const atAgentName = stConfig.agent ?? options.agent;
     voiceServices.ai = {
       ai: buildSmartTypeAi(Clients as any, Agents as any, atAgentName, stProvider, stModel),
       agentName: atAgentName,
@@ -474,6 +474,7 @@ export async function runVoiceAgent(options: VoiceAgentCommandOptions): Promise<
       initialMode: once ? "agent" : "command",
       mouse: mouseMover,
       commands: voiceCommands,
+      extensions: extensionsService,
       services: voiceServices,
       recovery,
       latencyLogFile: options.latencyLog === false ? undefined : DEFAULT_LATENCY_LOG,
@@ -490,17 +491,17 @@ export async function runVoiceAgent(options: VoiceAgentCommandOptions): Promise<
   process.once("SIGTERM", stop);
   try {
     if (!once) {
-      process.stderr.write(
+      cliLog.info(
         options.text
-          ? "Voice-agent text harness. Type /stop to exit.\n"
+          ? "Voice-agent text harness. Type /stop to exit."
           : useContinuous
-            ? "Voice-agent continuous mode. Speak naturally; press Ctrl-C to exit.\n"
-            : "Voice-agent push-to-talk harness. Press Enter to record; type /stop at a prompt to exit.\n"
+            ? "Voice-agent continuous mode. Speak naturally; press Ctrl-C to exit."
+            : "Voice-agent push-to-talk harness. Press Enter to record; type /stop at a prompt to exit."
       );
       if (useContinuous && options.wakeWord && !localCommand) {
-        process.stderr.write(
-          "[voice] privacy warning: wake phrase detection uses remote OpenAI transcription. " +
-            "Use --local-stt-command for local wake recognition.\n"
+        cliLog.warn(
+          "privacy warning: wake phrase detection uses remote OpenAI transcription. " +
+            "Use --local-stt-command for local wake recognition."
         );
       }
     }

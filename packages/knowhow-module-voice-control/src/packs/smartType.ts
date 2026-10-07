@@ -13,10 +13,11 @@ import { runAppleScript, spawnOsa } from "../actions/osa";
 import type { VoiceCommandExtension } from "../voiceCommands";
 import type { PendingAction } from "../services";
 import { resolveTmuxTarget } from "./tmux";
-import { distanceToRect } from "../smartSelector";
-import type { AXElement } from "../smartSelector";
+import { distanceToRect } from "../hints/ranking";
+import type { AXElement } from "../hints/types";
 import { captureFocus, restoreFocus, describeFocus } from "../focusSnapshot";
 import type { FocusSnapshot, FocusDeps } from "../focusSnapshot";
+import { configField, nonEmpty } from "../config/schema";
 import { defineVoicePack } from "./define";
 import type { PackCommandContext } from "./define";
 
@@ -525,7 +526,32 @@ function run(argv) {
 
 // ─── Pack definition ─────────────────────────────────────────────────────────
 
-export const SMART_TYPE_PACK = defineVoicePack<SmartTypeState>({
+/** Settings of the smart-type / agent-type pack (`knowhow.json → voiceControl.packs.smart-type.<key>`; the old `voiceControl.smartType` / `voiceControl.agentType` keys still work). */
+export const SMART_TYPE_CONFIG = {
+  provider: configField<string>({
+    default: "anthropic",
+    env: "KNOWHOW_SMARTTYPE_PROVIDER",
+    legacyJson: ["voiceControl.smartType.provider"],
+    parse: nonEmpty,
+    description: "AI provider used to write smart-type text",
+  }),
+  model: configField<string>({
+    default: "claude-sonnet-4-6",
+    env: "KNOWHOW_SMARTTYPE_MODEL",
+    legacyJson: ["voiceControl.smartType.model"],
+    parse: nonEmpty,
+    description: "Model used to write smart-type text",
+  }),
+  agent: configField<string | undefined>({
+    default: undefined,
+    legacyJson: ["voiceControl.agentType.agent"],
+    parse: nonEmpty,
+    description: "Agent that runs \"agent type\" (unset = the agent \"hey knowhow\" talks to)",
+  }),
+};
+
+export const SMART_TYPE_PACK = defineVoicePack<SmartTypeState, typeof SMART_TYPE_CONFIG>({
+  config: SMART_TYPE_CONFIG,
   name: "smart-type",
   description: "smart type / agent type: LLM-generated text typed after a spoken or dialog confirmation",
   prefix: "voice-control.smarttype.",

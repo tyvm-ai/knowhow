@@ -1165,7 +1165,44 @@ export class AIClient {
   }
 }
 
-export const Clients = new AIClient();
+/**
+ * The process-wide AIClient. Constructed lazily on first use so that merely
+ * importing this module (e.g. via `@tyvm/knowhow/sdk`) has no side effects
+ * (the constructor kicks off provider registration, which may log warnings).
+ */
+let _clientsInstance: AIClient | undefined;
+function getClientsInstance(): AIClient {
+  if (!_clientsInstance) {
+    _clientsInstance = new AIClient();
+  }
+  return _clientsInstance;
+}
+
+export const Clients: AIClient = new Proxy({} as AIClient, {
+  get(_t, prop) {
+    const inst = getClientsInstance() as any;
+    const value = inst[prop];
+    return typeof value === "function" ? value.bind(inst) : value;
+  },
+  set(_t, prop, value) {
+    (getClientsInstance() as any)[prop] = value;
+    return true;
+  },
+  has(_t, prop) {
+    return prop in getClientsInstance();
+  },
+  ownKeys() {
+    return Reflect.ownKeys(getClientsInstance());
+  },
+  getOwnPropertyDescriptor(_t, prop) {
+    const d = Reflect.getOwnPropertyDescriptor(getClientsInstance(), prop);
+    if (d) d.configurable = true;
+    return d;
+  },
+  getPrototypeOf() {
+    return AIClient.prototype;
+  },
+});
 
 export * from "./types";
 

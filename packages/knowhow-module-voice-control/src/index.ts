@@ -15,11 +15,14 @@ import { hintsExtension } from "./extensions";
 import { parseUtterance } from "./grammar";
 import { collectVoiceCommands, readKnowhowConfig } from "./voiceCommands";
 import { runHintsCli } from "./hintsCli";
+import { runConfigCli } from "./configCli";
+import { replayRow, runReplayCli } from "./replay";
+import { defineVoiceExtensionPoints } from "./contributions";
 
 export * from "./types";
 export * from "./VoiceSession";
 export * from "./adapters";
-export * from "./continuous";
+export * from "./audio";
 export * from "./mlxSpeech";
 export * from "./command";
 export * from "./eyeTracking";
@@ -33,6 +36,11 @@ export * from "./axEnabler";
 export * from "./latency";
 export * from "./whisperServer";
 export * from "./recovery/index";
+export * from "./config";
+export * from "./configCli";
+export * from "./pipeline";
+export * from "./replay";
+export * from "./contributions";
 
 type VoiceControlOptions = VoiceAgentCommandOptions & Record<string, any>;
 
@@ -51,34 +59,68 @@ export const voiceControlAction = normalizeCommandAction<VoiceControlOptions>(as
     return;
   }
   if (subcommand === "parse") {
-    // `knowhow voice-control parse "<utterance>" [--json]`
+    // `knowhow voice-control parse "<utterance>" [--app NAME] [--json]`
     const utterance = extraArgs[0] ?? options?.once ?? "";
     if (!utterance) {
-      process.stderr.write('Usage: knowhow voice-control parse "<utterance>" [--json]\n');
+      process.stderr.write('Usage: knowhow voice-control parse "<utterance>" [--app NAME] [--json]\n');
       process.exit(1);
     }
-    // Same collection path as the live session: knowhow.json commands and
-    // synonyms first, then this module's shipped commands.
-    const allCommands = collectVoiceCommands({
+    // Same pipeline as the live session (normalise → match → recover), over the same command collection:
+    // knowhow.json commands and synonyms first, then this module's shipped commands.
+    const commands = collectVoiceCommands({
       config: readKnowhowConfig(),
       moduleExtensions: voiceCommandExtensions().map((extension) => ({ owner: "voice-control", extension })),
       builtins: [],
     });
-    const result = parseUtterance(utterance, allCommands);
+    const { actual } = await replayRow(
+      { heard: utterance, frontApp: options?.app ?? undefined, expected: {} },
+      { commands, packs: allPacks() },
+    );
+    const parsed = actual.parsed ?? { kind: "none" as const };
     if (options?.json) {
-      process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      process.stdout.write(JSON.stringify({ ...parsed, resolution: { ...actual, parsed: undefined } }, null, 2) + "\n");
     } else {
-      if (result.kind === "none") {
+      if (actual.kind === "recovered") {
+        process.stdout.write(`Recovered: "${actual.heard}" → "${actual.text}" (${actual.reason})\n`);
+      } else if (actual.kind === "asked") {
+        process.stdout.write(`Would ask: did you mean "${actual.text}"? (heard "${utterance}")\n`);
+        return;
+      } else if (actual.kind === "latched") {
+        process.stdout.write(`Waiting for the rest of the command (heard "${utterance}")\n`);
+        return;
+      }
+      if (parsed.kind === "none") {
         process.stdout.write(`No match for: "${utterance}"\n`);
-      } else if (result.kind === "match") {
-        process.stdout.write(`Matched: ${result.result.command.phrase} (score=${result.result.score}, repeat=${result.result.repeat})\nSlots: ${JSON.stringify(result.result.slots)}\n`);
+      } else if (parsed.kind === "match") {
+        process.stdout.write(`Matched: ${parsed.result.command.phrase} (score=${parsed.result.score}, repeat=${parsed.result.repeat})\nSlots: ${JSON.stringify(parsed.result.slots)}\n`);
       } else {
-        process.stdout.write(`Chain (${result.results.length} commands):\n`);
-        for (const r of result.results) {
+        process.stdout.write(`Chain (${parsed.results.length} commands):\n`);
+        for (const r of parsed.results) {
           process.stdout.write(`  ${r.command.phrase} (score=${r.score}, repeat=${r.repeat}) slots=${JSON.stringify(r.slots)}\n`);
         }
       }
     }
+    return;
+  }
+  if (subcommand === "replay") {
+    // `knowhow voice-control replay <corpus.jsonl | commands.jsonl> [--json] [--export]`
+    const file = extraArgs[0];
+    if (!file) {
+      process.stderr.write("Usage: knowhow voice-control replay <corpus.jsonl | commands.jsonl> [--json] [--export]\n");
+      process.exit(1);
+    }
+    const commands = collectVoiceCommands({
+      config: readKnowhowConfig(),
+      moduleExtensions: voiceCommandExtensions().map((extension) => ({ owner: "voice-control", extension })),
+      builtins: [],
+    });
+    const failures = await runReplayCli(file, { json: !!options?.json, exportCorpus: !!options?.export, deps: { commands, packs: allPacks() } });
+    if (failures) process.exitCode = 1;
+    return;
+  }
+  if (subcommand === "config") {
+    // `knowhow voice-control config [--json]`: effective settings + where each value came from.
+    await runConfigCli({ json: !!options?.json });
     return;
   }
   if (subcommand === "hints") {
@@ -99,7 +141,7 @@ export const voiceControlAction = normalizeCommandAction<VoiceControlOptions>(as
     });
     return;
   }
-  throw new Error(`Unknown voice-control subcommand "${subcommand}". Available: commands, parse, hints`);
+  throw new Error(`Unknown voice-control subcommand "${subcommand}". Available: commands, parse, replay, config, hints`);
 });
 
 interface VoiceControlConfig {
@@ -133,6 +175,8 @@ const voiceControlModule: KnowhowModule = {
     ...voiceCommandExtensions(),
   ],
   async register(params: InitParams) {
+    // Typed extension points for third-party adapters / packs (validated at registration).
+    if (params.context?.Extensions) defineVoiceExtensionPoints(params.context.Extensions);
     const program = params.context?.Program;
     if (!program) return;
     const config = params.config as typeof params.config & {
@@ -148,7 +192,9 @@ const voiceControlModule: KnowhowModule = {
         .description(
           "Run an interactive Knowhow agent using voice input. " +
             "`voice-control commands [--json] [--conflicts]` lists registered voice commands (or reports conflicting ones). " +
-            "`voice-control parse \"<utterance>\" [--json]` parses an utterance against all commands. " +
+            "`voice-control parse \"<utterance>\" [--app NAME] [--json]` runs an utterance through the live pipeline (normalise, match, recover). " +
+            "`voice-control replay <corpus.jsonl|commands.jsonl> [--json] [--export]` replays recorded utterances and reports differences (--export turns a decision log into corpus rows). " +
+            "`voice-control config [--json]` prints the effective pack/service settings and their source (env, knowhow.json or default). " +
             "`voice-control hints [--json] [--x N --y N] [--all] [--app NAME] [--source auto|ax|visual|both] [--density few|normal|more|all] [--move]` dry-runs the gaze hint selector and shows the overlay for 4s."
         )
         .option(
@@ -292,6 +338,10 @@ const voiceControlModule: KnowhowModule = {
         .option(
           "--density <density>",
           "hints: how many hints to show: few|normal|more|all (default normal)"
+        )
+        .option(
+          "--export",
+          "replay: print a decision log (commands.jsonl) as utterance corpus rows instead of replaying it"
         )
         .option(
           "--conflicts",

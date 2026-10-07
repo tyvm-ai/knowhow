@@ -26,7 +26,9 @@ import { withFallback } from "@tyvm/knowhow/sdk";
 import { defaultOsaRunner } from "../actions/osa";
 import type { OsaRunner } from "../actions/osa";
 import type { VoiceCommandExtension } from "../voiceCommands";
-import { defineVoicePack } from "./define";
+import { configField, numberAtLeast, oneOf } from "../config/schema";
+import type { ConfigValues } from "../config/schema";
+import { defineVoicePack, packConfigView } from "./define";
 import type { PackCommandContext } from "./define";
 import type { VoiceServices } from "../services";
 
@@ -210,9 +212,24 @@ export function parseMcpTabList(text: string): BrowserTab[] {
 /** Calls an MCP tool by its bare method name (e.g. "browser_tabs") and returns its text content. */
 export type McpToolCaller = (tool: string, args: Record<string, unknown>) => Promise<string>;
 
-function mcpTimeoutMs(): number {
-  return Number(process.env.KNOWHOW_VOICE_BROWSER_MCP_TIMEOUT_MS) || 4000;
-}
+/** Settings of the browser pack (`knowhow.json → voiceControl.packs.browser.<key>`; env override in `env`). */
+export const BROWSER_CONFIG = {
+  backend: configField<"auto" | "mcp" | "applescript">({
+    default: "auto",
+    env: "KNOWHOW_VOICE_BROWSER",
+    parse: oneOf<"auto" | "mcp" | "applescript">("auto", "mcp", "applescript"),
+    description: "Tab control backend: auto (MCP, falling back to AppleScript for a minute) | mcp | applescript",
+  }),
+  mcpTimeoutMs: configField<number>({
+    default: 4000,
+    env: "KNOWHOW_VOICE_BROWSER_MCP_TIMEOUT_MS",
+    parse: numberAtLeast(1),
+    description: "Timeout for one browser MCP call (ms)",
+  }),
+};
+export type BrowserConfig = ConfigValues<typeof BROWSER_CONFIG>;
+
+const DEFAULT_MCP_TIMEOUT_MS = BROWSER_CONFIG.mcpTimeoutMs.default;
 
 /**
  * A caller backed by `services.mcp.callByMethod` (core): registered MCP tools
@@ -221,9 +238,9 @@ function mcpTimeoutMs(): number {
  * matter. `isError` results become thrown errors so the AppleScript fallback
  * takes over.
  */
-export function mcpCallerFrom(mcp: VoiceServices["mcp"]): McpToolCaller {
+export function mcpCallerFrom(mcp: VoiceServices["mcp"], timeoutMs: number | (() => number) = DEFAULT_MCP_TIMEOUT_MS): McpToolCaller {
   return async (tool, args) => {
-    const result = await mcp.callByMethod(tool, args, { timeoutMs: mcpTimeoutMs() });
+    const result = await mcp.callByMethod(tool, args, { timeoutMs: typeof timeoutMs === "function" ? timeoutMs() : timeoutMs });
     if (result.isError) {
       throw new Error(result.text.split("\n").filter((l) => l && !l.startsWith("###"))[0] || `${tool} failed`);
     }
@@ -340,7 +357,9 @@ export function createBrowserState(
 ): BrowserState {
   const mcp =
     opts.mcp ??
-    (opts.services ? mcpCallerFrom(opts.services.mcp) : () => Promise.reject(new Error("no MCP available")));
+    (opts.services
+      ? mcpCallerFrom(opts.services.mcp, () => packConfigView(opts.services!, "browser", BROWSER_CONFIG).mcpTimeoutMs)
+      : () => Promise.reject(new Error("no MCP available")));
   const osa = opts.osa ?? defaultOsaRunner(5000);
   const state: BrowserState = {
     mcp,
@@ -370,17 +389,20 @@ export function createBrowserState(
   return state;
 }
 
-type BrowserCtx = Pick<PackCommandContext<BrowserState>, "log" | "slots" | "text" | "state">;
-type Log = Pick<BrowserCtx, "log" | "state">;
+type BrowserCtx = Pick<PackCommandContext<BrowserState, BrowserConfig>, "log" | "slots" | "text" | "state"> & {
+  /** Optional so callers without a pack context (tests) get the defaults. */
+  config?: Pick<BrowserConfig, "backend">;
+};
+type Log = Pick<BrowserCtx, "log" | "state" | "config">;
 
 /**
  * Run `fn` against the MCP backend, falling back to AppleScript (macOS) when
  * MCP fails. A failing MCP is skipped for a minute so voice stays snappy.
- * KNOWHOW_VOICE_BROWSER = auto (default) | mcp | applescript.
+ * The `backend` setting: auto (default) | mcp | applescript.
  */
 async function withBackend<T>(ctx: Log, fn: (b: BrowserBackend) => Promise<T>): Promise<T> {
   const { state } = ctx;
-  const mode = (process.env.KNOWHOW_VOICE_BROWSER || "auto").toLowerCase();
+  const mode = ctx.config?.backend ?? BROWSER_CONFIG.backend.default;
   const canOsa = process.platform === "darwin" || !state.osaIsDefault;
   if (mode === "applescript") return fn(appleScriptBackend(state.osa));
   if (mode === "mcp" || !canOsa) return fn(mcpBackend(state.mcp));
@@ -460,7 +482,8 @@ export async function listTabs(ctx: Log): Promise<void> {
 
 const B = "[chrome|browser|google chrome]";
 
-export const BROWSER_PACK = defineVoicePack<BrowserState>({
+export const BROWSER_PACK = defineVoicePack<BrowserState, typeof BROWSER_CONFIG>({
+  config: BROWSER_CONFIG,
   name: "browser",
   description: "Chrome tab commands by name via the browser MCP, with an AppleScript fallback",
   prefix: "voice-control.browser.",

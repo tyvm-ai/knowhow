@@ -1,6 +1,9 @@
 import { normaliseTranscript, tokenise } from "../src/grammar/normalise";
 import { getSlotMatcher } from "../src/grammar/slots";
-import { nameFuzzyScore, resolveHintRef, SelectorState, Candidate } from "../src/smartSelector";
+import { nameFuzzyScore } from "../src/hints/ranking";
+import { resolveHintRef } from "../src/hints/refs";
+import { SelectorState } from "../src/hints/selectorState";
+import { Candidate } from "../src/hints/types";
 import { PointerMemory, TargetResolver } from "../src/services";
 
 function phrase(text: string) {

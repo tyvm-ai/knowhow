@@ -5,7 +5,7 @@
  * module-level `pointerMemory.ts` state).
  */
 
-import type { Candidate } from "../smartSelector";
+import type { Candidate } from "../hints/types";
 import type { Clock } from "./clock";
 import { systemClock } from "./clock";
 

@@ -17,7 +17,7 @@ import {
   ContinuousTranscriptSource,
   PcmFrame,
   UtteranceRecognizer,
-} from "../src/continuous";
+} from "../src/audio";
 import type { TranscriptEvent } from "../src/types";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

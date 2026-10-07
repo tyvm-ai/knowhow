@@ -2,6 +2,11 @@
 
 Voice control is a transport around an existing interactive Knowhow agent. It owns microphone capture, local voice activity detection (VAD), final-utterance transcription, speech playback, and barge-in; the selected agent continues to own reasoning, models, tools, and computer use.
 
+## Architecture
+
+Packs, services, recoverers, app adapters, configuration and the replay corpus are described in [docs/architecture.md](docs/architecture.md).
+`knowhow voice-control config` prints every setting and where its value came from; `knowhow voice-control replay <file>` replays recorded utterances.
+
 ## Configure and build
 
 Register the module in the project configuration at `./.knowhow/knowhow.json`, or in the global configuration at `~/.knowhow/knowhow.json`:
@@ -123,7 +128,7 @@ adaptive smoothing: fast on saccades, damped during fixations.
 
 ```bash
 python3.12 -m venv ~/.cache/knowhow/eye-tracking/venv
-~/.cache/knowhow/eye-tracking/venv/bin/pip install -r src/requirements-eye.txt
+~/.cache/knowhow/eye-tracking/venv/bin/pip install -r python/requirements-eye.txt
 knowhow eye-tracking            # camera index defaults to the one saved at training
 curl http://127.0.0.1:7465/api/gaze
 ```
@@ -398,7 +403,7 @@ Each `VoiceCommandEvent` includes:
 - `spokenAt` — epoch ms of VAD speech onset (use this to look up gaze at the moment the word was spoken)
 - `gaze` — gaze sample nearest `spokenAt` (filled by voice-agent)
 
-Hub URL is read from `KNOWHOW_EYE_URL` env var or defaults to `http://127.0.0.1:7465`.
+Hub URL is the `gaze.url` service setting: `KNOWHOW_EYE_HUB_URL` (older aliases `KNOWHOW_EYE_URL`, `KNOWHOW_GAZE_URL`), else `voiceControl.services.gaze.url` in knowhow.json, else `http://127.0.0.1:7465`.
 
 ### Command mode and voice quick hooks (Contract 4)
 
@@ -591,7 +596,7 @@ After typing, `lastTyped` is set so `scratch that` works.
 }
 ```
 
-Environment overrides: `KNOWHOW_SMARTTYPE_PROVIDER`, `KNOWHOW_SMARTTYPE_MODEL`.
+Environment overrides: `KNOWHOW_SMARTTYPE_PROVIDER`, `KNOWHOW_SMARTTYPE_MODEL`. These are the `provider` / `model` / `agent` settings of the `smart-type` pack and can also be written as `voiceControl.packs.smart-type.<key>`; `knowhow voice-control config` shows the effective values.
 
 The default model is `claude-sonnet-4-6` (Anthropic). Any provider/model registered in knowhow can be used.
 

@@ -31,7 +31,7 @@ except ImportError:
 
 
 def feature(l):
-    """FEATURE_VERSION 4. Must stay identical to feature() in eyeTrackingPage.ts. l = [(x, y, z)]."""
+    """FEATURE_VERSION 4. Must stay identical to feature() in src/static/eye-tracking.js. l = [(x, y, z)]."""
     def d(a, b):
         return max(1e-4, math.hypot(l[b][0] - l[a][0], l[b][1] - l[a][1]))
 
@@ -51,7 +51,7 @@ def feature(l):
             (l[234][0] + l[454][0]) / 2, (l[10][1] + l[152][1]) / 2, fw]
 
 
-# Only raw 0..8 enter the model (must match MODEL_RAW in eyeTrackingPage.ts): roll, face position and face size
+# Only raw 0..8 enter the model (must match MODEL_RAW in src/static/eye-tracking.js): roll, face position and face size
 # drift with posture over a session and caused a systematic downward shift.
 MODEL_RAW = 9
 EXPANDED = MODEL_RAW + 5
@@ -62,7 +62,7 @@ def expand(f):
     return list(f[:MODEL_RAW]) + [mx * mx, my * my, mx * my, mx * f[6], my * f[7]]
 
 
-HEAD = [6, 8]  # noseX offset and yaw; must match HEAD in eyeTrackingPage.ts
+HEAD = [6, 8]  # noseX offset and yaw; must match HEAD in src/static/eye-tracking.js
 
 
 def has(c, key):
@@ -77,7 +77,7 @@ def vec(c, key):
 
 
 def apply_model(m, e):
-    """Ridge map plus the optional RBF kernel correction (mirrors applyModel in eyeTrackingPage.ts)."""
+    """Ridge map plus the optional RBF kernel correction (mirrors applyModel in src/static/eye-tracking.js)."""
     z = [(v - mu) / sd for v, mu, sd in zip(e, m["mean"], m["std"])]
     x = m["wx"][0] + sum(a * v for a, v in zip(m["wx"][1:], z))
     y = m["wy"][0] + sum(a * v for a, v in zip(m["wy"][1:], z))

@@ -10,21 +10,21 @@
 
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "fs";
 import { mkdir, writeFile } from "fs/promises";
-import { dirname, join } from "path";
-import { homedir } from "os";
-
-export const LEARNED_FILE =
-  process.env.KNOWHOW_VOICE_LEARNED_FILE ?? join(homedir(), ".knowhow", "voice", "learned.json");
-export const LEGACY_INTENTS_FILE =
-  process.env.KNOWHOW_VOICE_LEARNED_INTENTS_FILE ?? join(homedir(), ".knowhow", "voice-learned-intents.json");
-export const LEGACY_APP_ALIASES_FILE =
-  process.env.KNOWHOW_VOICE_APP_ALIASES_FILE ?? join(homedir(), ".knowhow", "voice-app-aliases.json");
+import { dirname } from "path";
+import type { ConfigResolver } from "../config";
+import { getDefaultConfig } from "../config";
+import { STORE_SERVICE_CONFIG } from "../config/services";
+import { VoiceStore } from "../services/voiceStore";
 
 export type LearnedData = Record<string, string[]>;
 
 export interface LearnedStoreOptions {
-  /** Store file (default ~/.knowhow/voice/learned.json). */
+  /** Store file (default: config `store.learnedFile`, else `learned.json` in the voice store directory). */
   file?: string;
+  /** The runtime store directory API (default: built from `config`). */
+  store?: VoiceStore;
+  /** Where the store location and legacy-file paths come from (default: the process-wide resolver). */
+  config?: ConfigResolver;
   /** Old `{tmuxPrefixes}` file to migrate (default: the real one only when `file` is the default). */
   legacyIntentsFile?: string | null;
   /** Old `{spoken: app}` file to migrate (same default rule). */
@@ -42,9 +42,12 @@ export class LearnedStore {
 
   constructor(opts: LearnedStoreOptions = {}) {
     const isDefault = opts.file === undefined;
-    this.file = opts.file ?? LEARNED_FILE;
-    this.legacyIntents = opts.legacyIntentsFile === undefined ? (isDefault ? LEGACY_INTENTS_FILE : undefined) : opts.legacyIntentsFile ?? undefined;
-    this.legacyAliases = opts.legacyAppAliasesFile === undefined ? (isDefault ? LEGACY_APP_ALIASES_FILE : undefined) : opts.legacyAppAliasesFile ?? undefined;
+    const config = opts.config ?? getDefaultConfig();
+    const scope = { kind: "services", name: "store" } as const;
+    const store = opts.store ?? VoiceStore.fromConfig(config);
+    this.file = opts.file ?? config.get(scope, "learnedFile", STORE_SERVICE_CONFIG.learnedFile) ?? store.file("learned.json");
+    this.legacyIntents = opts.legacyIntentsFile === undefined ? (isDefault ? config.get(scope, "legacyIntentsFile", STORE_SERVICE_CONFIG.legacyIntentsFile) : undefined) : opts.legacyIntentsFile ?? undefined;
+    this.legacyAliases = opts.legacyAppAliasesFile === undefined ? (isDefault ? config.get(scope, "legacyAppAliasesFile", STORE_SERVICE_CONFIG.legacyAppAliasesFile) : undefined) : opts.legacyAppAliasesFile ?? undefined;
     this.persist = opts.persist ?? true;
   }
 

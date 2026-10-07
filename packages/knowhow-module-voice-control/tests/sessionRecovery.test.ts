@@ -3,7 +3,7 @@
  * Same scenarios as the old hard-coded tmux/app-suggest flows (phrases from real logs).
  */
 
-import { APP_ALIASES } from "../src/grammar/slots";
+import { lookupAppAlias, resetLearnedAppAliases } from "../src/grammar/slots";
 import type { PlatformActions } from "../src/actions/types";
 import { VoiceSession } from "../src/VoiceSession";
 import { collectVoiceCommands } from "../src/voiceCommands";
@@ -112,6 +112,6 @@ describe("VoiceSession recovery pipeline (shipped packs)", () => {
     expect(pending?.describe).toContain("maximize Ghostty");
     await pending!.accept();
     expect(r.services.learned.list("app-name")).toEqual(["ghosting=>Ghostty"]);
-    delete APP_ALIASES["ghosting"];
+    resetLearnedAppAliases();
   });
 });

@@ -6,7 +6,8 @@
   "types": "ts_build/index.d.ts",
   "scripts": {
     "build": "npm run compile",
-    "compile": "npm run clean && tsc && cp src/eyeTrackingWorker.py ts_build/eyeTrackingWorker.py",
+    "compile": "npm run clean && tsc && npm run copy-assets",
+    "copy-assets": "mkdir -p ts_build/static ts_build/python && cp src/static/* ts_build/static/ && cp python/* ts_build/python/",
     "clean": "rm -rf ts_build",
     "test": "jest --runInBand",
     "prepublishOnly": "npm run compile"

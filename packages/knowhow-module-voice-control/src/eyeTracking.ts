@@ -6,7 +6,12 @@ import { dirname, join } from "path";
 import { ChildProcess, spawn, spawnSync } from "child_process";
 import { randomUUID } from "crypto";
 import { createStandaloneComputerService } from "./computerService";
-import { EYE_EXPANDED_FEATURES, EYE_HEAD_FEATURES, EYE_MAX_CAMERAS, EYE_RAW_FEATURES, eyeTrackingPage } from "./eyeTrackingPage";
+import { EYE_SERVICE_CONFIG, getDefaultConfig } from "./config";
+import { stderrSink, taggedLogger } from "./services/logger";
+
+/** The eye tracker's stdout can carry JSON lines, so its logs go to stderr. */
+const eyeLog = (tag: "eye" | "eye-worker") => taggedLogger(tag, stderrSink);
+import { EYE_EXPANDED_FEATURES, EYE_HEAD_FEATURES, EYE_MAX_CAMERAS, EYE_RAW_FEATURES, eyeTrackingPage, eyeTrackingScript } from "./eyeTrackingPage";
 
 const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task";
 export const DEFAULT_EYE_MODEL = join(homedir(), ".cache", "knowhow", "eye-tracking", "face_landmarker.task");
@@ -83,7 +88,8 @@ export function monitorKey(m: EyeMonitorRect): string {
 }
 
 export function resolveEyePython(explicit?: string): string {
-  return explicit || process.env.KNOWHOW_EYE_PYTHON || (existsSync(DEFAULT_VENV_PYTHON) ? DEFAULT_VENV_PYTHON : "python3");
+  const configured = getDefaultConfig().get({ kind: "services", name: "eyeTracking" }, "python", EYE_SERVICE_CONFIG.python);
+  return explicit || configured || (existsSync(DEFAULT_VENV_PYTHON) ? DEFAULT_VENV_PYTHON : "python3");
 }
 
 /** Enumerate connected displays via Swift/CoreGraphics (macOS only). Returns [] on other platforms or error. */
@@ -314,7 +320,7 @@ function download(url: string, destination: string): Promise<void> {
 
 export async function ensureEyeTrackingModel(path = DEFAULT_EYE_MODEL, url = MODEL_URL): Promise<string> {
   if (existsSync(path) && statSync(path).size > 1_000_000) return path;
-  process.stderr.write(`[eye] downloading local MediaPipe face model to ${path}\n`);
+  eyeLog("eye").info(`downloading local MediaPipe face model to ${path}`);
   await download(url, path);
   return path;
 }
@@ -390,13 +396,13 @@ export async function startEyeTrackingServer(options: EyeTrackingOptions = {}) {
     const prevKeys = liveDisplays.map((d) => monitorKey(d)).sort().join(",");
     const nextKeys = fresh.map((d) => monitorKey(d)).sort().join(",");
     if (prevKeys !== nextKeys) {
-      process.stderr.write(`[eye] connected displays changed: [${nextKeys || "none"}]\n`);
+      eyeLog("eye").info(`connected displays changed: [${nextKeys || "none"}]`);
       // Attempt lazy backfill of displayIdentity when layout matches calibration.
       const store = readStoreFn?.();
       if (store && fresh.length > 0) {
         const updated = backfillDisplayIdentities(store, fresh);
         if (updated !== store) {
-          try { writeFileSync(calibrationPath, JSON.stringify(updated)); process.stderr.write("[eye] backfilled displayIdentity for calibration monitors\n"); } catch { /* read-only */ }
+          try { writeFileSync(calibrationPath, JSON.stringify(updated)); eyeLog("eye").info("backfilled displayIdentity for calibration monitors"); } catch { /* read-only */ }
         }
       }
     }
@@ -482,26 +488,27 @@ export async function startEyeTrackingServer(options: EyeTrackingOptions = {}) {
       const detail = (preflight.stderr || preflight.error?.message || "unknown import error").trim();
       throw new Error(`Python eye-tracking dependencies are unavailable (${python}): ${detail}. Install with 'python3.12 -m venv ~/.cache/knowhow/eye-tracking/venv && ~/.cache/knowhow/eye-tracking/venv/bin/pip install "mediapipe==0.10.21"'`);
     }
-    const workerPath = existsSync(join(__dirname, "eyeTrackingWorker.py"))
-      ? join(__dirname, "eyeTrackingWorker.py")
-      : join(__dirname, "..", "src", "eyeTrackingWorker.py");
+    // python/ is copied to ts_build/python by the compile script; from source it sits next to src/.
+    const workerPath = existsSync(join(__dirname, "python", "eyeTrackingWorker.py"))
+      ? join(__dirname, "python", "eyeTrackingWorker.py")
+      : join(__dirname, "..", "python", "eyeTrackingWorker.py");
     if (!existsSync(workerPath)) throw new Error(`Native eye-tracking worker is missing: ${workerPath}`);
     // Cameras are matched by name: browser and OpenCV order devices differently.
     let indices = labels.length ? resolveCameraIndices(labels) : undefined;
     if (!indices) indices = labels.length > 1 ? labels.map((_, i) => i) : [0];
     if (options.cameraIndex !== undefined) indices[0] = options.cameraIndex;
-    process.stderr.write(`[eye] desktop tracker cameras: ${indices.map((ix, i) => `${i ? "B" : "A"}=${ix}${labels[i] ? ` (${labels[i]})` : ""}`).join(", ")}\n`);
+    eyeLog("eye").info(`desktop tracker cameras: ${indices.map((ix, i) => `${i ? "B" : "A"}=${ix}${labels[i] ? ` (${labels[i]})` : ""}`).join(", ")}`);
     const args = [workerPath, "--calibration", calibrationPath, "--model", modelPath, "--url", `http://${host}:${actualPort}/api/gaze`];
     for (const ix of indices) args.push("--camera", String(ix));
     worker = spawn(python, args, { stdio: ["ignore", "pipe", "pipe"] });
     worker.stderr?.on("data", (chunk) => {
       // MediaPipe/absl logs are noisy; only surface our own messages and real errors.
       for (const line of String(chunk).split("\n")) {
-        if (line && !/^[IW]\d{4} |XNNPACK|absl::InitializeLog/.test(line)) process.stderr.write(`[eye-worker] ${line}\n`);
+        if (line && !/^[IW]\d{4} |XNNPACK|absl::InitializeLog/.test(line)) eyeLog("eye-worker").info(`${line}`);
       }
     });
-    worker.on("error", (error) => process.stderr.write(`[eye-worker] ${error.message}\n`));
-    worker.on("exit", (code) => { if (code && code !== 0) process.stderr.write(`[eye-worker] exited with code ${code}\n`); });
+    worker.on("error", (error) => eyeLog("eye-worker").info(`${error.message}`));
+    worker.on("exit", (code) => { if (code && code !== 0) eyeLog("eye-worker").info(`exited with code ${code}`); });
     return indices.length;
   };
 
@@ -513,6 +520,11 @@ export async function startEyeTrackingServer(options: EyeTrackingOptions = {}) {
       if (url.pathname === "/") {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
         res.end(eyeTrackingPage());
+        return;
+      }
+      if (url.pathname === "/eye-tracking.js") {
+        res.writeHead(200, { "content-type": "text/javascript; charset=utf-8", "cache-control": "no-store" });
+        res.end(eyeTrackingScript());
         return;
       }
       if (url.pathname === "/api/gaze" && req.method === "GET") {
@@ -756,7 +768,7 @@ export async function startEyeTrackingServer(options: EyeTrackingOptions = {}) {
         mkdirSync(cacheDir, { recursive: true });
         writeFileSync(epochPath, epoch);
         appendLog({ type: "reset", time: Date.now(), epoch, archived });
-        process.stderr.write(`[eye] training reset${archived ? `; previous data archived to ${archived}` : ""}\n`);
+        eyeLog("eye").info(`training reset${archived ? `; previous data archived to ${archived}` : ""}`);
         json(res, 200, { ok: true, epoch, archived });
         return;
       }
@@ -812,9 +824,9 @@ export async function startEyeTrackingServer(options: EyeTrackingOptions = {}) {
   if (existsSync(calibrationPath)) {
     try {
       if (readStore()?.model) { startWorker(); restored = true; }
-      else process.stderr.write("[eye] saved calibration is missing or from an older format; open the page to train\n");
+      else eyeLog("eye").info("saved calibration is missing or from an older format; open the page to train");
     } catch (error) {
-      process.stderr.write(`[eye] saved calibration could not start: ${error instanceof Error ? error.message : String(error)}\n`);
+      eyeLog("eye").info(`saved calibration could not start: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   const url = `http://${host}:${actualPort}/`;
@@ -860,7 +872,7 @@ export async function runEyeTracking(options: EyeTrackingCommandOptions): Promis
       if (!service) throw new Error("native computer core is unavailable");
       overlay = service;
     } catch (error) {
-      process.stderr.write(`[eye] native gaze overlay unavailable: ${error instanceof Error ? error.message : String(error)}\n`);
+      eyeLog("eye").info(`native gaze overlay unavailable: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   let overlayFailed = false;
@@ -884,7 +896,7 @@ export async function runEyeTracking(options: EyeTrackingCommandOptions): Promis
         const took = Date.now() - started;
         overlayNextAt = Date.now() + Math.max(66, took * 4);
       })
-      .catch((error) => { overlayFailed = true; process.stderr.write(`[eye] native gaze overlay failed: ${error instanceof Error ? error.message : String(error)}\n`); });
+      .catch((error) => { overlayFailed = true; eyeLog("eye").info(`native gaze overlay failed: ${error instanceof Error ? error.message : String(error)}`); });
   };
   const tracker = await startEyeTrackingServer({
     port,
@@ -895,8 +907,8 @@ export async function runEyeTracking(options: EyeTrackingCommandOptions): Promis
     cameraIndex,
     onGaze: renderGaze,
   });
-  process.stderr.write(`[eye] webcam-only gaze calibration is ready at ${tracker.url}\n`);
-  process.stderr.write("[eye] press Ctrl-C to stop; GET /api/gaze returns the latest desktop gaze estimate\n");
+  eyeLog("eye").info(`webcam-only gaze calibration is ready at ${tracker.url}`);
+  eyeLog("eye").info("press Ctrl-C to stop; GET /api/gaze returns the latest desktop gaze estimate");
   const controller = new AbortController();
   const stop = () => controller.abort();
   process.once("SIGINT", stop);

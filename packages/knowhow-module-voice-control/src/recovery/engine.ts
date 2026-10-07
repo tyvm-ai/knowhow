@@ -10,6 +10,7 @@
  * No VoiceSession dependency: the caller passes `run(text)` for dispatching a rewritten command.
  */
 
+import { ConfigResolver, RECOVERY_SERVICE_CONFIG, getDefaultConfig } from "../config";
 import { normaliseTranscript } from "../grammar/normalise";
 import type { VoiceServices } from "../services";
 import type { PendingAction } from "../services/pending";
@@ -17,9 +18,14 @@ import type { IntentRecoverer, RecoveryContext, RecoveryInput, RewriteResult } f
 
 export type InferPolicy = "auto" | "confirm" | "off";
 
-export function inferPolicy(env: NodeJS.ProcessEnv = process.env): InferPolicy | undefined {
-  const v = env.KNOWHOW_VOICE_INFER?.toLowerCase().trim();
-  return v === "auto" || v === "confirm" || v === "off" ? v : undefined;
+export function inferPolicy(source?: NodeJS.ProcessEnv | ConfigResolver): InferPolicy | undefined {
+  const config =
+    source instanceof ConfigResolver
+      ? source
+      : source
+        ? new ConfigResolver({ env: () => source, json: () => ({}) })
+        : getDefaultConfig();
+  return config.get({ kind: "services", name: "recovery" }, "infer", RECOVERY_SERVICE_CONFIG.infer);
 }
 
 /** How long a "did you mean …?" stays answerable. */
@@ -45,14 +51,14 @@ export interface RecoverOptions {
 export interface RecoveryEngineOptions {
   recoverers: readonly IntentRecoverer[];
   services: VoiceServices;
-  /** Where lines like `[voice] inferred: …` go (default console.log). */
+  /** Where lines like `[voice] inferred: …` go (default: the services' tagged logger). */
   log?: (line: string) => void;
 }
 
 type Decision = { action: "run"; reason: string } | { action: "confirm" } | { action: "ignore" };
 
 export class RecoveryEngine {
-  private readonly recoverers: readonly IntentRecoverer[];
+  private recoverers: readonly IntentRecoverer[];
   private readonly services: VoiceServices;
   private readonly log: (line: string) => void;
   private initialised = false;
@@ -60,7 +66,18 @@ export class RecoveryEngine {
   constructor(opts: RecoveryEngineOptions) {
     this.recoverers = opts.recoverers;
     this.services = opts.services;
-    this.log = opts.log ?? ((line) => console.log(line));
+    this.log = opts.log ?? ((line) => this.services.log.info(line.replace(/^\[voice\] /, "")));
+  }
+
+  /** Add recoverers contributed after construction (third-party packs); a recoverer with an already-known name is skipped. */
+  addRecoverers(extra: readonly IntentRecoverer[]): void {
+    const known = new Set(this.recoverers.map((r) => r.name));
+    const fresh = extra.filter((r) => !known.has(r.name));
+    if (!fresh.length) return;
+    this.recoverers = [...this.recoverers, ...fresh];
+    if (this.initialised) {
+      for (const r of fresh) for (const key of r.onLearned ? this.services.learned.list(r.name) : []) r.onLearned!(key);
+    }
   }
 
   /** Let each recoverer apply what was learned in earlier sessions. Idempotent. */
@@ -96,7 +113,7 @@ export class RecoveryEngine {
 
   async recover(input: RecoveryInput, opts: RecoverOptions): Promise<RecoveryOutcome> {
     const stage = input.match ? "matched" : "unmatched";
-    const policy = opts.policy ?? inferPolicy();
+    const policy = opts.policy ?? inferPolicy(this.services.config);
     const { latch, learned } = this.services;
 
     // A latch armed by an earlier utterance ("tmux" … "left").

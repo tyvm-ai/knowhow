@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Knowhow Webcam Eye Tracking</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,system-ui,sans-serif;background:#090d15;color:#eef4ff}*{box-sizing:border-box}body{margin:0;overflow:hidden}
+#stage{position:fixed;inset:0;background:radial-gradient(circle at 50% 45%,#17233a,#090d15 70%)}
+#panel{position:fixed;z-index:20;top:20px;left:20px;max-width:640px;max-height:calc(100vh - 40px);overflow:auto;padding:18px 20px;border:1px solid #344563;border-radius:14px;background:#0d1422ee;box-shadow:0 8px 30px #0008}
+h1{font-size:20px;margin:0 0 8px}.muted{color:#aebbd0;font-size:13px;line-height:1.45}.status{margin:10px 0;font-weight:650}
+button,select{font:inherit;border-radius:8px;padding:7px 11px;border:1px solid #52698d;background:#17243a;color:#fff;margin:3px 4px 3px 0}button{cursor:pointer;background:#1769e0;border-color:#3485f4}button.secondary{background:#17243a;border-color:#52698d}button:disabled{opacity:.5;cursor:default}
+#monitors{margin:10px 0;display:grid;gap:6px}.mon{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid #2b3a55;border-radius:10px;background:#111b2c}.mon.here{border-color:#42ff79}.mon b{color:#fff}.ok{color:#7dffa6}.todo{color:#ffcc37}.bad{color:#ff6b6b}
+#diag{position:fixed;right:14px;bottom:14px;width:384px;z-index:10;background:#0d1422e6;border:1px solid #344563;border-radius:12px;padding:8px;pointer-events:none}
+#eyes{width:368px;border-radius:8px;background:#000;display:block}
+#diagText{font:11px/1.45 ui-monospace,monospace;color:#b8c6db;white-space:pre-line;margin-top:6px}
+.cams{display:none}
+.point{position:fixed;width:34px;height:34px;border-radius:50%;background:#ffcc37;border:4px solid #fff;transform:translate(-50%,-50%);box-shadow:0 0 30px #ffcc37;z-index:12}
+.point::after{content:'';position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:#07111e}
+.point.shrink{animation:shrink .7s ease-out forwards}@keyframes shrink{from{width:70px;height:70px}to{width:22px;height:22px}}
+.point.verify{background:#ff9d37;box-shadow:0 0 30px #ff9d37}.point.hit{background:#42ff79;box-shadow:0 0 40px #42ff79}
+.tol{position:fixed;z-index:11;border:2px dashed #ffffff55;transform:translate(-50%,-50%);pointer-events:none}
+#gaze{display:none;position:fixed;z-index:15;width:92px;height:72px;border:4px solid #42ff79;border-radius:12px;transform:translate(-50%,-50%);box-shadow:0 0 20px #42ff7988;pointer-events:none;transition:left 45ms linear,top 45ms linear;color:#42ff79;font:700 12px system-ui;align-items:center;justify-content:center;text-align:center}
+#banner{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:19;font:600 14px system-ui;color:#c9d6ea;background:#0d1422c0;padding:6px 14px;border-radius:999px;display:none;white-space:nowrap}
+#hud{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:19;background:#0d1422d9;padding:8px 14px;border-radius:10px;font:12px ui-monospace,monospace;color:#b8c6db;display:none;white-space:nowrap}
+#metrics{position:fixed;bottom:16px;left:18px;z-index:20;background:#0d1422d9;padding:9px 12px;border-radius:8px;font:12px ui-monospace,monospace;color:#b8c6db}
+#server{position:fixed;top:10px;right:14px;z-index:30;font:600 13px system-ui;padding:6px 12px;border-radius:999px;background:#5a1020;color:#fff;display:none}
+#display-notice{display:none;margin:8px 0;padding:8px 12px;background:#5a3a00;color:#ffe8a0;border-radius:6px;font-size:13px}
+#result{white-space:pre-line;color:#80f5a7;margin-top:8px}.hidden{display:none!important}
+table{border-collapse:collapse;font:12px ui-monospace,monospace;margin-top:6px}td,th{padding:2px 8px;border-bottom:1px solid #22314a;text-align:right}th{color:#8fa3c2;font-weight:600}
+#cov{position:fixed;inset:0;z-index:10;pointer-events:none;display:grid}#cov>div{border:1px solid #ffffff14;display:flex;align-items:flex-end;justify-content:flex-end;padding:6px 8px;font:12px system-ui;color:#ffffffaa}#cov.off{display:none}
+svg#map{position:fixed;inset:0;width:100vw;height:100vh;z-index:13;pointer-events:none}
+</style></head><body><main id="stage"></main><div id="gaze"></div><div id="banner"></div><div id="hud"></div><div id="server"></div><div id="display-notice"></div>
+<div id="diag"><canvas id="eyes" width="368" height="123"></canvas><div id="diagText">waiting for camera…</div></div>
+<div class="cams"><video id="cam0" autoplay muted playsinline></video><video id="cam1" autoplay muted playsinline></video></div>
+<section id="panel"><h1>Knowhow webcam gaze calibration</h1>
+<div class="muted">Video is processed locally by MediaPipe and never leaves the browser; only numeric eye features and quality stats are saved. Put one camera centred on each monitor if you have two – both cameras are combined into one estimate, and if one loses your face the other keeps tracking.</div>
+<div id="status" class="status">Loading face tracker…</div>
+<div class="muted">Camera A: <select id="camA"></select> Camera B: <select id="camB"></select></div>
+<div class="muted">Advance to the next dot when gaze is within: <select id="verify"><option value="box">the green box (±46×36 px)</option><option value="150">150 px</option><option value="250" selected>250 px</option><option value="400">400 px</option><option value="off">don't wait (timed only)</option></select>
+ give up after <select id="verifyTimeout"><option value="3000">3 s</option><option value="5000" selected>5 s</option><option value="8000">8 s</option></select></div>
+<div class="muted">Region target (a screen region counts as covered when the model predicts its dots within this, before learning them): <select id="target"><option value="150">150 px</option><option value="200" selected>200 px</option><option value="250">250 px</option><option value="300">300 px</option></select> · press H while training to hide the coverage map</div>
+<div id="monitors"></div>
+<div id="actions"><button id="done" class="secondary" disabled>Done – hand off to desktop tracker</button><button id="reset" class="secondary">Forget all training</button><button id="diagToggle" class="secondary">Hide eye view (D)</button></div>
+<div class="muted" style="margin-top:8px">During training: look at each dot – no clicking. The dot turns <span style="color:#ff9d37">orange</span> while it waits for your gaze to land inside the dashed zone, and <span class="ok">green</span> when it registers. <b>Space</b> pause/resume · <b>Enter</b>/<b>Esc</b> save &amp; finish. <b>Test accuracy</b> shows 12 fixed dots with no learning and records a baseline you can compare over time.</div>
+<div id="result"></div>
+<div id="history"></div></section>
+<div id="metrics">face: waiting · gaze: untrained</div>
+<script type="module" src="/eye-tracking.js"></script></body></html>

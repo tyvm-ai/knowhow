@@ -19,7 +19,7 @@
  */
 
 import type { HintRef } from "../grammar/slots";
-import type { AXElement, Candidate } from "../smartSelector";
+import type { AXElement, Candidate } from "../hints/types";
 import { PLACED_POINTER_MAX_AGE_MS } from "../services/pointer";
 import type { PointerMemory } from "../services/pointer";
 

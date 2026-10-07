@@ -4,7 +4,7 @@ import { collectVoiceCommands } from "../src/voiceCommands";
 import { voiceCommandExtensions } from "../src/packs/index";
 import { runDoubleClick } from "../src/commands/doubleClick";
 import { createTestServices } from "./helpers/services";
-import { createHintsState } from "../src/packs/hints";
+import { createHintsState } from "../src/hints/packState";
 
 const commands = collectVoiceCommands({
   moduleExtensions: voiceCommandExtensions().map((extension) => ({ owner: "voice-control", extension })),

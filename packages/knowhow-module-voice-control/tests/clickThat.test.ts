@@ -6,7 +6,7 @@
 import { collectVoiceCommands, BUILTIN_VOICE_COMMANDS } from "../src/voiceCommands";
 import { parseUtterance } from "../src/grammar";
 import GAZE_MOUSE_PACK from "../src/packs/gazeMouse";
-import { HINTS_PACK } from "../src/packs/hints";
+import { HINTS_PACK } from "../src/hints/commands";
 import { performClick } from "../src/targeting/act";
 import { createTestServices } from "./helpers/services";
 

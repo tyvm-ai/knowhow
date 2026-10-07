@@ -265,23 +265,17 @@ interface VoiceExtension {
 
 // ─── Hints extension (sdk.ext.gaze.elementsNear / sdk.ext.hints) ─────────────
 
-import {
-  rankCandidates,
-  showHintOverlay,
-  SelectorState,
-  HintState,
-  resolveHintRef,
-  parseHintRef,
-  Candidate,
-  AXElement,
-  ComputerUseAdapter,
-} from "./smartSelector";
+import { rankCandidates } from "./hints/ranking";
+import { showHintOverlay } from "./hints/overlay";
+import { SelectorState, HintState } from "./hints/selectorState";
+import { resolveHintRef, parseHintRef } from "./hints/refs";
+import { Candidate, AXElement, ComputerUseAdapter } from "./hints/types";
 
-/** Minimal adapter shape needed by smartSelector from the sdk context. */
+/** Minimal adapter shape needed by hints from the sdk context. */
 interface SdkComputerAdapter {
   accessibilityElements(opts?: { maxDepth?: number; maxElements?: number; interactiveOnly?: boolean }): Promise<AXElement[]>;
   performAccessibilityAction(id: string, action: string): Promise<void>;
-  showOverlay(primitives: import("./smartSelector").OverlayPrimitive[]): Promise<void>;
+  showOverlay(primitives: import("./hints/types").OverlayPrimitive[]): Promise<void>;
   clearOverlay(): Promise<void>;
   moveMouse(p: { x: number; y: number }): Promise<void>;
   click(button?: "left" | "right" | "middle", opts?: { double?: boolean }): Promise<void>;

@@ -1,22 +1,13 @@
 /**
- * Tests for smartSelector.ts
+ * Tests for the pure hints modules (src/hints/ranking, labels, refs, overlay)
  *
- * Run: npx jest tests/smartSelector
+ * Run: npx jest tests/hints.ranking
  */
 
-import {
-  distanceToRect,
-  gaussianLikelihood,
-  rankCandidates,
-  isAmbiguous,
-  parseHintRef,
-  resolveHintRef,
-  nameFuzzyScore,
-  buildHintOverlayPrimitives,
-  AXElement,
-  Rect,
-  Candidate,
-} from "../src/smartSelector";
+import { distanceToRect, gaussianLikelihood, rankCandidates, isAmbiguous, nameFuzzyScore } from "../src/hints/ranking";
+import { parseHintRef, resolveHintRef } from "../src/hints/refs";
+import { buildHintOverlayPrimitives } from "../src/hints/overlay";
+import { AXElement, Rect, Candidate } from "../src/hints/types";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

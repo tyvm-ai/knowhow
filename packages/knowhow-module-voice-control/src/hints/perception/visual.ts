@@ -1,3 +1,7 @@
+import { area, round } from "../geometry";
+import { SelectorState } from "../selectorState";
+import { AXElement, ComputerUseAdapter, Rect } from "../types";
+
 /**
  * Screenshot-based ("visual") element provider for the smart gaze selector.
  *
@@ -28,7 +32,6 @@
  * the element centre and clicks.
  */
 
-import type { AXElement, Rect } from "./smartSelector";
 
 // ─── Inputs (structurally typed to avoid a hard dep on computer-use) ─────────
 
@@ -73,10 +76,6 @@ export const LONG_TEXT_WORDS = 6;
 
 // ─── Geometry helpers ─────────────────────────────────────────────────────────
 
-function area(r: Rect): number {
-  return Math.max(0, r.width) * Math.max(0, r.height);
-}
-
 function intersect(a: Rect, b: Rect): Rect | undefined {
   const x = Math.max(a.x, b.x);
   const y = Math.max(a.y, b.y);
@@ -112,17 +111,8 @@ function union(a: Rect, b: Rect): Rect {
   };
 }
 
-function center(r: Rect): { x: number; y: number } {
+export function center(r: Rect): { x: number; y: number } {
   return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-}
-
-function round(r: Rect): Rect {
-  return {
-    x: Math.round(r.x),
-    y: Math.round(r.y),
-    width: Math.round(r.width),
-    height: Math.round(r.height),
-  };
 }
 
 export function flattenBoxes(boxes: BoxLike[]): Rect[] {
@@ -583,4 +573,33 @@ export function dedupeAgainstAX(visual: AXElement[], ax: AXElement[], actionable
     const c = center(v.bounds);
     return !axRects.some((a) => c.x >= a.x && c.x <= a.x + a.width && c.y >= a.y && c.y <= a.y + a.height);
   });
+}
+
+export async function collectVisualElements(
+  selector: SelectorState,
+  adapter: ComputerUseAdapter,
+  gaze: { x: number; y: number },
+  errorRadius: { x: number; y: number },
+  wholeWindow: boolean,
+  log: (msg: string) => void,
+  ttlMs?: number,
+  scanFactor?: number,
+): Promise<AXElement[]> {
+  if (typeof adapter.readText !== "function") {
+    log("[smart-selector] Screenshot hints unavailable (no readText on the computer-use adapter)");
+    return [];
+  }
+  let windowBounds: Rect | undefined;
+  try {
+    windowBounds = (await adapter.getActiveWindow?.())?.bounds ?? undefined;
+  } catch { /* ignore */ }
+  const scan = wholeWindow && windowBounds
+    ? windowBounds
+    : gazeScanArea(gaze, errorRadius, windowBounds, scanFactor);
+  try {
+    return await getVisualElements(adapter as VisualService, scan, { log, ttlMs, state: selector.visual });
+  } catch (e) {
+    log(`[smart-selector] Screenshot hints failed: ${e}`);
+    return [];
+  }
 }

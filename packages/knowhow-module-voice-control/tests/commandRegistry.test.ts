@@ -8,7 +8,7 @@ import { defineCommand } from "../src/commands/define";
 import { analyzeCommands, applyOverrides, formatConflicts, spokenForms } from "../src/commands/registry";
 import { allPacks, voiceCommandExtensions } from "../src/packs/index";
 import { compilePattern, expandPhraseSynonyms, mergeSynonyms, parseUtterance } from "../src/grammar";
-import { HINTS_PACK, HINTS_SYNONYMS } from "../src/packs/hints";
+import { HINTS_PACK, HINTS_SYNONYMS } from "../src/hints/commands";
 import { runVoiceCommandsList } from "../src/commandsCli";
 import { isDeicticClick } from "../src/commands/doubleClick";
 import module from "../src/index";

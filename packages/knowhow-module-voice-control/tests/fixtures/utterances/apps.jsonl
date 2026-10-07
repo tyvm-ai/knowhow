@@ -1,0 +1,4 @@
+// a misheard {app} on a matched command is held for confirmation (app-name recoverer)
+{"heard":"maximize ghosting","runningApps":["Ghostty","Google Chrome","Finder"],"expected":{"rejected":"asked"},"note":"did you mean maximize Ghostty?"}
+{"heard":"focus ghosting","runningApps":["Ghostty","Google Chrome","Finder"],"expected":{"rejected":"asked"}}
+{"heard":"maximize chrome","runningApps":["Ghostty","Google Chrome","Finder"],"expected":{"command":"windows.maximize","slots":{"app":"Google Chrome"}}}

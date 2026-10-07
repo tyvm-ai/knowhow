@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { eyeTrackingPage } from "../src/eyeTrackingPage";
+import { eyeTrackingPage, eyeTrackingScript } from "../src/eyeTrackingPage";
 import { existsSync, readdirSync } from "fs";
 import { backfillDisplayIdentities, DisplayInfo, loadCalibrationStore, matchDisplaysToCalibration, mergeCalibration, monitorKey, resolveCameraIndices, resolveEyePython, startEyeTrackingServer, validModel } from "../src/eyeTracking";
 import { GazePlugin } from "../src/GazePlugin";
@@ -12,7 +12,7 @@ describe("webcam eye tracking prototype", () => {
   const sample = (x: number, y: number) => ({ c: [Array(13).fill(0.1), null], x, y, g: "dot-1" });
 
   test("page runs per-monitor interactive training with a combined desktop model", () => {
-    const page = eyeTrackingPage();
+    const page = eyeTrackingPage() + eyeTrackingScript();
     expect(page).toContain("getUserMedia");
     expect(page).toContain("FaceLandmarker");
     expect(page).toContain("getScreenDetails");
@@ -124,7 +124,7 @@ describe("webcam eye tracking prototype", () => {
   });
 
   test("page model fits two cameras and falls back to one when a camera loses the face", () => {
-    const page = eyeTrackingPage();
+    const page = eyeTrackingPage() + eyeTrackingScript();
     const code = page.slice(page.indexOf("// ---- features"), page.indexOf("// ---- monitors ----"));
     const prelude = "const median=a=>{const v=[...a].sort((x,y)=>x-y);return v[v.length>>1]};let session=null;";
     const api = new Function("store", prelude + code + ";return {fitAll,predict};")({ version: 4, monitors: {} });
@@ -163,7 +163,7 @@ describe("webcam eye tracking prototype", () => {
   });
 
   test("kernel correction layer bends the map where ridge is systematically off, and is validated", () => {
-    const page = eyeTrackingPage();
+    const page = eyeTrackingPage() + eyeTrackingScript();
     const code = page.slice(page.indexOf("// ---- features"), page.indexOf("// ---- monitors ----"));
     const prelude = "const median=a=>{const v=[...a].sort((x,y)=>x-y);return v[v.length>>1]};let session=null;";
     let seed = 11;
@@ -196,7 +196,7 @@ describe("webcam eye tracking prototype", () => {
   });
 
   test("saved training for a monitor missing from the screen list is kept; only overlapping geometry is stale", () => {
-    const page = eyeTrackingPage();
+    const page = eyeTrackingPage() + eyeTrackingScript();
     const grab = (start: string) => { const i = page.indexOf(start); return page.slice(i, page.indexOf("\n", i)); };
     const fn = page.slice(page.indexOf("function staleKeys()"), page.indexOf("function monitorGroups()"));
     const run = (screens: any[]) => new Function("store", "screens", grab("const keyOf=") + ";" + grab("const overlaps=") + ";" + grab("const rectOf=") + ";" + fn + ";return staleKeys();")({

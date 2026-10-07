@@ -3,11 +3,16 @@
  * a label, numbered in reading order, and big numbers ("row forty eight")
  * parse. Also: "double click" after "mouse over X" acts on X, not the gaze.
  */
-import { rankCandidates, AXElement, HINT_DENSITY, sortReadingOrder } from "../src/smartSelector";
+import { rankCandidates } from "../src/hints/ranking";
+import { AXElement } from "../src/hints/types";
+import { HINT_DENSITY } from "../src/hints/density";
+import { sortReadingOrder } from "../src/hints/labels";
 import { parseUtterance } from "../src/grammar";
 import { collectVoiceCommands, BUILTIN_VOICE_COMMANDS } from "../src/voiceCommands";
 import GAZE_MOUSE_PACK from "../src/packs/gazeMouse";
-import { HINTS_PACK, createHintsState, density } from "../src/packs/hints";
+import { HINTS_PACK } from "../src/hints/commands";
+import { createHintsState } from "../src/hints/packState";
+import { density } from "../src/hints/packState";
 import { createTestServices } from "./helpers/services";
 
 const cmds = collectVoiceCommands({ builtins: [...BUILTIN_VOICE_COMMANDS, ...GAZE_MOUSE_PACK.extensions, ...HINTS_PACK.extensions] });
