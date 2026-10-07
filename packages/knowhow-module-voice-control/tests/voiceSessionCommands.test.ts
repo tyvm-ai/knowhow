@@ -121,7 +121,7 @@ describe("voice-control commands CLI", () => {
       await voiceControlAction("commands", {});
       const out = write.mock.calls.map((c) => String(c[0])).join("");
       expect(out).toMatch(/PHRASE\s+ALIASES\s+MODES\s+SOURCE\s+DESCRIPTION/);
-      expect(out).toMatch(/double click\s+doubleclick\s+command\s+built-in/);
+      expect(out).toMatch(/double click\s+doubleclick, double click that.*built-in/);
     } finally {
       write.mockRestore();
     }

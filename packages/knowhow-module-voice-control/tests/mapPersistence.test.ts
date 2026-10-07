@@ -62,6 +62,8 @@ describe("refresh map command", () => {
   it("is registered with map/hints phrasings", () => {
     const cmd = HINTS_PACK.find((c) => c.name === "hints.refresh")!;
     expect(cmd).toBeDefined();
-    expect(cmd.patterns).toEqual(expect.arrayContaining(["refresh map", "refresh hints", "update map"]));
+    expect(cmd.patterns).toEqual(expect.arrayContaining(["refresh map", "refresh hints", "update hints"]));
+    // "map" variants come from the pack's synonyms, not copy-pasted patterns
+    expect(cmd.aliases).toEqual(expect.arrayContaining(["update map", "reload map"]));
   });
 });

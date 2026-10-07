@@ -1,6 +1,7 @@
 import { ChatCompletionTool } from "openai/resources/chat";
 import { TraceAll } from "../util/Trace";
 import { replaceEscapedNewLines, restoreEscapedNewLines } from "../utils";
+import { callToolByMethod, McpCallOptions, McpCallResult } from "./McpCallByMethod";
 import { includedTools } from "../agents/tools/list";
 import { AgentService } from "./AgentService";
 import { EventService } from "./EventService";
@@ -221,6 +222,36 @@ export class ToolsService {
   ) {
     this.addTools(tools);
     this.addFunctions(functions);
+  }
+
+  /**
+   * Call an MCP tool by its bare method name (e.g. `"browser_tabs"`), resolving
+   * the wrapped `mcp_<n>_<server>_<method>` name by suffix. Honors tool
+   * overrides/wrappers (goes through `getFunction`). See `callToolByMethod`.
+   *
+   * @throws McpToolNotFoundError / McpTimeoutError
+   */
+  async callByMethod(
+    method: string,
+    args: object = {},
+    opts: McpCallOptions = {}
+  ): Promise<McpCallResult> {
+    const names = Array.from(
+      new Set([...this.getToolNames(), ...this.getFunctionNames()])
+    );
+    return callToolByMethod(
+      {
+        toolNames: () => names,
+        invoke: async (toolName, a) => {
+          const fn = this.getFunction(toolName);
+          if (!fn) throw new Error(`Function ${toolName} not found`);
+          return fn(a);
+        },
+      },
+      method,
+      args,
+      opts
+    );
   }
 
   async callTool(

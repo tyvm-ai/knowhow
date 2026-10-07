@@ -16,7 +16,7 @@ import { readFileSync, existsSync, readdirSync } from "fs";
 import { mkdir, writeFile } from "fs/promises";
 import { join, dirname } from "path";
 import { homedir } from "os";
-import { execFile } from "child_process";
+import { spawnOsa } from "./actions/osa";
 import { APP_ALIASES } from "./grammar/slots";
 import { setPending, peekPending, clearPending, PendingAction } from "./pendingAction";
 
@@ -252,7 +252,7 @@ export function notifyMac(title: string, message: string): void {
 display notification (item 2 of argv) with title (item 1 of argv)
 end run`;
   try {
-    const child = execFile("osascript", ["-e", script, title, message], () => undefined);
+    const child = spawnOsa("applescript", script, { args: [title, message] });
     child.unref?.();
   } catch { /* ignore */ }
 }

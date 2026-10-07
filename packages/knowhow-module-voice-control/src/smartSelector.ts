@@ -8,6 +8,7 @@
  */
 
 import { GazeSample } from "./eyeTracking";
+import { GazeClient, GAZE_ERROR_RADIUS, GAZE_TIMEOUT } from "./gaze";
 import { enableAXForPid, shouldEnableWebAX, hasActionableWebContent } from "./axEnabler";
 import { getChromeDOMElements } from "./chromeDomProvider";
 import {
@@ -59,6 +60,14 @@ export interface ComputerUseAdapter {
   readText?: VisualService["readText"];
   findRegions?: VisualService["findRegions"];
   getActiveWindow?(): Promise<{ app?: string; title?: string; bounds?: Rect } | null | undefined>;
+  /** Raw key press (no modifiers — chords go via hotkey). */
+  pressKey?(key: string, opts?: object): Promise<void>;
+  /** Wheel scroll in plain (dx, dy) wheel deltas; positive = up/left. */
+  scroll?(dx: number, dy: number): Promise<void>;
+  /** Connected displays (shape is driver-defined; see actions/darwin.ts). */
+  getDisplays?(): Promise<Array<Record<string, any>>>;
+  /** Current mouse position. */
+  mousePosition?(): Promise<{ x: number; y: number } | null | undefined>;
 }
 
 /**
@@ -1119,18 +1128,9 @@ async function collectVisualElements(
 
 export async function postGazeCorrection(
   target: { x: number; y: number },
-  hubUrl = "http://127.0.0.1:7465",
+  hubUrl?: string,
 ): Promise<void> {
-  try {
-    await fetch(`${hubUrl}/api/correct`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(target),
-      signal: AbortSignal.timeout(1000),
-    });
-  } catch {
-    // best-effort
-  }
+  await new GazeClient({ hubUrl }).correct(target);
 }
 
 // ─── Element actions ──────────────────────────────────────────────────────────
@@ -1328,7 +1328,7 @@ export class SmartMouseController {
   private readonly alpha: number;
   private readonly deadZone: number;
   private readonly snapDeadZone: number;
-  private readonly hubUrl: string;
+  private readonly gaze: GazeClient;
   private readonly errorRadius: { x: number; y: number };
   private lastTargetId: string | undefined;
   private busy = false;
@@ -1343,8 +1343,8 @@ export class SmartMouseController {
     this.alpha = options.alpha ?? 0.3;
     this.deadZone = options.deadZone ?? 4;
     this.snapDeadZone = options.snapDeadZone ?? 30;
-    this.hubUrl = options.hubUrl ?? "http://127.0.0.1:7465";
-    this.errorRadius = options.errorRadius ?? { x: 200, y: 260 };
+    this.gaze = new GazeClient({ hubUrl: options.hubUrl });
+    this.errorRadius = options.errorRadius ?? { ...GAZE_ERROR_RADIUS };
   }
 
   isRunning(): boolean {
@@ -1380,12 +1380,8 @@ export class SmartMouseController {
 
   private async tickInner(): Promise<void> {
     try {
-      const res = await fetch(`${this.hubUrl}/api/gaze`, {
-        signal: AbortSignal.timeout(100),
-      });
-      if (!res.ok) return;
-      const sample = await res.json() as { x: number; y: number };
-      if (!Number.isFinite(sample.x) || !Number.isFinite(sample.y)) return;
+      const sample = await this.gaze.current({ timeoutMs: GAZE_TIMEOUT.tick });
+      if (!sample) return;
 
       if (!this.hasFirst) {
         this.smoothX = sample.x;

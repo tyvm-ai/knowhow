@@ -22,6 +22,8 @@ import {
   mouseMoverFromComputerService,
 } from "./commandMode";
 import { fetchRegisteredCommands, VoiceCommandEvent } from "./voiceHub";
+import { GAZE_TIMEOUT, resolveGazeHubUrl } from "./gaze";
+import { createStandaloneComputerService } from "./computerService";
 import type { GazeSample } from "./eyeTracking";
 import type { RegisteredVoiceCommand } from "./voiceCommands";
 import { appendLatencyRecord, buildLatencyRecord } from "./latency";
@@ -95,24 +97,15 @@ export class VoiceSession {
   ) {
     this.sessionId = options.sessionId || randomUUID();
     this.mode = options.initialMode ?? "agent";
-    this.hubUrl = process.env.KNOWHOW_EYE_URL?.replace(/\/$/, "") ?? "http://127.0.0.1:7465";
+    this.hubUrl = resolveGazeHubUrl();
     // Mishearings you've accepted before ("ghosting" → Ghostty) parse directly.
     loadLearnedAppAliases();
 
     // Use injected mouse mover if provided; otherwise try to load from computer-use.
     let mover: import("./commandMode").MouseMover | undefined = options.mouse;
     if (!mover) {
-      try {
-        const cu = require("@tyvm/knowhow-module-computer-use") as any;
-        const service = new cu.ComputerService();
-        const driver = cu.RustCoreDriver?.tryLoad?.();
-        if (driver) {
-          service.registerDriver(driver);
-          mover = mouseMoverFromComputerService(service);
-        }
-      } catch {
-        // computer-use optional
-      }
+      const service = createStandaloneComputerService();
+      if (service) mover = mouseMoverFromComputerService(service);
     }
 
     this.mover = mover;
@@ -158,10 +151,7 @@ export class VoiceSession {
   private async frontmostAppQuick(): Promise<string | undefined> {
     const actions = this.platformActions;
     if (!actions?.frontmostApp) return undefined;
-    return Promise.race([
-      actions.frontmostApp().catch(() => undefined),
-      new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), 400)),
-    ]);
+    return actions.frontmostApp({ maxWaitMs: 400 }).catch(() => undefined);
   }
 
   /**
@@ -209,7 +199,7 @@ export class VoiceSession {
           intent.text,
           randomUUID(),
           spokenAt,
-          () => gazeNearestTime(spokenAt, this.hubUrl, 150),
+          () => gazeNearestTime(spokenAt, this.hubUrl, GAZE_TIMEOUT.fast),
         );
       },
       reject: () => undefined,
@@ -539,7 +529,7 @@ export class VoiceSession {
       const gaze = async () => {
         const startedAt = Date.now();
         try {
-          return await gazeNearestTime(spokenAt, this.hubUrl, 150);
+          return await gazeNearestTime(spokenAt, this.hubUrl, GAZE_TIMEOUT.fast);
         } finally {
           gazeMs = Date.now() - startedAt;
         }
@@ -605,7 +595,7 @@ export class VoiceSession {
           text,
           spokenAt,
           recognizedAt: event.timing?.sttEndAt ?? event.timestamp,
-          gaze: await gazeNearestTime(spokenAt, this.hubUrl, 150),
+          gaze: await gazeNearestTime(spokenAt, this.hubUrl, GAZE_TIMEOUT.fast),
         });
       } catch {
         // command errors don't propagate

@@ -20,59 +20,27 @@
  *   }
  */
 
-import { AutomationSDK } from "./automation";
+import type { AutomationSDK } from "./automation";
+import type {
+  AutomationExtensionContext as CoreAutomationExtensionContext,
+  AutomationSdkExtension as CoreAutomationSdkExtension,
+} from "@tyvm/knowhow/sdk";
 
-// ── Extension type constant ──────────────────────────────────────────────────
+// ── Contract types (owned by core: @tyvm/knowhow/sdk) ───────────────────────
+//
+// Re-exported here, narrowed to this module's live AutomationSDK, for
+// backwards compatibility with existing imports from computer-use.
 
+/** Extension type constant: "computer-use.automation-sdk". */
+// (Kept as a local literal — identical to core's AUTOMATION_SDK_EXTENSION — so
+// this module has no runtime import of the sdk; only the types come from core.)
 export const AUTOMATION_SDK_EXTENSION = "computer-use.automation-sdk" as const;
 
-// ── Context handed to each extension's create() ─────────────────────────────
+/** Context handed to each extension's create() (with `sdk` = the live AutomationSDK). */
+export type AutomationExtensionContext = CoreAutomationExtensionContext<AutomationSDK>;
 
-export interface AutomationExtensionContext {
-  /** The automation name (from spec.name). */
-  automationName: string;
-  /** True when the run is in dry-run mode (no real mouse/keyboard actions). */
-  dryRun: boolean;
-  /** Aborted when the run stops for any reason (duration / manual / error). */
-  signal: AbortSignal;
-  /** Returns true when the window-focus gate has paused the automation. */
-  isPaused(): boolean;
-  /** Same as sdk.log — append a structured log entry to the run telemetry. */
-  log(data: unknown): void;
-  /**
-   * Register a cleanup callback. All onDispose callbacks are called (in
-   * registration order) in the runner's finally block, after streamDisposers
-   * and before returning the result.
-   */
-  onDispose(fn: () => void | Promise<void>): void;
-  /** The live AutomationSDK — for extensions that need to move the mouse etc. */
-  sdk: AutomationSDK;
-}
-
-// ── Extension definition ─────────────────────────────────────────────────────
-
-export interface AutomationSdkExtension {
-  /** Must equal AUTOMATION_SDK_EXTENSION. */
-  type: "computer-use.automation-sdk";
-  /**
-   * Identifier for the extension. Must be a valid JS identifier.
-   * Exposed to scripts as sdk.ext[name].
-   * Pattern: /^[A-Za-z_$][\w$]*$/
-   */
-  name: string;
-  /** One-paragraph description shown to agents and in sdk.extensions(). */
-  description: string;
-  /**
-   * Optional TypeScript declaration of the returned API surface. Shown to
-   * agents via computerUseListAutomationExtensions and in generated docs.
-   */
-  typings?: string;
-  /**
-   * Factory called once per run before the script starts. Should be cheap
-   * (no network until the first method call). Result is cached for the run.
-   */
-  create(ctx: AutomationExtensionContext): unknown | Promise<unknown>;
-}
+/** An extension exposed to scripts as `sdk.ext.<name>`. */
+export type AutomationSdkExtension = CoreAutomationSdkExtension<AutomationSDK>;
 
 // ── Augmentable interface for editor support ─────────────────────────────────
 

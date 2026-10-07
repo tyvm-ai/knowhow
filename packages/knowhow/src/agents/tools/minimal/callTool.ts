@@ -1,6 +1,6 @@
-import { minimatch } from "minimatch";
 import { MinimalToolsService } from "../../../services/MinimalToolsService";
 import { ToolsService } from "../../../services/Tools";
+import { resolveToolName } from "../../../services/McpCallByMethod";
 
 /**
  * Calls any tool by name with the given args.
@@ -17,10 +17,11 @@ export async function callTool(
   const allTools = service.getAllTools ? service.getAllTools() : service.getTools();
 
   // Fuzzy match: exact, endsWith, or glob
-  const matchedTool =
-    allTools.find((t) => t.function.name === name) ||
-    allTools.find((t) => t.function.name.endsWith(name)) ||
-    allTools.find((t) => minimatch(t.function.name, name, { nocase: true }));
+  const resolvedName = resolveToolName(
+    allTools.map((t) => t.function.name),
+    name
+  );
+  const matchedTool = allTools.find((t) => t.function.name === resolvedName);
 
   if (!matchedTool) {
     const available = allTools.map((t) => t.function.name).join(", ");

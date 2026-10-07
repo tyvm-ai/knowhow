@@ -26,6 +26,7 @@ import { getConfig, getGlobalConfig } from "./config";
 import { getEnabledPlugins } from "./types";
 import { CliChatService } from "./chat/CliChatService";
 import { ModulesService } from "./services/modules";
+import { services as coreServices } from "./services";
 
 // Command registrars
 import { addModulesCommand } from "./commands/modules";
@@ -156,6 +157,10 @@ async function main() {
         { ...config, modules: allModulePaths },
         {
           Program: program,
+          // Cheap singletons so register() can use params.context.Extensions /
+          // .Tools in the early phase too (no service graph is spun up).
+          Extensions: coreServices().Extensions,
+          Tools: coreServices().Tools,
         }
       );
     }

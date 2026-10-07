@@ -22,12 +22,10 @@
  *   KNOWHOW_VOICE_BROWSER_MCP_TIMEOUT_MS  per-call timeout (default 4000)
  */
 
-import { execFile as nodeExecFile } from "child_process";
-import { promisify } from "util";
+import { defaultOsaRunner } from "../actions/osa";
+import type { OsaRunner } from "../actions/osa";
 import type { VoiceCommandExtension } from "../voiceCommands";
-import { VOICE_COMMAND_EXTENSION } from "../voiceCommands";
-
-const execFileP = promisify(nodeExecFile);
+import { pack } from "../commands/define";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,7 +47,10 @@ export interface BrowserBackend {
 
 // ─── Query → site / URL ───────────────────────────────────────────────────────
 
-interface Site { url: string; hosts: string[] }
+interface Site {
+  url: string;
+  hosts: string[];
+}
 
 /** Spoken site names → URL + hosts used to recognise an open tab. */
 export const SITE_ALIASES: Record<string, Site> = {
@@ -94,7 +95,11 @@ export const SITE_ALIASES: Record<string, Site> = {
 
 /** Lowercase, strip punctuation and filler ("to", "the", trailing "tab"). */
 export function normaliseTabQuery(text: string): string {
-  let q = text.toLowerCase().replace(/[^\p{L}\p{N}.:/ -]+/gu, " ").replace(/\s+/g, " ").trim();
+  let q = text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}.:/ -]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   q = q.replace(/[.]+$/, "").trim();
   q = q.replace(/^(?:to|the|my|on|in|at)\s+/, "").replace(/^(?:the|my)\s+/, "");
   q = q.replace(/\s+(?:tab|page|website|site|please)$/, "");
@@ -105,7 +110,10 @@ const compact = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 
 /** "example dot com" / "example.com" / "localhost 3000" → URL, else undefined. */
 export function spokenUrl(query: string): string | undefined {
-  let q = query.replace(/\s+dot\s+/g, ".").replace(/\s+colon\s+/g, ":").replace(/\s+slash\s+/g, "/");
+  let q = query
+    .replace(/\s+dot\s+/g, ".")
+    .replace(/\s+colon\s+/g, ":")
+    .replace(/\s+slash\s+/g, "/");
   const local = q.match(/^localhost(?:[: ]+(\d{2,5}))?$/);
   if (local) return `http://localhost${local[1] ? `:${local[1]}` : ""}/`;
   if (/^https?:\/\//.test(q)) return q;
@@ -128,7 +136,11 @@ export function resolveTabUrl(query: string): string {
 }
 
 function hostOf(url: string): string {
-  try { return new URL(url).host.toLowerCase(); } catch { return ""; }
+  try {
+    return new URL(url).host.toLowerCase();
+  } catch {
+    return "";
+  }
 }
 
 /** 0..100 match score for a tab against a normalised query. */
@@ -138,7 +150,15 @@ export function scoreTab(tab: BrowserTab, query: string): number {
   const host = hostOf(tab.url);
   const title = tab.title.toLowerCase();
   const site = siteFor(query);
-  if (site && site.hosts.some((h) => url.replace(/^https?:\/\/(www\.)?/, "").startsWith(h.replace(/^www\./, "")) || host === h || host.endsWith(`.${h}`))) {
+  if (
+    site &&
+    site.hosts.some(
+      (h) =>
+        url.replace(/^https?:\/\/(www\.)?/, "").startsWith(h.replace(/^www\./, "")) ||
+        host === h ||
+        host.endsWith(`.${h}`)
+    )
+  ) {
     return 100;
   }
   const domain = spokenUrl(query);
@@ -163,11 +183,13 @@ export function findTab(tabs: BrowserTab[], query: string): BrowserTab | undefin
   let bestScore = 0;
   for (const tab of tabs) {
     const s = scoreTab(tab, query);
-    if (s > bestScore) { best = tab; bestScore = s; }
+    if (s > bestScore) {
+      best = tab;
+      bestScore = s;
+    }
   }
   return bestScore >= 50 ? best : undefined;
 }
-
 
 // ─── MCP backend ──────────────────────────────────────────────────────────────
 
@@ -210,7 +232,16 @@ function sharedTools(): ToolsLike {
 function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(`${what} timed out after ${ms}ms`)), ms);
-    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
   });
 }
 
@@ -222,8 +253,12 @@ export function toolsMcpCaller(getTools: () => ToolsLike = sharedTools): McpTool
     const timeout = mcpTimeoutMs();
     const result = await withTimeout<any>(Promise.resolve(fn(args)), timeout, tool);
     if (typeof result === "string") return result;
-    const text = (result?.content || []).filter((c: any) => c.type === "text").map((c: any) => c.text).join("\n");
-    if (result?.isError) throw new Error(text.split("\n").filter((l: string) => l && !l.startsWith("###"))[0] || `${tool} failed`);
+    const text = (result?.content || [])
+      .filter((c: any) => c.type === "text")
+      .map((c: any) => c.text)
+      .join("\n");
+    if (result?.isError)
+      throw new Error(text.split("\n").filter((l: string) => l && !l.startsWith("###"))[0] || `${tool} failed`);
     return text;
   };
 }
@@ -250,13 +285,10 @@ export function mcpBackend(call: McpToolCaller): BrowserBackend {
 
 // ─── AppleScript backend ──────────────────────────────────────────────────────
 
-/** Runs an AppleScript and returns stdout. Injectable for tests. */
-export type OsaRunner = (script: string) => Promise<string>;
+/** Runs an AppleScript and returns stdout. Injectable for tests (type shared from actions/osa). */
+export type { OsaRunner };
 
-const defaultOsa: OsaRunner = async (script) => {
-  const { stdout } = await execFileP("osascript", ["-e", script], { timeout: 5000 });
-  return stdout;
-};
+const defaultOsa: OsaRunner = defaultOsaRunner(5000);
 
 const CHROME = "Google Chrome";
 const asString = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
@@ -282,10 +314,13 @@ export function appleScriptBackend(osa: OsaRunner): BrowserBackend {
   end repeat
   return out
 end tell`);
-      return out.split("\n").filter(Boolean).map((line) => {
-        const [id, cur, url = "", ...title] = line.split("\t");
-        return { id, current: cur === "1", url, title: title.join("\t") };
-      });
+      return out
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => {
+          const [id, cur, url = "", ...title] = line.split("\t");
+          return { id, current: cur === "1", url, title: title.join("\t") };
+        });
     },
     async select(tab) {
       const [w, t] = tab.id.split(":").map(Number);
@@ -351,7 +386,11 @@ async function withBackend<T>(ctx: Log, fn: (b: BrowserBackend) => Promise<T>): 
 }
 
 async function activateChrome(): Promise<void> {
-  try { await osaRunner(`tell application ${asString(CHROME)} to activate`); } catch { /* ignore */ }
+  try {
+    await osaRunner(`tell application ${asString(CHROME)} to activate`);
+  } catch {
+    /* ignore */
+  }
 }
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
@@ -363,7 +402,10 @@ function queryOf(ctx: { slots: Record<string, unknown>; text: string }): string 
 const describe = (t: BrowserTab) => `"${t.title || t.url}"`;
 
 /** Focus the best-matching tab; open one if `openIfMissing` and none matches. */
-export async function switchToTab(ctx: Log & { slots: Record<string, unknown>; text: string }, openIfMissing: boolean): Promise<void> {
+export async function switchToTab(
+  ctx: Log & { slots: Record<string, unknown>; text: string },
+  openIfMissing: boolean
+): Promise<void> {
   const query = queryOf(ctx);
   if (!query) return ctx.log("browser: which tab?");
   await withBackend(ctx, async (b) => {
@@ -417,54 +459,50 @@ export async function listTabs(ctx: Log): Promise<void> {
 
 const B = "[chrome|browser|google chrome]";
 
-function cmd(
-  name: string,
-  phrase: string,
-  description: string,
-  run: VoiceCommandExtension["run"],
-  patterns: string[],
-): VoiceCommandExtension {
-  return {
-    type: VOICE_COMMAND_EXTENSION,
-    name: `voice-control.browser.${name}`,
-    phrase,
-    description,
-    run,
-    patterns,
-    modes: ["command"],
-    repeatable: false,
-  };
-}
+const command = pack({ prefix: "voice-control.browser.", defaults: { repeatable: false } });
 
 export const BROWSER_PACK: VoiceCommandExtension[] = [
-  cmd("switch-tab", "switch tab {query:text}",
-    "Focus the Chrome tab matching a name (title, site or URL) via the browser MCP; opens it if none matches",
-    (ctx) => switchToTab(ctx, true),
-    [
+  command({
+    name: "switch-tab",
+    phrase: "switch tab {query:text}",
+    patterns: [
       `switch [to] ${B} tab {query:text}`,
       `go to ${B} tab {query:text}`,
       `(chrome|browser) tab {query:text}`,
       `find tab {query:text}`,
-    ]),
-  cmd("open-tab", "open tab {query:text}",
-    "Focus the Chrome tab for a site if it's open, otherwise open it in a new tab",
-    (ctx) => switchToTab(ctx, true),
-    [`open ${B} tab {query:text}`]),
-  cmd("new-tab-named", "open new tab {query:text}",
-    "Open a site / URL / search in a new Chrome tab via the browser MCP",
-    (ctx) => openNewTab(ctx),
-    [
-      `open [a] new ${B} tab {query:text}`,
-      `open ${B} new tab {query:text}`,
-      `new ${B} tab {query:text}`,
-    ]),
-  cmd("close-tab-named", "close chrome tab {query:text}",
-    "Close the Chrome tab matching a name",
-    (ctx) => closeTab(ctx),
-    [`close (chrome|browser) tab {query:text}`, `close tab named {query:text}`]),
-  cmd("list-tabs", "list tabs", "Log the open Chrome tabs (via the browser MCP)",
-    (ctx) => listTabs(ctx),
-    [`(list|show) ${B} tabs`]),
+    ],
+    description:
+      "Focus the Chrome tab matching a name (title, site or URL) via the browser MCP; opens it if none matches",
+    run: (ctx) => switchToTab(ctx, true),
+  }),
+  command({
+    name: "open-tab",
+    phrase: "open tab {query:text}",
+    patterns: [`open ${B} tab {query:text}`],
+    description: "Focus the Chrome tab for a site if it's open, otherwise open it in a new tab",
+    run: (ctx) => switchToTab(ctx, true),
+  }),
+  command({
+    name: "new-tab-named",
+    phrase: "open new tab {query:text}",
+    patterns: [`open [a] new ${B} tab {query:text}`, `open ${B} new tab {query:text}`, `new ${B} tab {query:text}`],
+    description: "Open a site / URL / search in a new Chrome tab via the browser MCP",
+    run: (ctx) => openNewTab(ctx),
+  }),
+  command({
+    name: "close-tab-named",
+    phrase: "close chrome tab {query:text}",
+    patterns: [`close (chrome|browser) tab {query:text}`, `close tab named {query:text}`],
+    description: "Close the Chrome tab matching a name",
+    run: (ctx) => closeTab(ctx),
+  }),
+  command({
+    name: "list-tabs",
+    phrase: "list tabs",
+    patterns: [`(list|show) ${B} tabs`],
+    description: "Log the open Chrome tabs (via the browser MCP)",
+    run: (ctx) => listTabs(ctx),
+  }),
 ];
 
 export default BROWSER_PACK;

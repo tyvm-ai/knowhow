@@ -8,6 +8,7 @@
  */
 
 import { GazeSample } from "./eyeTracking";
+import { resolveGazeHubUrl } from "./gaze";
 import type { UtteranceTiming } from "./types";
 
 // ─── Shared data types ───────────────────────────────────────────────────────
@@ -49,10 +50,9 @@ export type VoiceHubEvent = VoiceCommandEvent | VoiceModeChangedEvent;
 
 // ─── Hub client ─────────────────────────────────────────────────────────────
 
-const DEFAULT_HUB_URL = "http://127.0.0.1:7465";
-
+/** Hub base URL (see `resolveGazeHubUrl` for the env-var precedence and deprecated aliases). */
 export function resolveHubUrl(): string {
-  return (process.env.KNOWHOW_EYE_URL || DEFAULT_HUB_URL).replace(/\/$/, "");
+  return resolveGazeHubUrl();
 }
 
 /** Post a VoiceCommandEvent to the hub (fire and forget — never throws). */

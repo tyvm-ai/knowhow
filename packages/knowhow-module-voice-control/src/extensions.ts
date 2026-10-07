@@ -19,6 +19,7 @@ import {
   subscribeHubEvents,
   postVoiceCommand,
 } from "./voiceHub";
+import { GazeClient, GAZE_TIMEOUT, GAZE_ERROR_RADIUS } from "./gaze";
 import { randomUUID } from "crypto";
 
 // ─── Extension framework types (local, contract-compatible) ──────────────────
@@ -57,77 +58,16 @@ export interface GazeExtensionApi {
   correct(target: { x: number; y: number }): Promise<void>;
 }
 
-async function fetchLatestGaze(hubUrl: string, maxAgeMs = 2000): Promise<GazeSample | null> {
-  try {
-    const res = await fetch(`${hubUrl}/api/gaze`, { signal: AbortSignal.timeout(500) });
-    if (!res.ok) return null;
-    const sample = await res.json() as GazeSample;
-    if (!Number.isFinite(sample.x) || !Number.isFinite(sample.y)) return null;
-    if (Date.now() - sample.timestamp > maxAgeMs) return null;
-    return sample;
-  } catch {
-    return null;
-  }
-}
-
-async function fetchGazeHistory(hubUrl: string, sinceMs: number): Promise<GazeSample[]> {
-  try {
-    const res = await fetch(`${hubUrl}/api/gaze/history?sinceMs=${sinceMs}`, {
-      signal: AbortSignal.timeout(1000),
-    });
-    if (!res.ok) return [];
-    const data = await res.json() as { samples: GazeSample[] };
-    return Array.isArray(data.samples) ? data.samples : [];
-  } catch {
-    return [];
-  }
-}
-
-async function fetchGazeAt(hubUrl: string, epochMs: number): Promise<GazeSample | null> {
-  const sinceMs = epochMs - 5000;
-  const samples = await fetchGazeHistory(hubUrl, sinceMs);
-  if (!samples.length) return null;
-  let best = samples[0];
-  let bestDist = Math.abs(best.timestamp - epochMs);
-  for (const s of samples) {
-    const d = Math.abs(s.timestamp - epochMs);
-    if (d < bestDist) { best = s; bestDist = d; }
-  }
-  return best;
-}
-
 function createGazeApi(ctx: AutomationExtensionContext): GazeExtensionApi {
-  const hubUrl = resolveHubUrl();
+  const gaze = new GazeClient({ hubUrl: resolveHubUrl() });
 
   return {
-    async current(opts?: { maxAgeMs?: number }): Promise<GazeSample | null> {
-      return fetchLatestGaze(hubUrl, opts?.maxAgeMs ?? 2000);
-    },
-
-    async at(epochMs: number): Promise<GazeSample | null> {
-      return fetchGazeAt(hubUrl, epochMs);
-    },
-
-    async history(sinceMs: number): Promise<GazeSample[]> {
-      return fetchGazeHistory(hubUrl, sinceMs);
-    },
-
-    errorRadius(): { x: number; y: number } {
-      return { x: 200, y: 260 };
-    },
-
-    async correct(target: { x: number; y: number }): Promise<void> {
-      try {
-        await fetch(`${hubUrl}/api/correct`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(target),
-          signal: AbortSignal.timeout(1000),
-        });
-      } catch {
-        // best-effort
-      }
-    },
+    current: (opts?: { maxAgeMs?: number }) =>
+      gaze.current({ maxAgeMs: opts?.maxAgeMs ?? 2000, timeoutMs: GAZE_TIMEOUT.normal }),
+    at: (epochMs: number) => gaze.at(epochMs, { timeoutMs: GAZE_TIMEOUT.slow }),
+    history: (sinceMs: number) => gaze.history(sinceMs, { timeoutMs: GAZE_TIMEOUT.slow }),
+    errorRadius: () => gaze.errorRadius(),
+    correct: (target: { x: number; y: number }) => gaze.correct(target, { timeoutMs: GAZE_TIMEOUT.slow }),
   };
 }
 
@@ -401,7 +341,7 @@ function createHintsApi(
       if (!adapter) return [];
       const gaze = await getGaze();
       if (!gaze) return [];
-      const errorRadius = opts.errorRadius ?? { x: 200, y: 260 };
+      const errorRadius = opts.errorRadius ?? { ...GAZE_ERROR_RADIUS };
       const elements = await adapter.accessibilityElements({ maxDepth: 12, maxElements: 500 });
       const candidates = rankCandidates({
         gaze,
@@ -457,7 +397,8 @@ interface HintsExtension {
         return services().ComputerUse ?? null;
       } catch { return null; }
     };
-    const getGaze = () => fetchLatestGaze(hubUrl);
+    const gazeClient = new GazeClient({ hubUrl });
+    const getGaze = () => gazeClient.current({ maxAgeMs: 2000, timeoutMs: GAZE_TIMEOUT.normal });
     return createHintsApi(ctx, getAdapter, getGaze);
   },
 };

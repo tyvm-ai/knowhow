@@ -4,6 +4,7 @@ import { McpConfig } from "../types";
 import * as fs from "fs";
 import { KnowhowSimpleClient, KNOWHOW_API_URL } from "../services/KnowhowClient";
 import { McpService } from "../services/Mcp";
+import { normalizeMcpResult } from "../services/McpCallByMethod";
 import http from "../utils/http";
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -238,7 +239,7 @@ async function callServerTool(name: string, tool: string, rawArgs: string | unde
       else console.log(JSON.stringify(item, null, 2));
     }
   }
-  if ((result as any)?.isError) process.exitCode = 1;
+  if (normalizeMcpResult(result).isError) process.exitCode = 1;
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

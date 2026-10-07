@@ -40,8 +40,13 @@ export interface PlatformActions {
   /** Type text into the focused app (or given app). */
   typeText(text: string, opts?: { app?: string }): Promise<void>;
 
-  /** Return the frontmost application name, or undefined. */
-  frontmostApp(): Promise<string | undefined>;
+  /**
+   * Return the frontmost application name, or undefined.
+   * - `maxWaitMs`: give up (resolve undefined) if the lookup takes longer.
+   * - `maxAgeMs`: accept a result cached by a previous call this recent
+   *   (hot paths that ask back to back); default is always fresh.
+   */
+  frontmostApp(opts?: { maxWaitMs?: number; maxAgeMs?: number }): Promise<string | undefined>;
 
   /** Activate an app by name, optionally launching if not running. Returns true on success. */
   activateApp(app: string, opts?: { launch?: boolean }): Promise<boolean>;

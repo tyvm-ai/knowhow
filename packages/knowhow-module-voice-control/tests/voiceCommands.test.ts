@@ -44,7 +44,9 @@ describe("built-in voice commands", () => {
 
   test("BUILTIN_COMMAND_SPECS is derived from the built-in extensions", () => {
     expect(BUILTIN_COMMAND_SPECS.map((s) => s.phrase)).toEqual(BUILTIN_VOICE_COMMANDS.map((c) => c.phrase));
-    expect(BUILTIN_COMMAND_SPECS.find((s) => s.phrase === "double click")?.aliases).toEqual(["doubleclick"]);
+    expect(BUILTIN_COMMAND_SPECS.find((s) => s.phrase === "double click")?.aliases).toEqual(
+      expect.arrayContaining(["doubleclick", "double click that", "double click it", "double click here"]),
+    );
   });
 
   test("click runs at gaze-at-onset when gaze follow is off", async () => {
@@ -83,7 +85,9 @@ describe("collectVoiceCommands", () => {
     expect(commands.find((c) => c.name === "my.zoom")).toMatchObject({ phrase: "zoom in", source: "my-module" });
     expect(commands.find((c) => c.name === "voice-control.click")?.source).toBe("built-in");
     expect(commands.filter((c) => c.source === "built-in")).toHaveLength(BUILTIN_VOICE_COMMANDS.length);
-    expect(warnings).toHaveLength(1);
+    // invalid extension + the (intentionally) duplicated "my.zoom" name; built-ins registered twice are silent
+    expect(warnings).toHaveLength(2);
+    expect(warnings.some((w) => /my\.zoom.*more than once/.test(w))).toBe(true);
   });
 
   test("built-ins are always present even without an ExtensionsService", () => {

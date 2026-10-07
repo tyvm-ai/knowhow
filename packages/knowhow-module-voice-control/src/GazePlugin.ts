@@ -4,9 +4,8 @@ import {
   PluginContext,
   PluginMeta,
 } from "@tyvm/knowhow";
-import { GazeSample } from "./eyeTracking";
+import { GazeClient, GAZE_TIMEOUT } from "./gaze";
 
-const DEFAULT_GAZE_URL = "http://127.0.0.1:7465/api/gaze";
 const MAX_SAMPLE_AGE_MS = 2_000;
 
 /** Adds the user's current desktop gaze position to agent input while tracking is active. */
@@ -19,19 +18,17 @@ export class GazePlugin extends PluginBase {
   };
 
   meta = GazePlugin.meta;
-  private readonly gazeUrl: string;
+  private readonly gaze: GazeClient;
 
   constructor(context: PluginContext) {
     super(context);
-    this.gazeUrl = process.env.KNOWHOW_GAZE_URL || DEFAULT_GAZE_URL;
+    this.gaze = new GazeClient();
   }
 
   async call(): Promise<string> {
     try {
-      const response = await fetch(this.gazeUrl, { signal: AbortSignal.timeout(250) });
-      if (response.status === 204) return "";
-      if (!response.ok) return "";
-      const sample = await response.json() as GazeSample;
+      const sample = await this.gaze.current({ timeoutMs: GAZE_TIMEOUT.normal });
+      if (!sample) return "";
       const ageMs = Date.now() - sample.timestamp;
       if (sample.phase !== "live" || ageMs < 0 || ageMs > MAX_SAMPLE_AGE_MS) return "";
       return `GAZE CONTEXT: The user is currently looking near desktop coordinate (${Math.round(sample.x)}, ${Math.round(sample.y)}) on the monitor at (${sample.monitor.x}, ${sample.monitor.y}) sized ${sample.monitor.width}x${sample.monitor.height}. Treat this as approximate context, not authorization to click or perform a consequential action.`;

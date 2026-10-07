@@ -8,6 +8,7 @@
  */
 
 import { execFile } from "child_process";
+import { runJxa } from "./actions/osa";
 
 export interface FocusSnapshot {
   app?: string;
@@ -45,7 +46,7 @@ function run(cmd: string, args: string[], timeout = 1500): Promise<string> {
   });
 }
 
-const defaultJxa = (script: string, timeoutMs = 1500) => run("osascript", ["-l", "JavaScript", "-e", script], timeoutMs);
+const defaultJxa = (script: string, timeoutMs = 1500) => runJxa(script, { timeoutMs });
 const defaultTmux = (args: string[]) => run("tmux", args, 800);
 
 function q(s: string): string {

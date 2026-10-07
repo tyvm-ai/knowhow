@@ -13,6 +13,7 @@
 
 import { randomUUID } from "crypto";
 import { GazeSample } from "./eyeTracking";
+import { GazeClient, GAZE_TIMEOUT, resolveGazeHubUrl } from "./gaze";
 import { VoiceCommandSpec, VoiceCommandEvent, VoiceHubEvent, postVoiceCommand } from "./voiceHub";
 import type { CommandSource, UtteranceTiming } from "./types";
 import { parseUtterance, ParseResult, ParsedCommand } from "./grammar";
@@ -471,6 +472,7 @@ export class GazeFollowController {
   private readonly alpha: number;
   private readonly deadZone: number;
   private readonly hubUrl: string;
+  private readonly gaze: GazeClient;
   private lastX = 0;
   private lastY = 0;
 
@@ -480,7 +482,8 @@ export class GazeFollowController {
   ) {
     this.alpha = options.alpha ?? 0.3;
     this.deadZone = options.deadZone ?? 4;
-    this.hubUrl = options.hubUrl ?? "http://127.0.0.1:7465";
+    this.hubUrl = options.hubUrl ?? resolveGazeHubUrl();
+    this.gaze = new GazeClient({ hubUrl: this.hubUrl });
   }
 
   isRunning(): boolean {
@@ -504,10 +507,8 @@ export class GazeFollowController {
 
   private async tick(): Promise<void> {
     try {
-      const res = await fetch(`${this.hubUrl}/api/gaze`, { signal: AbortSignal.timeout(100) });
-      if (!res.ok) return;
-      const sample = await res.json() as { x: number; y: number; phase?: string };
-      if (!Number.isFinite(sample.x) || !Number.isFinite(sample.y)) return;
+      const sample = await this.gaze.current({ timeoutMs: GAZE_TIMEOUT.tick });
+      if (!sample) return;
       if (!this.hasFirst) {
         this.smoothX = sample.x;
         this.smoothY = sample.y;
@@ -543,30 +544,10 @@ export class GazeFollowController {
 export async function gazeNearestTime(
   epochMs: number,
   hubUrl: string,
-  timeoutMs = 150,
+  timeoutMs: number = GAZE_TIMEOUT.fast,
 ): Promise<GazeSample | undefined> {
-  try {
-    const abort = new AbortController();
-    const timer = setTimeout(() => abort.abort(), timeoutMs);
-    try {
-      const res = await fetch(`${hubUrl}/api/gaze/history?sinceMs=${epochMs - 1500}`, { signal: abort.signal });
-      if (!res.ok) return undefined;
-      const data = await res.json() as { samples: GazeSample[] };
-      const samples = data.samples;
-      if (!samples?.length) return undefined;
-      let best = samples[0];
-      let bestDist = Math.abs(best.timestamp - epochMs);
-      for (const s of samples) {
-        const d = Math.abs(s.timestamp - epochMs);
-        if (d < bestDist) { best = s; bestDist = d; }
-      }
-      return best;
-    } finally {
-      clearTimeout(timer);
-    }
-  } catch {
-    return undefined;
-  }
+  const sample = await new GazeClient({ hubUrl }).at(epochMs, { windowMs: 1500, timeoutMs });
+  return sample ?? undefined;
 }
 
 export interface QuickHookContext {

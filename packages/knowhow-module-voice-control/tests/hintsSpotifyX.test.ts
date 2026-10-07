@@ -14,7 +14,7 @@ import {
   Rect,
 } from "../src/smartSelector";
 import { HINTS_PACK } from "../src/packs/hints";
-import { GAZE_MOUSE_PACK } from "../src/packs/gazeMouse";
+import { BUILTIN_VOICE_COMMANDS } from "../src/voiceCommands";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -166,7 +166,7 @@ describe("filterAndDedupeElements", () => {
 // ─── Double click aliases ─────────────────────────────────────────────────────
 
 describe("double click aliases", () => {
-  const doubleClickCmd = GAZE_MOUSE_PACK.find((c) => c.name === "voice-control.gaze.double-click");
+  const doubleClickCmd = BUILTIN_VOICE_COMMANDS.find((c) => c.name === "voice-control.double-click");
 
   it("double-click command exists", () => {
     expect(doubleClickCmd).toBeDefined();
@@ -331,29 +331,26 @@ describe("play-song command", () => {
   });
 });
 
-// ─── click-that-element and double-click-that-element commands ────────────────
+// ─── click that / double click that: ONE command each (voiceCommands.ts) ──────
 
-describe("click-that-element and double-click-that-element commands", () => {
-  it("hints.click-that-element command exists in HINTS_PACK", () => {
-    const cmd = HINTS_PACK.find((c) => c.name === "hints.click-that-element");
-    expect(cmd).toBeDefined();
+describe("click-that and double-click-that are not duplicated in the hints pack", () => {
+  it("HINTS_PACK no longer carries click-that-element / double-click-that-element", () => {
+    expect(HINTS_PACK.find((c) => c.name === "hints.click-that-element")).toBeUndefined();
+    expect(HINTS_PACK.find((c) => c.name === "hints.double-click-that-element")).toBeUndefined();
   });
 
-  it("hints.double-click-that-element command exists in HINTS_PACK", () => {
-    const cmd = HINTS_PACK.find((c) => c.name === "hints.double-click-that-element");
-    expect(cmd).toBeDefined();
+  it("'click that' is claimed only by the built-in click-that command", () => {
+    const owners = [...BUILTIN_VOICE_COMMANDS, ...HINTS_PACK].filter((c) =>
+      [c.phrase, ...(c.aliases ?? []), ...(c.patterns ?? [])].includes("click that"),
+    );
+    expect(owners.map((c) => c.name)).toEqual(["voice-control.click-that"]);
   });
 
-  it("hints.click-that-element has 'click that' pattern", () => {
-    const cmd = HINTS_PACK.find((c) => c.name === "hints.click-that-element");
-    const patterns: string[] = (cmd as any)?.patterns ?? [];
-    expect(patterns).toContain("click that");
-  });
-
-  it("hints.double-click-that-element has 'double click that' pattern", () => {
-    const cmd = HINTS_PACK.find((c) => c.name === "hints.double-click-that-element");
-    const patterns: string[] = (cmd as any)?.patterns ?? [];
-    expect(patterns).toContain("double click that");
+  it("'double click that' is claimed only by the built-in double-click command", () => {
+    const owners = [...BUILTIN_VOICE_COMMANDS, ...HINTS_PACK].filter((c) =>
+      [c.phrase, ...(c.aliases ?? []), ...(c.patterns ?? [])].includes("double click that"),
+    );
+    expect(owners.map((c) => c.name)).toEqual(["voice-control.double-click"]);
   });
 });
 
@@ -400,18 +397,8 @@ describe("songphrase slot type", () => {
 // ─── AX stale-element re-query (resolveStaleElement internal) ────────────────
 
 describe("activateElement AXPress with stale ID re-query", () => {
-  it("gazeMouse click command has AX element memory via recentPlacedCandidate", () => {
-    // Verify gazeMouse click is set up to use recentPlacedCandidate
-    const clickCmd = GAZE_MOUSE_PACK.find((c) => c.name === "voice-control.gaze.click");
-    expect(clickCmd).toBeDefined();
-    // The run function body should reference recentPlacedCandidate indirectly
-    // (verified by integration; here we just verify the command exists and has aliases)
-    const aliases: string[] = (clickCmd as any)?.aliases ?? [];
-    expect(aliases).toContain("click that");
-  });
-
-  it("gazeMouse double-click command has element memory", () => {
-    const dblCmd = GAZE_MOUSE_PACK.find((c) => c.name === "voice-control.gaze.double-click");
+  it("the double-click command keeps element memory for 'double click that/it/here'", () => {
+    const dblCmd = BUILTIN_VOICE_COMMANDS.find((c) => c.name === "voice-control.double-click");
     expect(dblCmd).toBeDefined();
     const aliases: string[] = (dblCmd as any)?.aliases ?? [];
     expect(aliases).toContain("double click that");

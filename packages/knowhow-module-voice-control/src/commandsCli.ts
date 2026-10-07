@@ -8,10 +8,11 @@ import { homedir } from "os";
 import { join, resolve as resolvePath } from "path";
 import type { VoiceCommandSpec } from "./voiceHub";
 import { resolveHubUrl } from "./voiceHub";
+import { formatConflicts } from "./commands/registry";
 import {
   ExtensionsLike,
   VOICE_COMMAND_EXTENSION,
-  collectVoiceCommands,
+  collectVoiceCommandReport,
   commandRows,
   formatVoiceCommandsTable,
   readKnowhowConfig,
@@ -98,6 +99,8 @@ export async function readModuleVoiceExtensions(
 
 export interface VoiceCommandsCliOptions {
   json?: boolean;
+  /** Print the registry validation report (duplicate names, conflicting phrases) instead of the table. */
+  conflicts?: boolean;
 }
 
 export interface VoiceCommandsCliDeps {
@@ -117,12 +120,22 @@ export async function runVoiceCommandsList(
   const warnings: string[] = [];
   const moduleExtensions = deps.moduleExtensions ??
     await readModuleVoiceExtensions(await configuredModulePaths(config));
-  const registered = collectVoiceCommands({
+  const report = collectVoiceCommandReport({
     config,
     extensions: deps.extensions === undefined ? tryCoreExtensions() : deps.extensions,
     moduleExtensions,
     warn: (msg) => warnings.push(msg),
   });
+  const registered = report.commands;
+  if (options.conflicts) {
+    if (options.json) write(`${JSON.stringify({ conflicts: report.conflicts, overridden: report.overridden, warnings }, null, 2)}\n`);
+    else {
+      write(formatConflicts(report.conflicts));
+      if (report.overridden.length) write(`overridden (intentional): ${report.overridden.join(", ")}\n`);
+      for (const w of warnings.filter((m) => !report.conflicts.some((c) => c.message === m))) write(`warning: ${w}\n`);
+    }
+    return { registered };
+  }
   const live = deps.live === undefined ? await fetchLiveHubCommands() : (deps.live ?? undefined);
   const rows = commandRows(registered, live ?? []);
 

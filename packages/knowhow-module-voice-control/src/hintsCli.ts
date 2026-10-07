@@ -21,7 +21,7 @@
  *  5. Show the hint overlay for 4 s via the existing overlay helpers.
  */
 
-import { spawnSync } from "child_process";
+import { runAppleScriptSync, runJxaSync, escapeAppleScriptString } from "./actions/osa";
 import { enableAXForPid } from "./axEnabler";
 import { getComputerService } from "./computerService";
 import {
@@ -34,6 +34,7 @@ import {
   HintSource,
 } from "./smartSelector";
 import { lastVisualTimings } from "./visualElements";
+import { GazeClient, GAZE_ERROR_RADIUS, GAZE_TIMEOUT } from "./gaze";
 
 export interface HintsCliOptions {
   json?: boolean;
@@ -56,75 +57,56 @@ async function getGazePoint(
     return { x: opts.x, y: opts.y, source: "cli" };
   }
 
-  const hubUrl = opts.hubUrl ?? "http://127.0.0.1:7465";
-  try {
-    const res = await fetch(`${hubUrl}/api/gaze`, { signal: AbortSignal.timeout(1500) });
-    if (res.ok) {
-      const data = (await res.json()) as { x?: number; y?: number };
-      if (Number.isFinite(data.x) && Number.isFinite(data.y)) {
-        return { x: data.x!, y: data.y!, source: "eye-tracker" };
-      }
-    }
-  } catch { /* fall through */ }
+  const sample = await new GazeClient({ hubUrl: opts.hubUrl }).current({ timeoutMs: GAZE_TIMEOUT.slow });
+  if (sample) return { x: sample.x, y: sample.y, source: "eye-tracker" };
 
-  // Fall back to mouse position via osascript
-  try {
-    const result = spawnSync(
-      "osascript",
-      ["-l", "JavaScript", "-e", `
+  // Fall back to mouse position via JXA
+  const mouse = runJxaSync(`
         ObjC.import('Cocoa');
         var loc = $.NSEvent.mouseLocation;
         var screens = $.NSScreen.screens;
         var mainHeight = $.NSScreen.mainScreen.frame.size.height;
         JSON.stringify({ x: Math.round(loc.x), y: Math.round(mainHeight - loc.y) });
-      `],
-      { encoding: "utf8", timeout: 3000 },
-    );
-    if (result.status === 0 && result.stdout) {
-      const p = JSON.parse(result.stdout.trim()) as { x: number; y: number };
+      `, { timeoutMs: 3000 });
+  if (mouse.ok && mouse.stdout) {
+    try {
+      const p = JSON.parse(mouse.stdout.trim()) as { x: number; y: number };
       if (Number.isFinite(p.x) && Number.isFinite(p.y)) {
         return { x: p.x, y: p.y, source: "mouse" };
       }
-    }
-  } catch { /* ignore */ }
+    } catch { /* ignore */ }
+  }
 
   return { x: 0, y: 0, source: "unknown" };
 }
 
 // ─── Get app pid for web AX enabling ─────────────────────────────────────────
 
+function parsePid(stdout: string): number | null {
+  const pid = parseInt(stdout.trim(), 10);
+  return Number.isFinite(pid) && pid > 0 ? pid : null;
+}
+
 function getAppPid(appName: string): number | null {
   // Use AppleScript (System Events) — reliable, no JXA ObjC.unwrap needed.
-  try {
-    const result = spawnSync(
-      "osascript",
-      ["-e", `tell application "System Events" to get unix id of process "${appName}"`],
-      { encoding: "utf8", timeout: 3000 },
-    );
-    if (result.status === 0 && result.stdout?.trim()) {
-      const pid = parseInt(result.stdout.trim(), 10);
-      if (Number.isFinite(pid) && pid > 0) return pid;
-    }
-  } catch { /* ignore */ }
+  const direct = runAppleScriptSync(
+    `tell application "System Events" to get unix id of process "${escapeAppleScriptString(appName)}"`,
+    { timeoutMs: 3000 },
+  );
+  if (direct.ok) {
+    const pid = parsePid(direct.stdout);
+    if (pid) return pid;
+  }
   // Fallback: list all processes and find by name prefix
-  try {
-    const result = spawnSync(
-      "osascript",
-      ["-e", `
+  const byPrefix = runAppleScriptSync(`
 tell application "System Events"
-  set procs to every process whose name starts with "${appName.slice(0, 10)}"
+  set procs to every process whose name starts with "${escapeAppleScriptString(appName.slice(0, 10))}"
   if (count of procs) > 0 then
     return unix id of item 1 of procs
   end if
   return ""
-end tell`],
-      { encoding: "utf8", timeout: 3000 },
-    );
-    if (result.status === 0 && result.stdout?.trim()) {
-      const pid = parseInt(result.stdout.trim(), 10);
-      if (Number.isFinite(pid) && pid > 0) return pid;
-    }
-  } catch { /* ignore */ }
+end tell`, { timeoutMs: 3000 });
+  if (byPrefix.ok) return parsePid(byPrefix.stdout);
   return null;
 }
 
@@ -132,18 +114,11 @@ end tell`],
 
 function frontmostPid(): number | null {
   // Use System Events to get the frontmost process pid — no JXA needed.
-  try {
-    const result = spawnSync(
-      "osascript",
-      ["-e", `tell application "System Events" to get unix id of first process whose frontmost is true`],
-      { encoding: "utf8", timeout: 3000 },
-    );
-    if (result.status === 0 && result.stdout?.trim()) {
-      const pid = parseInt(result.stdout.trim(), 10);
-      if (Number.isFinite(pid) && pid > 0) return pid;
-    }
-  } catch { /* ignore */ }
-  return null;
+  const r = runAppleScriptSync(
+    `tell application "System Events" to get unix id of first process whose frontmost is true`,
+    { timeoutMs: 3000 },
+  );
+  return r.ok ? parsePid(r.stdout) : null;
 }
 
 function buildAdapter(appName?: string): ComputerUseAdapter | null {
@@ -185,17 +160,14 @@ export async function runHintsCli(opts: HintsCliOptions = {}): Promise<void> {
   // 3. Focus app if requested
   if (opts.app) {
     try {
-      const focusScript = `
-        tell application "${opts.app}" to activate
-      `;
-      spawnSync("osascript", ["-e", focusScript], { timeout: 3000 });
+      runAppleScriptSync(`tell application "${escapeAppleScriptString(opts.app)}" to activate`, { timeoutMs: 3000 });
       // Wait briefly for window to come to front
       await new Promise((r) => setTimeout(r, 300));
     } catch { /* ignore */ }
   }
 
   // 4. Collect candidates
-  const errorRadius = { x: 200, y: 260 };
+  const errorRadius = { ...GAZE_ERROR_RADIUS };
   const densityName: HintDensity = opts.all ? "all" : opts.density && opts.density in HINT_DENSITY ? opts.density : "normal";
   const density = HINT_DENSITY[densityName];
   const windowKey = `hints_cli_${Math.round(gaze.x / 100)}_${Math.round(gaze.y / 100)}`;

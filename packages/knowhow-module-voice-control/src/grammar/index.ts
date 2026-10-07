@@ -5,14 +5,15 @@
  */
 
 export { registerSlotType, getSlotMatcher, APP_ALIASES } from "./slots";
-export { compilePattern } from "./compile";
+export { compilePattern, mergeSynonyms, normaliseSynonyms, expandPhraseSynonyms } from "./compile";
+export type { Synonyms } from "./compile";
 export { matchPattern } from "./match";
 export { normaliseTranscript, tokenise } from "./normalise";
 export { convertDictation, applyCase, expandSpell, expandNato } from "./dictation";
 export { splitOnChainWords, parseChain, greedySplit } from "./chain";
 
 import type { VoiceCommandExtension } from "../voiceCommands";
-import { compilePattern, PatternToken } from "./compile";
+import { compilePattern, mergeSynonyms, PatternToken } from "./compile";
 import { matchPattern } from "./match";
 import { normaliseTranscript, tokenise } from "./normalise";
 import { parseChain } from "./chain";
@@ -34,14 +35,25 @@ export type ParseResult =
   | { kind: "chain"; results: ParsedCommand[] }
   | { kind: "none" };
 
+const synonymCache = new WeakMap<object, Record<string, string[]>>();
+function commandSynonyms(table: Record<string, string[]>): Record<string, string[]> {
+  let merged = synonymCache.get(table);
+  if (!merged) {
+    merged = mergeSynonyms(table);
+    synonymCache.set(table, merged);
+  }
+  return merged;
+}
+
 /** Compiled pattern cache. */
 const patternCache = new Map<string, PatternToken[]>();
 
-function getPattern(pattern: string): PatternToken[] {
-  let compiled = patternCache.get(pattern);
+function getPattern(pattern: string, synonyms?: Record<string, readonly string[]>): PatternToken[] {
+  const key = synonyms && Object.keys(synonyms).length ? `${pattern}\u0000${JSON.stringify(synonyms)}` : pattern;
+  let compiled = patternCache.get(key);
   if (!compiled) {
-    compiled = compilePattern(pattern);
-    patternCache.set(pattern, compiled);
+    compiled = compilePattern(pattern, synonyms);
+    patternCache.set(key, compiled);
   }
   return compiled;
 }
@@ -88,9 +100,10 @@ function matchCommand(
   if (typeof (command as any).pattern === "string") patterns.push((command as any).pattern);
   if (Array.isArray((command as any).patterns)) patterns.push(...(command as any).patterns);
 
-  // Try compiled patterns
+  // Try compiled patterns (command-declared synonyms are expanded at compile time)
+  const synonyms = command.synonyms ? commandSynonyms(command.synonyms) : undefined;
   for (const pat of patterns) {
-    const compiled = getPattern(pat);
+    const compiled = getPattern(pat, synonyms);
     const result = matchPattern(compiled, tokens, ctx);
     if (result) return result;
   }

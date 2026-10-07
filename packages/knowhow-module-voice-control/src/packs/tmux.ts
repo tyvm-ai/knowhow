@@ -16,7 +16,7 @@
 import { execFile as nodeExecFile } from "child_process";
 import { promisify } from "util";
 import type { VoiceCommandExtension } from "../voiceCommands";
-import { VOICE_COMMAND_EXTENSION } from "../voiceCommands";
+import { pack } from "../commands/define";
 
 const execFileP = promisify(nodeExecFile);
 
@@ -52,7 +52,9 @@ export interface TmuxTarget {
 /** The pane of the most recently active attached client. */
 export async function resolveTmuxTarget(): Promise<TmuxTarget | undefined> {
   const clients = (await tmux(["list-clients", "-F", "#{client_activity}\t#{client_name}\t#{client_session}"]))
-    .split("\n").map((l) => l.trim()).filter(Boolean)
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean)
     .map((l) => {
       const [activity, client, session] = l.split("\t");
       return { activity: Number(activity) || 0, client, session };
@@ -105,73 +107,60 @@ function num(ctx: { slots: Record<string, unknown>; text: string }, fallback?: n
 export async function runPrefixBinding(key: string, target: TmuxTarget): Promise<boolean> {
   const line = (await tmux(["list-keys", "-T", "prefix", key])).split("\n").find((l) => l.trim());
   if (!line) return false;
-  const m = line.match(/\brun-shell\s+(?:-b\s+)?"((?:[^"\\]|\\.)*)"\s*$/) ?? line.match(/\brun-shell\s+(?:-b\s+)?'([^']*)'\s*$/);
+  const m =
+    line.match(/\brun-shell\s+(?:-b\s+)?"((?:[^"\\]|\\.)*)"\s*$/) ??
+    line.match(/\brun-shell\s+(?:-b\s+)?'([^']*)'\s*$/);
   if (!m) return false;
-  const command = m[1].replace(/\\(["\\$])/g, "$1")
+  const command = m[1]
+    .replace(/\\(["\\$])/g, "$1")
     .replace(/#\{pane_id\}/g, target.paneId)
     .replace(/#\{session_name\}/g, target.session);
   await shell(command);
   return true;
 }
 
-function cmd(
-  name: string,
-  phrase: string,
-  description: string,
-  run: VoiceCommandExtension["run"],
-  extras: Partial<VoiceCommandExtension> = {},
-): VoiceCommandExtension {
-  return {
-    type: VOICE_COMMAND_EXTENSION,
-    name: `voice-control.tmux.${name}`,
-    phrase,
-    description,
-    run,
-    modes: ["command"],
-    repeatable: false,
-    ...extras,
-  };
-}
+const command = pack({ prefix: "voice-control.tmux.", defaults: { repeatable: false } });
 
 function navigate(dir: Dir): VoiceCommandExtension {
-  return cmd(
-    `pane-${dir}`,
-    `tmux ${dir}`,
-    `Move to the tmux pane ${dir} (vim-aware, like Ctrl-${DIR_KEY[dir].slice(2)})`,
-    (ctx) => withTarget(ctx, async (t) => {
-      if (isVimCommand(t.command)) await tmux(["send-keys", "-t", t.paneId, DIR_KEY[dir]]);
-      else await tmux(["select-pane", "-t", t.paneId, DIR_FLAG[dir]]);
-    }),
-    {
-      aliases: [`tmux pane ${dir}`, `tmux ${dir} pane`, `pane ${dir}`, `tmux go ${dir}`],
-    },
-  );
+  return command({
+    name: `pane-${dir}`,
+    phrase: `tmux ${dir}`,
+    description: `Move to the tmux pane ${dir} (vim-aware, like Ctrl-${DIR_KEY[dir].slice(2)})`,
+    run: (ctx) =>
+      withTarget(ctx, async (t) => {
+        if (isVimCommand(t.command)) await tmux(["send-keys", "-t", t.paneId, DIR_KEY[dir]]);
+        else await tmux(["select-pane", "-t", t.paneId, DIR_FLAG[dir]]);
+      }),
+    aliases: [`tmux pane ${dir}`, `tmux ${dir} pane`, `pane ${dir}`, `tmux go ${dir}`],
+  });
 }
 
 function resize(dir: Dir): VoiceCommandExtension {
-  return cmd(
-    `resize-${dir}`,
-    `tmux resize ${dir}`,
-    `Resize the tmux pane ${dir} by 5 cells × n`,
-    (ctx) => withTarget(ctx, async (t) => {
-      const n = Math.min(num(ctx, 1) ?? 1, 20);
-      await tmux(["resize-pane", "-t", t.paneId, DIR_FLAG[dir], String(5 * n)]);
-    }),
-    { patterns: [`tmux resize ${dir} [{n:number}]`, `tmux grow ${dir} [{n:number}]`] } as any,
-  );
+  return command({
+    name: `resize-${dir}`,
+    phrase: `tmux resize ${dir}`,
+    description: `Resize the tmux pane ${dir} by 5 cells × n`,
+    run: (ctx) =>
+      withTarget(ctx, async (t) => {
+        const n = Math.min(num(ctx, 1) ?? 1, 20);
+        await tmux(["resize-pane", "-t", t.paneId, DIR_FLAG[dir], String(5 * n)]);
+      }),
+    patterns: [`tmux resize ${dir} [{n:number}]`, `tmux grow ${dir} [{n:number}]`],
+  });
 }
 
 function paneTab(name: string, key: string, words: string[], description: string): VoiceCommandExtension {
-  return cmd(
-    `pane-tab-${name}`,
-    `tmux pane tab ${words[0]}`,
-    description,
-    (ctx) => withTarget(ctx, async (t) => {
-      const ok = await runPrefixBinding(key, t);
-      if (!ok) ctx.log(`tmux: no run-shell binding on prefix ${key} (is tmux-pane-tabs loaded?)`);
-    }),
-    { aliases: words.flatMap((w) => [`tmux pane tab ${w}`, `tmux ${w} pane tab`]).slice(1) },
-  );
+  return command({
+    name: `pane-tab-${name}`,
+    phrase: `tmux pane tab ${words[0]}`,
+    description: description,
+    run: (ctx) =>
+      withTarget(ctx, async (t) => {
+        const ok = await runPrefixBinding(key, t);
+        if (!ok) ctx.log(`tmux: no run-shell binding on prefix ${key} (is tmux-pane-tabs loaded?)`);
+      }),
+    aliases: words.flatMap((w) => [`tmux pane tab ${w}`, `tmux ${w} pane tab`]).slice(1),
+  });
 }
 
 export const TMUX_PACK: VoiceCommandExtension[] = [
@@ -180,70 +169,151 @@ export const TMUX_PACK: VoiceCommandExtension[] = [
   navigate("up"),
   navigate("down"),
 
-  cmd("zoom", "tmux zoom", "Toggle zoom on the active tmux pane (resize-pane -Z)", (ctx) =>
-    withTarget(ctx, async (t) => { await tmux(["resize-pane", "-Z", "-t", t.paneId]); }),
-    { aliases: ["tmux zoom pane", "tmux unzoom", "tmux zoom in", "tmux zoom out", "zoom pane", "unzoom pane"] }),
+  command({
+    name: "zoom",
+    phrase: "tmux zoom",
+    description: "Toggle zoom on the active tmux pane (resize-pane -Z)",
+    run: (ctx) =>
+      withTarget(ctx, async (t) => {
+        await tmux(["resize-pane", "-Z", "-t", t.paneId]);
+      }),
+    aliases: ["tmux zoom pane", "tmux unzoom", "tmux zoom in", "tmux zoom out", "zoom pane", "unzoom pane"],
+  }),
 
   // Windows = the tabs in the tmux status bar.
-  cmd("tab-next", "tmux tab next", "Next tmux window (status-bar tab)", (ctx) =>
-    withTarget(ctx, async (t) => { await tmux(["next-window", "-t", t.session]); }),
-    { aliases: ["tmux next tab", "tmux next window", "tmux window next", "tmux tab right"] }),
-  cmd("tab-previous", "tmux tab previous", "Previous tmux window (status-bar tab)", (ctx) =>
-    withTarget(ctx, async (t) => { await tmux(["previous-window", "-t", t.session]); }),
-    { aliases: ["tmux previous tab", "tmux prev tab", "tmux tab back", "tmux previous window", "tmux window previous", "tmux tab left"] }),
-  cmd("tab-last", "tmux last tab", "Last-used tmux window", (ctx) =>
-    withTarget(ctx, async (t) => { await tmux(["last-window", "-t", t.session]); }),
-    { aliases: ["tmux tab last", "tmux last window"] }),
-  cmd("tab-n", "tmux tab {n:number}", "Jump to tmux window N", (ctx) =>
-    withTarget(ctx, async (t) => {
-      const n = num(ctx);
-      if (n === undefined) return ctx.log("tmux tab: which number?");
-      await tmux(["select-window", "-t", `${t.session}:${n}`]);
-    }),
-    { patterns: ["tmux tab {n:number}", "tmux window {n:number}", "tmux tab number {n:number}"] } as any),
-  cmd("new-tab", "tmux new tab", "Open a new tmux window in the current pane's directory", (ctx) =>
-    withTarget(ctx, async (t) => {
-      const cwd = (await tmux(["display-message", "-p", "-t", t.paneId, "#{pane_current_path}"])).trim();
-      await tmux(["new-window", "-t", `${t.session}:`, ...(cwd ? ["-c", cwd] : [])]);
-    }),
-    { aliases: ["tmux new window"] }),
+  command({
+    name: "tab-next",
+    phrase: "tmux tab next",
+    description: "Next tmux window (status-bar tab)",
+    run: (ctx) =>
+      withTarget(ctx, async (t) => {
+        await tmux(["next-window", "-t", t.session]);
+      }),
+    aliases: ["tmux next tab", "tmux next window", "tmux window next", "tmux tab right"],
+  }),
+  command({
+    name: "tab-previous",
+    phrase: "tmux tab previous",
+    description: "Previous tmux window (status-bar tab)",
+    run: (ctx) =>
+      withTarget(ctx, async (t) => {
+        await tmux(["previous-window", "-t", t.session]);
+      }),
+    aliases: [
+      "tmux previous tab",
+      "tmux prev tab",
+      "tmux tab back",
+      "tmux previous window",
+      "tmux window previous",
+      "tmux tab left",
+    ],
+  }),
+  command({
+    name: "tab-last",
+    phrase: "tmux last tab",
+    description: "Last-used tmux window",
+    run: (ctx) =>
+      withTarget(ctx, async (t) => {
+        await tmux(["last-window", "-t", t.session]);
+      }),
+    aliases: ["tmux tab last", "tmux last window"],
+  }),
+  command({
+    name: "tab-n",
+    phrase: "tmux tab {n:number}",
+    description: "Jump to tmux window N",
+    run: (ctx) =>
+      withTarget(ctx, async (t) => {
+        const n = num(ctx);
+        if (n === undefined) return ctx.log("tmux tab: which number?");
+        await tmux(["select-window", "-t", `${t.session}:${n}`]);
+      }),
+    patterns: ["tmux tab {n:number}", "tmux window {n:number}", "tmux tab number {n:number}"],
+  }),
+  command({
+    name: "new-tab",
+    phrase: "tmux new tab",
+    description: "Open a new tmux window in the current pane's directory",
+    run: (ctx) =>
+      withTarget(ctx, async (t) => {
+        const cwd = (await tmux(["display-message", "-p", "-t", t.paneId, "#{pane_current_path}"])).trim();
+        await tmux(["new-window", "-t", `${t.session}:`, ...(cwd ? ["-c", cwd] : [])]);
+      }),
+    aliases: ["tmux new window"],
+  }),
 
-  cmd("pane-n", "tmux pane {n:number}", "Select tmux pane N in the current window", (ctx) =>
-    withTarget(ctx, async (t) => {
-      const n = num(ctx);
-      if (n === undefined) return ctx.log("tmux pane: which number?");
-      const win = (await tmux(["display-message", "-p", "-t", t.paneId, "#{session_name}:#{window_index}"])).trim();
-      await tmux(["select-pane", "-t", `${win}.${n}`]);
-    }),
-    { patterns: ["tmux pane {n:number}", "pane {n:number}"] } as any),
-  cmd("last-pane", "tmux last pane", "Go back to the previously active tmux pane", (ctx) =>
-    withTarget(ctx, async (t) => { await tmux(["last-pane", "-t", t.paneId]); }),
-    { aliases: ["tmux pane last", "tmux previous pane"] }),
+  command({
+    name: "pane-n",
+    phrase: "tmux pane {n:number}",
+    description: "Select tmux pane N in the current window",
+    run: (ctx) =>
+      withTarget(ctx, async (t) => {
+        const n = num(ctx);
+        if (n === undefined) return ctx.log("tmux pane: which number?");
+        const win = (await tmux(["display-message", "-p", "-t", t.paneId, "#{session_name}:#{window_index}"])).trim();
+        await tmux(["select-pane", "-t", `${win}.${n}`]);
+      }),
+    patterns: ["tmux pane {n:number}", "pane {n:number}"],
+  }),
+  command({
+    name: "last-pane",
+    phrase: "tmux last pane",
+    description: "Go back to the previously active tmux pane",
+    run: (ctx) =>
+      withTarget(ctx, async (t) => {
+        await tmux(["last-pane", "-t", t.paneId]);
+      }),
+    aliases: ["tmux pane last", "tmux previous pane"],
+  }),
 
-  cmd("split-right", "tmux split right", "Split the tmux pane side by side (prefix v)", (ctx) =>
-    withTarget(ctx, async (t) => {
-      const cwd = (await tmux(["display-message", "-p", "-t", t.paneId, "#{pane_current_path}"])).trim();
-      await tmux(["split-window", "-h", "-t", t.paneId, ...(cwd ? ["-c", cwd] : [])]);
-    }),
-    { aliases: ["tmux split vertical", "tmux vertical split", "tmux split"] }),
-  cmd("split-down", "tmux split down", "Split the tmux pane top/bottom (prefix s)", (ctx) =>
-    withTarget(ctx, async (t) => {
-      const cwd = (await tmux(["display-message", "-p", "-t", t.paneId, "#{pane_current_path}"])).trim();
-      await tmux(["split-window", "-v", "-t", t.paneId, ...(cwd ? ["-c", cwd] : [])]);
-    }),
-    { aliases: ["tmux split horizontal", "tmux horizontal split"] }),
+  command({
+    name: "split-right",
+    phrase: "tmux split right",
+    description: "Split the tmux pane side by side (prefix v)",
+    run: (ctx) =>
+      withTarget(ctx, async (t) => {
+        const cwd = (await tmux(["display-message", "-p", "-t", t.paneId, "#{pane_current_path}"])).trim();
+        await tmux(["split-window", "-h", "-t", t.paneId, ...(cwd ? ["-c", cwd] : [])]);
+      }),
+    aliases: ["tmux split vertical", "tmux vertical split", "tmux split"],
+  }),
+  command({
+    name: "split-down",
+    phrase: "tmux split down",
+    description: "Split the tmux pane top/bottom (prefix s)",
+    run: (ctx) =>
+      withTarget(ctx, async (t) => {
+        const cwd = (await tmux(["display-message", "-p", "-t", t.paneId, "#{pane_current_path}"])).trim();
+        await tmux(["split-window", "-v", "-t", t.paneId, ...(cwd ? ["-c", cwd] : [])]);
+      }),
+    aliases: ["tmux split horizontal", "tmux horizontal split"],
+  }),
 
   resize("left"),
   resize("right"),
   resize("up"),
   resize("down"),
 
-  cmd("copy-mode", "tmux copy mode", "Enter tmux copy mode (scrollback)", (ctx) =>
-    withTarget(ctx, async (t) => { await tmux(["copy-mode", "-t", t.paneId]); }),
-    { aliases: ["tmux scroll mode", "tmux scroll back"] }),
-  cmd("interrupt", "tmux interrupt", "Send Ctrl-C to the active tmux pane", (ctx) =>
-    withTarget(ctx, async (t) => { await tmux(["send-keys", "-t", t.paneId, "C-c"]); }),
-    { aliases: ["tmux control c", "tmux cancel"] }),
+  command({
+    name: "copy-mode",
+    phrase: "tmux copy mode",
+    description: "Enter tmux copy mode (scrollback)",
+    run: (ctx) =>
+      withTarget(ctx, async (t) => {
+        await tmux(["copy-mode", "-t", t.paneId]);
+      }),
+    aliases: ["tmux scroll mode", "tmux scroll back"],
+  }),
+  command({
+    name: "interrupt",
+    phrase: "tmux interrupt",
+    description: "Send Ctrl-C to the active tmux pane",
+    run: (ctx) =>
+      withTarget(ctx, async (t) => {
+        await tmux(["send-keys", "-t", t.paneId, "C-c"]);
+      }),
+    aliases: ["tmux control c", "tmux cancel"],
+  }),
 
   // tmux-pane-tabs plugin (~/dev/tmux-pane-tabs): prefix N / P / T / X.
   paneTab("next", "N", ["next"], "Next pane tab (tmux-pane-tabs, prefix N)"),

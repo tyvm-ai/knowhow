@@ -5,24 +5,15 @@ import type {
 } from "@tyvm/knowhow/ts_build/src/services/modules/types";
 import { runVoiceAgent, VoiceAgentCommandOptions } from "./command";
 import { runVoiceCommandsList } from "./commandsCli";
-import { BUILTIN_VOICE_COMMANDS } from "./voiceCommands";
 import { runEyeTracking } from "./eyeTracking";
 import { GazePlugin } from "./GazePlugin";
 import { gazeExtension, voiceExtension } from "./extensions";
-import META_PACK from "./packs/meta";
-import GAZE_MOUSE_PACK from "./packs/gazeMouse";
-import TEXT_PACK from "./packs/text";
-import KEYS_PACK from "./packs/keys";
-import { WINDOWS_PACK } from "./packs/windows";
-import { SYSTEM_PACK } from "./packs/system";
-import { HINTS_PACK, registerHintSlot } from "./packs/hints";
-import { TMUX_PACK } from "./packs/tmux";
-import { BROWSER_PACK } from "./packs/browser";
+import { registerHintSlot } from "./packs/hints";
+import { voiceCommandExtensions } from "./packs/index";
 import { hintsExtension } from "./extensions";
 import { parseUtterance } from "./grammar";
-import { collectVoiceCommands, BUILTIN_VOICE_COMMANDS as BUILTINS } from "./voiceCommands";
+import { collectVoiceCommands, readKnowhowConfig } from "./voiceCommands";
 import { runHintsCli } from "./hintsCli";
-import { SMART_TYPE_PACK } from "./packs/smartType";
 
 export * from "./types";
 export * from "./VoiceSession";
@@ -66,7 +57,7 @@ export async function voiceControlAction(subcommand: unknown, argsOrOpts: any, o
     return runVoiceAgent(resolved as VoiceAgentCommandOptions);
   }
   if (subcommand === "commands") {
-    await runVoiceCommandsList({ json: !!(options as any)?.json });
+    await runVoiceCommandsList({ json: !!(options as any)?.json, conflicts: !!(options as any)?.conflicts });
     return;
   }
   if (subcommand === "parse") {
@@ -82,20 +73,12 @@ export async function voiceControlAction(subcommand: unknown, argsOrOpts: any, o
       process.stderr.write('Usage: knowhow voice-control parse "<utterance>" [--json]\n');
       process.exit(1);
     }
+    // Same collection path as the live session: knowhow.json commands and
+    // synonyms first, then this module's shipped commands.
     const allCommands = collectVoiceCommands({
-      builtins: [
-        ...BUILTINS,
-        ...META_PACK,
-        ...GAZE_MOUSE_PACK,
-        ...TEXT_PACK,
-        ...KEYS_PACK,
-        ...WINDOWS_PACK,
-        ...SYSTEM_PACK,
-        ...HINTS_PACK,
-        ...TMUX_PACK,
-        ...BROWSER_PACK,
-        ...SMART_TYPE_PACK,
-      ],
+      config: readKnowhowConfig(),
+      moduleExtensions: voiceCommandExtensions().map((extension) => ({ owner: "voice-control", extension })),
+      builtins: [],
     });
     const result = parseUtterance(utterance, allCommands);
     if ((options as any)?.json) {
@@ -161,23 +144,9 @@ const voiceControlModule: KnowhowModule = {
     gazeExtension,
     voiceExtension,
     hintsExtension,
-    ...BUILTIN_VOICE_COMMANDS,
-    // Core packs
-    ...META_PACK,
-    ...GAZE_MOUSE_PACK,
-    ...TEXT_PACK,
-    ...KEYS_PACK,
-    // Windows agent packs
-    ...WINDOWS_PACK,
-    ...SYSTEM_PACK,
-    // Hints agent pack
-    ...HINTS_PACK,
-    // tmux pack
-    ...TMUX_PACK,
-    // Chrome tabs by name (browser MCP, AppleScript fallback)
-    ...BROWSER_PACK,
-    // smarttype / agenttype pack
-    ...SMART_TYPE_PACK,
+    // Built-ins + every pack (meta, gaze-mouse, text, keys, windows, system,
+    // hints, tmux, browser, smart-type) — one list, see packs/index.ts.
+    ...voiceCommandExtensions(),
   ],
   async register(params: InitParams) {
     const program = params.context?.Program;
@@ -194,7 +163,7 @@ const voiceControlModule: KnowhowModule = {
         .arguments("[subcommand] [args...]")
         .description(
           "Run an interactive Knowhow agent using voice input. " +
-            "`voice-control commands [--json]` lists registered voice commands. " +
+            "`voice-control commands [--json] [--conflicts]` lists registered voice commands (or reports conflicting ones). " +
             "`voice-control parse \"<utterance>\" [--json]` parses an utterance against all commands. " +
             "`voice-control hints [--json] [--x N --y N] [--all] [--app NAME] [--source auto|ax|visual|both] [--density few|normal|more|all] [--move]` dry-runs the gaze hint selector and shows the overlay for 4s."
         )
@@ -341,9 +310,12 @@ const voiceControlModule: KnowhowModule = {
           "hints: how many hints to show: few|normal|more|all (default normal)"
         )
         .option(
+          "--conflicts",
+          "commands: report duplicate command names and phrases claimed by more than one command"
+        )
+        .option(
           "--hub-url <url>",
-          "hints: eye-tracker hub URL",
-          "http://127.0.0.1:7465"
+          "hints: eye-tracker hub URL (default: $KNOWHOW_EYE_HUB_URL, else http://127.0.0.1:7465)"
         )
         .action(voiceControlAction);
     }

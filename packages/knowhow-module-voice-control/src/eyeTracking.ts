@@ -5,6 +5,7 @@ import { homedir } from "os";
 import { dirname, join } from "path";
 import { ChildProcess, spawn, spawnSync } from "child_process";
 import { randomUUID } from "crypto";
+import { createStandaloneComputerService } from "./computerService";
 import { EYE_EXPANDED_FEATURES, EYE_HEAD_FEATURES, EYE_MAX_CAMERAS, EYE_RAW_FEATURES, eyeTrackingPage } from "./eyeTrackingPage";
 
 const MODEL_URL = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task";
@@ -855,11 +856,8 @@ export async function runEyeTracking(options: EyeTrackingCommandOptions): Promis
   if (options.nativeOverlay !== false) {
     try {
       // Optional at runtime so gaze capture still works without computer-use.
-      const computer = require("@tyvm/knowhow-module-computer-use") as any;
-      const service = new computer.ComputerService();
-      const driver = computer.RustCoreDriver.tryLoad();
-      if (!driver) throw new Error("native computer core is unavailable");
-      service.registerDriver(driver);
+      const service = createStandaloneComputerService();
+      if (!service) throw new Error("native computer core is unavailable");
       overlay = service;
     } catch (error) {
       process.stderr.write(`[eye] native gaze overlay unavailable: ${error instanceof Error ? error.message : String(error)}\n`);

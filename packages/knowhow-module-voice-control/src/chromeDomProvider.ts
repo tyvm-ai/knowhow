@@ -17,7 +17,7 @@
  *   const candidates = await getChromeDOMCandidates(axElements, appName, log);
  */
 
-import { spawnSync } from "child_process";
+import { appleScriptString, runAppleScriptSync } from "./actions/osa";
 import { AXElement, Candidate, Rect } from "./smartSelector";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -176,13 +176,9 @@ function domElementToAXElement(el: DOMElement, viewportOrigin: Rect, index: numb
 
 function runChromeJS(appName: string, js: string): { result: string | null; error: string | null } {
   // Use "active tab" of front window for the named app
-  const escapedJs = js.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  const script = `tell application "${appName}" to execute active tab of front window javascript "${escapedJs}"`;
-  const result = spawnSync("osascript", ["-e", script], {
-    encoding: "utf8",
-    timeout: 5000,
-  });
-  if (result.status !== 0) {
+  const script = `tell application "${appName}" to execute active tab of front window javascript ${appleScriptString(js)}`;
+  const result = runAppleScriptSync(script, { timeoutMs: 5000 });
+  if (!result.ok) {
     return { result: null, error: (result.stderr || result.stdout || "").trim() };
   }
   return { result: (result.stdout || "").trim(), error: null };

@@ -3,33 +3,17 @@
  */
 
 import type { VoiceCommandExtension } from "../voiceCommands";
-import { VOICE_COMMAND_EXTENSION } from "../voiceCommands";
 import { takePending } from "../pendingAction";
+import { pack } from "../commands/define";
 
-function cmd(
-  name: string,
-  phrase: string,
-  description: string,
-  run: VoiceCommandExtension["run"],
-  extras: Partial<VoiceCommandExtension> = {},
-): VoiceCommandExtension {
-  return {
-    type: VOICE_COMMAND_EXTENSION,
-    name: `voice-control.meta.${name}`,
-    phrase,
-    description,
-    run,
-    modes: ["command"],
-    ...extras,
-  };
-}
+const command = pack({ prefix: "voice-control.meta." });
 
 export const META_PACK: VoiceCommandExtension[] = [
-  cmd(
-    "what-can-i-say",
-    "what can I say",
-    "Show overlay of available commands",
-    (ctx) => {
+  command({
+    name: "what-can-i-say",
+    phrase: "what can I say",
+    description: "Show overlay of available commands",
+    run: (ctx) => {
       ctx.log("[voice] show commands overlay");
       // Print to terminal
       const registered = (ctx as any).commands as VoiceCommandExtension[] | undefined;
@@ -40,22 +24,33 @@ export const META_PACK: VoiceCommandExtension[] = [
         }
       }
     },
-    { aliases: ["show commands", "help", "what commands", "list commands", "what commands do we have", "what commands do i have", "commands"], modes: ["command", "agent"] },
-  ),
+    aliases: [
+      "show commands",
+      "help",
+      "what commands",
+      "list commands",
+      "what commands do we have",
+      "what commands do i have",
+      "commands",
+    ],
+    modes: ["command", "agent"],
+  }),
 
-  cmd(
-    "hide-commands",
-    "hide commands",
-    "Hide the commands overlay",
-    (ctx) => { ctx.log("[voice] hide commands overlay"); },
-    { modes: ["command", "agent"] },
-  ),
+  command({
+    name: "hide-commands",
+    phrase: "hide commands",
+    description: "Hide the commands overlay",
+    run: (ctx) => {
+      ctx.log("[voice] hide commands overlay");
+    },
+    modes: ["command", "agent"],
+  }),
 
-  cmd(
-    "cancel",
-    "cancel",
-    "Cancel pending action or chain",
-    async (ctx) => {
+  command({
+    name: "cancel",
+    phrase: "cancel",
+    description: "Cancel pending action or chain",
+    run: async (ctx) => {
       const pending = takePending();
       if (pending) {
         ctx.log(`[voice] cancel: ${pending.describe}`);
@@ -64,14 +59,14 @@ export const META_PACK: VoiceCommandExtension[] = [
         ctx.log("[voice] cancel");
       }
     },
-    { aliases: ["never mind", "nevermind", "abort", "no", "reject"] },
-  ),
+    aliases: ["never mind", "nevermind", "abort", "no", "reject"],
+  }),
 
-  cmd(
-    "confirm",
-    "confirm",
-    "Confirm a pending risky action",
-    async (ctx) => {
+  command({
+    name: "confirm",
+    phrase: "confirm",
+    description: "Confirm a pending risky action",
+    run: async (ctx) => {
       const pending = takePending();
       if (pending) {
         ctx.log(`[voice] confirm: ${pending.describe}`);
@@ -80,22 +75,32 @@ export const META_PACK: VoiceCommandExtension[] = [
         ctx.log("[voice] confirm pending action");
       }
     },
-    { aliases: ["type it", "yes", "do it"] },
-  ),
+    aliases: ["type it", "yes", "do it"],
+  }),
 
-  cmd(
-    "repeat",
-    "repeat",
-    "Repeat the last command",
-    (ctx) => { ctx.log("[voice] repeat last command"); },
-    { aliases: ["again", "do it again"], repeatable: false } as any,
-  ),
+  command({
+    name: "repeat",
+    phrase: "repeat",
+    description: "Repeat the last command",
+    run: (ctx) => {
+      ctx.log("[voice] repeat last command");
+    },
+    aliases: ["again", "do it again"],
+    repeatable: false,
+  }),
 
-  cmd(
-    "redo",
-    "redo",
-    "Redo / regenerate the last pending action",
-    async (ctx) => {
+  command({
+    name: "redo",
+    phrase: "redo",
+    patterns: ["redo", "redo {n:number}"],
+    description: "Redo / regenerate the last pending action; 'redo 3' presses Redo (Cmd-Shift-Z) that many times",
+    run: async (ctx) => {
+      // "redo <n>" is the editor shortcut (it used to live in the keys pack).
+      if (ctx.slots.n !== undefined) {
+        const n = typeof ctx.slots.n === "number" ? ctx.slots.n : parseInt(String(ctx.slots.n), 10) || 1;
+        await ctx.actions?.pressCombo("mod+shift+z", { repeat: n });
+        return;
+      }
       const pending = takePending();
       if (pending?.redo) {
         ctx.log(`[voice] redo: ${pending.describe}`);
@@ -107,19 +112,21 @@ export const META_PACK: VoiceCommandExtension[] = [
         ctx.log("[voice] redo: nothing pending");
       }
     },
-    { aliases: ["try again"] },
-  ),
+    aliases: ["try again"],
+  }),
 
-  cmd(
-    "undo-that",
-    "undo that",
-    "Undo the last reversible voice action",
-    async (ctx) => {
-      const history = ctx.history as Array<{
-        type: string;
-        win?: { app: string; bounds: { x: number; y: number; width: number; height: number } };
-        bounds?: { x: number; y: number; width: number; height: number };
-      }> | undefined;
+  command({
+    name: "undo-that",
+    phrase: "undo that",
+    description: "Undo the last reversible voice action",
+    run: async (ctx) => {
+      const history = ctx.history as
+        | Array<{
+            type: string;
+            win?: { app: string; bounds: { x: number; y: number; width: number; height: number } };
+            bounds?: { x: number; y: number; width: number; height: number };
+          }>
+        | undefined;
       if (!history || history.length === 0) {
         ctx.log("[voice] undo that: nothing to undo");
         return;
@@ -133,30 +140,30 @@ export const META_PACK: VoiceCommandExtension[] = [
         ctx.log(`[voice] undo: no handler for type "${record?.type ?? "unknown"}"`);
       }
     },
-    { aliases: ["revert that"] },
-  ),
+    aliases: ["revert that"],
+  }),
 
-  cmd(
-    "pause-voice",
-    "pause voice",
-    "Pause voice command mode temporarily",
-    (ctx) => {
+  command({
+    name: "pause-voice",
+    phrase: "pause voice",
+    description: "Pause voice command mode temporarily",
+    run: (ctx) => {
       ctx.log("[voice] pausing voice");
       // Delegate to session via setMode; timer handled by VoiceSession
     },
-    { pattern: "pause voice [{n:number} minutes]" } as any,
-  ),
+    pattern: "pause voice [{n:number} minutes]",
+  }),
 
-  cmd(
-    "stop-everything",
-    "stop everything",
-    "Stop gaze-follow, continuous scroll, pending chains, running automations",
-    (ctx) => {
+  command({
+    name: "stop-everything",
+    phrase: "stop everything",
+    description: "Stop gaze-follow, continuous scroll, pending chains, running automations",
+    run: (ctx) => {
       ctx.gazeFollow?.stop();
       ctx.log("[voice] stopped everything");
     },
-    { modes: ["command", "agent"] },
-  ),
+    modes: ["command", "agent"],
+  }),
 ];
 
 export default META_PACK;

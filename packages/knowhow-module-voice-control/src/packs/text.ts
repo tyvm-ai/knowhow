@@ -4,26 +4,10 @@
  */
 
 import type { VoiceCommandExtension } from "../voiceCommands";
-import { VOICE_COMMAND_EXTENSION } from "../voiceCommands";
 import { convertDictation, applyCase, expandSpell } from "../grammar/dictation";
+import { pack } from "../commands/define";
 
-function cmd(
-  name: string,
-  phrase: string,
-  description: string,
-  run: VoiceCommandExtension["run"],
-  extras: Partial<VoiceCommandExtension> = {},
-): VoiceCommandExtension {
-  return {
-    type: VOICE_COMMAND_EXTENSION,
-    name: `voice-control.text.${name}`,
-    phrase,
-    description,
-    run,
-    modes: ["command"],
-    ...extras,
-  };
-}
+const command = pack({ prefix: "voice-control.text." });
 
 /** Last typed text chunk for "scratch that" / "correct X to Y". */
 let lastTyped: string | undefined;
@@ -54,11 +38,11 @@ function normaliseForTyping(text: string): string {
 
 export const TEXT_PACK: VoiceCommandExtension[] = [
   // ─── Type ────────────────────────────────────────────────────────────────
-  cmd(
-    "type",
-    "type",
-    "Type spoken text at the focused app",
-    async (ctx) => {
+  command({
+    name: "type",
+    phrase: "type",
+    description: "Type spoken text at the focused app",
+    run: async (ctx) => {
       const actions = (ctx as any).actions;
       const app = await actions?.frontmostApp?.();
       const raw = extractAfter(ctx.text, ["type "]);
@@ -71,15 +55,15 @@ export const TEXT_PACK: VoiceCommandExtension[] = [
         ctx.log(`[voice] type: "${text}"`);
       }
     },
-    { pattern: "type {text:text}" } as any,
-  ),
+    pattern: "type {text:text}",
+  }),
 
   // ─── Send ────────────────────────────────────────────────────────────────
-  cmd(
-    "send",
-    "send",
-    "Type spoken text then press Enter",
-    async (ctx) => {
+  command({
+    name: "send",
+    phrase: "send",
+    description: "Type spoken text then press Enter",
+    run: async (ctx) => {
       const actions = (ctx as any).actions;
       const app = await actions?.frontmostApp?.();
       const raw = extractAfter(ctx.text, ["send "]);
@@ -93,38 +77,38 @@ export const TEXT_PACK: VoiceCommandExtension[] = [
         ctx.log(`[voice] send: "${text}"`);
       }
     },
-    { pattern: "send {text:text}" } as any,
-  ),
+    pattern: "send {text:text}",
+  }),
 
   // ─── Dictate / stop dictating ─────────────────────────────────────────────
-  cmd(
-    "dictate",
-    "dictate",
-    "Enter dictation mode — every utterance is typed",
-    (ctx) => {
+  command({
+    name: "dictate",
+    phrase: "dictate",
+    description: "Enter dictation mode — every utterance is typed",
+    run: (ctx) => {
       dictationMode = true;
       ctx.log("[voice] dictation mode ON");
     },
-    { aliases: ["start dictating"] },
-  ),
+    aliases: ["start dictating"],
+  }),
 
-  cmd(
-    "stop-dictating",
-    "stop dictating",
-    "Exit dictation mode",
-    (ctx) => {
+  command({
+    name: "stop-dictating",
+    phrase: "stop dictating",
+    description: "Exit dictation mode",
+    run: (ctx) => {
       dictationMode = false;
       ctx.log("[voice] dictation mode OFF");
     },
-    { aliases: ["end dictation", "stop dictation"] },
-  ),
+    aliases: ["end dictation", "stop dictation"],
+  }),
 
   // ─── Spell ───────────────────────────────────────────────────────────────
-  cmd(
-    "spell",
-    "spell",
-    "Spell individual letters or NATO phonetic alphabet",
-    async (ctx) => {
+  command({
+    name: "spell",
+    phrase: "spell",
+    description: "Spell individual letters or NATO phonetic alphabet",
+    run: async (ctx) => {
       const raw = extractAfter(ctx.text, ["spell "]);
       const tokens = raw.toLowerCase().split(/\s+/).filter(Boolean);
       const spelled = expandSpell(raw);
@@ -137,16 +121,16 @@ export const TEXT_PACK: VoiceCommandExtension[] = [
         ctx.log(`[voice] spell: "${spelled}"`);
       }
     },
-    { pattern: "spell {text:text}" } as any,
-  ),
+    pattern: "spell {text:text}",
+  }),
 
   // ─── Casing commands ─────────────────────────────────────────────────────
   ...["camel", "snake", "kebab", "title", "caps"].map((style) =>
-    cmd(
-      style,
-      style,
-      `Type text in ${style} case`,
-      async (ctx) => {
+    command({
+      name: style,
+      phrase: style,
+      description: `Type text in ${style} case`,
+      run: async (ctx) => {
         const raw = extractAfter(ctx.text, [`${style} `]);
         const text = applyCase(style, normaliseForTyping(raw));
         const actions = (ctx as any).actions;
@@ -158,16 +142,16 @@ export const TEXT_PACK: VoiceCommandExtension[] = [
           ctx.log(`[voice] ${style}: "${text}"`);
         }
       },
-      { pattern: `${style} {text:text}` } as any,
-    ),
+      pattern: `${style} {text:text}`,
+    })
   ),
 
   // ─── Correct X to Y ──────────────────────────────────────────────────────
-  cmd(
-    "correct",
-    "correct",
-    "Replace the last typed occurrence of a word",
-    async (ctx) => {
+  command({
+    name: "correct",
+    phrase: "correct",
+    description: "Replace the last typed occurrence of a word",
+    run: async (ctx) => {
       const text = ctx.text;
       const match = text.match(/correct\s+(.+?)\s+to\s+(.+)/i);
       if (!match) return;
@@ -187,15 +171,15 @@ export const TEXT_PACK: VoiceCommandExtension[] = [
         await actions.pressCombo("escape", { app });
       }
     },
-    { pattern: "correct {wrong:text} to {right:text}" } as any,
-  ),
+    pattern: "correct {wrong:text} to {right:text}",
+  }),
 
   // ─── Scratch that ─────────────────────────────────────────────────────────
-  cmd(
-    "scratch-that",
-    "scratch that",
-    "Delete the last chunk typed by voice",
-    async (ctx) => {
+  command({
+    name: "scratch-that",
+    phrase: "scratch that",
+    description: "Delete the last chunk typed by voice",
+    run: async (ctx) => {
       if (!lastTyped) {
         ctx.log("[voice] scratch that: nothing to scratch");
         return;
@@ -211,7 +195,7 @@ export const TEXT_PACK: VoiceCommandExtension[] = [
       }
       lastTyped = undefined;
     },
-  ),
+  }),
 ];
 
 export default TEXT_PACK;

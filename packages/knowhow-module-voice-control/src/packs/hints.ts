@@ -16,11 +16,7 @@
  * Hint commands are NOT repeatable (no trailing number → repeat).
  */
 
-import {
-  VoiceCommandExtension,
-  VOICE_COMMAND_EXTENSION,
-  VoiceCommandContext,
-} from "../voiceCommands";
+import { VoiceCommandExtension, VOICE_COMMAND_EXTENSION, VoiceCommandContext } from "../voiceCommands";
 import {
   parseHintRef,
   resolveHintRef,
@@ -52,32 +48,21 @@ import { HintRef } from "../grammar/slots";
 import { clickThat, doubleClickTarget } from "../pointerMemory";
 import { convertDictation } from "../grammar/dictation";
 import { getComputerService } from "../computerService";
-import { spawnSync } from "child_process";
+import { GazeClient, GAZE_ERROR_RADIUS, GAZE_TIMEOUT } from "../gaze";
+import { sharedPlatformActions } from "../actions/index";
+import { pack } from "../commands/define";
 
 // ─── Frontmost app name ───────────────────────────────────────────────────────
 
-let _frontAppCache: { at: number; name: string | undefined } | undefined;
+/** Short-TTL cache (ms): scan + publish ask back to back; the map watcher asks every few seconds. */
+const FRONT_APP_MAX_AGE_MS = 1000;
 
-function getFrontmostAppName(): string | undefined {
-  // Blocking osascript call: cache briefly (scan + publish ask back to back,
-  // and the map watcher asks every few seconds).
-  if (_frontAppCache && Date.now() - _frontAppCache.at < 1000) return _frontAppCache.name;
-  const name = readFrontmostAppName();
-  _frontAppCache = { at: Date.now(), name };
-  return name;
-}
-
-function readFrontmostAppName(): string | undefined {
+async function getFrontmostAppName(): Promise<string | undefined> {
   try {
-    const result = spawnSync(
-      "osascript",
-      ["-l", "JavaScript", "-e",
-        `ObjC.import('AppKit'); ObjC.unwrap($.NSWorkspace.sharedWorkspace.frontmostApplication.localizedName);`],
-      { encoding: "utf8", timeout: 2000 },
-    );
-    if (result.status === 0 && result.stdout?.trim()) return result.stdout.trim();
-  } catch { /* ignore */ }
-  return undefined;
+    return await sharedPlatformActions().frontmostApp({ maxAgeMs: FRONT_APP_MAX_AGE_MS, maxWaitMs: 2000 });
+  } catch {
+    return undefined;
+  }
 }
 
 // ─── Smart mouse singleton ────────────────────────────────────────────────────
@@ -107,7 +92,7 @@ function getWindowKey(ctx: VoiceCommandContext): string {
 }
 
 function getErrorRadius(): { x: number; y: number } {
-  return { x: 200, y: 260 };
+  return { ...GAZE_ERROR_RADIUS };
 }
 
 // ─── Hint density ─────────────────────────────────────────────────────────────
@@ -147,14 +132,15 @@ function stepDensity(dir: 1 | -1): HintDensity {
 
 // ─── Gaze source ──────────────────────────────────────────────────────────────
 
-const HUB_URL = process.env.KNOWHOW_EYE_HUB_URL ?? "http://127.0.0.1:7465";
-
 /**
  * Where to look for hints: the gaze at speech onset, else the gaze-follow
  * position, else the live gaze from the eye-tracking hub, else the mouse.
  * ("No gaze sample available" used to abort the command outright.)
  */
-async function resolveGazePoint(ctx: VoiceCommandContext, adapter: ComputerUseAdapter | null): Promise<{ x: number; y: number } | undefined> {
+async function resolveGazePoint(
+  ctx: VoiceCommandContext,
+  adapter: ComputerUseAdapter | null
+): Promise<{ x: number; y: number } | undefined> {
   const g = ctx.gaze ?? ctx.target?.();
   if (g) return { x: g.x, y: g.y };
   const live = await fetchLiveGaze();
@@ -162,22 +148,16 @@ async function resolveGazePoint(ctx: VoiceCommandContext, adapter: ComputerUseAd
   try {
     const m = await (adapter as any)?.mousePosition?.();
     if (m && Number.isFinite(m.x) && Number.isFinite(m.y)) return { x: m.x, y: m.y };
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return undefined;
 }
 
-async function fetchLiveGaze(timeoutMs = 150): Promise<{ x: number; y: number } | undefined> {
-  try {
-    const res = await fetch(`${HUB_URL}/api/gaze`, { signal: AbortSignal.timeout(timeoutMs) });
-    if (!res.ok) return undefined;
-    const sample = (await res.json()) as { x?: number; y?: number; timestamp?: number };
-    if (!Number.isFinite(sample.x) || !Number.isFinite(sample.y)) return undefined;
-    // Ignore stale samples (tracker stopped).
-    if (sample.timestamp && Date.now() - sample.timestamp > 2000) return undefined;
-    return { x: sample.x as number, y: sample.y as number };
-  } catch {
-    return undefined;
-  }
+async function fetchLiveGaze(timeoutMs: number = GAZE_TIMEOUT.fast): Promise<{ x: number; y: number } | undefined> {
+  // maxAgeMs: ignore stale samples (tracker stopped).
+  const sample = await new GazeClient().current({ timeoutMs, maxAgeMs: 2000 });
+  return sample ? { x: sample.x, y: sample.y } : undefined;
 }
 
 // ─── Hint mode: labels follow your gaze ───────────────────────────────────────
@@ -220,7 +200,9 @@ class HintModeController {
     if (this.timer) clearTimeout(this.timer);
     this.timer = undefined;
     clearHintState();
-    await getComputerService()?.clearOverlay?.().catch(() => undefined);
+    await getComputerService()
+      ?.clearOverlay?.()
+      .catch(() => undefined);
   }
 
   /** Rescan soon (e.g. after a click changed the page). */
@@ -244,7 +226,8 @@ class HintModeController {
           this.dwell = { ...gaze, since: now };
         }
         const settled = now - this.dwell.since >= HINT_MODE_DWELL_MS;
-        const moved = !this.anchor || Math.hypot(this.dwell.x - this.anchor.x, this.dwell.y - this.anchor.y) > HINT_MODE_MOVE_PX;
+        const moved =
+          !this.anchor || Math.hypot(this.dwell.x - this.anchor.x, this.dwell.y - this.anchor.y) > HINT_MODE_MOVE_PX;
         const forced = this.forceAt > 0 && now >= this.forceAt;
         const idle = now - this.lastScanAt > HINT_MODE_IDLE_REFRESH_MS;
         if ((settled && (moved || idle)) || forced) {
@@ -266,7 +249,7 @@ class HintModeController {
     try {
       const cfg = HINT_DENSITY[_density === "all" ? "normal" : _density];
       const candidates = await collectCandidates(adapter, at, getErrorRadius(), getWindowKey(this.ctx), {
-        appName: getFrontmostAppName(),
+        appName: await getFrontmostAppName(),
         scanFactor: cfg.scanFactor,
         maxCandidates: Math.max(20, cfg.labels),
         log: () => undefined, // quiet: this runs every few seconds
@@ -327,7 +310,8 @@ export function mapChangeFraction(prev: Candidate[], next: Candidate[]): number 
   let kept = 0;
   relabelled.forEach((c, i) => {
     const p = prev.find((x) => x.label === c.label);
-    const b = c.element.bounds, pb = p?.element.bounds;
+    const b = c.element.bounds,
+      pb = p?.element.bounds;
     if (!p || !prevLabels.has(c.label) || !b || !pb) return;
     if (p.roleName !== next[i].roleName || (p.displayName ?? "") !== (next[i].displayName ?? "")) return;
     if (Math.abs(b.x - pb.x) > 16 || Math.abs(b.y - pb.y) > 16) return;
@@ -384,7 +368,10 @@ class MapWatcher {
     this.scanning = true;
     try {
       const prev = getHintState()?.candidates;
-      if (!prev) { this.stop(); return; } // hidden elsewhere
+      if (!prev) {
+        this.stop();
+        return;
+      } // hidden elsewhere
       const forced = this.forceAt > 0 && Date.now() >= this.forceAt;
       const next = await scanMap(this.ctx, this.spec, () => undefined);
       if (!this.running || !next) return;
@@ -392,7 +379,10 @@ class MapWatcher {
       if (change < MAP_CHANGE_THRESHOLD) {
         this.pendingChanges = 0;
         if (!forced) return;
-        if (change === 0) { this.forceAt = 0; return; }
+        if (change === 0) {
+          this.forceAt = 0;
+          return;
+        }
       } else if (!forced && ++this.pendingChanges < MAP_CHANGE_CONFIRM_SCANS) {
         return;
       }
@@ -420,7 +410,7 @@ function stopMapWatch(): void {
 async function scanMap(
   ctx: VoiceCommandContext,
   spec: MapSpec,
-  log: (msg: string) => void,
+  log: (msg: string) => void
 ): Promise<Candidate[] | undefined> {
   const adapter = getAdapter(ctx);
   if (!adapter) return undefined;
@@ -429,7 +419,7 @@ async function scanMap(
     query: spec.query,
     wholeWindow: cfg.wholeWindow,
     log,
-    appName: getFrontmostAppName(),
+    appName: await getFrontmostAppName(),
     scanFactor: cfg.scanFactor,
     maxCandidates: Math.max(20, cfg.labels),
     fullParse: !!cfg.full,
@@ -437,17 +427,24 @@ async function scanMap(
 }
 
 /** Publish + draw `candidates` as the map. Returns the labelled list. */
-async function drawMap(ctx: VoiceCommandContext, spec: MapSpec, candidates: Candidate[], quiet = false): Promise<Candidate[]> {
+async function drawMap(
+  ctx: VoiceCommandContext,
+  spec: MapSpec,
+  candidates: Candidate[],
+  quiet = false
+): Promise<Candidate[]> {
   const adapter = getAdapter(ctx);
   const cfg = HINT_DENSITY[spec.density];
-  const labelled = publishHints(candidates, cfg.labels);
+  const labelled = publishHints(candidates, cfg.labels, await getFrontmostAppName());
   if (adapter) await showHintOverlay(adapter, labelled, HINT_OVERLAY_MS, cfg.labels);
   if (!quiet) {
     const listed = labelled.slice(0, 60);
     ctx.log(
-      `[hints] Showing ${labelled.length} hint(s) (${cfg.full ? "full window" : spec.density}; say "more hints" / "fewer hints" to change, "refresh map" to re-parse, "hide map" to remove): ` +
+      `[hints] Showing ${labelled.length} hint(s) (${
+        cfg.full ? "full window" : spec.density
+      }; say "more hints" / "fewer hints" to change, "refresh map" to re-parse, "hide map" to remove): ` +
         listed.map((c) => (c.displayName ? `${c.label}=${c.displayName}` : c.label)).join(", ") +
-        (labelled.length > listed.length ? `, … +${labelled.length - listed.length} more` : ""),
+        (labelled.length > listed.length ? `, … +${labelled.length - listed.length} more` : "")
     );
   }
   return labelled;
@@ -455,11 +452,7 @@ async function drawMap(ctx: VoiceCommandContext, spec: MapSpec, candidates: Cand
 
 // ─── Shared show-hints logic ──────────────────────────────────────────────────
 
-async function showHintsNear(
-  ctx: VoiceCommandContext,
-  mode: boolean | HintDensity,
-  query?: string[],
-): Promise<void> {
+async function showHintsNear(ctx: VoiceCommandContext, mode: boolean | HintDensity, query?: string[]): Promise<void> {
   const density: HintDensity = mode === true ? "all" : mode === false ? _density : mode;
   if (isHintModeRunning() && density !== "all" && !query?.length) {
     _hintMode?.refreshSoon(0);
@@ -482,7 +475,9 @@ async function showHintsNear(
     try {
       const elements = await adapter.accessibilityElements({ maxDepth: 8 });
       detectChromeAXStatus(elements, ctx.log);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     ctx.log("[hints] No actionable elements found near gaze");
     return;
   }
@@ -521,13 +516,13 @@ async function refreshMap(ctx: VoiceCommandContext): Promise<void> {
  * drawn, keep numbers of elements that were already labelled, and record them
  * as the current hint state. Returns the relabelled list to draw.
  */
-function publishHints(candidates: Candidate[], maxLabels: number): Candidate[] {
+function publishHints(candidates: Candidate[], maxLabels: number, frontApp: string | undefined): Candidate[] {
   const next = candidates.slice(0, maxLabels);
   // Same UI → same numbers: reuse the numbering of the map on screen, or of
   // the last map shown for this app (even after "hide map"), as long as it's
   // recognisably the same page. A different page gets fresh reading-order
   // numbers instead of a patchwork of old ones.
-  const app = getFrontmostAppName() ?? "";
+  const app = frontApp ?? "";
   const prev = getHintState()?.candidates ?? _lastMapByApp.get(app);
   const base = prev?.length && mapChangeFraction(prev, next) < MAP_SAME_PAGE_MAX_CHANGE ? prev : undefined;
   const shown = stabilizeLabels(base, next);
@@ -547,7 +542,7 @@ async function findAndAct(
   ctx: VoiceCommandContext,
   ref: HintRef,
   action: "click" | "focus" | "check" | "rightClick" | "hover",
-  extraOptions?: { newTab?: boolean; typeText?: string },
+  extraOptions?: { newTab?: boolean; typeText?: string }
 ): Promise<void> {
   const adapter = getAdapter(ctx);
   if (!adapter) {
@@ -578,7 +573,7 @@ async function findAndAct(
     ctx.log(
       existingState
         ? `[hints] There is no "${what}" on screen — showing fresh labels; say it again`
-        : `[hints] The labels have expired, so "${what}" may point at something else now — showing fresh labels; say it again`,
+        : `[hints] The labels have expired, so "${what}" may point at something else now — showing fresh labels; say it again`
     );
     await showHintsNear(ctx, false);
     return;
@@ -587,7 +582,7 @@ async function findAndAct(
   if (!candidate) {
     // Collect fresh candidates
     const queryWords = [ref.name, ref.roleName].filter(Boolean) as string[];
-    const appName = getFrontmostAppName();
+    const appName = await getFrontmostAppName();
     const candidates = await collectCandidates(
       adapter,
       { x: gaze.x, y: gaze.y },
@@ -595,7 +590,7 @@ async function findAndAct(
       windowKey,
       // In full-parse mode a spoken name may be anywhere in the window (gaze
       // still breaks ties between equal matches).
-      { query: queryWords, appName, wholeWindow: !!HINT_DENSITY[_density].full },
+      { query: queryWords, appName, wholeWindow: !!HINT_DENSITY[_density].full }
     );
 
     if (!candidates.length) {
@@ -612,7 +607,12 @@ async function findAndAct(
 
     // Check ambiguity (only when no explicit number given)
     if (isAmbiguous(candidates) && ref.index === undefined && !ref.name) {
-      await showHintOverlay(adapter, publishHints(candidates, HINT_DENSITY[_density].labels), HINT_OVERLAY_MS, HINT_DENSITY[_density].labels);
+      await showHintOverlay(
+        adapter,
+        publishHints(candidates, HINT_DENSITY[_density].labels, await getFrontmostAppName()),
+        HINT_OVERLAY_MS,
+        HINT_DENSITY[_density].labels
+      );
       ctx.log("[hints] Ambiguous — showing hints, please specify (e.g. 'button 1')");
       return;
     }
@@ -622,7 +622,12 @@ async function findAndAct(
       // A spoken name that matches nothing must not act on whatever happens
       // to rank first ("mouse over thea" used to hover an unrelated input).
       ctx.log(`[hints] Nothing matching "${ref.name}" near gaze — showing hints`);
-      await showHintOverlay(adapter, publishHints(candidates, HINT_DENSITY[_density].labels), HINT_OVERLAY_MS, HINT_DENSITY[_density].labels);
+      await showHintOverlay(
+        adapter,
+        publishHints(candidates, HINT_DENSITY[_density].labels, await getFrontmostAppName()),
+        HINT_OVERLAY_MS,
+        HINT_DENSITY[_density].labels
+      );
       return;
     }
     if (!candidate) {
@@ -632,7 +637,7 @@ async function findAndAct(
     // Don't replace a map that's on screen with this query's few matches —
     // the drawn labels must keep meaning what they say.
     if (!isHintModeRunning() && !getHintState()) {
-      const published = publishHints(candidates, HINT_DENSITY[_density].labels);
+      const published = publishHints(candidates, HINT_DENSITY[_density].labels, await getFrontmostAppName());
       const chosen = candidate;
       candidate = published.find((c) => c.element === chosen.element) ?? candidate;
     }
@@ -696,108 +701,84 @@ function hintRefFromSlots(slots: Record<string, unknown>): HintRef {
 
 // ─── Command factory ──────────────────────────────────────────────────────────
 
-function cmd(
-  name: string,
-  phrase: string,
-  patterns: string[],
-  aliases: string[],
-  description: string,
-  run: VoiceCommandExtension["run"],
-): VoiceCommandExtension {
-  return {
-    type: VOICE_COMMAND_EXTENSION,
-    name,
-    phrase,
-    patterns,
-    aliases,
-    description,
-    repeatable: false,
-    run,
-  } as VoiceCommandExtension;
-}
+/**
+ * Vocabulary for this pack: "map" is accepted wherever a phrase says "hints"
+ * ("hide map", "map all", "more map", "map off" …). Declared once here and
+ * expanded when the patterns are compiled (see grammar/compile.ts).
+ */
+export const HINTS_SYNONYMS: Record<string, string[]> = { hints: ["map"] };
+
+const command = pack({ prefix: "", defaults: { repeatable: false, synonyms: HINTS_SYNONYMS } });
 
 // ─── Pack definition ──────────────────────────────────────────────────────────
 
 export const HINTS_PACK: VoiceCommandExtension[] = [
   // ── Show hints ──────────────────────────────────────────────────────────────
-  {
-    type: VOICE_COMMAND_EXTENSION,
+  command({
     name: "hints.show",
     phrase: "hints",
-    patterns: ["hints", "show hints", "hints here", "show hint", "map", "show map", "map it", "map this", "map page"],
-    aliases: ["show hints", "hints here", "show hint", "map", "show map", "map it", "map this", "map page"],
-    description: "Label every actionable element in the front window (full parse by default; 'fewer hints' for just the ones near your gaze). 'map' is a synonym",
+    patterns: ["hints", "show hints", "hints here", "show hint", "map it", "map this", "map page"],
+    description:
+      "Label every actionable element in the front window (full parse by default; 'fewer hints' for just the ones near your gaze). 'map' is a synonym",
     repeatable: false,
     run: async (ctx) => showHintsNear(ctx, false),
-  },
+  }),
 
-  {
-    type: VOICE_COMMAND_EXTENSION,
+  command({
     name: "hints.show-all",
     phrase: "hints all",
-    patterns: ["hints all", "show all hints", "hints window", "map all", "full map", "reset hints", "reset map", "full hints"],
-    aliases: ["show all hints", "hints window", "map all", "full map", "reset hints", "reset map", "full hints"],
+    patterns: ["hints all", "show all hints", "hints window", "full hints", "reset hints"],
     description: "Label every actionable element in the window and make that the default again",
     repeatable: false,
     run: async (ctx) => {
       _density = "all";
       await showHintsNear(ctx, true);
     },
-  },
+  }),
 
-  {
-    type: VOICE_COMMAND_EXTENSION,
+  command({
     name: "hints.more",
     phrase: "more hints",
-    patterns: ["more hints", "show more hints", "hints more", "more labels", "more map"],
-    aliases: ["show more hints", "hints more", "more labels", "more map"],
+    patterns: ["more hints", "show more hints", "hints more", "more labels"],
     description: "Show more hints around your gaze (wider area, more labels); sticky for later 'hints'",
     repeatable: false,
     run: async (ctx) => showHintsNear(ctx, stepDensity(1)),
-  },
+  }),
 
-  {
-    type: VOICE_COMMAND_EXTENSION,
+  command({
     name: "hints.fewer",
     phrase: "fewer hints",
-    patterns: ["fewer hints", "less hints", "hints less", "hints fewer", "show fewer hints", "show less hints", "few hints", "smaller map", "less map"],
-    aliases: ["less hints", "hints less", "hints fewer", "show fewer hints", "show less hints", "few hints", "smaller map", "less map"],
+    patterns: ["fewer hints", "less hints", "hints less", "hints fewer", "show fewer hints", "show less hints", "few hints", "smaller hints"],
     description: "Show only the few hints closest to your gaze; sticky for later 'hints'",
     repeatable: false,
     run: async (ctx) => showHintsNear(ctx, stepDensity(-1)),
-  },
+  }),
 
-  {
-    type: VOICE_COMMAND_EXTENSION,
+  command({
     name: "hints.normal",
     phrase: "normal hints",
-    patterns: ["normal hints", "hints normal", "normal map"],
-    aliases: ["hints normal", "normal map"],
+    patterns: ["normal hints", "hints normal"],
     description: "Switch to gaze-centred hints (about 15 labels near where you look)",
     repeatable: false,
     run: async (ctx) => {
       _density = "normal";
       await showHintsNear(ctx, "normal");
     },
-  },
+  }),
 
-  {
-    type: VOICE_COMMAND_EXTENSION,
+  command({
     name: "hints.refresh",
     phrase: "refresh map",
-    patterns: ["refresh map", "refresh hints", "update map", "update hints", "reload map", "reload hints", "remap"],
-    aliases: ["refresh hints", "update map", "update hints", "reload map", "reload hints", "remap"],
+    patterns: ["refresh map", "refresh hints", "update hints", "reload hints", "remap"],
     description: "Re-parse the window and redraw the map now (numbers of unchanged elements stay the same)",
     repeatable: false,
     run: async (ctx) => refreshMap(ctx),
-  },
+  }),
 
-  {
-    type: VOICE_COMMAND_EXTENSION,
+  command({
     name: "hints.hide",
     phrase: "hide hints",
-    patterns: ["hide hints", "clear hints", "no hints", "hints off", "hide map", "clear map", "map off", "no map", "close map"],
-    aliases: ["clear hints", "no hints", "hints off", "hide map", "clear map", "map off", "no map", "close map"],
+    patterns: ["hide hints", "clear hints", "no hints", "hints off", "close hints"],
     description: "Remove the hint labels",
     repeatable: false,
     run: async (ctx) => {
@@ -807,17 +788,18 @@ export const HINTS_PACK: VoiceCommandExtension[] = [
       }
       stopMapWatch();
       clearHintState();
-      await getAdapter(ctx)?.clearOverlay().catch(() => undefined);
+      await getAdapter(ctx)
+        ?.clearOverlay()
+        .catch(() => undefined);
     },
-  },
+  }),
 
-  {
-    type: VOICE_COMMAND_EXTENSION,
+  command({
     name: "hints.mode",
     phrase: "hint mode",
     patterns: ["hint mode", "hints mode", "hint mode on", "hints on", "follow hints", "live hints"],
-    aliases: ["hints mode", "hint mode on", "hints on", "follow hints", "live hints"],
-    description: "Keep hint labels on near wherever you look (they refresh as your gaze settles somewhere new); 'hide hints' or 'hint mode off' to stop",
+    description:
+      "Keep hint labels on near wherever you look (they refresh as your gaze settles somewhere new); 'hide hints' or 'hint mode off' to stop",
     repeatable: false,
     run: (ctx) => {
       if (isHintModeRunning()) {
@@ -827,26 +809,28 @@ export const HINTS_PACK: VoiceCommandExtension[] = [
       stopMapWatch();
       _hintMode = new HintModeController(ctx);
       _hintMode.start();
-      ctx.log("[hints] Hint mode ON — labels follow your gaze; say 'click <text>', 'mouse over text 3', 'hint mode off'");
+      ctx.log(
+        "[hints] Hint mode ON — labels follow your gaze; say 'click <text>', 'mouse over text 3', 'hint mode off'"
+      );
     },
-  },
+  }),
 
-  {
-    type: VOICE_COMMAND_EXTENSION,
+  command({
     name: "hints.mode-off",
     phrase: "hint mode off",
     patterns: ["hint mode off", "hints mode off", "stop hint mode", "exit hint mode"],
-    aliases: ["hints mode off", "stop hint mode", "exit hint mode"],
     description: "Stop hint mode and remove the labels",
     repeatable: false,
     run: async (ctx) => {
       await stopHintMode();
       stopMapWatch();
       clearHintState();
-      await getAdapter(ctx)?.clearOverlay().catch(() => undefined);
+      await getAdapter(ctx)
+        ?.clearOverlay()
+        .catch(() => undefined);
       ctx.log("[hints] Hint mode OFF");
     },
-  },
+  }),
 
   // ── Click — plain gaze click (no hint) ─────────────────────────────────────
   // "click" alone stays a gaze click. "click {hint}" routes to the hint click below.
@@ -854,60 +838,60 @@ export const HINTS_PACK: VoiceCommandExtension[] = [
   // The hints.click-hint below handles "click <hint>" via grammar pattern.
 
   // ── Click with hint ─────────────────────────────────────────────────────────
-  {
-    ...cmd(
-      "hints.click-hint",
-      "click hint",
-      ["click {hint:hintphrase}", "click on {hint:hintphrase}"],
-      [],
-      "Click a specific element by hint: 'click button 2', 'click save', 'click link 3'",
-      async (ctx) => {
-        const ref = hintRefFromSlots(ctx.slots);
-        await findAndAct(ctx, ref, "click");
-      },
-    ),
-    // "click play a real hero" can exceed 6s audio — give click commands a larger audio cap
+  command({
+    name: "hints.click-hint",
+    phrase: "click hint",
+    patterns: ["click {hint:hintphrase}", "click on {hint:hintphrase}"],
+    description: "Click a specific element by hint: 'click button 2', 'click save', 'click link 3'",
+    run: async (ctx) => {
+      const ref = hintRefFromSlots(ctx.slots);
+      await findAndAct(ctx, ref, "click");
+    },
     maxAudioMs: 10000,
-  } as VoiceCommandExtension,
+  }),
 
   // ── Move the mouse to a hint (no click) ─────────────────────────────────────
-  {
-    ...cmd(
-      "hints.hover-hint",
-      "hover hint",
-      ["hover over {hint:hintphrase}", "hover {hint:hintphrase}", "mouse over {hint:hintphrase}", "mouse to {hint:hintphrase}", "move mouse to {hint:hintphrase}", "move the mouse to {hint:hintphrase}", "move cursor to {hint:hintphrase}", "move to {hint:hint}", "point at {hint:hintphrase}"],
-      [],
-      "Move the mouse onto an element without clicking: 'hover button 2', 'mouse to text 3', 'move to save'",
-      async (ctx) => {
-        const ref = hintRefFromSlots(ctx.slots);
-        await findAndAct(ctx, ref, "hover");
-      },
-    ),
-    // "mouse over hero" (A Real Hero) takes >6s to speak — give hover commands a larger audio cap
+  command({
+    name: "hints.hover-hint",
+    phrase: "hover hint",
+    patterns: [
+      "hover over {hint:hintphrase}",
+      "hover {hint:hintphrase}",
+      "mouse over {hint:hintphrase}",
+      "mouse to {hint:hintphrase}",
+      "move mouse to {hint:hintphrase}",
+      "move the mouse to {hint:hintphrase}",
+      "move cursor to {hint:hintphrase}",
+      "move to {hint:hint}",
+      "point at {hint:hintphrase}",
+    ],
+    description: "Move the mouse onto an element without clicking: 'hover button 2', 'mouse to text 3', 'move to save'",
+    run: async (ctx) => {
+      const ref = hintRefFromSlots(ctx.slots);
+      await findAndAct(ctx, ref, "hover");
+    },
     maxAudioMs: 10000,
-  } as VoiceCommandExtension,
+  }),
 
   // ── Select / focus ──────────────────────────────────────────────────────────
-  cmd(
-    "hints.select-hint",
-    "select hint",
-    ["select {hint:hint}", "focus {hint:hint}"],
-    [],
-    "Focus/select a specific element: 'select input 2', 'select field', 'focus button'",
-    async (ctx) => {
+  command({
+    name: "hints.select-hint",
+    phrase: "select hint",
+    patterns: ["select {hint:hint}", "focus {hint:hint}"],
+    description: "Focus/select a specific element: 'select input 2', 'select field', 'focus button'",
+    run: async (ctx) => {
       const ref = hintRefFromSlots(ctx.slots);
       await findAndAct(ctx, ref, "focus");
     },
-  ),
+  }),
 
   // ── Type in a specific field (role+number or name) ──────────────────────────
-  cmd(
-    "hints.type-in",
-    "type in hint",
-    ["type in {hint:hint} {text:text}", "type {hint:hint} {text:text}"],
-    [],
-    "Type text into a specific field: 'type in input 2 hello world', 'type message hello'",
-    async (ctx) => {
+  command({
+    name: "hints.type-in",
+    phrase: "type in hint",
+    patterns: ["type in {hint:hint} {text:text}", "type {hint:hint} {text:text}"],
+    description: "Type text into a specific field: 'type in input 2 hello world', 'type message hello'",
+    run: async (ctx) => {
       const ref = hintRefFromSlots(ctx.slots);
       const text = (ctx.slots.text as string | undefined) ?? "";
 
@@ -927,20 +911,15 @@ export const HINTS_PACK: VoiceCommandExtension[] = [
           if (gaze) {
             const errorRadius = getErrorRadius();
             const windowKey = getWindowKey(ctx);
-            const candidates = await collectCandidates(
-              adapter,
-              { x: gaze.x, y: gaze.y },
-              errorRadius,
-              windowKey,
-              { query: ref.name.split(/\s+/) },
-            );
-            const inputCandidates = candidates.filter((c) =>
-              ["input", "select"].includes(c.roleName) &&
-              (
-                (c.element.title ?? "").toLowerCase().includes(ref.name!.toLowerCase()) ||
-                (c.element.description ?? "").toLowerCase().includes(ref.name!.toLowerCase()) ||
-                (c.displayName ?? "").toLowerCase().includes(ref.name!.toLowerCase())
-              ),
+            const candidates = await collectCandidates(adapter, { x: gaze.x, y: gaze.y }, errorRadius, windowKey, {
+              query: ref.name.split(/\s+/),
+            });
+            const inputCandidates = candidates.filter(
+              (c) =>
+                ["input", "select"].includes(c.roleName) &&
+                ((c.element.title ?? "").toLowerCase().includes(ref.name!.toLowerCase()) ||
+                  (c.element.description ?? "").toLowerCase().includes(ref.name!.toLowerCase()) ||
+                  (c.displayName ?? "").toLowerCase().includes(ref.name!.toLowerCase()))
             );
             if (inputCandidates.length) {
               // Found a field — focus it and type the text
@@ -953,7 +932,9 @@ export const HINTS_PACK: VoiceCommandExtension[] = [
         // This handles: "type message hello" when no "message" field exists → types "message hello"
         // Apply the same dictation conversion as the plain `type` command so
         // spoken punctuation ("new line", "comma", …) works here too.
-        const joined = [ref.name, text].filter(Boolean).join(" ")
+        const joined = [ref.name, text]
+          .filter(Boolean)
+          .join(" ")
           .replace(/^["\u201C](.+?)["\u201D]$/, "$1")
           .replace(/\.$/, "")
           .trim();
@@ -971,18 +952,17 @@ export const HINTS_PACK: VoiceCommandExtension[] = [
       // Role or index reference — go straight to findAndAct
       await findAndAct(ctx, ref, "focus", { typeText: text });
     },
-  ),
+  }),
 
   // ── Bare hint (role+number only, to avoid stealing plain words) ─────────────
   // "button 2", "input 3", "link 1" alone — role MUST be present, number is required
   // to prevent single role words ("button") stealing unrelated commands.
-  cmd(
-    "hints.bare-hint",
-    "hint",
-    ["{hint:hintref}"],
-    [],
-    "Act on a hint by role+number alone: 'button 2', 'input 1', 'link 3'",
-    async (ctx) => {
+  command({
+    name: "hints.bare-hint",
+    phrase: "hint",
+    patterns: ["{hint:hintref}"],
+    description: "Act on a hint by role+number alone: 'button 2', 'input 1', 'link 3'",
+    run: async (ctx) => {
       const ref = hintRefFromSlots(ctx.slots);
       // For bare hint, require either a number or a name (not just a bare role word)
       // to avoid false triggers on single role words that might appear in other speech.
@@ -993,60 +973,57 @@ export const HINTS_PACK: VoiceCommandExtension[] = [
       }
       await findAndAct(ctx, ref, "click");
     },
-  ),
+  }),
 
   // ── Links ───────────────────────────────────────────────────────────────────
-  cmd(
-    "hints.open-link",
-    "open link hint",
-    [
+  command({
+    name: "hints.open-link",
+    phrase: "open link hint",
+    patterns: [
       "open {hint:hint} in new tab",
       "open link {hint:hint} in new tab",
       "open {hint:hint}",
       "open link {hint:hint}",
       "link {hint:hint}",
     ],
-    [],
-    "Open a link: 'link 3', 'open link 3', 'open link 3 in new tab'",
-    async (ctx) => {
+    description: "Open a link: 'link 3', 'open link 3', 'open link 3 in new tab'",
+    run: async (ctx) => {
       const ref = hintRefFromSlots(ctx.slots);
       // Force role to "link" if not set
       const linkRef: HintRef = { ...ref, roleName: ref.roleName ?? "link" };
       const newTab = /\bin\s+new\s+tab\b/i.test(ctx.text);
       await findAndAct(ctx, linkRef, "click", { newTab });
     },
-  ),
+  }),
 
   // ── Checkbox ────────────────────────────────────────────────────────────────
-  cmd(
-    "hints.check",
-    "check hint",
-    ["check {hint:hint}", "toggle {hint:hint}"],
-    ["check box", "check checkbox", "toggle check"],
-    "Toggle a checkbox near gaze: 'check box 1', 'check 2'",
-    async (ctx) => {
+  command({
+    name: "hints.check",
+    phrase: "check hint",
+    patterns: ["check {hint:hint}", "toggle {hint:hint}"],
+    aliases: ["check box", "check checkbox", "toggle check"],
+    description: "Toggle a checkbox near gaze: 'check box 1', 'check 2'",
+    run: async (ctx) => {
       const ref = hintRefFromSlots(ctx.slots);
       const checkRef: HintRef = { ...ref, roleName: ref.roleName ?? "check" };
       await findAndAct(ctx, checkRef, "check");
     },
-  ),
+  }),
 
   // ── Right click ─────────────────────────────────────────────────────────────
-  cmd(
-    "hints.right-click",
-    "right click hint",
-    ["right click {hint:hintphrase}"],
-    [],
-    "Right-click a hint reference: 'right click button 2', 'right click save'",
-    async (ctx) => {
+  command({
+    name: "hints.right-click",
+    phrase: "right click hint",
+    patterns: ["right click {hint:hintphrase}"],
+    description: "Right-click a hint reference: 'right click button 2', 'right click save'",
+    run: async (ctx) => {
       const ref = hintRefFromSlots(ctx.slots);
       await findAndAct(ctx, ref, "rightClick");
     },
-  ),
+  }),
 
   // ── Navigation ──────────────────────────────────────────────────────────────
-  {
-    type: VOICE_COMMAND_EXTENSION,
+  command({
     name: "hints.next",
     phrase: "next hint",
     patterns: ["next hint", "next"],
@@ -1062,10 +1039,9 @@ export const HINTS_PACK: VoiceCommandExtension[] = [
       state.selectedIndex = (state.selectedIndex + 1) % state.candidates.length;
       ctx.log(`[hints] Selected: ${state.candidates[state.selectedIndex].label}`);
     },
-  },
+  }),
 
-  {
-    type: VOICE_COMMAND_EXTENSION,
+  command({
     name: "hints.previous",
     phrase: "previous hint",
     patterns: ["previous hint", "previous", "prev hint", "prev"],
@@ -1078,19 +1054,16 @@ export const HINTS_PACK: VoiceCommandExtension[] = [
         ctx.log("[hints] No hints active");
         return;
       }
-      state.selectedIndex =
-        (state.selectedIndex - 1 + state.candidates.length) % state.candidates.length;
+      state.selectedIndex = (state.selectedIndex - 1 + state.candidates.length) % state.candidates.length;
       ctx.log(`[hints] Selected: ${state.candidates[state.selectedIndex].label}`);
     },
-  },
+  }),
 
   // ── Smart mouse ─────────────────────────────────────────────────────────────
-  {
-    type: VOICE_COMMAND_EXTENSION,
+  command({
     name: "hints.smart-mouse",
     phrase: "smart mouse",
     patterns: ["smart mouse", "magnetic cursor", "snap mouse"],
-    aliases: ["magnetic cursor", "snap mouse"],
     description: "Start gaze-following mode that snaps the cursor to the nearest element",
     repeatable: false,
     run: async (ctx) => {
@@ -1104,22 +1077,16 @@ export const HINTS_PACK: VoiceCommandExtension[] = [
         return;
       }
       invalidateAXCache();
-      _smartMouse = new SmartMouseController(
-        adapter,
-        () => getWindowKey(ctx),
-        { errorRadius: getErrorRadius() },
-      );
+      _smartMouse = new SmartMouseController(adapter, () => getWindowKey(ctx), { errorRadius: getErrorRadius() });
       _smartMouse.start();
       ctx.log("[hints] Smart mouse started — say 'stop mouse' to stop");
     },
-  },
+  }),
 
-  {
-    type: VOICE_COMMAND_EXTENSION,
+  command({
     name: "hints.stop-smart-mouse",
     phrase: "stop smart mouse",
     patterns: ["stop smart mouse"],
-    aliases: [],
     description: "Stop the smart mouse gaze-follow controller",
     repeatable: false,
     run: (ctx) => {
@@ -1132,147 +1099,61 @@ export const HINTS_PACK: VoiceCommandExtension[] = [
         ctx.gazeFollow?.stop();
       }
     },
-  },
+  }),
 
   // ── play <song> — AXPress the "Play <song> by …" button ─────────────────────
   // "play a real hero", "play rubber head", "click play a real hero"
   // Bare "play" and "pause" are media keys (handled elsewhere); this command
   // only fires when at least one song-name word follows "play".
-  {
-    ...cmd(
-      "hints.play-song",
-      "play song",
-      [
-        "play {song:songphrase}",
-        "click play {song:songphrase}",
-      ],
-      [],
+  command({
+    name: "hints.play-song",
+    phrase: "play song",
+    patterns: ["play {song:songphrase}", "click play {song:songphrase}"],
+    description:
       "Play a Spotify song by name: 'play a real hero', 'click play rubber head'. Uses AXPress on the song's play button.",
-      async (ctx) => {
-        const adapter = getAdapter(ctx);
-        if (!adapter) {
-          ctx.log("[hints] No computer-use adapter available");
-          return;
-        }
-        const gaze = await resolveGazePoint(ctx, adapter);
-        // Extract song name from slot or from text
-        const songSlot = ctx.slots.song;
-        let songQuery: string[];
-        if (songSlot && typeof songSlot === "object" && "name" in (songSlot as any)) {
-          const ref = songSlot as { name?: string; roleName?: string };
-          songQuery = (ref.name ?? "").toLowerCase().split(/\s+/).filter(Boolean);
-        } else if (typeof songSlot === "string") {
-          songQuery = (songSlot as string).toLowerCase().split(/\s+/).filter(Boolean);
-        } else {
-          // Parse song name from raw text: strip leading "play " or "click play "
-          const raw = ctx.text.toLowerCase().replace(/^click\s+/, "").replace(/^play\s+/, "").trim();
-          songQuery = raw.split(/\s+/).filter(Boolean);
-        }
-        if (!songQuery.length) {
-          ctx.log("[hints] No song name provided");
-          return;
-        }
-        ctx.log(`[hints] Looking for play button for: "${songQuery.join(" ")}"`);
-        const candidate = await findPlayButton(adapter, songQuery, gaze ?? { x: 960, y: 540 });
-        if (!candidate) {
-          ctx.log(`[hints] No play button found for "${songQuery.join(" ")}"`);
-          return;
-        }
-        ctx.log(`[hints] Pressing play: ${candidate.displayName ?? candidate.label}`);
-        await activateElement(adapter, candidate, "click");
-        _hintMode?.refreshSoon();
-      },
-    ),
-    maxAudioMs: 12000,
-  } as VoiceCommandExtension,
-
-  // ── click that (with element memory) — AXPress the hovered element ──────────
-  // After "mouse over play" or "mouse over hero", "click that" should AXPress
-  // the remembered candidate, not just do a coordinate click at the pointer.
-  {
-    type: VOICE_COMMAND_EXTENSION,
-    name: "hints.click-that-element",
-    phrase: "click that element",
-    patterns: ["click that", "click it", "click here"],
-    aliases: [],
-    description: "Click the element last hovered by a 'mouse over' command, using AXPress if available",
-    repeatable: false,
     run: async (ctx) => {
       const adapter = getAdapter(ctx);
-      // First check if we have a remembered candidate from a recent hover
-      const remembered = recentPlacedCandidate();
-      if (remembered && adapter) {
-        ctx.log(`[hints] click that → AXPress remembered element: ${remembered.displayName ?? remembered.label}`);
-        await activateElement(adapter, remembered, "click");
-        _hintMode?.refreshSoon();
+      if (!adapter) {
+        ctx.log("[hints] No computer-use adapter available");
         return;
       }
-      // Fall back to clicking whatever is under the pointer (never the gaze point).
-      await clickThat(ctx, "left");
+      const gaze = await resolveGazePoint(ctx, adapter);
+      // Extract song name from slot or from text
+      const songSlot = ctx.slots.song;
+      let songQuery: string[];
+      if (songSlot && typeof songSlot === "object" && "name" in (songSlot as any)) {
+        const ref = songSlot as { name?: string; roleName?: string };
+        songQuery = (ref.name ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+      } else if (typeof songSlot === "string") {
+        songQuery = (songSlot as string).toLowerCase().split(/\s+/).filter(Boolean);
+      } else {
+        // Parse song name from raw text: strip leading "play " or "click play "
+        const raw = ctx.text
+          .toLowerCase()
+          .replace(/^click\s+/, "")
+          .replace(/^play\s+/, "")
+          .trim();
+        songQuery = raw.split(/\s+/).filter(Boolean);
+      }
+      if (!songQuery.length) {
+        ctx.log("[hints] No song name provided");
+        return;
+      }
+      ctx.log(`[hints] Looking for play button for: "${songQuery.join(" ")}"`);
+      const candidate = await findPlayButton(adapter, songQuery, gaze ?? { x: 960, y: 540 });
+      if (!candidate) {
+        ctx.log(`[hints] No play button found for "${songQuery.join(" ")}"`);
+        return;
+      }
+      ctx.log(`[hints] Pressing play: ${candidate.displayName ?? candidate.label}`);
+      await activateElement(adapter, candidate, "click");
+      _hintMode?.refreshSoon();
     },
-  },
+    maxAudioMs: 12000,
+  }),
 
-  // ── double click that (with element memory) ─────────────────────────────────
-  // After "mouse over <track title>", "double click that" should play the track.
-  // For Spotify track rows: find and AXPress the row's "Play <song>" button.
-  // For other elements: coordinate double-click at the row centre.
-  {
-    type: VOICE_COMMAND_EXTENSION,
-    name: "hints.double-click-that-element",
-    phrase: "double click that element",
-    patterns: ["double click that", "double click it", "double click here"],
-    aliases: [],
-    description: "Double-click the element last hovered by a 'mouse over' command; for Spotify rows, uses AXPress on the row's play button",
-    repeatable: false,
-    run: async (ctx) => {
-      const adapter = getAdapter(ctx);
-      const remembered = recentPlacedCandidate();
-      if (remembered && adapter) {
-        ctx.log(`[hints] double click that → remembered element: ${remembered.displayName ?? remembered.label}`);
-        // For AXRow elements (Spotify track rows), try to find the row's play button
-        // by looking for a "Play <song>" AXButton near the row centre.
-        const el = remembered.element;
-        if (el.role === "AXRow" && el.bounds) {
-          const rowName = el.title ?? el.description ?? "";
-          // Spotify row title is like "A Real Hero  A Real Hero  …" — extract song name
-          const songWords = rowName.toLowerCase().split(/\s+/).slice(0, 5).filter(Boolean);
-          if (songWords.length) {
-            const playBtn = await findPlayButton(adapter, songWords, {
-              x: el.bounds.x + el.bounds.width / 2,
-              y: el.bounds.y + el.bounds.height / 2,
-            });
-            if (playBtn) {
-              ctx.log(`[hints] double click that → AXPress play button: ${playBtn.displayName ?? playBtn.label}`);
-              await activateElement(adapter, playBtn, "click");
-              _hintMode?.refreshSoon();
-              return;
-            }
-          }
-          // Fallback: double-click the row centre
-          const cx = Math.round(el.bounds.x + el.bounds.width / 2);
-          const cy = Math.round(el.bounds.y + el.bounds.height / 2);
-          await adapter.moveMouse({ x: cx, y: cy });
-          await adapter.click("left", { double: true });
-          _hintMode?.refreshSoon();
-          return;
-        }
-        // Buttons/links: one AXPress (a real double click would toggle a play
-        // button twice). Anything else falls through to a real double-click at
-        // the pointer the mouse-over placed.
-        if (el.role === "AXButton" || el.role === "AXLink") {
-          await activateElement(adapter, remembered, "click");
-          _hintMode?.refreshSoon();
-          return;
-        }
-      }
-      // Fall back to coordinate double-click at the placed pointer position
-      // (never the gaze point while a recent "mouse over" placement exists).
-      const pos = doubleClickTarget(ctx);
-      if (pos && ctx.mouse) {
-        await ctx.mouse.doubleClickAt(pos.x, pos.y);
-      }
-    },
-  },
+  // "click that" / "double click that" live in voiceCommands.ts (click-that,
+  // double-click); the latter keeps the remembered-element behaviour.
 ];
 
 // ─── registerHintSlot ────────────────────────────────────────────────────────

@@ -9,8 +9,8 @@
  */
 
 import { exec, execFile } from "child_process";
+import { runAppleScript, spawnOsa } from "../actions/osa";
 import type { VoiceCommandExtension } from "../voiceCommands";
-import { VOICE_COMMAND_EXTENSION } from "../voiceCommands";
 import { getSmartTypeAi, getSmartTypeAgentName } from "../smartTypeService";
 import { setPending, takePending, peekPending, clearPending } from "../pendingAction";
 import type { PendingAction } from "../pendingAction";
@@ -21,12 +21,21 @@ import type { AXElement } from "../smartSelector";
 import { setLastTypedExternal as setLastTyped } from "./text";
 import { captureFocus, restoreFocus, describeFocus } from "../focusSnapshot";
 import type { FocusSnapshot, FocusDeps } from "../focusSnapshot";
+import { pack } from "../commands/define";
 
 // ─── Terminal app detection ────────────────────────────────────────────────────
 
 const TERMINAL_APPS = new Set([
-  "ghostty", "terminal", "iterm", "iterm2", "kitty", "wezterm", "alacritty",
-  "hyper", "tabby", "rio",
+  "ghostty",
+  "terminal",
+  "iterm",
+  "iterm2",
+  "kitty",
+  "wezterm",
+  "alacritty",
+  "hyper",
+  "tabby",
+  "rio",
 ]);
 
 function isTerminalApp(app: string | undefined): boolean {
@@ -112,7 +121,16 @@ export async function buildScreenContext(deps: ScreenContextDeps = {}): Promise<
     const t = await withTimeout(resolveTmuxTarget(), TIMEOUT);
     if (t) {
       const [info, screen] = await Promise.all([
-        withTimeout(execFileText("tmux", ["display-message", "-p", "-t", t.paneId, "#{pane_current_path}\t#{pane_current_command}"]), TIMEOUT),
+        withTimeout(
+          execFileText("tmux", [
+            "display-message",
+            "-p",
+            "-t",
+            t.paneId,
+            "#{pane_current_path}\t#{pane_current_command}",
+          ]),
+          TIMEOUT
+        ),
         withTimeout(execFileText("tmux", ["capture-pane", "-p", "-t", t.paneId, "-S", "-40"]), TIMEOUT),
       ]);
       if (info?.trim()) {
@@ -127,8 +145,8 @@ export async function buildScreenContext(deps: ScreenContextDeps = {}): Promise<
       // Find the most recently active tmux client session
       const listClientsOutput = await withTimeout(
         deps.execTmux?.("list-clients -F '#{client_activity} #{session_name}'") ??
-        execTmuxCmd("list-clients -F '#{client_activity} #{session_name}'"),
-        TIMEOUT,
+          execTmuxCmd("list-clients -F '#{client_activity} #{session_name}'"),
+        TIMEOUT
       );
       if (listClientsOutput?.trim()) {
         const lines = listClientsOutput.trim().split("\n").filter(Boolean);
@@ -139,20 +157,20 @@ export async function buildScreenContext(deps: ScreenContextDeps = {}): Promise<
             return m ? { activity: parseInt(m[1], 10), session: m[2].trim() } : null;
           })
           .filter(Boolean)
-          .sort((a, b) => (b!.activity - a!.activity));
+          .sort((a, b) => b!.activity - a!.activity);
         const topSession = sorted[0]?.session;
         if (topSession) {
           const target = `${topSession}:`;
           const [paneInfo, paneScreen] = await Promise.all([
             withTimeout(
               deps.execTmux?.(`display -p -t '${target}' '#{pane_current_path} #{pane_current_command}'`) ??
-              execTmuxCmd(`display -p -t '${target}' '#{pane_current_path} #{pane_current_command}'`),
-              TIMEOUT,
+                execTmuxCmd(`display -p -t '${target}' '#{pane_current_path} #{pane_current_command}'`),
+              TIMEOUT
             ),
             withTimeout(
               deps.execTmux?.(`capture-pane -p -t '${target}' -S -40`) ??
-              execTmuxCmd(`capture-pane -p -t '${target}' -S -40`),
-              TIMEOUT,
+                execTmuxCmd(`capture-pane -p -t '${target}' -S -40`),
+              TIMEOUT
             ),
           ]);
           if (paneInfo?.trim()) {
@@ -193,7 +211,8 @@ function contextToPrompt(ctx: ScreenContext): string {
   if (ctx.focusedElement) {
     const fe = ctx.focusedElement;
     const feStr = [fe.role, fe.title ?? fe.placeholder, fe.value ? `"${fe.value.slice(0, 200)}"` : undefined]
-      .filter(Boolean).join(", ");
+      .filter(Boolean)
+      .join(", ");
     if (feStr) parts.push(`focused: ${feStr}`);
   }
   if (ctx.nearbyText?.length) {
@@ -204,7 +223,6 @@ function contextToPrompt(ctx: ScreenContext): string {
   }
   return parts.length ? `\n\nContext:\n${parts.join("\n")}` : "";
 }
-
 
 function execFileText(cmd: string, args: string[], timeout = 1500): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -223,7 +241,13 @@ async function nearbyAccessibilityText(gaze: { x: number; y: number }): Promise<
     .map((e) => ({ e, d: distanceToRect(gaze.x, gaze.y, e.bounds!) }))
     .filter(({ d }) => d < 450)
     .sort((a, b) => a.d - b.d)
-    .map(({ e }) => [e.title, e.description, e.value].filter((v) => typeof v === "string" && v.trim()).join(" — ").replace(/\s+/g, " ").slice(0, 300))
+    .map(({ e }) =>
+      [e.title, e.description, e.value]
+        .filter((v) => typeof v === "string" && v.trim())
+        .join(" — ")
+        .replace(/\s+/g, " ")
+        .slice(0, 300)
+    )
     .filter((t) => t && !seen.has(t) && (seen.add(t), true))
     .slice(0, 40);
 }
@@ -231,7 +255,10 @@ async function nearbyAccessibilityText(gaze: { x: number; y: number }): Promise<
 async function chromeActiveUrl(app: string | undefined): Promise<string | undefined> {
   if (process.platform !== "darwin" || !app || !/chrome|brave|arc|edge/i.test(app)) return undefined;
   const name = /chrome/i.test(app) ? "Google Chrome" : app;
-  const out = await execFileText("osascript", ["-e", `tell application "${name.replace(/"/g, "")}" to get URL of active tab of front window`], 800);
+  const out = await runAppleScript(
+    `tell application "${name.replace(/"/g, "")}" to get URL of active tab of front window`,
+    { timeoutMs: 800 }
+  ).catch(() => "");
   return out.trim() || undefined;
 }
 
@@ -272,28 +299,12 @@ function focusToPrompt(f: FocusSnapshot): string {
 
 // ─── Command helpers ─────────────────────────────────────────────────────────
 
-function cmd(
-  name: string,
-  phrase: string,
-  description: string,
-  run: VoiceCommandExtension["run"],
-  extras: Partial<VoiceCommandExtension> = {},
-): VoiceCommandExtension {
-  return {
-    type: VOICE_COMMAND_EXTENSION,
-    name: `voice-control.smarttype.${name}`,
-    phrase,
-    description,
-    run,
-    modes: ["command"],
-    ...extras,
-  };
-}
+const command = pack({ prefix: "voice-control.smarttype." });
 
 async function runSmartType(
   ctx: import("../voiceCommands").VoiceCommandContext,
   rawText: string,
-  mode: "smart" | "agent",
+  mode: "smart" | "agent"
 ): Promise<void> {
   if (mode === "agent" && agentTypeRunning) {
     ctx.log("[voice] agenttype: already running — please wait");
@@ -329,10 +340,12 @@ async function runSmartType(
       frontmostApp: actions?.frontmostApp?.bind(actions),
       frontWindow: actions?.frontWindow?.bind(actions),
       gazePoint: () => gaze,
-      ...(liveScreenProviders ? {
-        getNearbyElements: nearbyAccessibilityText,
-        getBrowserUrl: () => chromeActiveUrl(originalApp),
-      } : { execTmux: async () => "" }),
+      ...(liveScreenProviders
+        ? {
+            getNearbyElements: nearbyAccessibilityText,
+            getBrowserUrl: () => chromeActiveUrl(originalApp),
+          }
+        : { execTmux: async () => "" }),
     });
   } catch {
     // context optional
@@ -404,7 +417,7 @@ function showPreviewAndConfirm(
   label: string,
   focus: FocusSnapshot,
   focusDeps: FocusDeps,
-  onRedo: () => void,
+  onRedo: () => void
 ): void {
   const actions = (ctx as any).actions as import("../actions/types").PlatformActions | undefined;
 
@@ -434,22 +447,33 @@ function showPreviewAndConfirm(
 
   const pending: PendingAction = {
     describe: `${label}: "${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"`,
-    accept: async () => { dialog?.close(); await doType(); },
-    reject: () => { dialog?.close(); ctx.log(`[voice] ${label}: cancelled`); },
-    redo: () => { dialog?.close(); onRedo(); },
+    accept: async () => {
+      dialog?.close();
+      await doType();
+    },
+    reject: () => {
+      dialog?.close();
+      ctx.log(`[voice] ${label}: cancelled`);
+    },
+    redo: () => {
+      dialog?.close();
+      onRedo();
+    },
   };
   setPending(pending);
 
   if (dialog) {
-    void dialog.result.then((choice) => {
-      if (peekPending() !== pending) return; // already resolved by voice / superseded
-      takePending();
-      if (choice === "type") void doType().catch((e) => ctx.log(`[voice] ${label}: type error — ${e}`));
-      else if (choice === "redo") onRedo();
-      else if (choice === "cancel") ctx.log(`[voice] ${label}: cancelled via dialog`);
-      // "closed" (killed / timed out / failed): leave voice confirmation possible only
-      // if it was not timed out; a timeout drops it.
-    }).catch(() => undefined);
+    void dialog.result
+      .then((choice) => {
+        if (peekPending() !== pending) return; // already resolved by voice / superseded
+        takePending();
+        if (choice === "type") void doType().catch((e) => ctx.log(`[voice] ${label}: type error — ${e}`));
+        else if (choice === "redo") onRedo();
+        else if (choice === "cancel") ctx.log(`[voice] ${label}: cancelled via dialog`);
+        // "closed" (killed / timed out / failed): leave voice confirmation possible only
+        // if it was not timed out; a timeout drops it.
+      })
+      .catch(() => undefined);
   }
 }
 
@@ -461,7 +485,7 @@ export interface PreviewDialogHandle {
 export type PreviewDialog = (text: string, label: string, app?: string) => PreviewDialogHandle | undefined;
 
 /** macOS dialog: [Cancel] [Redo] [Type]. Text is passed as an argv value, never through a shell. */
-export const osascriptPreviewDialog: PreviewDialog = (text, label, app) => {
+export const macPreviewDialog: PreviewDialog = (text, label, app) => {
   if (process.platform !== "darwin") return undefined;
   const preview = text.length > 1500 ? text.slice(0, 1497) + "…" : text;
   const script = `
@@ -479,19 +503,28 @@ function run(argv) {
   } catch (e) { return "cancel"; }
 }`;
   const title = `knowhow ${label}${app ? ` → ${app}` : ""}  (or say "confirm" / "cancel")`;
-  let child: ReturnType<typeof execFile> | undefined;
+  let child: ReturnType<typeof spawnOsa> | undefined;
   const result = new Promise<PreviewChoice>((resolve) => {
-    child = execFile("osascript", ["-l", "JavaScript", "-e", script, preview, title], { timeout: 125_000 }, (err, stdout) => {
+    child = spawnOsa("jxa", script, { args: [preview, title], timeoutMs: 125_000 }, (err, stdout) => {
       if (err) return resolve("closed");
-      const out = String(stdout).trim();
+      const out = stdout.trim();
       resolve(out === "type" || out === "redo" || out === "cancel" ? out : "closed");
     });
   });
-  return { result, close: () => { try { child?.kill(); } catch { /* ignore */ } } };
+  return {
+    result,
+    close: () => {
+      try {
+        child?.kill();
+      } catch {
+        /* ignore */
+      }
+    },
+  };
 };
 
 // Off under jest so tests never pop real dialogs; tests inject their own.
-let previewDialog: PreviewDialog | undefined = process.env.JEST_WORKER_ID ? undefined : osascriptPreviewDialog;
+let previewDialog: PreviewDialog | undefined = process.env.JEST_WORKER_ID ? undefined : macPreviewDialog;
 
 /** Override (or disable with undefined) the preview UI. */
 export function setPreviewDialog(dialog: PreviewDialog | undefined): void {
@@ -501,35 +534,34 @@ export function setPreviewDialog(dialog: PreviewDialog | undefined): void {
 // ─── Pack definition ─────────────────────────────────────────────────────────
 
 export const SMART_TYPE_PACK: VoiceCommandExtension[] = [
-  cmd(
-    "smart-type",
-    "smart type",
-    "Use AI to clean up or generate text, then type it after confirmation",
-    async (ctx) => {
-      const raw = (ctx.slots?.text as string) ?? extractAfterVerbs(ctx.text, ["smarttype ", "smart type ", "smart-type ", "smart tight "]);
+  command({
+    name: "smart-type",
+    phrase: "smart type",
+    description: "Use AI to clean up or generate text, then type it after confirmation",
+    run: async (ctx) => {
+      const raw =
+        (ctx.slots?.text as string) ??
+        extractAfterVerbs(ctx.text, ["smarttype ", "smart type ", "smart-type ", "smart tight "]);
       if (!raw) return;
       await runSmartType(ctx, raw, "smart");
     },
-    {
-      pattern: "smart type {text:text}",
-      aliases: ["smarttype", "smart-type", "smart tight"],
-    } as any,
-  ),
+    pattern: "smart type {text:text}",
+    aliases: ["smarttype", "smart-type", "smart tight"],
+  }),
 
-  cmd(
-    "agent-type",
-    "agent type",
-    "Use a knowhow agent to research and generate text, then type it after confirmation",
-    async (ctx) => {
-      const raw = (ctx.slots?.text as string) ?? extractAfterVerbs(ctx.text, ["agenttype ", "agent type ", "agent-type "]);
+  command({
+    name: "agent-type",
+    phrase: "agent type",
+    description: "Use a knowhow agent to research and generate text, then type it after confirmation",
+    run: async (ctx) => {
+      const raw =
+        (ctx.slots?.text as string) ?? extractAfterVerbs(ctx.text, ["agenttype ", "agent type ", "agent-type "]);
       if (!raw) return;
       await runSmartType(ctx, raw, "agent");
     },
-    {
-      pattern: "agent type {text:text}",
-      aliases: ["agenttype", "agent-type"],
-    } as any,
-  ),
+    pattern: "agent type {text:text}",
+    aliases: ["agenttype", "agent-type"],
+  }),
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

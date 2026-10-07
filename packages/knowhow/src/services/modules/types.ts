@@ -48,6 +48,19 @@ export type ModuleClient = {
   models: string[];
 };
 
+/**
+ * Parameters handed to a module's `register()` and `init()` hooks.
+ *
+ * `context` is the shared service graph. Modules should read services from
+ * `params.context` (`Extensions`, `Tools`, `Events`, `Agents`, `Program`, ...)
+ * instead of looking them up through `services()`:
+ *  - `register()` runs in two passes (early CLI pass with ONLY `Program`
+ *    guaranteed, then the full pass) so always guard optional members.
+ *  - `init()` always receives the full graph (`Extensions`, `Tools`, `Events`,
+ *    `Agents`, `Plugins`, `Clients`, `Embeddings`, ...).
+ * For processes a module starts itself (CLI subcommands) use
+ * `createModuleRuntime()` from `@tyvm/knowhow/sdk`.
+ */
 export type InitParams = {
   config: Config;
   cwd: string;

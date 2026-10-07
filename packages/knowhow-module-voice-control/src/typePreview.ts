@@ -9,7 +9,8 @@
  * Whichever resolves first (dialog button or voice) wins; the other is torn down.
  */
 
-import { spawn, ChildProcess } from "child_process";
+import type { ChildProcess } from "child_process";
+import { spawnOsa } from "./actions/osa";
 
 export interface TypePreviewOptions {
   /** The text to preview. */
@@ -84,7 +85,6 @@ export function showTypePreview(opts: TypePreviewOptions): PreviewHandle {
 
   // Launch osascript dialog on macOS (non-blocking)
   if (process.platform === "darwin") {
-    const escaped = text.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
     const script = [
       `const app = Application.currentApplication();`,
       `app.includeStandardAdditions = true;`,
@@ -97,24 +97,13 @@ export function showTypePreview(opts: TypePreviewOptions): PreviewHandle {
       `result.buttonReturned`,
     ].join("\n");
 
-    dialogProc = spawn("osascript", ["-l", "JavaScript", "-e", script], {
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-
-    let stdout = "";
-    dialogProc.stdout?.on("data", (d: Buffer) => { stdout += d.toString(); });
-    dialogProc.on("close", (code) => {
+    // osascript unavailable / errors fall back to voice-only (the callback
+    // then reports an empty answer, which only resolves "cancel" if not already resolved).
+    dialogProc = spawnOsa("jxa", script, { timeoutMs: 125_000 }, (err, stdout) => {
       if (resolved) return;
-      const btn = stdout.trim();
-      if (btn === "Type") {
-        resolve("confirm");
-      } else {
-        // Cancel or gave up
-        resolve("cancel");
-      }
-    });
-    dialogProc.on("error", () => {
-      // osascript not available or other error; fall back to voice-only
+      if (err && !stdout) return; // couldn't show the dialog: stay voice-only
+      // "Type" confirms; Cancel or gave up cancels.
+      resolve(stdout.trim() === "Type" ? "confirm" : "cancel");
     });
   }
 

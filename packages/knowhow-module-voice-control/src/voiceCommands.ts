@@ -16,9 +16,14 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import type { GazeSample } from "./eyeTracking";
 import type { MouseMover } from "./commandMode";
-import { clickTarget, clickThat, doubleClickTarget } from "./pointerMemory";
+import { clickTarget, clickThat } from "./pointerMemory";
+import { aliasesWithSynonyms, defineCommand, VOICE_COMMAND_EXTENSION } from "./commands/define";
+import { analyzeCommands, applyOverrides } from "./commands/registry";
+import { runDoubleClick } from "./commands/doubleClick";
+import type { CommandConflict } from "./commands/registry";
+import { mergeSynonyms } from "./grammar/compile";
 
-export const VOICE_COMMAND_EXTENSION = "voice-control.command" as const;
+export { VOICE_COMMAND_EXTENSION };
 
 export type VoiceCommandMode = "command" | "agent";
 
@@ -79,7 +84,22 @@ export interface VoiceCommandExtension {
   platforms?: NodeJS.Platform[];
   /** Context filter: command only wins over global when app matches. */
   context?: { app?: string | string[] };
+  /**
+   * Extra literal phrases. Literal `patterns` are added automatically by
+   * `defineCommand`, so only list phrases that are NOT in `patterns`.
+   */
   aliases?: string[];
+  /**
+   * Vocabulary layer: `{ hints: ["map"] }` makes "map" accepted wherever this
+   * command's patterns say "hints" (expanded when patterns are compiled).
+   * Merged with `knowhow.json → voiceControl.synonyms` by collectVoiceCommands.
+   */
+  synonyms?: Record<string, string[]>;
+  /**
+   * Name of another command this one intentionally replaces. The overridden
+   * command is dropped from the registry (and no conflict is reported).
+   */
+  overrides?: string;
   /** Shown in `knowhow voice-control commands`. */
   description: string;
   /** Default ["command"]. "agent" means it also fires in agent mode. */
@@ -99,91 +119,124 @@ export interface RegisteredVoiceCommand extends VoiceCommandExtension {
 
 // ─── Built-ins ────────────────────────────────────────────────────────────────
 
-function cmd(
-  name: string,
-  phrase: string,
-  aliases: string[],
-  description: string,
-  run: VoiceCommandExtension["run"],
-  modes: VoiceCommandMode[] = ["command"],
-): VoiceCommandExtension {
-  return { type: VOICE_COMMAND_EXTENSION, name, phrase, aliases, description, modes, run };
+const command = defineCommand;
+
+/** Stop the hints pack's smart-mouse singleton (lazy: hints imports this module). */
+export function tryStopSmartMouse(): void {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const hints = require("./packs/hints");
+    hints.stopSmartMouse?.();
+  } catch {
+    // hints not loaded — that's fine
+  }
 }
 
 export const BUILTIN_VOICE_COMMANDS: VoiceCommandExtension[] = [
-  cmd(
-    "voice-control.eye-control-mouse",
-    "eye control mouse",
-    ["gaze mouse", "follow my eyes", "eyecontrol mouse", "i control mouse", "eye control"],
-    "Start moving the mouse pointer with your gaze",
-    (ctx) => { ctx.gazeFollow?.start(); },
-  ),
-  cmd(
-    "voice-control.stop-mouse",
-    "stop mouse",
-    ["stop eye control", "stop gaze", "stop following"],
-    "Stop gaze-controlled mouse movement",
-    (ctx) => { ctx.gazeFollow?.stop(); },
-  ),
+  command({
+    name: "voice-control.eye-control-mouse",
+    phrase: "eye control mouse",
+    aliases: ["gaze mouse", "follow my eyes", "eyecontrol mouse", "i control mouse", "eye control", "eye mouse", "i mouse"],
+    description: "Start moving the mouse pointer with your gaze",
+    run: (ctx) => {
+      ctx.gazeFollow?.start();
+      console.log("[voice] gaze mouse ON");
+    },
+  }),
+  command({
+    name: "voice-control.stop-mouse",
+    phrase: "stop mouse",
+    aliases: ["stop eye control", "stop gaze", "stop following", "mouse off", "freeze"],
+    description: "Stop gaze-controlled mouse movement",
+    run: (ctx) => {
+      ctx.gazeFollow?.stop();
+      tryStopSmartMouse();
+      console.log("[voice] gaze mouse OFF");
+    },
+  }),
   // Plain clicks act on the pointer a hint just placed ("mouse over theo" →
   // "click"), else where you're looking. "click" is a short plosive word: real
   // ones measured 100–240ms voiced, so the floor is 100ms (the whisper
   // prompt-bias re-check filters noise that turns into "click").
-  {
-    // "click that" / "click it" click whatever is under the pointer *now*
-    // (e.g. after "mouse over drive"); they never re-target to the gaze point.
-    ...cmd("voice-control.click-that", "click that", ["click it", "click this", "click that one"], "Left-click whatever is under the pointer right now (no gaze re-targeting)", async (ctx) => {
+  command({
+    name: "voice-control.click-that",
+    phrase: "click that",
+    aliases: ["click it", "click this", "click that one"],
+    description: "Left-click whatever is under the pointer right now (no gaze re-targeting)",
+    run: async (ctx) => {
       await clickThat(ctx, "left");
-    }),
+    },
     minVoicedMs: 100,
-  },
-  {
-    ...cmd("voice-control.click", "click", ["click here", "click there", "click click", "clique"], "Left-click the pointer a hint just placed, else where you are looking", async (ctx) => {
+  }),
+  command({
+    name: "voice-control.click",
+    phrase: "click",
+    aliases: ["click here", "click there", "click click", "clique"],
+    description: "Left-click the pointer a hint just placed, else where you are looking",
+    run: async (ctx) => {
       const pos = clickTarget(ctx);
       if (pos && ctx.mouse) await ctx.mouse.clickAt(pos.x, pos.y, "left");
-    }),
+    },
     minVoicedMs: 100,
-  },
-  {
-    ...cmd("voice-control.double-click", "double click", ["doubleclick"], "Double-click the hinted pointer, else where you are looking", async (ctx) => {
-      const pos = doubleClickTarget(ctx);
-      if (pos && ctx.mouse) await ctx.mouse.doubleClickAt(pos.x, pos.y);
-    }),
+  }),
+  command({
+    name: "voice-control.double-click",
+    phrase: "double click",
+    aliases: [
+      "doubleclick",
+      "double click that",
+      "double click it",
+      "double click here",
+      "double click there",
+      "double-click that",
+      "double-click it",
+      "double-click here",
+    ],
+    description:
+      "Double-click the hinted pointer, else where you are looking. 'double click that/it/here' first acts on the element a 'mouse over' just hovered (plays Spotify rows, presses buttons)",
+    run: runDoubleClick,
     minVoicedMs: 150,
-  },
-  {
-    ...cmd("voice-control.right-click", "right click", ["rightclick"], "Right-click the hinted pointer, else where you are looking", async (ctx) => {
+  }),
+  command({
+    name: "voice-control.right-click",
+    phrase: "right click",
+    aliases: ["rightclick"],
+    description: "Right-click the hinted pointer, else where you are looking",
+    run: async (ctx) => {
       const pos = clickTarget(ctx);
       if (pos && ctx.mouse) await ctx.mouse.clickAt(pos.x, pos.y, "right");
-    }),
+    },
     minVoicedMs: 150,
-  },
-  cmd(
-    "voice-control.agent-mode",
-    "agent mode",
-    [],
-    "Switch to agent mode (utterances go to the agent)",
-    (ctx) => ctx.setMode("agent"),
-    ["command", "agent"],
-  ),
-  cmd(
-    "voice-control.command-mode",
-    "command mode",
-    [],
-    "Switch to command mode (utterances are matched against commands)",
-    (ctx) => ctx.setMode("command"),
-    ["command", "agent"],
-  ),
+  }),
+  command({
+    name: "voice-control.agent-mode",
+    phrase: "agent mode",
+    description: "Switch to agent mode (utterances go to the agent)",
+    run: (ctx) => ctx.setMode("agent"),
+    modes: ["command", "agent"],
+  }),
+  command({
+    name: "voice-control.command-mode",
+    phrase: "command mode",
+    description: "Switch to command mode (utterances are matched against commands)",
+    run: (ctx) => ctx.setMode("command"),
+    modes: ["command", "agent"],
+  }),
 ];
 
 const BUILTIN_NAMES = new Set(BUILTIN_VOICE_COMMANDS.map((c) => c.name));
 
 export function isVoiceCommandExtension(value: unknown): value is VoiceCommandExtension {
   const v = value as VoiceCommandExtension;
-  return !!v && v.type === VOICE_COMMAND_EXTENSION &&
-    typeof v.name === "string" && !!v.name &&
-    typeof v.phrase === "string" && !!v.phrase.trim() &&
-    typeof v.run === "function";
+  return (
+    !!v &&
+    v.type === VOICE_COMMAND_EXTENSION &&
+    typeof v.name === "string" &&
+    !!v.name &&
+    typeof v.phrase === "string" &&
+    !!v.phrase.trim() &&
+    typeof v.run === "function"
+  );
 }
 
 export function commandModes(command: Pick<VoiceCommandExtension, "modes">): VoiceCommandMode[] {
@@ -203,11 +256,7 @@ export interface ConfigVoiceCommand {
   modes?: VoiceCommandMode[];
 }
 
-export type DetachedSpawn = (
-  command: string,
-  args: string[],
-  env: NodeJS.ProcessEnv,
-) => void;
+export type DetachedSpawn = (command: string, args: string[], env: NodeJS.ProcessEnv) => void;
 
 const defaultDetachedSpawn: DetachedSpawn = (command, args, env) => {
   const child = nodeSpawn(command, args, { detached: true, stdio: "ignore", env });
@@ -223,7 +272,7 @@ const AUTOMATION_NAME = /^[\w.\-/]+$/;
  */
 export function loadConfigVoiceCommands(
   config: unknown,
-  options: { spawn?: DetachedSpawn; warn?: (msg: string) => void; knowhowBin?: string } = {},
+  options: { spawn?: DetachedSpawn; warn?: (msg: string) => void; knowhowBin?: string } = {}
 ): VoiceCommandExtension[] {
   const spawnDetached = options.spawn ?? defaultDetachedSpawn;
   const warn = options.warn ?? (() => undefined);
@@ -253,34 +302,38 @@ export function loadConfigVoiceCommands(
     const modes = Array.isArray(raw.modes)
       ? raw.modes.filter((m): m is VoiceCommandMode => m === "command" || m === "agent")
       : undefined;
-    const description = typeof raw.description === "string" && raw.description
-      ? raw.description
-      : hasShell ? `shell: ${raw.shell}` : `automation: ${raw.automation}`;
-    out.push({
-      type: VOICE_COMMAND_EXTENSION,
-      name: `knowhow.json.${index}.${raw.phrase.trim()}`,
-      phrase: raw.phrase.trim(),
-      aliases,
-      description,
-      modes: modes?.length ? modes : undefined,
-      run(ctx) {
-        const target = ctx.target();
-        const env: NodeJS.ProcessEnv = {
-          ...process.env,
-          KNOWHOW_PHRASE: ctx.phrase,
-          KNOWHOW_TEXT: ctx.text,
-          KNOWHOW_SPOKEN_AT: String(ctx.spokenAt),
-          ...(target ? { KNOWHOW_GAZE_X: String(target.x), KNOWHOW_GAZE_Y: String(target.y) } : {}),
-        };
-        if (hasShell) {
-          ctx.log(`running shell for "${ctx.phrase}"`);
-          spawnDetached("/bin/sh", ["-c", raw.shell!], env);
-        } else {
-          ctx.log(`running automation ${raw.automation} for "${ctx.phrase}"`);
-          spawnDetached(options.knowhowBin ?? "knowhow", ["computer", "run-automation", raw.automation!], env);
-        }
-      },
-    });
+    const description =
+      typeof raw.description === "string" && raw.description
+        ? raw.description
+        : hasShell
+        ? `shell: ${raw.shell}`
+        : `automation: ${raw.automation}`;
+    out.push(
+      command({
+        name: `knowhow.json.${index}.${raw.phrase.trim()}`,
+        phrase: raw.phrase.trim(),
+        aliases,
+        description,
+        modes: modes?.length ? modes : undefined,
+        run(ctx) {
+          const target = ctx.target();
+          const env: NodeJS.ProcessEnv = {
+            ...process.env,
+            KNOWHOW_PHRASE: ctx.phrase,
+            KNOWHOW_TEXT: ctx.text,
+            KNOWHOW_SPOKEN_AT: String(ctx.spokenAt),
+            ...(target ? { KNOWHOW_GAZE_X: String(target.x), KNOWHOW_GAZE_Y: String(target.y) } : {}),
+          };
+          if (hasShell) {
+            ctx.log(`running shell for "${ctx.phrase}"`);
+            spawnDetached("/bin/sh", ["-c", raw.shell!], env);
+          } else {
+            ctx.log(`running automation ${raw.automation} for "${ctx.phrase}"`);
+            spawnDetached(options.knowhowBin ?? "knowhow", ["computer", "run-automation", raw.automation!], env);
+          }
+        },
+      })
+    );
   });
   return out;
 }
@@ -322,17 +375,42 @@ export interface CollectVoiceCommandsOptions {
   warn?: (msg: string) => void;
 }
 
+/** The resolved registry plus everything the validator found wrong with it. */
+export interface VoiceCommandReport {
+  commands: RegisteredVoiceCommand[];
+  conflicts: CommandConflict[];
+  /** Names dropped because another command declared `overrides` for them. */
+  overridden: string[];
+}
+
 /**
- * Collect all registered voice commands, deduped by `name` (first wins).
+ * Collect all registered voice commands, deduped by `name` (first wins), with
+ * `overrides` applied, config synonyms merged in and the registry validated.
  * Order (= match priority): knowhow.json, module extensions, built-ins.
  */
-export function collectVoiceCommands(options: CollectVoiceCommandsOptions = {}): RegisteredVoiceCommand[] {
-  const out: RegisteredVoiceCommand[] = [];
-  const seen = new Set<string>();
+export function collectVoiceCommandReport(options: CollectVoiceCommandsOptions = {}): VoiceCommandReport {
+  const collected: RegisteredVoiceCommand[] = [];
+  const seen = new Map<string, VoiceCommandExtension>();
+  const duplicateNames: string[] = [];
+  const configSynonyms = readConfigSynonyms(options.config);
   const add = (ext: VoiceCommandExtension, source: string) => {
-    if (seen.has(ext.name)) return;
-    seen.add(ext.name);
-    out.push({ ...ext, source });
+    const first = seen.get(ext.name);
+    if (first) {
+      // The very same command arriving twice (ExtensionsService + built-in fallback) is not a conflict;
+      // `overrides: <its own name>` marks an intentional same-name replacement.
+      const same = first.run === ext.run;
+      if (!same && ext.overrides !== ext.name && !duplicateNames.includes(ext.name)) duplicateNames.push(ext.name);
+      return;
+    }
+    seen.set(ext.name, ext);
+    if (configSynonyms) {
+      // `knowhow.json → voiceControl.synonyms` apply to every command.
+      const synonyms = mergeSynonyms(ext.synonyms, configSynonyms);
+      const aliases = aliasesWithSynonyms(ext.phrase, ext.aliases ?? [], synonyms);
+      collected.push({ ...ext, synonyms, aliases, source });
+    } else {
+      collected.push({ ...ext, source });
+    }
   };
   const sourceFor = (ext: VoiceCommandExtension, owner?: string) =>
     BUILTIN_NAMES.has(ext.name) ? "built-in" : (owner || ext.owner || "module");
@@ -349,7 +427,25 @@ export function collectVoiceCommands(options: CollectVoiceCommandsOptions = {}):
     if (isVoiceCommandExtension(extension)) add(extension, sourceFor(extension, owner));
   }
   for (const ext of options.builtins ?? BUILTIN_VOICE_COMMANDS) add(ext, "built-in");
-  return out;
+
+  const { commands, overridden } = applyOverrides(collected);
+  const conflicts = analyzeCommands(commands, duplicateNames);
+  return { commands, conflicts, overridden };
+}
+
+/** `collectVoiceCommandReport(...).commands`; conflicts are reported through `options.warn`. */
+export function collectVoiceCommands(options: CollectVoiceCommandsOptions = {}): RegisteredVoiceCommand[] {
+  const report = collectVoiceCommandReport(options);
+  for (const conflict of report.conflicts) options.warn?.(conflict.message);
+  return report.commands;
+}
+
+/** `knowhow.json → voiceControl.synonyms` (`{ hints: ["map"] }`), validated. */
+export function readConfigSynonyms(config: unknown): Record<string, string[]> | undefined {
+  const raw = (config as any)?.voiceControl?.synonyms;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const merged = mergeSynonyms(raw as Record<string, string[]>);
+  return Object.keys(merged).length ? merged : undefined;
 }
 
 // ─── CLI table ───────────────────────────────────────────────────────────────
@@ -364,7 +460,7 @@ export interface VoiceCommandRow {
 
 export function commandRows(
   registered: ReadonlyArray<RegisteredVoiceCommand>,
-  live: ReadonlyArray<{ phrase: string; aliases?: string[]; description?: string }> = [],
+  live: ReadonlyArray<{ phrase: string; aliases?: string[]; description?: string }> = []
 ): VoiceCommandRow[] {
   return [
     ...live.map((s) => ({
@@ -395,9 +491,13 @@ export function formatVoiceCommandsTable(rows: ReadonlyArray<VoiceCommandRow>): 
     r.description || "-",
   ]);
   const widths = headers.map((h, i) =>
-    Math.min(i === 4 ? 1000 : 40, Math.max(h.length, ...cells.map((c) => c[i].length))),
+    Math.min(i === 4 ? 1000 : 40, Math.max(h.length, ...cells.map((c) => c[i].length)))
   );
   const fit = (s: string, w: number) => (s.length > w ? s.slice(0, Math.max(0, w - 1)) + "…" : s.padEnd(w));
-  const line = (c: string[]) => c.map((s, i) => (i === c.length - 1 ? s : fit(s, widths[i]))).join("  ").trimEnd();
+  const line = (c: string[]) =>
+    c
+      .map((s, i) => (i === c.length - 1 ? s : fit(s, widths[i])))
+      .join("  ")
+      .trimEnd();
   return [line(headers), line(widths.map((w) => "-".repeat(w))), ...cells.map(line)].join("\n") + "\n";
 }

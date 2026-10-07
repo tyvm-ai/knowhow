@@ -2,51 +2,38 @@
  * macOS PlatformActions implementation.
  *
  * Uses knowhow-module-computer-use's ComputerService for keys/typing/mouse.
- * Uses osascript/JXA for window management.
+ * Uses AppleScript/JXA (via ./osa) for window management.
  */
 
-import { exec as nodeExec, execFile as nodeExecFile } from "child_process";
+import { exec as nodeExec } from "child_process";
 import { promisify } from "util";
 import type { PlatformActions, MonitorInfo, WindowInfo, Rect, SnapPosition } from "./types";
+import { runAppleScript, runJxa, escapeAppleScriptString } from "./osa";
+import { createStandaloneComputerService } from "../computerService";
+import type { ComputerUseAdapter } from "../computerService";
 
 const exec = promisify(nodeExec);
-const execFile = promisify(nodeExecFile);
 
 export class DarwinPlatformActions implements PlatformActions {
   readonly platform = "darwin" as NodeJS.Platform;
-  private computerService?: {
-    pressKey(key: string, opts?: any): Promise<void>;
-    typeText(text: string, opts?: any): Promise<void>;
-    getDisplays(): Promise<any[]>;
-  };
+  private computerService?: ComputerUseAdapter;
+  private frontAppCache?: { at: number; name: string | undefined };
 
   constructor(injectedService?: unknown) {
-    try {
-      // Prefer an injected service (from VoiceSession / getPlatformActions)
-      if (injectedService && typeof (injectedService as any).typeText === "function") {
-        this.computerService = injectedService as any;
-      } else {
-        const cu = require("@tyvm/knowhow-module-computer-use") as any;
-        const service = new cu.ComputerService();
-        const driver = cu.RustCoreDriver?.tryLoad?.();
-        if (driver) {
-          service.registerDriver(driver);
-          this.computerService = service;
-        }
-      }
-    } catch {
-      // computer-use optional
+    // Prefer an injected service (from VoiceSession / getPlatformActions)
+    if (injectedService && typeof (injectedService as { typeText?: unknown }).typeText === "function") {
+      this.computerService = injectedService as ComputerUseAdapter;
+    } else {
+      this.computerService = createStandaloneComputerService();
     }
   }
 
-  private async osascript(script: string): Promise<string> {
-    const { stdout } = await execFile("osascript", ["-e", script]);
-    return stdout.trim();
+  private async applescript(script: string): Promise<string> {
+    return (await runAppleScript(script)).trim();
   }
 
   private async jxa(script: string): Promise<string> {
-    const { stdout } = await execFile("osascript", ["-l", "JavaScript", "-e", script]);
-    return stdout.trim();
+    return (await runJxa(script)).trim();
   }
 
   async pressCombo(combo: string, opts?: { app?: string; repeat?: number }): Promise<void> {
@@ -62,25 +49,25 @@ export class DarwinPlatformActions implements PlatformActions {
     }
 
     if (this.computerService) {
-      const svc = this.computerService as any;
+      const svc = this.computerService;
       for (let i = 0; i < repeat; i++) {
         // ComputerService.pressKey(key) takes no modifiers (they were silently
         // dropped, so "full screen" typed a bare "f"); chords go via hotkey().
-        if (modifiers.length && typeof svc.hotkey === "function") {
+        if (modifiers.length) {
           await svc.hotkey(...modifiers, key);
         } else {
-          await svc.pressKey(key);
+          await svc.pressKey?.(key);
         }
       }
     } else {
-      // Fallback to osascript
+      // Fallback to AppleScript
       const asMod: Record<string, string> = { ctrl: "control", control: "control", alt: "option", option: "option", cmd: "command", command: "command", shift: "shift" };
       const modList = modifiers.map((m) => `${asMod[m] ?? m} down`).join(", ");
       const script = modList
         ? `tell application "System Events" to keystroke "${key}" using {${modList}}`
         : `tell application "System Events" to keystroke "${key}"`;
       for (let i = 0; i < repeat; i++) {
-        await this.osascript(script);
+        await this.applescript(script);
       }
     }
   }
@@ -88,23 +75,34 @@ export class DarwinPlatformActions implements PlatformActions {
   async typeText(text: string, opts?: { app?: string }): Promise<void> {
     if (opts?.app) await this.activateApp(opts.app);
     if (this.computerService) {
-      await (this.computerService as any).typeText(text);
+      await this.computerService.typeText(text);
     } else {
-      // Escape for AppleScript
-      const escaped = text.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-      await this.osascript(`tell application "System Events" to keystroke "${escaped}"`);
+      const escaped = escapeAppleScriptString(text);
+      await this.applescript(`tell application "System Events" to keystroke "${escaped}"`);
     }
   }
 
-  async frontmostApp(): Promise<string | undefined> {
-    try {
-      const result = await this.osascript(
-        `tell application "System Events" to get name of first application process whose frontmost is true`,
-      );
-      return result || undefined;
-    } catch {
-      return undefined;
-    }
+  async frontmostApp(opts?: { maxWaitMs?: number; maxAgeMs?: number }): Promise<string | undefined> {
+    // Short-TTL cache for hot paths (scan + publish ask back to back); the
+    // default is uncached so activate→frontmost sequences stay exact.
+    const maxAgeMs = opts?.maxAgeMs ?? 0;
+    const cached = this.frontAppCache;
+    if (cached && maxAgeMs > 0 && Date.now() - cached.at < maxAgeMs) return cached.name;
+    const read = this.jxa(
+      `ObjC.import('AppKit'); ObjC.unwrap($.NSWorkspace.sharedWorkspace.frontmostApplication.localizedName);`,
+    ).then(
+      (name) => {
+        const value = name || undefined;
+        this.frontAppCache = { at: Date.now(), name: value };
+        return value;
+      },
+      () => undefined,
+    );
+    if (!opts?.maxWaitMs) return read;
+    return Promise.race([
+      read,
+      new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), opts.maxWaitMs)),
+    ]);
   }
 
   /**
@@ -150,10 +148,11 @@ export class DarwinPlatformActions implements PlatformActions {
   }
 
   async activateApp(app: string, opts?: { launch?: boolean }): Promise<boolean> {
+    this.frontAppCache = undefined;
     const running = await this.resolveRunningApp(app);
     if (running) {
       try {
-        await this.osascript(
+        await this.applescript(
           `tell application "System Events" to set frontmost of application process ${JSON.stringify(running)} to true`,
         );
         return true;
@@ -162,7 +161,7 @@ export class DarwinPlatformActions implements PlatformActions {
       return false;
     }
     try {
-      await this.osascript(`tell application "${app}" to activate`);
+      await this.applescript(`tell application "${app}" to activate`);
       return true;
     } catch {
       if (opts?.launch) {
@@ -217,8 +216,8 @@ JSON.stringify(out);
 
     // Try ComputerService displays first (has scaleFactor and reliable ids)
     try {
-      if (this.computerService && (this.computerService as any).getDisplays) {
-        const displays = await (this.computerService as any).getDisplays() as any[];
+      if (this.computerService?.getDisplays) {
+        const displays = await this.computerService.getDisplays();
         const sorted = displays.sort((a, b) => a.bounds.x - b.bounds.x);
         return sorted.map((d, i) => {
           const ns = nsScreens?.[i];
@@ -341,9 +340,9 @@ JSON.stringify(out);
   async minimizeWindow(app?: string): Promise<void> {
     const target = app ? await this.resolveRunningApp(app) : await this.frontmostApp();
     if (!target) return;
-    await this.osascript(`tell application "${target}" to set miniaturized of front window to true`).catch(() => {
+    await this.applescript(`tell application "${target}" to set miniaturized of front window to true`).catch(() => {
       // Non-scriptable apps: set AXMinimized via System Events
-      return this.osascript(
+      return this.applescript(
         `tell application "System Events" to tell application process "${target}" to set value of attribute "AXMinimized" of front window to true`,
       ).catch(() => undefined);
     });
@@ -353,11 +352,11 @@ JSON.stringify(out);
     const resolved = await this.resolveRunningApp(app);
     if (!resolved) return;
     app = resolved;
-    await this.osascript(
+    await this.applescript(
       `tell application "${app}" to set miniaturized of front window to false`,
     ).catch(() =>
       // Non-scriptable apps (Ghostty, Electron): un-minimize via accessibility.
-      this.osascript(
+      this.applescript(
         `tell application "System Events" to tell application process "${app}" to set value of attribute "AXMinimized" of every window to false`,
       ).catch(() => undefined),
     );
@@ -371,8 +370,8 @@ JSON.stringify(out);
   }
 
   async scroll(dx: number, dy: number, at?: { x: number; y: number }): Promise<void> {
-    const svc = this.computerService as any;
-    if (svc && typeof svc.scroll === "function") {
+    const svc = this.computerService;
+    if (svc?.scroll) {
       // Wheel events go to the window under the pointer, so put the pointer
       // where the user is looking first. ComputerService.scroll takes plain
       // (dx, dy) wheel deltas (the old object call silently did nothing).
@@ -383,9 +382,9 @@ JSON.stringify(out);
       // up/left; PlatformActions uses positive = down/right, so flip.
       await svc.scroll(-dx, -dy);
     } else {
-      // Fallback: use osascript with CGEventPost (limited)
+      // Fallback: AppleScript scroll (limited)
       const lines = dy !== 0 ? [`tell application "System Events" to scroll down`] : [];
-      if (lines.length) await this.osascript(lines.join("\n")).catch(() => undefined);
+      if (lines.length) await this.applescript(lines.join("\n")).catch(() => undefined);
     }
   }
 
@@ -417,13 +416,13 @@ JSON.stringify(out);
         await this.pressCombo("mod+space");
         break;
       case "volume-up":
-        await exec("osascript -e 'set volume output volume (output volume of (get volume settings) + 10)'");
+        await this.applescript("set volume output volume (output volume of (get volume settings) + 10)");
         break;
       case "volume-down":
-        await exec("osascript -e 'set volume output volume (output volume of (get volume settings) - 10)'");
+        await this.applescript("set volume output volume (output volume of (get volume settings) - 10)");
         break;
       case "mute":
-        await exec("osascript -e 'set volume with output muted'");
+        await this.applescript("set volume with output muted");
         break;
       case "play-pause":
         await this.pressCombo("f8");

@@ -29,6 +29,7 @@ import {
 } from "./mlxSpeech";
 import { VoiceSession } from "./VoiceSession";
 import { mouseMoverFromComputerService } from "./commandMode";
+import { createStandaloneComputerService } from "./computerService";
 import { SpeechOutput, VoiceAgentRuntime, VoiceSessionEvent } from "./types";
 
 export interface VoiceAgentCommandOptions {
@@ -405,13 +406,8 @@ export async function runVoiceAgent(options: VoiceAgentCommandOptions): Promise<
     if (cuCtx && typeof cuCtx.moveMouse === "function") {
       mouseMover = mouseMoverFromComputerService(cuCtx);
     } else {
-      const cu = require("@tyvm/knowhow-module-computer-use") as any;
-      const service = new cu.ComputerService();
-      const driver = cu.RustCoreDriver?.tryLoad?.();
-      if (driver) {
-        service.registerDriver(driver);
-        mouseMover = mouseMoverFromComputerService(service);
-      }
+      const service = createStandaloneComputerService();
+      if (service) mouseMover = mouseMoverFromComputerService(service);
     }
   } catch {
     // computer-use optional
