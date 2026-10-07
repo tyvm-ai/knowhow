@@ -22,10 +22,13 @@
  *   KNOWHOW_VOICE_BROWSER_MCP_TIMEOUT_MS  per-call timeout (default 4000)
  */
 
+import { withFallback } from "@tyvm/knowhow/sdk";
 import { defaultOsaRunner } from "../actions/osa";
 import type { OsaRunner } from "../actions/osa";
 import type { VoiceCommandExtension } from "../voiceCommands";
-import { pack } from "../commands/define";
+import { defineVoicePack } from "./define";
+import type { PackCommandContext } from "./define";
+import type { VoiceServices } from "../services";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -204,66 +207,29 @@ export function parseMcpTabList(text: string): BrowserTab[] {
   return tabs;
 }
 
-/**
- * Calls an MCP tool by its bare method name (e.g. "browser_tabs") and returns
- * its text content. Resolution goes through knowhow's shared ToolsService, the
- * same way scripts' `sdk.callTool` does: registered MCP tools are namespaced
- * `mcp_<index>_<server>_<tool>`, and ToolsService picks the one whose name ends
- * with the requested method — so the server's name and position in
- * knowhow.json don't matter.
- */
+/** Calls an MCP tool by its bare method name (e.g. "browser_tabs") and returns its text content. */
 export type McpToolCaller = (tool: string, args: Record<string, unknown>) => Promise<string>;
 
 function mcpTimeoutMs(): number {
   return Number(process.env.KNOWHOW_VOICE_BROWSER_MCP_TIMEOUT_MS) || 4000;
 }
 
-/** Minimal slice of knowhow's ToolsService used here. */
-export interface ToolsLike {
-  getFunction(name: string): ((args: Record<string, unknown>) => unknown) | undefined;
-}
-
-function sharedTools(): ToolsLike {
-  /* eslint-disable-next-line @typescript-eslint/no-var-requires */
-  const { services } = require("@tyvm/knowhow/ts_build/src/services");
-  return services().Tools;
-}
-
-function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`${what} timed out after ${ms}ms`)), ms);
-    p.then(
-      (v) => {
-        clearTimeout(t);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(t);
-        reject(e);
-      }
-    );
-  });
-}
-
-/** Build a caller that resolves MCP methods by suffix on the given ToolsService. */
-export function toolsMcpCaller(getTools: () => ToolsLike = sharedTools): McpToolCaller {
+/**
+ * A caller backed by `services.mcp.callByMethod` (core): registered MCP tools
+ * are namespaced `mcp_<index>_<server>_<tool>` and core resolves the bare
+ * method by suffix, so the server's name and position in knowhow.json don't
+ * matter. `isError` results become thrown errors so the AppleScript fallback
+ * takes over.
+ */
+export function mcpCallerFrom(mcp: VoiceServices["mcp"]): McpToolCaller {
   return async (tool, args) => {
-    const fn = getTools().getFunction(tool);
-    if (!fn) throw new Error(`no MCP tool matching "${tool}" is loaded`);
-    const timeout = mcpTimeoutMs();
-    const result = await withTimeout<any>(Promise.resolve(fn(args)), timeout, tool);
-    if (typeof result === "string") return result;
-    const text = (result?.content || [])
-      .filter((c: any) => c.type === "text")
-      .map((c: any) => c.text)
-      .join("\n");
-    if (result?.isError)
-      throw new Error(text.split("\n").filter((l: string) => l && !l.startsWith("###"))[0] || `${tool} failed`);
-    return text;
+    const result = await mcp.callByMethod(tool, args, { timeoutMs: mcpTimeoutMs() });
+    if (result.isError) {
+      throw new Error(result.text.split("\n").filter((l) => l && !l.startsWith("###"))[0] || `${tool} failed`);
+    }
+    return result.text;
   };
 }
-
-const defaultMcpCaller: McpToolCaller = toolsMcpCaller();
 
 export function mcpBackend(call: McpToolCaller): BrowserBackend {
   return {
@@ -287,8 +253,6 @@ export function mcpBackend(call: McpToolCaller): BrowserBackend {
 
 /** Runs an AppleScript and returns stdout. Injectable for tests (type shared from actions/osa). */
 export type { OsaRunner };
-
-const defaultOsa: OsaRunner = defaultOsaRunner(5000);
 
 const CHROME = "Google Chrome";
 const asString = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
@@ -350,44 +314,84 @@ end tell`);
 
 // ─── Backend selection ────────────────────────────────────────────────────────
 
-let mcpCaller: McpToolCaller = defaultMcpCaller;
-let osaRunner: OsaRunner = defaultOsa;
-/** After an MCP failure, skip MCP until this time (ms epoch). */
-let mcpDownUntil = 0;
 const MCP_COOLDOWN_MS = 60_000;
 
-/** Test hook. Pass undefined to restore the real runners. */
-export function setBrowserRunners(mcp?: McpToolCaller, osa?: OsaRunner): void {
-  mcpCaller = mcp ?? defaultMcpCaller;
-  osaRunner = osa ?? defaultOsa;
-  mcpDownUntil = 0;
+type BrowserOp = (b: BrowserBackend) => Promise<unknown>;
+interface BrowserFallback {
+  run(op: BrowserOp): Promise<{ result: unknown; backend: string }>;
+  reset(): void;
+  status(): Record<string, { downUntil: number }>;
 }
 
-type Log = { log(msg: string): void };
+/** Per-session browser pack state: the two backends' runners and the MCP→AppleScript circuit breaker. */
+export interface BrowserState {
+  mcp: McpToolCaller;
+  osa: OsaRunner;
+  /** True when `osa` is the real osascript runner (AppleScript is only usable on macOS then). */
+  osaIsDefault: boolean;
+  /** MCP first; a failure puts MCP in cooldown (core `withFallback`) and AppleScript takes over. */
+  fallback: BrowserFallback;
+  /** Set per command: where "MCP unavailable" notices go. */
+  notify: (msg: string) => void;
+}
+
+export function createBrowserState(
+  opts: { mcp?: McpToolCaller; osa?: OsaRunner; now?: () => number; services?: VoiceServices } = {}
+): BrowserState {
+  const mcp =
+    opts.mcp ??
+    (opts.services ? mcpCallerFrom(opts.services.mcp) : () => Promise.reject(new Error("no MCP available")));
+  const osa = opts.osa ?? defaultOsaRunner(5000);
+  const state: BrowserState = {
+    mcp,
+    osa,
+    osaIsDefault: !opts.osa,
+    notify: () => undefined,
+    fallback: withFallback<(b: BrowserBackend) => Promise<unknown>, unknown>(
+      [
+        { name: "mcp", run: (fn) => fn(mcpBackend(mcp)) },
+        { name: "applescript", run: (fn) => fn(appleScriptBackend(osa)) },
+      ],
+      {
+        cooldownMs: MCP_COOLDOWN_MS,
+        now: opts.now ?? opts.services?.clock.now.bind(opts.services.clock),
+        onFallback: (from, err) => {
+          if (from === "mcp") {
+            state.notify(
+              `browser: MCP unavailable (${
+                (err as Error).message.split("\n")[0]
+              }); using AppleScript for the next minute`
+            );
+          }
+        },
+      }
+    ),
+  };
+  return state;
+}
+
+type BrowserCtx = Pick<PackCommandContext<BrowserState>, "log" | "slots" | "text" | "state">;
+type Log = Pick<BrowserCtx, "log" | "state">;
 
 /**
  * Run `fn` against the MCP backend, falling back to AppleScript (macOS) when
  * MCP fails. A failing MCP is skipped for a minute so voice stays snappy.
+ * KNOWHOW_VOICE_BROWSER = auto (default) | mcp | applescript.
  */
 async function withBackend<T>(ctx: Log, fn: (b: BrowserBackend) => Promise<T>): Promise<T> {
+  const { state } = ctx;
   const mode = (process.env.KNOWHOW_VOICE_BROWSER || "auto").toLowerCase();
-  const canOsa = process.platform === "darwin" || osaRunner !== defaultOsa;
-  if (mode !== "applescript" && (mode === "mcp" || Date.now() >= mcpDownUntil)) {
-    try {
-      return await fn(mcpBackend(mcpCaller));
-    } catch (e) {
-      const msg = (e as Error).message.split("\n")[0];
-      if (mode === "mcp" || !canOsa) throw e;
-      mcpDownUntil = Date.now() + MCP_COOLDOWN_MS;
-      ctx.log(`browser: MCP unavailable (${msg}); using AppleScript for the next minute`);
-    }
-  }
-  return fn(appleScriptBackend(osaRunner));
+  const canOsa = process.platform === "darwin" || !state.osaIsDefault;
+  if (mode === "applescript") return fn(appleScriptBackend(state.osa));
+  if (mode === "mcp" || !canOsa) return fn(mcpBackend(state.mcp));
+  state.notify = ctx.log;
+  const { result } = await state.fallback.run(fn);
+  return result as T;
 }
 
-async function activateChrome(): Promise<void> {
+async function activateChrome(state: BrowserState): Promise<void> {
   try {
-    await osaRunner(`tell application ${asString(CHROME)} to activate`);
+    await state.osa(`tell application ${asString(CHROME)} to activate`);
   } catch {
     /* ignore */
   }
@@ -395,17 +399,14 @@ async function activateChrome(): Promise<void> {
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
 
-function queryOf(ctx: { slots: Record<string, unknown>; text: string }): string {
+function queryOf(ctx: Pick<BrowserCtx, "slots" | "text">): string {
   return normaliseTabQuery(String(ctx.slots?.query ?? ""));
 }
 
 const describe = (t: BrowserTab) => `"${t.title || t.url}"`;
 
 /** Focus the best-matching tab; open one if `openIfMissing` and none matches. */
-export async function switchToTab(
-  ctx: Log & { slots: Record<string, unknown>; text: string },
-  openIfMissing: boolean
-): Promise<void> {
+export async function switchToTab(ctx: BrowserCtx, openIfMissing: boolean): Promise<void> {
   const query = queryOf(ctx);
   if (!query) return ctx.log("browser: which tab?");
   await withBackend(ctx, async (b) => {
@@ -421,22 +422,22 @@ export async function switchToTab(
       ctx.log(`browser: no tab matching "${query}"`);
       return;
     }
-    if (b.name === "mcp") await activateChrome();
+    if (b.name === "mcp") await activateChrome(ctx.state);
   });
 }
 
-export async function openNewTab(ctx: Log & { slots: Record<string, unknown>; text: string }): Promise<void> {
+export async function openNewTab(ctx: BrowserCtx): Promise<void> {
   const query = queryOf(ctx);
   if (!query) return ctx.log("browser: open what?");
   const url = resolveTabUrl(query);
   await withBackend(ctx, async (b) => {
     await b.open(url);
     ctx.log(`browser: opened ${url} (${b.name})`);
-    if (b.name === "mcp") await activateChrome();
+    if (b.name === "mcp") await activateChrome(ctx.state);
   });
 }
 
-export async function closeTab(ctx: Log & { slots: Record<string, unknown>; text: string }): Promise<void> {
+export async function closeTab(ctx: BrowserCtx): Promise<void> {
   const query = queryOf(ctx);
   if (!query) return ctx.log("browser: close which tab?");
   await withBackend(ctx, async (b) => {
@@ -459,50 +460,55 @@ export async function listTabs(ctx: Log): Promise<void> {
 
 const B = "[chrome|browser|google chrome]";
 
-const command = pack({ prefix: "voice-control.browser.", defaults: { repeatable: false } });
-
-export const BROWSER_PACK: VoiceCommandExtension[] = [
-  command({
-    name: "switch-tab",
-    phrase: "switch tab {query:text}",
-    patterns: [
-      `switch [to] ${B} tab {query:text}`,
-      `go to ${B} tab {query:text}`,
-      `(chrome|browser) tab {query:text}`,
-      `find tab {query:text}`,
-    ],
-    description:
-      "Focus the Chrome tab matching a name (title, site or URL) via the browser MCP; opens it if none matches",
-    run: (ctx) => switchToTab(ctx, true),
-  }),
-  command({
-    name: "open-tab",
-    phrase: "open tab {query:text}",
-    patterns: [`open ${B} tab {query:text}`],
-    description: "Focus the Chrome tab for a site if it's open, otherwise open it in a new tab",
-    run: (ctx) => switchToTab(ctx, true),
-  }),
-  command({
-    name: "new-tab-named",
-    phrase: "open new tab {query:text}",
-    patterns: [`open [a] new ${B} tab {query:text}`, `open ${B} new tab {query:text}`, `new ${B} tab {query:text}`],
-    description: "Open a site / URL / search in a new Chrome tab via the browser MCP",
-    run: (ctx) => openNewTab(ctx),
-  }),
-  command({
-    name: "close-tab-named",
-    phrase: "close chrome tab {query:text}",
-    patterns: [`close (chrome|browser) tab {query:text}`, `close tab named {query:text}`],
-    description: "Close the Chrome tab matching a name",
-    run: (ctx) => closeTab(ctx),
-  }),
-  command({
-    name: "list-tabs",
-    phrase: "list tabs",
-    patterns: [`(list|show) ${B} tabs`],
-    description: "Log the open Chrome tabs (via the browser MCP)",
-    run: (ctx) => listTabs(ctx),
-  }),
-];
+export const BROWSER_PACK = defineVoicePack<BrowserState>({
+  name: "browser",
+  description: "Chrome tab commands by name via the browser MCP, with an AppleScript fallback",
+  prefix: "voice-control.browser.",
+  defaults: { repeatable: false },
+  createState: (services) => createBrowserState({ services }),
+  commands: ({ command }) => [
+    command({
+      name: "switch-tab",
+      phrase: "switch tab {query:text}",
+      patterns: [
+        `switch [to] ${B} tab {query:text}`,
+        `go to ${B} tab {query:text}`,
+        `(chrome|browser) tab {query:text}`,
+        `find tab {query:text}`,
+      ],
+      description:
+        "Focus the Chrome tab matching a name (title, site or URL) via the browser MCP; opens it if none matches",
+      run: (ctx) => switchToTab(ctx, true),
+    }),
+    command({
+      name: "open-tab",
+      phrase: "open tab {query:text}",
+      patterns: [`open ${B} tab {query:text}`],
+      description: "Focus the Chrome tab for a site if it's open, otherwise open it in a new tab",
+      run: (ctx) => switchToTab(ctx, true),
+    }),
+    command({
+      name: "new-tab-named",
+      phrase: "open new tab {query:text}",
+      patterns: [`open [a] new ${B} tab {query:text}`, `open ${B} new tab {query:text}`, `new ${B} tab {query:text}`],
+      description: "Open a site / URL / search in a new Chrome tab via the browser MCP",
+      run: (ctx) => openNewTab(ctx),
+    }),
+    command({
+      name: "close-tab-named",
+      phrase: "close chrome tab {query:text}",
+      patterns: [`close (chrome|browser) tab {query:text}`, `close tab named {query:text}`],
+      description: "Close the Chrome tab matching a name",
+      run: (ctx) => closeTab(ctx),
+    }),
+    command({
+      name: "list-tabs",
+      phrase: "list tabs",
+      patterns: [`(list|show) ${B} tabs`],
+      description: "Log the open Chrome tabs (via the browser MCP)",
+      run: (ctx) => listTabs(ctx),
+    }),
+  ],
+});
 
 export default BROWSER_PACK;

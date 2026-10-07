@@ -1,8 +1,9 @@
 /**
  * Injectable AI service for smarttype / agenttype commands.
  *
- * Call setSmartTypeServices() from runVoiceAgent() after setupServices().
- * The SMART_TYPE_PACK reads AI via getSmartTypeAi().
+ * `runVoiceAgent` builds it with buildSmartTypeAi() after setupServices() and
+ * puts it on the services container (`services.ai`); the smart-type pack reads
+ * `ctx.services.ai`.
  */
 
 export interface SmartTypeAi {
@@ -15,20 +16,6 @@ export interface SmartTypeAi {
 export interface SmartTypeServices {
   ai: SmartTypeAi;
   agentName?: string;
-}
-
-let _services: SmartTypeServices | undefined;
-
-export function setSmartTypeServices(services: SmartTypeServices): void {
-  _services = services;
-}
-
-export function getSmartTypeAi(): SmartTypeAi | undefined {
-  return _services?.ai;
-}
-
-export function getSmartTypeAgentName(): string {
-  return _services?.agentName ?? "Developer";
 }
 
 /**

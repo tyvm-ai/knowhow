@@ -109,13 +109,13 @@ function makeCtx(
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function findCmd(phrase: string) {
-  const c = WINDOWS_PACK.find((c) => c.phrase === phrase || c.name === `windows.${phrase}`);
+  const c = WINDOWS_PACK.extensions.find((c) => c.phrase === phrase || c.name === `windows.${phrase}`);
   if (!c) throw new Error(`Command not found: ${phrase}`);
   return c;
 }
 
 function findByName(name: string) {
-  const c = WINDOWS_PACK.find((c) => c.name === `windows.${name}`);
+  const c = WINDOWS_PACK.extensions.find((c) => c.name === `windows.${name}`);
   if (!c) throw new Error(`Command not found by name: windows.${name}`);
   return c;
 }
@@ -430,7 +430,7 @@ describe("WINDOWS_PACK", () => {
 
   describe("pack structure", () => {
     test("all commands have required fields", () => {
-      for (const c of WINDOWS_PACK) {
+      for (const c of WINDOWS_PACK.extensions) {
         expect(c.type).toBe("voice-control.command");
         expect(typeof c.name).toBe("string");
         expect(c.name.startsWith("windows.")).toBe(true);
@@ -440,7 +440,7 @@ describe("WINDOWS_PACK", () => {
     });
 
     test("no duplicate names", () => {
-      const names = WINDOWS_PACK.map((c) => c.name);
+      const names = WINDOWS_PACK.extensions.map((c) => c.name);
       expect(new Set(names).size).toBe(names.length);
     });
   });

@@ -15,9 +15,11 @@ import { HINTS_PACK } from "../src/packs/hints";
 import { TMUX_PACK } from "../src/packs/tmux";
 import {
   BROWSER_PACK, BrowserTab, findTab, normaliseTabQuery, parseMcpTabList,
-  resolveTabUrl, setBrowserRunners, toolsMcpCaller,
+  resolveTabUrl, createBrowserState, mcpCallerFrom,
 } from "../src/packs/browser";
-import { ToolsService } from "@tyvm/knowhow/ts_build/src/services/Tools";
+import { ToolsService } from "@tyvm/knowhow/sdk";
+import { createTestServices } from "./helpers/services";
+import type { VoiceServices } from "../src/services";
 
 const MCP_LIST = `### Open tabs
 - 0: [Hacker News] (https://news.ycombinator.com/)
@@ -30,6 +32,7 @@ let mcpCalls: Array<[string, Record<string, unknown>]> = [];
 let osaCalls: string[] = [];
 let mcpFails = false;
 let logs: string[] = [];
+let services: VoiceServices;
 
 async function fakeMcp(tool: string, args: Record<string, unknown>): Promise<string> {
   mcpCalls.push([tool, args]);
@@ -49,8 +52,8 @@ async function fakeOsa(script: string): Promise<string> {
 function makeRouter() {
   const commands = collectVoiceCommands({
     builtins: [
-      ...BUILTIN_VOICE_COMMANDS, ...META_PACK, ...GAZE_MOUSE_PACK, ...TEXT_PACK,
-      ...KEYS_PACK, ...WINDOWS_PACK, ...SYSTEM_PACK, ...HINTS_PACK, ...TMUX_PACK, ...BROWSER_PACK,
+      ...BUILTIN_VOICE_COMMANDS, ...META_PACK.extensions, ...GAZE_MOUSE_PACK.extensions, ...TEXT_PACK.extensions,
+      ...KEYS_PACK.extensions, ...WINDOWS_PACK.extensions, ...SYSTEM_PACK.extensions, ...HINTS_PACK.extensions, ...TMUX_PACK.extensions, ...BROWSER_PACK.extensions,
     ],
   });
   const dispatched: string[] = [];
@@ -61,7 +64,7 @@ function makeRouter() {
       const ctx: VoiceCommandContext = {
         phrase: command.phrase, text: invocation.text, spokenAt: 0, recognizedAt: 0,
         target: () => undefined, setMode: () => undefined, log: (m) => { logs.push(m); },
-        slots: invocation.slots ?? {}, repeat: invocation.repeat ?? 1, history: [],
+        slots: invocation.slots ?? {}, repeat: invocation.repeat ?? 1, history: [], services,
       };
       // Don't run unrelated commands (they'd press real keys).
       if (command.name.startsWith("voice-control.browser.")) await command.run(ctx);
@@ -84,9 +87,8 @@ async function say(text: string) {
 
 beforeEach(() => {
   mcpFails = false;
-  setBrowserRunners(fakeMcp, fakeOsa);
+  services = createTestServices({}, { state: { browser: createBrowserState({ mcp: fakeMcp, osa: fakeOsa }) } });
 });
-afterAll(() => setBrowserRunners());
 
 describe("browser pack routing", () => {
   test.each([
@@ -166,7 +168,7 @@ describe("tab matching", () => {
 });
 
 
-describe("toolsMcpCaller (resolve MCP method by suffix)", () => {
+describe("mcpCallerFrom (core callByMethod: resolve MCP method by suffix)", () => {
   function toolsWith(name: string, fn: (args: any) => unknown): ToolsService {
     const tools = new ToolsService();
     tools.defineTools(
@@ -182,7 +184,7 @@ describe("toolsMcpCaller (resolve MCP method by suffix)", () => {
       calls.push(args);
       return { content: [{ type: "text", text: "- 0: (current) [Inbox] (https://mail.google.com/)" }] };
     });
-    const call = toolsMcpCaller(() => tools as any);
+    const call = mcpCallerFrom(tools);
     const text = await call("browser_tabs", { action: "list" });
     expect(calls).toEqual([{ action: "list" }]);
     expect(parseMcpTabList(text)[0].url).toBe("https://mail.google.com/");
@@ -190,13 +192,13 @@ describe("toolsMcpCaller (resolve MCP method by suffix)", () => {
 
   test("throws when no tool ends with the method (so AppleScript takes over)", async () => {
     const tools = toolsWith("mcp_0_other_something_else", () => "x");
-    await expect(toolsMcpCaller(() => tools as any)("browser_tabs", {})).rejects.toThrow(/browser_tabs/);
+    await expect(mcpCallerFrom(tools)("browser_tabs", {})).rejects.toThrow(/browser_tabs/);
   });
 
   test("surfaces MCP isError results as errors", async () => {
     const tools = toolsWith("mcp_0_browser_browser_tabs", () => ({
       isError: true, content: [{ type: "text", text: "### Error\nTab 9 not found" }],
     }));
-    await expect(toolsMcpCaller(() => tools as any)("browser_tabs", {})).rejects.toThrow("Tab 9 not found");
+    await expect(mcpCallerFrom(tools)("browser_tabs", {})).rejects.toThrow("Tab 9 not found");
   });
 });

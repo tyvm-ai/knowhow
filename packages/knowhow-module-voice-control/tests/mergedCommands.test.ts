@@ -1,10 +1,10 @@
 /** Behaviour of commands that were merged from duplicates in wave 1B. */
 import { parseUtterance } from "../src/grammar";
-import { collectVoiceCommands, tryStopSmartMouse } from "../src/voiceCommands";
+import { collectVoiceCommands } from "../src/voiceCommands";
 import { voiceCommandExtensions } from "../src/packs/index";
-import { clearPlacedPointer, notePointerPlaced } from "../src/pointerMemory";
 import { runDoubleClick } from "../src/commands/doubleClick";
-import { setPending, clearPending } from "../src/pendingAction";
+import { createTestServices } from "./helpers/services";
+import { createHintsState } from "../src/packs/hints";
 
 const commands = collectVoiceCommands({
   moduleExtensions: voiceCommandExtensions().map((extension) => ({ owner: "voice-control", extension })),
@@ -17,7 +17,10 @@ function match(u: string) {
 }
 
 describe("double click (one command)", () => {
-  afterEach(() => clearPlacedPointer());
+  let services: ReturnType<typeof createTestServices>;
+  beforeEach(() => {
+    services = createTestServices();
+  });
 
   it("routes every spoken form to voice-control.double-click", () => {
     for (const u of ["double click", "doubleclick", "double click that", "double click it", "double click here", "double click there", "double-click that"]) {
@@ -26,7 +29,7 @@ describe("double click (one command)", () => {
   });
 
   it("plain and deictic forms double-click the pointer 'mouse over' placed, not the gaze", async () => {
-    notePointerPlaced({ x: 100, y: 100 }); // no remembered element → coordinate double-click
+    services.pointer.notePlaced({ x: 100, y: 100 }); // no remembered element → coordinate double-click
     for (const text of ["double click", "double click that"]) {
       const mouse = { moveMouse: jest.fn(), clickAt: jest.fn(), doubleClickAt: jest.fn() };
       await runDoubleClick({
@@ -36,6 +39,7 @@ describe("double click (one command)", () => {
         target: () => ({ x: 1500, y: 900 }),
         mouse,
         log: () => undefined,
+        services,
       } as any);
       expect(mouse.doubleClickAt).toHaveBeenCalledWith(100, 100);
     }
@@ -43,7 +47,7 @@ describe("double click (one command)", () => {
 
   it("falls back to the gaze target without a placed pointer", async () => {
     const mouse = { moveMouse: jest.fn(), clickAt: jest.fn(), doubleClickAt: jest.fn() };
-    await runDoubleClick({ text: "double click here", slots: {}, target: () => ({ x: 7, y: 8 }), mouse, log: () => undefined } as any);
+    await runDoubleClick({ text: "double click here", slots: {}, target: () => ({ x: 7, y: 8 }), mouse, log: () => undefined, services } as any);
     expect(mouse.doubleClickAt).toHaveBeenCalledWith(7, 8);
   });
 });
@@ -64,10 +68,12 @@ describe("click / right click / mouse commands exist once", () => {
 
   it("stop mouse stops gaze-follow and the smart mouse", async () => {
     const stop = jest.fn();
+    const stopSmartMouse = jest.fn();
+    const services = createTestServices({}, { state: { hints: { ...createHintsState({ clock: createTestServices().clock }), stopSmartMouse } } });
     const result = match("stop mouse");
-    await result.command.run({ slots: {}, log: () => undefined, target: () => undefined, gazeFollow: { stop, start: jest.fn(), isRunning: () => true, currentPosition: () => undefined } } as any);
+    await result.command.run({ slots: {}, log: () => undefined, target: () => undefined, services, gazeFollow: { stop, start: jest.fn(), isRunning: () => true, currentPosition: () => undefined } } as any);
     expect(stop).toHaveBeenCalled();
-    expect(() => tryStopSmartMouse()).not.toThrow();
+    expect(stopSmartMouse).toHaveBeenCalled();
   });
 
   it("mission control / show desktop come from the windows pack only", () => {
@@ -78,7 +84,6 @@ describe("click / right click / mouse commands exist once", () => {
 });
 
 describe("redo (meta + keys merged)", () => {
-  afterEach(() => clearPending());
 
   it("plain redo redoes the pending action; 'redo 3' presses Cmd-Shift-Z three times", async () => {
     const plain = match("redo");
@@ -88,12 +93,13 @@ describe("redo (meta + keys merged)", () => {
     expect(withN?.slots.n).toBe(3);
 
     const redo = jest.fn();
-    setPending({ describe: "x", accept: jest.fn(), reject: jest.fn(), redo });
-    await plain.command.run({ slots: plain.slots, log: () => undefined } as any);
+    const services = createTestServices();
+    services.pending.set({ describe: "x", accept: jest.fn(), reject: jest.fn(), redo });
+    await plain.command.run({ slots: plain.slots, log: () => undefined, services } as any);
     expect(redo).toHaveBeenCalled();
 
     const pressCombo = jest.fn();
-    await withN.command.run({ slots: withN.slots, log: () => undefined, actions: { pressCombo } } as any);
+    await withN.command.run({ slots: withN.slots, log: () => undefined, actions: { pressCombo }, services } as any);
     expect(pressCombo).toHaveBeenCalledWith("mod+shift+z", { repeat: 3 });
   });
 });

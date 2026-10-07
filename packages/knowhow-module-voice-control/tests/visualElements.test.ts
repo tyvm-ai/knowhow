@@ -6,13 +6,12 @@ import {
   fuseVisualElements,
   segmentOcrLines,
   dedupeAgainstAX,
-  invalidateVisualCache,
   OcrLineLike,
 } from "../src/visualElements";
 import {
   rankCandidates,
   collectCandidates,
-  invalidateAXCache,
+  SelectorState,
   ComputerUseAdapter,
   AXElement,
 } from "../src/smartSelector";
@@ -134,15 +133,15 @@ describe("collectCandidates screenshot fallback", () => {
     };
     return a;
   }
+  let selector: SelectorState;
   beforeEach(() => {
-    invalidateAXCache();
-    invalidateVisualCache();
+    selector = new SelectorState();
   });
   const log = () => undefined;
 
   it("adds screenshot hints when accessibility has nothing near gaze", async () => {
     const a = adapter([{ id: "w", role: "AXWindow", actions: [] }]);
-    const c = await collectCandidates(a, { x: 250, y: 215 }, { x: 200, y: 260 }, "k1", { log });
+    const c = await collectCandidates(selector, a, { x: 250, y: 215 }, { x: 200, y: 260 }, "k1", { log });
     expect(a.ocrCalls).toBe(1);
     expect(c[0]).toMatchObject({ label: "button 1", displayName: "start game" });
   });
@@ -150,21 +149,21 @@ describe("collectCandidates screenshot fallback", () => {
   it("skips screenshots when accessibility already has enough", async () => {
     const ax: AXElement[] = [0, 1, 2].map((i) => ({ id: `b${i}`, role: "AXButton", title: `B${i}`, bounds: { x: 200 + i * 60, y: 200, width: 50, height: 30 }, actions: ["AXPress"] }));
     const a = adapter(ax);
-    const c = await collectCandidates(a, { x: 250, y: 215 }, { x: 200, y: 260 }, "k2", { log });
+    const c = await collectCandidates(selector, a, { x: 250, y: 215 }, { x: 200, y: 260 }, "k2", { log });
     expect(a.ocrCalls).toBe(0);
     expect(c).toHaveLength(3);
   });
 
   it("source: visual ignores accessibility entirely", async () => {
     const a = adapter([]);
-    const c = await collectCandidates(a, { x: 250, y: 215 }, { x: 200, y: 260 }, "k3", { log, source: "visual" });
+    const c = await collectCandidates(selector, a, { x: 250, y: 215 }, { x: 200, y: 260 }, "k3", { log, source: "visual" });
     expect(c.map((x) => x.element.role)).toEqual(["VXButton"]);
   });
 });
 
 describe("grammar for screenshot hints", () => {
   const parse = (t: string) => {
-    const r = parseUtterance(t, HINTS_PACK);
+    const r = parseUtterance(t, HINTS_PACK.extensions);
     return r.kind === "match" ? { name: r.result.command.name, slots: r.result.slots } : undefined;
   };
   it("parses text/icon numbered hints and hover", () => {

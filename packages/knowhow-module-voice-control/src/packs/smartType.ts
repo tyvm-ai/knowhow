@@ -11,17 +11,14 @@
 import { exec, execFile } from "child_process";
 import { runAppleScript, spawnOsa } from "../actions/osa";
 import type { VoiceCommandExtension } from "../voiceCommands";
-import { getSmartTypeAi, getSmartTypeAgentName } from "../smartTypeService";
-import { setPending, takePending, peekPending, clearPending } from "../pendingAction";
-import type { PendingAction } from "../pendingAction";
+import type { PendingAction } from "../services";
 import { resolveTmuxTarget } from "./tmux";
-import { getComputerService } from "../computerService";
 import { distanceToRect } from "../smartSelector";
 import type { AXElement } from "../smartSelector";
-import { setLastTypedExternal as setLastTyped } from "./text";
 import { captureFocus, restoreFocus, describeFocus } from "../focusSnapshot";
 import type { FocusSnapshot, FocusDeps } from "../focusSnapshot";
-import { pack } from "../commands/define";
+import { defineVoicePack } from "./define";
+import type { PackCommandContext } from "./define";
 
 // ─── Terminal app detection ────────────────────────────────────────────────────
 
@@ -71,6 +68,20 @@ export interface ScreenContextDeps {
   getFocusedElement?(): Promise<{ role?: string; value?: string; placeholder?: string; title?: string } | undefined>;
   getBrowserUrl?(): Promise<string | undefined>;
   execTmux?(cmd: string): Promise<string>;
+}
+
+/** Per-session smarttype state (was module-level `let`s + `set*` test hooks). */
+export interface SmartTypeState {
+  /** Live AX / browser / tmux context providers. Tests turn them off (no real osascript/tmux). */
+  liveScreenProviders: boolean;
+  /** Preview UI (macOS dialog). Undefined = voice confirmation only. */
+  previewDialog: PreviewDialog | undefined;
+  /** One agenttype at a time. */
+  agentTypeRunning: boolean;
+}
+
+export function createSmartTypeState(overrides: Partial<SmartTypeState> = {}): SmartTypeState {
+  return { liveScreenProviders: true, previewDialog: macPreviewDialog, agentTypeRunning: false, ...overrides };
 }
 
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | undefined> {
@@ -231,8 +242,10 @@ function execFileText(cmd: string, args: string[], timeout = 1500): Promise<stri
 }
 
 /** Labels/values of accessibility elements of the front window near the gaze point. */
-async function nearbyAccessibilityText(gaze: { x: number; y: number }): Promise<string[]> {
-  const cu = getComputerService() as { accessibilityElements?: (o: object) => Promise<AXElement[]> } | undefined;
+async function nearbyAccessibilityText(
+  cu: { accessibilityElements?: (o: object) => Promise<AXElement[]> } | undefined,
+  gaze: { x: number; y: number }
+): Promise<string[]> {
   if (!cu?.accessibilityElements) return [];
   const elements = await cu.accessibilityElements({ maxDepth: 10, maxElements: 400, interactiveOnly: false });
   const seen = new Set<string>();
@@ -262,16 +275,6 @@ async function chromeActiveUrl(app: string | undefined): Promise<string | undefi
   return out.trim() || undefined;
 }
 
-/** Live AX / browser / tmux context providers. Off under jest (tests inject deps). */
-let liveScreenProviders = !process.env.JEST_WORKER_ID;
-export function setLiveScreenProviders(enabled: boolean): void {
-  liveScreenProviders = enabled;
-}
-
-// ─── agenttype tracking (one at a time) ─────────────────────────────────────
-
-let agentTypeRunning = false;
-
 // ─── System prompts ──────────────────────────────────────────────────────────
 
 const SMART_TYPE_SYSTEM = `Output ONLY the exact text to type into the focused field. No explanation, no preamble, no trailing newline.
@@ -299,25 +302,23 @@ function focusToPrompt(f: FocusSnapshot): string {
 
 // ─── Command helpers ─────────────────────────────────────────────────────────
 
-const command = pack({ prefix: "voice-control.smarttype." });
+type SmartTypeContext = PackCommandContext<SmartTypeState>;
 
-async function runSmartType(
-  ctx: import("../voiceCommands").VoiceCommandContext,
-  rawText: string,
-  mode: "smart" | "agent"
-): Promise<void> {
-  if (mode === "agent" && agentTypeRunning) {
+async function runSmartType(ctx: SmartTypeContext, rawText: string, mode: "smart" | "agent"): Promise<void> {
+  if (mode === "agent" && ctx.state.agentTypeRunning) {
     ctx.log("[voice] agenttype: already running — please wait");
     return;
   }
 
-  const actions = (ctx as any).actions as import("../actions/types").PlatformActions | undefined;
-  const ai = getSmartTypeAi();
+  const actions = ctx.services.platform;
+  const { liveScreenProviders } = ctx.state;
+  const ai = ctx.services.ai?.ai;
   if (!ai) {
     ctx.log("[voice] smarttype: AI service not available (setupServices not called?)");
     return;
   }
 
+  const computer = ctx.services.computer;
   // Record where input is going (app, window, browser tab, tmux pane) so it
   // can be put back after the agent / preview dialog moves focus around.
   const focusDeps: FocusDeps = {
@@ -334,7 +335,6 @@ async function runSmartType(
   // Build screen context in parallel with nothing else blocking
   let screenCtx: ScreenContext = {};
   try {
-    const gazeFollow = (ctx as any).gazeFollow;
     const gaze = ctx.target?.() ?? ctx.gaze;
     screenCtx = await buildScreenContext({
       frontmostApp: actions?.frontmostApp?.bind(actions),
@@ -342,7 +342,7 @@ async function runSmartType(
       gazePoint: () => gaze,
       ...(liveScreenProviders
         ? {
-            getNearbyElements: nearbyAccessibilityText,
+            getNearbyElements: (g) => nearbyAccessibilityText(computer, g),
             getBrowserUrl: () => chromeActiveUrl(originalApp),
           }
         : { execTmux: async () => "" }),
@@ -355,7 +355,7 @@ async function runSmartType(
   const userMsg = `${rawText}${contextStr}`;
 
   if (mode === "agent") {
-    agentTypeRunning = true;
+    ctx.state.agentTypeRunning = true;
     ctx.log(`[voice] agenttype: working… (will return to ${describeFocus(focus)})`);
 
     // Run agent asynchronously — don't block voice loop
@@ -385,7 +385,7 @@ async function runSmartType(
       } catch (e) {
         ctx.log(`[voice] agenttype: error — ${e}`);
       } finally {
-        agentTypeRunning = false;
+        ctx.state.agentTypeRunning = false;
       }
     })();
   } else {
@@ -410,7 +410,7 @@ async function runSmartType(
 }
 
 function showPreviewAndConfirm(
-  ctx: import("../voiceCommands").VoiceCommandContext,
+  ctx: SmartTypeContext,
   text: string,
   originalApp: string | undefined,
   isTerminal: boolean,
@@ -419,7 +419,7 @@ function showPreviewAndConfirm(
   focusDeps: FocusDeps,
   onRedo: () => void
 ): void {
-  const actions = (ctx as any).actions as import("../actions/types").PlatformActions | undefined;
+  const actions = ctx.services.platform;
 
   const doType = async () => {
     // Restore the original app / window / tab / pane (the preview dialog and
@@ -427,7 +427,7 @@ function showPreviewAndConfirm(
     if (originalApp) {
       const problems = await restoreFocus(focus, focusDeps);
       if (problems.length) ctx.log(`[voice] ${label}: focus restore incomplete — ${problems.join("; ")}`);
-      await new Promise((r) => setTimeout(r, 150));
+      await ctx.services.clock.sleep(150);
     }
     let toType = text;
     // For terminal: strip trailing newline (don't execute)
@@ -436,14 +436,14 @@ function showPreviewAndConfirm(
     if (actions?.typeText) {
       await actions.typeText(toType, { app: originalApp });
     }
-    setLastTyped(toType);
+    ctx.services.typing.noteTyped(toType);
   };
 
   ctx.log(`[voice] ${label} preview (say "confirm" or "cancel", or "redo"): ${text}`);
 
   // Preview UI (macOS dialog). Whichever resolves first — dialog button or
   // voice — wins; the other is torn down.
-  const dialog = previewDialog?.(text, label, originalApp);
+  const dialog = ctx.state.previewDialog?.(text, label, originalApp);
 
   const pending: PendingAction = {
     describe: `${label}: "${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"`,
@@ -460,13 +460,13 @@ function showPreviewAndConfirm(
       onRedo();
     },
   };
-  setPending(pending);
+  ctx.services.pending.set(pending);
 
   if (dialog) {
     void dialog.result
       .then((choice) => {
-        if (peekPending() !== pending) return; // already resolved by voice / superseded
-        takePending();
+        if (ctx.services.pending.peek() !== pending) return; // already resolved by voice / superseded
+        ctx.services.pending.take();
         if (choice === "type") void doType().catch((e) => ctx.log(`[voice] ${label}: type error — ${e}`));
         else if (choice === "redo") onRedo();
         else if (choice === "cancel") ctx.log(`[voice] ${label}: cancelled via dialog`);
@@ -523,46 +523,47 @@ function run(argv) {
   };
 };
 
-// Off under jest so tests never pop real dialogs; tests inject their own.
-let previewDialog: PreviewDialog | undefined = process.env.JEST_WORKER_ID ? undefined : macPreviewDialog;
-
-/** Override (or disable with undefined) the preview UI. */
-export function setPreviewDialog(dialog: PreviewDialog | undefined): void {
-  previewDialog = dialog;
-}
-
 // ─── Pack definition ─────────────────────────────────────────────────────────
 
-export const SMART_TYPE_PACK: VoiceCommandExtension[] = [
-  command({
-    name: "smart-type",
-    phrase: "smart type",
-    description: "Use AI to clean up or generate text, then type it after confirmation",
-    run: async (ctx) => {
-      const raw =
-        (ctx.slots?.text as string) ??
-        extractAfterVerbs(ctx.text, ["smarttype ", "smart type ", "smart-type ", "smart tight "]);
-      if (!raw) return;
-      await runSmartType(ctx, raw, "smart");
-    },
-    pattern: "smart type {text:text}",
-    aliases: ["smarttype", "smart-type", "smart tight"],
-  }),
+export const SMART_TYPE_PACK = defineVoicePack<SmartTypeState>({
+  name: "smart-type",
+  description: "smart type / agent type: LLM-generated text typed after a spoken or dialog confirmation",
+  prefix: "voice-control.smarttype.",
+  createState: () => createSmartTypeState(),
+  onSessionStop: ({ state }) => {
+    state.previewDialog = undefined;
+  },
+  commands: ({ command }) => [
+    command({
+      name: "smart-type",
+      phrase: "smart type",
+      description: "Use AI to clean up or generate text, then type it after confirmation",
+      run: async (ctx) => {
+        const raw =
+          (ctx.slots?.text as string) ??
+          extractAfterVerbs(ctx.text, ["smarttype ", "smart type ", "smart-type ", "smart tight "]);
+        if (!raw) return;
+        await runSmartType(ctx, raw, "smart");
+      },
+      pattern: "smart type {text:text}",
+      aliases: ["smarttype", "smart-type", "smart tight"],
+    }),
 
-  command({
-    name: "agent-type",
-    phrase: "agent type",
-    description: "Use a knowhow agent to research and generate text, then type it after confirmation",
-    run: async (ctx) => {
-      const raw =
-        (ctx.slots?.text as string) ?? extractAfterVerbs(ctx.text, ["agenttype ", "agent type ", "agent-type "]);
-      if (!raw) return;
-      await runSmartType(ctx, raw, "agent");
-    },
-    pattern: "agent type {text:text}",
-    aliases: ["agenttype", "agent-type"],
-  }),
-];
+    command({
+      name: "agent-type",
+      phrase: "agent type",
+      description: "Use a knowhow agent to research and generate text, then type it after confirmation",
+      run: async (ctx) => {
+        const raw =
+          (ctx.slots?.text as string) ?? extractAfterVerbs(ctx.text, ["agenttype ", "agent type ", "agent-type "]);
+        if (!raw) return;
+        await runSmartType(ctx, raw, "agent");
+      },
+      pattern: "agent type {text:text}",
+      aliases: ["agenttype", "agent-type"],
+    }),
+  ],
+});
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

@@ -107,7 +107,7 @@ describe("rankCandidates for display", () => {
 
 describe("hint density commands", () => {
   const parse = (t: string) => {
-    const r = parseUtterance(t, [...HINTS_PACK, ...GAZE_MOUSE_PACK]);
+    const r = parseUtterance(t, [...HINTS_PACK.extensions, ...GAZE_MOUSE_PACK.extensions]);
     return r.kind === "match" ? r.result.command.name : r.kind;
   };
   it("parses more / fewer / normal / hide hints", () => {
@@ -152,7 +152,7 @@ describe("scroll", () => {
 
   it("parses scroll phrasings", () => {
     const parse = (t: string) => {
-      const r = parseUtterance(t, GAZE_MOUSE_PACK);
+      const r = parseUtterance(t, GAZE_MOUSE_PACK.extensions);
       return r.kind === "match" ? r.result.command.name : r.kind;
     };
     expect(parse("scroll down")).toBe("voice-control.gaze.scroll-down");

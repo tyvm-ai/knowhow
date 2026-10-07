@@ -2,7 +2,7 @@ import type {
   AgentInput,
   AgentRuntimeEvent,
   InteractiveAgentHandle,
-} from "@tyvm/knowhow/ts_build/src/services/InteractiveAgentRuntime";
+} from "@tyvm/knowhow/sdk";
 import type { VoiceCommandEvent } from "./voiceHub";
 
 export type { VoiceMode } from "./commandMode";
@@ -143,6 +143,10 @@ export interface VoiceSessionOptions {
   /** Diagnostic log sink for command handlers. */
   log?: (message: string) => void;
   onEvent?: (event: VoiceSessionEvent) => void;
+  /** Services container for this session (platform, gaze, pointer, pending, clock, logger…). Default: production services. */
+  services?: import("./services").VoiceServices;
+  /** Packs whose lifecycle hooks this session runs. Default: every shipped pack. */
+  packs?: readonly import("./packs/define").AnyVoicePack[];
   /** Injected mouse mover — avoids a direct require of computer-use in VoiceSession. */
   mouse?: {
     moveMouse(x: number, y: number): Promise<void>;

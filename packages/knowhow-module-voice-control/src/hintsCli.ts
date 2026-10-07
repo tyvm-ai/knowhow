@@ -23,7 +23,7 @@
 
 import { runAppleScriptSync, runJxaSync, escapeAppleScriptString } from "./actions/osa";
 import { enableAXForPid } from "./axEnabler";
-import { getComputerService } from "./computerService";
+import { createVoiceServices } from "./services";
 import {
   collectCandidates,
   buildHintOverlayPrimitives,
@@ -32,8 +32,8 @@ import {
   Candidate,
   ComputerUseAdapter,
   HintSource,
+  SelectorState,
 } from "./smartSelector";
-import { lastVisualTimings } from "./visualElements";
 import { GazeClient, GAZE_ERROR_RADIUS, GAZE_TIMEOUT } from "./gaze";
 
 export interface HintsCliOptions {
@@ -121,8 +121,7 @@ function frontmostPid(): number | null {
   return r.ok ? parsePid(r.stdout) : null;
 }
 
-function buildAdapter(appName?: string): ComputerUseAdapter | null {
-  const base = getComputerService();
+function buildAdapter(base: ComputerUseAdapter | undefined, appName?: string): ComputerUseAdapter | null {
   if (!base) return null;
   // Object.create keeps the service's prototype methods (a spread would drop them).
   const adapter = Object.create(base) as ComputerUseAdapter & { getPid?: () => Promise<number | null> };
@@ -151,7 +150,8 @@ export async function runHintsCli(opts: HintsCliOptions = {}): Promise<void> {
   }
 
   // 2. Build adapter
-  const adapter = buildAdapter(opts.app);
+  const services = createVoiceServices();
+  const adapter = buildAdapter(services.computer, opts.app);
   if (!adapter) {
     process.stderr.write("[hints-cli] No computer-use adapter available. Is ComputerUse service loaded?\n");
     process.exit(1);
@@ -162,7 +162,7 @@ export async function runHintsCli(opts: HintsCliOptions = {}): Promise<void> {
     try {
       runAppleScriptSync(`tell application "${escapeAppleScriptString(opts.app)}" to activate`, { timeoutMs: 3000 });
       // Wait briefly for window to come to front
-      await new Promise((r) => setTimeout(r, 300));
+      await services.clock.sleep(300);
     } catch { /* ignore */ }
   }
 
@@ -176,7 +176,9 @@ export async function runHintsCli(opts: HintsCliOptions = {}): Promise<void> {
     process.stdout.write(`Collecting candidates (density=${densityName})...\n`);
   }
 
+  const selector = new SelectorState(services.clock);
   const candidates = await collectCandidates(
+    selector,
     adapter,
     { x: gaze.x, y: gaze.y },
     errorRadius,
@@ -198,7 +200,7 @@ export async function runHintsCli(opts: HintsCliOptions = {}): Promise<void> {
     const output = {
       gaze,
       source: opts.source ?? "auto",
-      visualTimings: lastVisualTimings ?? null,
+      visualTimings: selector.visual.lastTimings ?? null,
       count: candidates.length,
       candidates: candidates.map((c) => ({
         label: c.label,
@@ -234,13 +236,13 @@ export async function runHintsCli(opts: HintsCliOptions = {}): Promise<void> {
           const p = { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) };
           if (!opts.json) process.stdout.write(`  → ${c.label}${c.displayName ? ` "${c.displayName}"` : ""} at ${p.x},${p.y}\n`);
           await adapter.moveMouse(p);
-          await new Promise((r) => setTimeout(r, 700));
+          await services.clock.sleep(700);
         }
       } else {
         if (!opts.json) {
           process.stdout.write("\nOverlay shown for 4s...\n");
         }
-        await new Promise((r) => setTimeout(r, 4000));
+        await services.clock.sleep(4000);
       }
       await adapter.clearOverlay();
     } catch (e) {

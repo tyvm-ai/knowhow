@@ -7,9 +7,9 @@ import { collectVoiceCommands, BUILTIN_VOICE_COMMANDS } from "../src/voiceComman
 import { parseUtterance } from "../src/grammar";
 import GAZE_MOUSE_PACK from "../src/packs/gazeMouse";
 import { HINTS_PACK } from "../src/packs/hints";
-import { clickThat, notePointerPlaced, clearPlacedPointer } from "../src/pointerMemory";
+import { PointerMemory } from "../src/services";
 
-const cmds = collectVoiceCommands({ builtins: [...BUILTIN_VOICE_COMMANDS, ...GAZE_MOUSE_PACK, ...HINTS_PACK] });
+const cmds = collectVoiceCommands({ builtins: [...BUILTIN_VOICE_COMMANDS, ...GAZE_MOUSE_PACK.extensions, ...HINTS_PACK.extensions] });
 
 function match(u: string) {
   const r = parseUtterance(u, cmds) as any;
@@ -17,7 +17,10 @@ function match(u: string) {
 }
 
 describe("click that", () => {
-  afterEach(() => clearPlacedPointer());
+  let pointer: PointerMemory;
+  beforeEach(() => {
+    pointer = new PointerMemory();
+  });
 
   it("routes 'click that' / 'click it' to click-that, plain 'click' to click", () => {
     expect(match("click that.")?.command.name).toBe("voice-control.click-that");
@@ -27,16 +30,16 @@ describe("click that", () => {
 
   it("clicks in place without moving to the gaze point", async () => {
     const mouse = { clickAt: jest.fn(), doubleClickAt: jest.fn(), clickHere: jest.fn() };
-    notePointerPlaced({ x: 100, y: 100 });
-    await clickThat({ gaze: { x: 900, y: 900 }, target: () => ({ x: 900, y: 900 }), mouse });
+    pointer.notePlaced({ x: 100, y: 100 });
+    await pointer.clickThat({ gaze: { x: 900, y: 900 }, target: () => ({ x: 900, y: 900 }), mouse });
     expect(mouse.clickHere).toHaveBeenCalledWith("left");
     expect(mouse.clickAt).not.toHaveBeenCalled();
   });
 
   it("without clickHere, uses the placed pointer even when gaze is far away", async () => {
     const mouse = { clickAt: jest.fn(), doubleClickAt: jest.fn() };
-    notePointerPlaced({ x: 100, y: 100 });
-    await clickThat({ gaze: { x: 900, y: 900 }, target: () => ({ x: 900, y: 900 }), mouse });
+    pointer.notePlaced({ x: 100, y: 100 });
+    await pointer.clickThat({ gaze: { x: 900, y: 900 }, target: () => ({ x: 900, y: 900 }), mouse });
     expect(mouse.clickAt).toHaveBeenCalledWith(100, 100, "left");
   });
 });

@@ -1,6 +1,6 @@
 import { DarwinPlatformActions } from "../src/actions/darwin";
-import { getPlatformActions, sharedPlatformActions } from "../src/actions/index";
-import { getComputerService, setComputerService } from "../src/computerService";
+import { getPlatformActions } from "../src/actions/index";
+import { createVoiceServices } from "../src/services";
 
 jest.mock("../src/actions/osa", () => {
   const actual = jest.requireActual("../src/actions/osa");
@@ -70,15 +70,19 @@ describe("platform selection", () => {
     expect(await linux.activateApp("x")).toBe(false);
   });
 
-  it("sharedPlatformActions is one instance (so frontmostApp caching is shared)", () => {
-    expect(sharedPlatformActions()).toBe(sharedPlatformActions());
+  it("services.platform is one instance per container (so frontmostApp caching is shared)", () => {
+    const services = createVoiceServices({ computer: svc as any });
+    expect(services.platform).toBe(services.platform);
+    expect(createVoiceServices({ computer: svc as any }).platform).not.toBe(services.platform);
   });
 });
 
-describe("computerService", () => {
-  it("setComputerService only accepts service-shaped objects and getComputerService returns it", () => {
-    setComputerService({ nope: true });
-    setComputerService(svc);
-    expect(getComputerService()).toBe(svc);
+describe("services.computer", () => {
+  it("is the injected adapter, can be replaced, and is undefined when explicitly absent", () => {
+    const services = createVoiceServices({ computer: svc as any });
+    expect(services.computer).toBe(svc);
+    expect(createVoiceServices({ computer: undefined }).computer).toBeUndefined();
+    services.computer = undefined;
+    expect(services.computer).toBeUndefined();
   });
 });

@@ -4,6 +4,7 @@
  * automation phrases registered with the eye-tracking hub.
  */
 
+import { getGlobalConfig, services } from "@tyvm/knowhow/sdk";
 import { homedir } from "os";
 import { join, resolve as resolvePath } from "path";
 import type { VoiceCommandSpec } from "./voiceHub";
@@ -36,9 +37,7 @@ export async function fetchLiveHubCommands(
 
 function tryCoreExtensions(): ExtensionsLike | undefined {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const core = require("@tyvm/knowhow/ts_build/src/services");
-    const ext = core.services?.().Extensions;
+    const ext = services().Extensions;
     return ext && typeof ext.list === "function" ? ext : undefined;
   } catch {
     return undefined;
@@ -49,8 +48,6 @@ async function configuredModulePaths(config: any): Promise<string[]> {
   const local: string[] = Array.isArray(config?.modules) ? config.modules : [];
   let global: string[] = [];
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { getGlobalConfig } = require("@tyvm/knowhow/ts_build/src/config");
     const g = await getGlobalConfig();
     global = Array.isArray(g?.modules) ? g.modules : [];
   } catch {

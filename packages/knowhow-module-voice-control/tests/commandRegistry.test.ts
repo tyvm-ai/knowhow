@@ -43,7 +43,7 @@ describe("shipped command set", () => {
   it("is exactly the module's extensions (one pack list, shared with `parse`)", () => {
     const fromModule = (module.extensions ?? []).filter((e: any) => e.type === "voice-control.command");
     expect(fromModule).toEqual(voiceCommandExtensions());
-    expect(allPacks()[0].commands).toBe(BUILTIN_VOICE_COMMANDS);
+    expect(allPacks()[0].extensions).toBe(BUILTIN_VOICE_COMMANDS);
     expect(new Set(voiceCommandExtensions().map((c) => c.name)).size).toBe(voiceCommandExtensions().length);
   });
 
@@ -192,7 +192,7 @@ describe("synonyms", () => {
       return r.kind === "match" ? r.result.command.name : undefined;
     };
     let checked = 0;
-    for (const c of HINTS_PACK) {
+    for (const c of HINTS_PACK.extensions) {
       for (const phrase of [c.phrase, ...(c.aliases ?? []), ...(c.patterns ?? [])]) {
         if (/[{}()[\]|]/.test(phrase) || !/\bhints\b/.test(phrase)) continue;
         const withMap = phrase.replace(/\bhints\b/g, "map");
@@ -225,7 +225,7 @@ describe("synonyms", () => {
 
   it("the hints pack declares its synonyms once", () => {
     expect(HINTS_SYNONYMS).toEqual({ hints: ["map"] });
-    expect(HINTS_PACK.filter((c) => c.name.startsWith("hints.show")).every((c) => c.synonyms === HINTS_SYNONYMS)).toBe(true);
+    expect(HINTS_PACK.extensions.filter((c) => c.name.startsWith("hints.show")).every((c) => c.synonyms === HINTS_SYNONYMS)).toBe(true);
   });
 
   it("merges user config `voiceControl.synonyms` into every command", () => {

@@ -3,7 +3,8 @@
  */
 
 import { mapChangeFraction, HINTS_PACK } from "../src/packs/hints";
-import { showHintOverlay, buildHintOverlayPrimitives, type Candidate } from "../src/smartSelector";
+import { showHintOverlay, buildHintOverlayPrimitives, SelectorState, type Candidate } from "../src/smartSelector";
+import { FakeClock } from "./helpers/services";
 
 function cand(i: number, name = `Item ${i}`, dy = 0): Candidate {
   return {
@@ -36,15 +37,26 @@ describe("mapChangeFraction", () => {
 
 describe("showHintOverlay", () => {
   it("never auto-hides by default", async () => {
-    jest.useFakeTimers();
-    try {
-      const adapter = { showOverlay: jest.fn(async () => undefined), clearOverlay: jest.fn(async () => undefined) };
-      await showHintOverlay(adapter as any, [cand(0)]);
-      jest.advanceTimersByTime(10 * 60 * 1000);
-      expect(adapter.clearOverlay).not.toHaveBeenCalled();
-    } finally {
-      jest.useRealTimers();
-    }
+    const clock = new FakeClock();
+    const selector = new SelectorState(clock);
+    const adapter = { showOverlay: jest.fn(async () => undefined), clearOverlay: jest.fn(async () => undefined) };
+    await showHintOverlay(selector, adapter as any, [cand(0)]);
+    clock.advance(10 * 60 * 1000);
+    expect(adapter.clearOverlay).not.toHaveBeenCalled();
+    expect(clock.pendingTimers()).toBe(0);
+  });
+
+  it("auto-clears after a finite ttl, and dispose() cancels the pending clear", async () => {
+    const clock = new FakeClock();
+    const selector = new SelectorState(clock);
+    const adapter = { showOverlay: jest.fn(async () => undefined), clearOverlay: jest.fn(async () => undefined) };
+    await showHintOverlay(selector, adapter as any, [cand(0)], 1000);
+    expect(clock.pendingTimers()).toBe(1);
+    clock.advance(1000);
+    expect(adapter.clearOverlay).toHaveBeenCalledTimes(1);
+    await showHintOverlay(selector, adapter as any, [cand(0)], 1000);
+    selector.dispose();
+    expect(clock.pendingTimers()).toBe(0);
   });
 });
 
@@ -60,7 +72,7 @@ describe("overlay colours", () => {
 
 describe("refresh map command", () => {
   it("is registered with map/hints phrasings", () => {
-    const cmd = HINTS_PACK.find((c) => c.name === "hints.refresh")!;
+    const cmd = HINTS_PACK.extensions.find((c) => c.name === "hints.refresh")!;
     expect(cmd).toBeDefined();
     expect(cmd.patterns).toEqual(expect.arrayContaining(["refresh map", "refresh hints", "update hints"]));
     // "map" variants come from the pack's synonyms, not copy-pasted patterns

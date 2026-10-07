@@ -10,20 +10,19 @@ import KEYS_PACK from "../src/packs/keys";
 import META_PACK from "../src/packs/meta";
 import GAZE_MOUSE_PACK from "../src/packs/gazeMouse";
 import { SYSTEM_PACK } from "../src/packs/system";
-import { HINTS_PACK, registerHintSlot } from "../src/packs/hints";
+import { HINTS_PACK } from "../src/packs/hints";
 
 const ALL = [
   ...BUILTIN_VOICE_COMMANDS,
-  ...META_PACK,
-  ...GAZE_MOUSE_PACK,
-  ...TEXT_PACK,
-  ...KEYS_PACK,
-  ...WINDOWS_PACK,
-  ...SYSTEM_PACK,
-  ...HINTS_PACK,
+  ...META_PACK.extensions,
+  ...GAZE_MOUSE_PACK.extensions,
+  ...TEXT_PACK.extensions,
+  ...KEYS_PACK.extensions,
+  ...WINDOWS_PACK.extensions,
+  ...SYSTEM_PACK.extensions,
+  ...HINTS_PACK.extensions,
 ];
 
-beforeAll(() => registerHintSlot());
 
 function name(text: string): string | undefined {
   const r = parseUtterance(text, ALL as any);

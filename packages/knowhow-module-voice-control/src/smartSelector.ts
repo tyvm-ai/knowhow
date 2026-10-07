@@ -9,10 +9,14 @@
 
 import { GazeSample } from "./eyeTracking";
 import { GazeClient, GAZE_ERROR_RADIUS, GAZE_TIMEOUT } from "./gaze";
+import type { Clock, TimerHandle } from "./services/clock";
+import { systemClock } from "./services/clock";
+import type { PointerMemory } from "./services/pointer";
 import { enableAXForPid, shouldEnableWebAX, hasActionableWebContent } from "./axEnabler";
 import { getChromeDOMElements } from "./chromeDomProvider";
 import {
   getVisualElements,
+  VisualScanState,
   gazeScanArea,
   dedupeAgainstAX,
   VisualService,
@@ -194,44 +198,67 @@ export interface HintState {
   ttlMs: number;
 }
 
-let _hintState: HintState | null = null;
-
-export function getHintState(): HintState | null {
-  if (!_hintState) return null;
-  if (Date.now() - _hintState.timestamp > _hintState.ttlMs) {
-    _hintState = null;
-    return null;
-  }
-  return _hintState;
-}
-
-export function clearHintState(): void {
-  _hintState = null;
-  _hintHistory.length = 0;
-}
-
-export function setHintState(state: HintState): void {
-  _hintState = state;
-  _hintHistory.push(state);
-  if (_hintHistory.length > 8) _hintHistory.shift();
-}
-
-/** Recent hint states (newest last) — hint mode replaces labels as gaze moves. */
-const _hintHistory: HintState[] = [];
-
 /**
- * The hint state that was on screen at time `ts` (speech onset). In hint mode
- * the labels refresh while you talk; "click text 3" must mean the "text 3"
- * you saw when you started speaking, not one drawn a moment later.
+ * Per-session selector state (what used to be module-level `let`s): the hint
+ * state on screen (+ recent history), the AX tree cache and the overlay
+ * auto-clear timer. The hints pack owns one in its pack state; the
+ * `sdk.ext.hints` extension makes its own.
  */
-export function getHintStateAt(ts: number | undefined): HintState | null {
-  const current = getHintState();
-  if (!current || ts === undefined) return current;
-  for (let i = _hintHistory.length - 1; i >= 0; i--) {
-    const h = _hintHistory[i];
-    if (h.timestamp <= ts) return Date.now() - h.timestamp <= h.ttlMs ? h : null;
+export class SelectorState {
+  hintState: HintState | null = null;
+  /** Recent hint states (newest last) — hint mode replaces labels as gaze moves. */
+  private readonly hintHistory: HintState[] = [];
+  axCache: AXCache | null = null;
+  /** Screenshot-scan cache + last timings. */
+  readonly visual = new VisualScanState();
+  overlayClearTimer: TimerHandle | undefined;
+
+  constructor(readonly clock: Clock = systemClock) {}
+
+  getHintState(): HintState | null {
+    if (!this.hintState) return null;
+    if (this.clock.now() - this.hintState.timestamp > this.hintState.ttlMs) {
+      this.hintState = null;
+      return null;
+    }
+    return this.hintState;
   }
-  return current;
+
+  clearHintState(): void {
+    this.hintState = null;
+    this.hintHistory.length = 0;
+  }
+
+  setHintState(state: HintState): void {
+    this.hintState = state;
+    this.hintHistory.push(state);
+    if (this.hintHistory.length > 8) this.hintHistory.shift();
+  }
+
+  /**
+   * The hint state that was on screen at time `ts` (speech onset). In hint mode
+   * the labels refresh while you talk; "click text 3" must mean the "text 3"
+   * you saw when you started speaking, not one drawn a moment later.
+   */
+  getHintStateAt(ts: number | undefined): HintState | null {
+    const current = this.getHintState();
+    if (!current || ts === undefined) return current;
+    for (let i = this.hintHistory.length - 1; i >= 0; i--) {
+      const h = this.hintHistory[i];
+      if (h.timestamp <= ts) return this.clock.now() - h.timestamp <= h.ttlMs ? h : null;
+    }
+    return current;
+  }
+
+  invalidateAXCache(): void {
+    this.axCache = null;
+  }
+
+  /** Cancel the pending overlay auto-clear (session stop). */
+  dispose(): void {
+    if (this.overlayClearTimer) this.clock.clearTimeout(this.overlayClearTimer);
+    this.overlayClearTimer = undefined;
+  }
 }
 
 // ─── AX cache ─────────────────────────────────────────────────────────────────
@@ -242,12 +269,7 @@ interface AXCache {
   windowKey: string;
 }
 
-let _axCache: AXCache | null = null;
 const AX_CACHE_TTL_MS = 500;
-
-export function invalidateAXCache(): void {
-  _axCache = null;
-}
 
 // ─── Viewport / clip filtering and dedup ─────────────────────────────────────
 
@@ -293,16 +315,14 @@ export function filterAndDedupeElements(elements: AXElement[], windowBounds?: Re
 }
 
 async function getCachedElements(
+  selector: SelectorState,
   adapter: ComputerUseAdapter,
   windowKey: string,
 ): Promise<AXElement[]> {
-  const now = Date.now();
-  if (
-    _axCache &&
-    _axCache.windowKey === windowKey &&
-    now - _axCache.timestamp < AX_CACHE_TTL_MS
-  ) {
-    return _axCache.elements;
+  const now = selector.clock.now();
+  const cache = selector.axCache;
+  if (cache && cache.windowKey === windowKey && now - cache.timestamp < AX_CACHE_TTL_MS) {
+    return cache.elements;
   }
   // Use larger depth + element budget so Spotify (depth 16–27) and Chrome
   // web content (depth up to 60) are fully captured. The Rust AX scanner
@@ -329,7 +349,7 @@ async function getCachedElements(
     windowBounds = (await adapter.getActiveWindow?.())?.bounds ?? undefined;
   } catch { /* ignore */ }
   const elements = filterAndDedupeElements(rawElements, windowBounds);
-  _axCache = { elements, timestamp: now, windowKey };
+  selector.axCache = { elements, timestamp: now, windowKey };
   return elements;
 }
 
@@ -416,9 +436,6 @@ export function nameFuzzyScore(query: string[], name: string): number {
   return matchableQuery.length > 0 ? matches / matchableQuery.length : 0;
 }
 
-// Pointer memory lives in ./pointerMemory (shared with the click commands).
-export { notePointerPlaced, clearPlacedPointer, recentPlacedPointer, recentPlacedCandidate } from "./pointerMemory";
-import { notePointerPlaced } from "./pointerMemory";
 
 /**
  * Small bonus (≤0.1) for names that match the query tightly: "glaucoma"
@@ -963,30 +980,30 @@ export function buildHintOverlayPrimitives(candidates: Candidate[], maxLabels = 
   return [...outlines, ...tags];
 }
 
-let _overlayClearTimer: NodeJS.Timeout | undefined;
-
 export async function showHintOverlay(
+  selector: SelectorState,
   adapter: ComputerUseAdapter,
   candidates: Candidate[],
   ttlMs = HINT_OVERLAY_TTL_MS,
   maxLabels = 9,
 ): Promise<void> {
   const primitives = buildHintOverlayPrimitives(candidates, maxLabels);
-  if (_overlayClearTimer) clearTimeout(_overlayClearTimer);
+  if (selector.overlayClearTimer) selector.clock.clearTimeout(selector.overlayClearTimer);
   await adapter.showOverlay(primitives);
-  _overlayClearTimer = undefined;
+  selector.overlayClearTimer = undefined;
   if (!Number.isFinite(ttlMs)) return;
   // Auto-clear after TTL (a newer overlay cancels the older timer).
-  _overlayClearTimer = setTimeout(() => {
-    _overlayClearTimer = undefined;
+  selector.overlayClearTimer = selector.clock.setTimeout(() => {
+    selector.overlayClearTimer = undefined;
     adapter.clearOverlay().catch(() => undefined);
   }, ttlMs);
-  _overlayClearTimer.unref?.();
+  selector.overlayClearTimer.unref?.();
 }
 
 // ─── Collect candidates ───────────────────────────────────────────────────────
 
 export async function collectCandidates(
+  selector: SelectorState,
   adapter: ComputerUseAdapter,
   gaze: { x: number; y: number },
   errorRadius: { x: number; y: number },
@@ -1025,10 +1042,10 @@ export async function collectCandidates(
     });
 
   if (source === "visual") {
-    return rankWith(await collectVisualElements(adapter, gaze, errorRadius, !!opts.wholeWindow || opts.visualScan === "window", log, opts.visualTtlMs, opts.scanFactor));
+    return rankWith(await collectVisualElements(selector, adapter, gaze, errorRadius, !!opts.wholeWindow || opts.visualScan === "window", log, opts.visualTtlMs, opts.scanFactor));
   }
 
-  let elements = await getCachedElements(adapter, windowKey);
+  let elements = await getCachedElements(selector, adapter, windowKey);
 
   // Auto-enable web AX for Chromium/Electron if the tree looks sparse/empty
   if (shouldEnableWebAX(elements)) {
@@ -1042,8 +1059,8 @@ export async function collectCandidates(
       if (method !== "none" && method !== "failed") {
         log(`[smart-selector] Web AX enabled via ${method} for pid ${pid}; re-querying...`);
         // Invalidate cache and re-query now that accessibility is enabled
-        invalidateAXCache();
-        elements = await getCachedElements(adapter, windowKey);
+        selector.invalidateAXCache();
+        elements = await getCachedElements(selector, adapter, windowKey);
         log(`[smart-selector] Re-query returned ${elements.length} elements`);
       } else {
         log(`[smart-selector] Web AX enable result: ${method} for pid ${pid}`);
@@ -1089,7 +1106,7 @@ export async function collectCandidates(
     if (wantVisual) log(`[smart-selector] Only ${near} accessible element(s) ${opts.wholeWindow ? "in window" : "near gaze"}; adding screenshot hints`);
   }
   if (wantVisual) {
-    const visual = await collectVisualElements(adapter, gaze, errorRadius, !!opts.wholeWindow || opts.visualScan === "window", log, opts.visualTtlMs, opts.scanFactor);
+    const visual = await collectVisualElements(selector, adapter, gaze, errorRadius, !!opts.wholeWindow || opts.visualScan === "window", log, opts.visualTtlMs, opts.scanFactor);
     effectiveElements = [...effectiveElements, ...dedupeAgainstAX(visual, effectiveElements, ACTIONABLE_ROLES)];
   }
   return rankWith(effectiveElements);
@@ -1097,6 +1114,7 @@ export async function collectCandidates(
 
 /** Run the screenshot provider over the gaze area (or whole front window). */
 async function collectVisualElements(
+  selector: SelectorState,
   adapter: ComputerUseAdapter,
   gaze: { x: number; y: number },
   errorRadius: { x: number; y: number },
@@ -1117,7 +1135,7 @@ async function collectVisualElements(
     ? windowBounds
     : gazeScanArea(gaze, errorRadius, windowBounds, scanFactor);
   try {
-    return await getVisualElements(adapter as VisualService, scan, { log, ttlMs });
+    return await getVisualElements(adapter as VisualService, scan, { log, ttlMs, state: selector.visual });
   } catch (e) {
     log(`[smart-selector] Screenshot hints failed: ${e}`);
     return [];
@@ -1180,7 +1198,9 @@ export async function activateElement(
   adapter: ComputerUseAdapter,
   candidate: Candidate,
   action: "click" | "focus" | "check" | "rightClick" = "click",
+  deps: { pointer?: PointerMemory; clock?: Clock } = {},
 ): Promise<void> {
+  const clock = deps.clock ?? systemClock;
   let resolvedCandidate = candidate;
   let el = candidate.element;
   const bounds = el.bounds;
@@ -1201,9 +1221,9 @@ export async function activateElement(
       await adapter.moveMouse({ x: cx, y: cy });
       // Let the page see the hover first; web apps (X profile links, menus)
       // can ignore a click that arrives in the same instant as the move.
-      await new Promise((r) => setTimeout(r, 60));
+      await clock.sleep(60);
       await adapter.click("left");
-      notePointerPlaced({ x: cx, y: cy }, resolvedCandidate);
+      deps.pointer?.notePlaced({ x: cx, y: cy }, resolvedCandidate);
     }
     if (bounds) {
       await postGazeCorrection({ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 });
@@ -1315,16 +1335,19 @@ export interface SmartMouseOptions {
   snapDeadZone?: number; // hysteresis: don't switch candidates unless distance > this
   hubUrl?: string;
   errorRadius?: { x: number; y: number };
+  /** Injected for tests / session shutdown accounting (default: real timers). */
+  clock?: Clock;
+  /** Hint/AX-cache state shared with the owning pack (default: private). */
+  selector?: SelectorState;
 }
 
 export class SmartMouseController {
-  private timer?: NodeJS.Timeout;
+  private timer?: TimerHandle;
+  private readonly clock: Clock;
+  private readonly selector: SelectorState;
   private smoothX = 0;
   private smoothY = 0;
   private hasFirst = false;
-  // Module-level singleton reference for cross-command stop support
-  static _instance: SmartMouseController | null = null;
-
   private readonly alpha: number;
   private readonly deadZone: number;
   private readonly snapDeadZone: number;
@@ -1344,6 +1367,8 @@ export class SmartMouseController {
     this.deadZone = options.deadZone ?? 4;
     this.snapDeadZone = options.snapDeadZone ?? 30;
     this.gaze = new GazeClient({ hubUrl: options.hubUrl });
+    this.clock = options.clock ?? systemClock;
+    this.selector = options.selector ?? new SelectorState(this.clock);
     this.errorRadius = options.errorRadius ?? { ...GAZE_ERROR_RADIUS };
   }
 
@@ -1354,13 +1379,13 @@ export class SmartMouseController {
   start(): void {
     if (this.timer) return;
     const intervalMs = Math.round(1000 / (this.options.pollHz ?? 30));
-    this.timer = setInterval(() => void this.tick(), intervalMs);
+    this.timer = this.clock.setInterval(() => void this.tick(), intervalMs);
     this.timer.unref?.();
   }
 
   stop(): void {
     if (this.timer) {
-      clearInterval(this.timer);
+      this.clock.clearInterval(this.timer);
       this.timer = undefined;
     }
     this.hasFirst = false;
@@ -1394,6 +1419,7 @@ export class SmartMouseController {
 
       // Get candidates near gaze
       const candidates = await collectCandidates(
+        this.selector,
         this.adapter,
         { x: this.smoothX, y: this.smoothY },
         this.errorRadius,

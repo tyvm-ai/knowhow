@@ -14,9 +14,10 @@
 import { spawn as nodeSpawn } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import { getConfigSync } from "@tyvm/knowhow/sdk";
 import type { GazeSample } from "./eyeTracking";
 import type { MouseMover } from "./commandMode";
-import { clickTarget, clickThat } from "./pointerMemory";
+import { defineVoicePack } from "./packs/define";
 import { aliasesWithSynonyms, defineCommand, VOICE_COMMAND_EXTENSION } from "./commands/define";
 import { analyzeCommands, applyOverrides } from "./commands/registry";
 import { runDoubleClick } from "./commands/doubleClick";
@@ -57,7 +58,10 @@ export interface VoiceCommandContext {
   repeat: number;
   /** Platform actions (keys, text, windows). Available when a platform adapter is loaded. */
   actions?: import("./actions/types").PlatformActions;
-  /** Last executed plan, for "repeat"/"undo that". */
+  /** Session services (platform, gaze, pointer, pending, clock, logger…). Always set by pack commands. */
+  services?: import("./services").VoiceServices;
+  /** The owning pack's per-session state (set for commands defined with `defineVoicePack`). */
+  state?: unknown;
   /** Mutable history array — push undo records here for "undo that". */
   history?: unknown[];
 }
@@ -121,18 +125,11 @@ export interface RegisteredVoiceCommand extends VoiceCommandExtension {
 
 const command = defineCommand;
 
-/** Stop the hints pack's smart-mouse singleton (lazy: hints imports this module). */
-export function tryStopSmartMouse(): void {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const hints = require("./packs/hints");
-    hints.stopSmartMouse?.();
-  } catch {
-    // hints not loaded — that's fine
-  }
-}
-
-export const BUILTIN_VOICE_COMMANDS: VoiceCommandExtension[] = [
+/** The core click / mouse / mode commands (no prefix: names are `voice-control.<name>`). */
+export const BUILTIN_PACK = defineVoicePack({
+  name: "built-in",
+  description: "Gaze mouse, click / double click / right click, agent and command mode",
+  commands: ({ command }) => [
   command({
     name: "voice-control.eye-control-mouse",
     phrase: "eye control mouse",
@@ -140,7 +137,7 @@ export const BUILTIN_VOICE_COMMANDS: VoiceCommandExtension[] = [
     description: "Start moving the mouse pointer with your gaze",
     run: (ctx) => {
       ctx.gazeFollow?.start();
-      console.log("[voice] gaze mouse ON");
+      ctx.services.log.info("gaze mouse ON");
     },
   }),
   command({
@@ -150,8 +147,9 @@ export const BUILTIN_VOICE_COMMANDS: VoiceCommandExtension[] = [
     description: "Stop gaze-controlled mouse movement",
     run: (ctx) => {
       ctx.gazeFollow?.stop();
-      tryStopSmartMouse();
-      console.log("[voice] gaze mouse OFF");
+      // The hints pack owns the smart mouse; reach it through its state, not its module.
+      ctx.services.packs.peek<{ stopSmartMouse(): void }>("hints")?.stopSmartMouse();
+      ctx.services.log.info("gaze mouse OFF");
     },
   }),
   // Plain clicks act on the pointer a hint just placed ("mouse over theo" →
@@ -164,7 +162,7 @@ export const BUILTIN_VOICE_COMMANDS: VoiceCommandExtension[] = [
     aliases: ["click it", "click this", "click that one"],
     description: "Left-click whatever is under the pointer right now (no gaze re-targeting)",
     run: async (ctx) => {
-      await clickThat(ctx, "left");
+      await ctx.services.pointer.clickThat(ctx, "left");
     },
     minVoicedMs: 100,
   }),
@@ -174,7 +172,7 @@ export const BUILTIN_VOICE_COMMANDS: VoiceCommandExtension[] = [
     aliases: ["click here", "click there", "click click", "clique"],
     description: "Left-click the pointer a hint just placed, else where you are looking",
     run: async (ctx) => {
-      const pos = clickTarget(ctx);
+      const pos = ctx.services.pointer.clickTarget(ctx);
       if (pos && ctx.mouse) await ctx.mouse.clickAt(pos.x, pos.y, "left");
     },
     minVoicedMs: 100,
@@ -203,7 +201,7 @@ export const BUILTIN_VOICE_COMMANDS: VoiceCommandExtension[] = [
     aliases: ["rightclick"],
     description: "Right-click the hinted pointer, else where you are looking",
     run: async (ctx) => {
-      const pos = clickTarget(ctx);
+      const pos = ctx.services.pointer.clickTarget(ctx);
       if (pos && ctx.mouse) await ctx.mouse.clickAt(pos.x, pos.y, "right");
     },
     minVoicedMs: 150,
@@ -222,7 +220,10 @@ export const BUILTIN_VOICE_COMMANDS: VoiceCommandExtension[] = [
     run: (ctx) => ctx.setMode("command"),
     modes: ["command", "agent"],
   }),
-];
+  ],
+});
+
+export const BUILTIN_VOICE_COMMANDS: VoiceCommandExtension[] = BUILTIN_PACK.extensions;
 
 const BUILTIN_NAMES = new Set(BUILTIN_VOICE_COMMANDS.map((c) => c.name));
 
@@ -341,9 +342,7 @@ export function loadConfigVoiceCommands(
 /** Read `.knowhow/knowhow.json` via core's config loader, falling back to the file. */
 export function readKnowhowConfig(cwd = process.cwd()): unknown {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { getConfigSync } = require("@tyvm/knowhow/ts_build/src/config");
-    if (typeof getConfigSync === "function" && cwd === process.cwd()) return getConfigSync();
+    if (cwd === process.cwd()) return getConfigSync();
   } catch {
     // fall through
   }

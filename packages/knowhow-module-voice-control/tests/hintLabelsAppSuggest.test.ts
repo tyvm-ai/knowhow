@@ -1,6 +1,7 @@
 import { stabilizeLabels, duplicateLabels, resolveHintRef, Candidate } from "../src/smartSelector";
 import { suggestApp, appNameSimilarity, namesRunningApp, checkAppSlot } from "../src/appSuggest";
-import { takePending, clearPending } from "../src/pendingAction";
+import { createTestHarness, createTestServices } from "./helpers/services";
+import { APP_SUGGEST_TTL_MS } from "../src/appSuggest";
 
 function cand(role: string, idx: number, x: number, y: number, name?: string): Candidate {
   return {
@@ -58,9 +59,10 @@ describe("app name suggestions", () => {
   });
 
   test("checkAppSlot holds the command and 'yes' re-runs it with the fix", async () => {
-    clearPending();
+    const services = createTestServices();
     const reran: string[] = [];
     const res = await checkAppSlot({
+      services,
       spoken: "ghosting",
       commandText: "maximize ghosting.",
       listRunningApps: async () => running,
@@ -69,14 +71,33 @@ describe("app name suggestions", () => {
       notify: () => undefined,
     });
     expect(res.status).toBe("suggested");
-    const pending = takePending();
+    const pending = services.pending.take();
     expect(pending?.describe).toContain("maximize ghostty");
     await pending!.accept();
     expect(reran).toEqual(["ghostty"]);
   });
 
+  test("a held suggestion is dropped after its TTL on the injected clock, and nothing is persisted in tests", async () => {
+    const { services, clock } = createTestHarness();
+    const res = await checkAppSlot({
+      services,
+      spoken: "ghosting",
+      commandText: "maximize ghosting.",
+      listRunningApps: async () => running,
+      rerun: async () => undefined,
+      log: () => undefined,
+    });
+    expect(res.status).toBe("suggested");
+    expect(services.pending.peek()).toBeDefined();
+    clock.advance(APP_SUGGEST_TTL_MS + 1);
+    expect(services.pending.peek()).toBeUndefined();
+    expect(clock.pendingTimers()).toBe(0);
+    expect(services.appSuggest.persist).toBe(false);
+  });
+
   test("checkAppSlot passes through a running app", async () => {
     const res = await checkAppSlot({
+      services: createTestServices(),
       spoken: "Google Chrome",
       commandText: "maximize chrome",
       listRunningApps: async () => running,

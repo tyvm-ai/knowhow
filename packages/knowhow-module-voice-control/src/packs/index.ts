@@ -7,7 +7,8 @@
  */
 
 import type { VoiceCommandExtension } from "../voiceCommands";
-import { BUILTIN_VOICE_COMMANDS } from "../voiceCommands";
+import { BUILTIN_PACK } from "../voiceCommands";
+import type { AnyVoicePack } from "./define";
 import META_PACK from "./meta";
 import GAZE_MOUSE_PACK from "./gazeMouse";
 import TEXT_PACK from "./text";
@@ -20,23 +21,23 @@ import { BROWSER_PACK } from "./browser";
 import { SMART_TYPE_PACK } from "./smartType";
 
 /** Every command pack, in priority order. */
-export function allPacks(): ReadonlyArray<{ name: string; commands: VoiceCommandExtension[] }> {
+export function allPacks(): AnyVoicePack[] {
   return [
-    { name: "built-in", commands: BUILTIN_VOICE_COMMANDS },
-    { name: "meta", commands: META_PACK },
-    { name: "gaze-mouse", commands: GAZE_MOUSE_PACK },
-    { name: "text", commands: TEXT_PACK },
-    { name: "keys", commands: KEYS_PACK },
-    { name: "windows", commands: WINDOWS_PACK },
-    { name: "system", commands: SYSTEM_PACK },
-    { name: "hints", commands: HINTS_PACK },
-    { name: "tmux", commands: TMUX_PACK },
-    { name: "browser", commands: BROWSER_PACK },
-    { name: "smart-type", commands: SMART_TYPE_PACK },
+    BUILTIN_PACK,
+    META_PACK,
+    GAZE_MOUSE_PACK,
+    TEXT_PACK,
+    KEYS_PACK,
+    WINDOWS_PACK,
+    SYSTEM_PACK,
+    HINTS_PACK,
+    TMUX_PACK,
+    BROWSER_PACK,
+    SMART_TYPE_PACK,
   ];
 }
 
 /** Flat list of every shipped voice command extension. */
 export function voiceCommandExtensions(): VoiceCommandExtension[] {
-  return allPacks().flatMap((p) => p.commands);
+  return allPacks().flatMap((p) => p.extensions);
 }

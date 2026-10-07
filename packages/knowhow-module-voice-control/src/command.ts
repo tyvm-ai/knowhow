@@ -1,10 +1,10 @@
 import { existsSync } from "fs";
 import { homedir } from "os";
 import { basename, join } from "path";
-import { setSmartTypeServices, buildSmartTypeAi } from "./smartTypeService";
-import type { AgentService } from "@tyvm/knowhow/ts_build/src/services/AgentService";
-import type { AgentInput } from "@tyvm/knowhow/ts_build/src/services/InteractiveAgentRuntime";
-import { ensureDefaultMic } from "@tyvm/knowhow/ts_build/src/microphone";
+import { buildSmartTypeAi } from "./smartTypeService";
+import { createVoiceLogger, createVoiceServices } from "./services";
+import { ensureDefaultMic, services, setupServices } from "@tyvm/knowhow/sdk";
+import type { AgentInput, AgentService } from "@tyvm/knowhow/sdk";
 import {
   OneShotTranscriptSource,
   OpenAIUtteranceRecognizer,
@@ -330,7 +330,11 @@ export async function runVoiceAgent(options: VoiceAgentCommandOptions): Promise<
     }
   }
 
-  const voiceLog = (message: string) => process.stderr.write(`[voice] ${message}\n`);
+  // One services container for the whole run (platform, gaze, pointer, pending, clock, logger…).
+  const voiceServices = createVoiceServices({
+    log: createVoiceLogger({ sink: (_level, line) => void process.stderr.write(`${line}\n`) }),
+  });
+  const voiceLog = (message: string) => voiceServices.log.info(message);
   // Start the persistent whisper-server (model load) in parallel with service setup.
   const localRecognizerPromise: Promise<UtteranceRecognizer> | undefined =
     useContinuous && localCommand
@@ -350,14 +354,12 @@ export async function runVoiceAgent(options: VoiceAgentCommandOptions): Promise<
           // the whisper-server binary doesn't support the field.
           verboseJson: true,
           log: voiceLog,
+          intents: voiceServices.intents,
         })
       : undefined;
   // Don't leave an unhandled rejection if service setup throws first.
   localRecognizerPromise?.catch(() => undefined);
 
-  const { setupServices } = await import(
-    "@tyvm/knowhow/ts_build/src/commands/services"
-  );
   const { Agents, Clients, Tools } = await setupServices();
 
   // Wire up smarttype AI services
@@ -369,21 +371,15 @@ export async function runVoiceAgent(options: VoiceAgentCommandOptions): Promise<
     const stModel = process.env.KNOWHOW_SMARTTYPE_MODEL ?? stConfig.model ?? "claude-sonnet-4-6";
     // agenttype runs the same agent "hey knowhow" talks to unless overridden.
     const atAgentName = atConfig.agent ?? options.agent;
-    setSmartTypeServices({
+    voiceServices.ai = {
       ai: buildSmartTypeAi(Clients as any, Agents as any, atAgentName, stProvider, stModel),
       agentName: atAgentName,
-    });
+    };
   }
 
   // Voice commands: knowhow.json + every loaded module's "voice-control.command"
   // extensions (built-ins included) — dedupe by name.
-  const extensionsService = (Tools.getContext() as any).Extensions ?? (() => {
-    try {
-      return require("@tyvm/knowhow/ts_build/src/services").services().Extensions;
-    } catch {
-      return undefined;
-    }
-  })();
+  const extensionsService = (Tools.getContext() as any).Extensions ?? services().Extensions;
   const voiceCommands = collectVoiceCommands({
     extensions: extensionsService,
     config: readKnowhowConfig(),
@@ -474,6 +470,7 @@ export async function runVoiceAgent(options: VoiceAgentCommandOptions): Promise<
       initialMode: once ? "agent" : "command",
       mouse: mouseMover,
       commands: voiceCommands,
+      services: voiceServices,
       latencyLogFile: options.latencyLog === false ? undefined : DEFAULT_LATENCY_LOG,
       log: voiceLog,
       maxTaskCostUsd: options.maxTaskCostUsd === undefined

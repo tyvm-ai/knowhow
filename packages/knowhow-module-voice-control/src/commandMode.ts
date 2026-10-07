@@ -14,6 +14,8 @@
 import { randomUUID } from "crypto";
 import { GazeSample } from "./eyeTracking";
 import { GazeClient, GAZE_TIMEOUT, resolveGazeHubUrl } from "./gaze";
+import type { Clock, TimerHandle } from "./services/clock";
+import { systemClock } from "./services/clock";
 import { VoiceCommandSpec, VoiceCommandEvent, VoiceHubEvent, postVoiceCommand } from "./voiceHub";
 import type { CommandSource, UtteranceTiming } from "./types";
 import { parseUtterance, ParseResult, ParsedCommand } from "./grammar";
@@ -420,6 +422,10 @@ export interface GazeFollowOptions {
   /** Dead-zone in pixels — don't move if delta < this, default 4 */
   deadZone?: number;
   hubUrl?: string;
+  /** Gaze source (default: a client for the resolved hub URL). */
+  gaze?: GazeClient;
+  /** Injected timers (default: real). */
+  clock?: Clock;
 }
 
 export interface MouseMover {
@@ -465,7 +471,8 @@ export function mouseMoverFromComputerService(service: {
 }
 
 export class GazeFollowController {
-  private timer?: NodeJS.Timeout;
+  private timer?: TimerHandle;
+  private readonly clock: Clock;
   private smoothX = 0;
   private smoothY = 0;
   private hasFirst = false;
@@ -483,7 +490,8 @@ export class GazeFollowController {
     this.alpha = options.alpha ?? 0.3;
     this.deadZone = options.deadZone ?? 4;
     this.hubUrl = options.hubUrl ?? resolveGazeHubUrl();
-    this.gaze = new GazeClient({ hubUrl: this.hubUrl });
+    this.gaze = options.gaze ?? new GazeClient({ hubUrl: this.hubUrl });
+    this.clock = options.clock ?? systemClock;
   }
 
   isRunning(): boolean {
@@ -493,13 +501,13 @@ export class GazeFollowController {
   start(): void {
     if (this.timer) return;
     const intervalMs = Math.round(1000 / (this.options.pollHz ?? 30));
-    this.timer = setInterval(() => void this.tick(), intervalMs);
+    this.timer = this.clock.setInterval(() => void this.tick(), intervalMs);
     this.timer.unref?.();
   }
 
   stop(): void {
     if (this.timer) {
-      clearInterval(this.timer);
+      this.clock.clearInterval(this.timer);
       this.timer = undefined;
     }
     this.hasFirst = false;
@@ -571,6 +579,7 @@ export function buildVoiceCommandContext(params: {
   repeat?: number;
   actions?: import("./actions/types").PlatformActions;
   history?: unknown[];
+  services?: import("./services").VoiceServices;
 }): VoiceCommandContext {
   const { gaze, gazeFollow } = params;
   return {
@@ -591,6 +600,7 @@ export function buildVoiceCommandContext(params: {
     repeat: params.repeat ?? 1,
     actions: params.actions,
     history: params.history,
+    services: params.services,
   };
 }
 

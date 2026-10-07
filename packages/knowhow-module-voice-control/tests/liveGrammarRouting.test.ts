@@ -73,12 +73,12 @@ function makeRouter(): {
   const commands = collectVoiceCommands({
     builtins: [
       ...BUILTIN_VOICE_COMMANDS,
-      ...META_PACK,
-      ...GAZE_MOUSE_PACK,
-      ...TEXT_PACK,
-      ...KEYS_PACK,
-      ...WINDOWS_PACK,
-      ...SYSTEM_PACK,
+      ...META_PACK.extensions,
+      ...GAZE_MOUSE_PACK.extensions,
+      ...TEXT_PACK.extensions,
+      ...KEYS_PACK.extensions,
+      ...WINDOWS_PACK.extensions,
+      ...SYSTEM_PACK.extensions,
     ],
   });
 

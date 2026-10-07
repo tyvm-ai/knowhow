@@ -9,9 +9,7 @@
  *   play button twice), anything else gets a real double-click at the pointer.
  */
 
-import type { VoiceCommandContext } from "../voiceCommands";
-import { doubleClickTarget, recentPlacedCandidate } from "../pointerMemory";
-import { getComputerService } from "../computerService";
+import type { PackCommandContext } from "../packs/define";
 import { activateElement, findPlayButton } from "../smartSelector";
 
 /** True when the utterance ends in "that" / "it" / "here" / "there". */
@@ -20,11 +18,11 @@ export function isDeicticClick(text: string | undefined): boolean {
 }
 
 /** Act on the remembered "mouse over" element. Returns true when it handled the click. */
-async function doubleClickRememberedElement(): Promise<boolean> {
-  const remembered = recentPlacedCandidate();
+async function doubleClickRememberedElement(ctx: PackCommandContext): Promise<boolean> {
+  const remembered = ctx.services.pointer.recentCandidate();
   if (!remembered) return false;
   try {
-    const cu = getComputerService();
+    const cu = ctx.services.computer;
     if (!cu) return false;
     const el = remembered.element;
     // Spotify AXRow: find and AXPress the row's play button.
@@ -37,7 +35,7 @@ async function doubleClickRememberedElement(): Promise<boolean> {
           y: el.bounds.y + el.bounds.height / 2,
         });
         if (playBtn) {
-          await activateElement(cu, playBtn, "click");
+          await activateElement(cu, playBtn, "click", { pointer: ctx.services.pointer, clock: ctx.services.clock });
           return true;
         }
       }
@@ -50,7 +48,7 @@ async function doubleClickRememberedElement(): Promise<boolean> {
     }
     // Buttons/links: one AXPress is the "open/play".
     if (el.role === "AXButton" || el.role === "AXLink") {
-      await activateElement(cu, remembered, "click");
+      await activateElement(cu, remembered, "click", { pointer: ctx.services.pointer, clock: ctx.services.clock });
       return true;
     }
   } catch {
@@ -59,10 +57,10 @@ async function doubleClickRememberedElement(): Promise<boolean> {
   return false;
 }
 
-export async function runDoubleClick(ctx: VoiceCommandContext): Promise<void> {
-  if (isDeicticClick(ctx.text) && (await doubleClickRememberedElement())) return;
+export async function runDoubleClick(ctx: PackCommandContext): Promise<void> {
+  if (isDeicticClick(ctx.text) && (await doubleClickRememberedElement(ctx))) return;
   // A recent "mouse over X" put the pointer on X: double-click there, even if
   // your eyes have moved on. Only otherwise use the gaze point.
-  const pos = doubleClickTarget(ctx);
+  const pos = ctx.services.pointer.doubleClickTarget(ctx);
   if (pos && ctx.mouse) await ctx.mouse.doubleClickAt(pos.x, pos.y);
 }

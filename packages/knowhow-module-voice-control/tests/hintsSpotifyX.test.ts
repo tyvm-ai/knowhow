@@ -192,13 +192,13 @@ describe("double click aliases", () => {
 
 describe("audio cap on hover-hint and click-hint commands", () => {
   it("hover-hint command has maxAudioMs >= 10000", () => {
-    const hoverCmd = HINTS_PACK.find((c) => c.name === "hints.hover-hint");
+    const hoverCmd = HINTS_PACK.extensions.find((c) => c.name === "hints.hover-hint");
     expect(hoverCmd).toBeDefined();
     expect((hoverCmd as any).maxAudioMs).toBeGreaterThanOrEqual(10000);
   });
 
   it("click-hint command has maxAudioMs >= 10000", () => {
-    const clickCmd = HINTS_PACK.find((c) => c.name === "hints.click-hint");
+    const clickCmd = HINTS_PACK.extensions.find((c) => c.name === "hints.click-hint");
     expect(clickCmd).toBeDefined();
     expect((clickCmd as any).maxAudioMs).toBeGreaterThanOrEqual(10000);
   });
@@ -212,7 +212,7 @@ import {
   rankCandidates,
   Candidate,
 } from "../src/smartSelector";
-import { notePointerPlaced, recentPlacedCandidate, clearPlacedPointer } from "../src/pointerMemory";
+import { PointerMemory } from "../src/services";
 
 describe("findPlayButton", () => {
   function makeAdapter(elements: AXElement[]) {
@@ -271,8 +271,11 @@ describe("findPlayButton", () => {
 
 // ─── pointerMemory candidate storage ─────────────────────────────────────────
 
-describe("pointerMemory candidate storage", () => {
-  beforeEach(() => clearPlacedPointer());
+describe("pointer memory candidate storage", () => {
+  let pointer: PointerMemory;
+  beforeEach(() => {
+    pointer = new PointerMemory();
+  });
 
   it("stores and retrieves a candidate", () => {
     const candidate: Candidate = {
@@ -283,14 +286,14 @@ describe("pointerMemory candidate storage", () => {
       roleIndex: 1,
       displayName: "play rubber head",
     };
-    notePointerPlaced({ x: 108, y: 208 }, candidate);
-    const recalled = recentPlacedCandidate();
+    pointer.notePlaced({ x: 108, y: 208 }, candidate);
+    const recalled = pointer.recentCandidate();
     expect(recalled).toBeDefined();
     expect(recalled!.displayName).toBe("play rubber head");
   });
 
   it("returns null when no candidate stored", () => {
-    expect(recentPlacedCandidate()).toBeNull();
+    expect(pointer.recentCandidate()).toBeNull();
   });
 
   it("returns null after max age expires", () => {
@@ -301,21 +304,21 @@ describe("pointerMemory candidate storage", () => {
       roleName: "button",
       roleIndex: 1,
     };
-    notePointerPlaced({ x: 100, y: 200 }, candidate);
+    pointer.notePlaced({ x: 100, y: 200 }, candidate);
     // maxAgeMs=-1 → always expired (Date.now() - p.at will be >= 0 > -1)
-    expect(recentPlacedCandidate(-1)).toBeNull();
+    expect(pointer.recentCandidate(-1)).toBeNull();
   });
 
   it("notePointerPlaced without candidate still works (coordinate only)", () => {
-    notePointerPlaced({ x: 100, y: 200 });
-    expect(recentPlacedCandidate()).toBeNull(); // no candidate stored
+    pointer.notePlaced({ x: 100, y: 200 });
+    expect(pointer.recentCandidate()).toBeNull(); // no candidate stored
   });
 });
 
 // ─── play-song command exists with correct patterns ──────────────────────────
 
 describe("play-song command", () => {
-  const playSongCmd = HINTS_PACK.find((c) => c.name === "hints.play-song");
+  const playSongCmd = HINTS_PACK.extensions.find((c) => c.name === "hints.play-song");
 
   it("play-song command exists in HINTS_PACK", () => {
     expect(playSongCmd).toBeDefined();
@@ -335,19 +338,19 @@ describe("play-song command", () => {
 
 describe("click-that and double-click-that are not duplicated in the hints pack", () => {
   it("HINTS_PACK no longer carries click-that-element / double-click-that-element", () => {
-    expect(HINTS_PACK.find((c) => c.name === "hints.click-that-element")).toBeUndefined();
-    expect(HINTS_PACK.find((c) => c.name === "hints.double-click-that-element")).toBeUndefined();
+    expect(HINTS_PACK.extensions.find((c) => c.name === "hints.click-that-element")).toBeUndefined();
+    expect(HINTS_PACK.extensions.find((c) => c.name === "hints.double-click-that-element")).toBeUndefined();
   });
 
   it("'click that' is claimed only by the built-in click-that command", () => {
-    const owners = [...BUILTIN_VOICE_COMMANDS, ...HINTS_PACK].filter((c) =>
+    const owners = [...BUILTIN_VOICE_COMMANDS, ...HINTS_PACK.extensions].filter((c) =>
       [c.phrase, ...(c.aliases ?? []), ...(c.patterns ?? [])].includes("click that"),
     );
     expect(owners.map((c) => c.name)).toEqual(["voice-control.click-that"]);
   });
 
   it("'double click that' is claimed only by the built-in double-click command", () => {
-    const owners = [...BUILTIN_VOICE_COMMANDS, ...HINTS_PACK].filter((c) =>
+    const owners = [...BUILTIN_VOICE_COMMANDS, ...HINTS_PACK.extensions].filter((c) =>
       [c.phrase, ...(c.aliases ?? []), ...(c.patterns ?? [])].includes("double click that"),
     );
     expect(owners.map((c) => c.name)).toEqual(["voice-control.double-click"]);

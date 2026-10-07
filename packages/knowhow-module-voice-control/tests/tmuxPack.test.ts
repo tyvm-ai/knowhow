@@ -10,11 +10,14 @@ import KEYS_PACK from "../src/packs/keys";
 import META_PACK from "../src/packs/meta";
 import GAZE_MOUSE_PACK from "../src/packs/gazeMouse";
 import { SYSTEM_PACK } from "../src/packs/system";
-import { TMUX_PACK, setTmuxRunners, isVimCommand } from "../src/packs/tmux";
+import { TMUX_PACK, createTmuxState, isVimCommand } from "../src/packs/tmux";
+import { createTestServices } from "./helpers/services";
+import type { VoiceServices } from "../src/services";
 
 let tmuxCalls: string[][] = [];
 let shellCalls: string[] = [];
 let paneCommand = "bash";
+let services: VoiceServices;
 
 function fakeTmux(args: string[]): Promise<string> {
   tmuxCalls.push(args);
@@ -37,8 +40,8 @@ function fakeTmux(args: string[]): Promise<string> {
 function makeRouter() {
   const commands = collectVoiceCommands({
     builtins: [
-      ...BUILTIN_VOICE_COMMANDS, ...META_PACK, ...GAZE_MOUSE_PACK, ...TEXT_PACK,
-      ...KEYS_PACK, ...WINDOWS_PACK, ...SYSTEM_PACK, ...TMUX_PACK,
+      ...BUILTIN_VOICE_COMMANDS, ...META_PACK.extensions, ...GAZE_MOUSE_PACK.extensions, ...TEXT_PACK.extensions,
+      ...KEYS_PACK.extensions, ...WINDOWS_PACK.extensions, ...SYSTEM_PACK.extensions, ...TMUX_PACK.extensions,
     ],
   });
   const dispatched: string[] = [];
@@ -49,7 +52,7 @@ function makeRouter() {
       const ctx: VoiceCommandContext = {
         phrase: command.phrase, text: invocation.text, spokenAt: 0, recognizedAt: 0,
         target: () => undefined, setMode: () => undefined, log: () => undefined,
-        slots: invocation.slots ?? {}, repeat: invocation.repeat ?? 1, history: [],
+        slots: invocation.slots ?? {}, repeat: invocation.repeat ?? 1, history: [], services,
       };
       await command.run(ctx);
     },
@@ -71,9 +74,11 @@ async function say(text: string) {
 
 beforeEach(() => {
   paneCommand = "bash";
-  setTmuxRunners(fakeTmux, async (c) => { shellCalls.push(c); });
+  services = createTestServices(
+    {},
+    { state: { tmux: createTmuxState({ tmux: fakeTmux, shell: async (c) => { shellCalls.push(c); } }) } },
+  );
 });
-afterAll(() => setTmuxRunners());
 
 describe("tmux pack", () => {
   test.each([

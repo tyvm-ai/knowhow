@@ -54,36 +54,49 @@ export interface RecoveredIntent {
   confidence: "high" | "low";
 }
 
-let learned: Set<string> | undefined;
+/**
+ * The mishearings the user has confirmed ("too much" → tmux), persisted to
+ * LEARNED_INTENTS_FILE. One instance per session (`services.intents`);
+ * loaded lazily on first use.
+ */
+export class LearnedIntents {
+  private learned: Set<string> | undefined;
 
-function loadLearned(file = LEARNED_INTENTS_FILE): Set<string> {
-  if (learned) return learned;
-  learned = new Set();
-  try {
-    if (existsSync(file)) {
-      const data = JSON.parse(readFileSync(file, "utf8")) as { tmuxPrefixes?: string[] };
-      for (const p of data.tmuxPrefixes ?? []) learned.add(p.toLowerCase());
-    }
-  } catch { /* ignore a corrupt file */ }
-  return learned;
-}
+  constructor(private readonly file = LEARNED_INTENTS_FILE) {}
 
-/** Test hook: forget the cached learned prefixes (optionally seed them). */
-export function resetLearnedIntents(seed: string[] = []): void {
-  learned = new Set(seed.map((s) => s.toLowerCase()));
-}
+  private load(): Set<string> {
+    if (this.learned) return this.learned;
+    this.learned = new Set();
+    try {
+      if (existsSync(this.file)) {
+        const data = JSON.parse(readFileSync(this.file, "utf8")) as { tmuxPrefixes?: string[] };
+        for (const p of data.tmuxPrefixes ?? []) this.learned.add(p.toLowerCase());
+      }
+    } catch { /* ignore a corrupt file */ }
+    return this.learned;
+  }
 
-/** Remember that `prefix` means "tmux" (after the user confirmed it). */
-export async function learnTmuxPrefix(prefix: string, file = LEARNED_INTENTS_FILE): Promise<void> {
-  const p = prefix.toLowerCase().trim();
-  if (!p || p === "tmux") return;
-  const set = loadLearned(file);
-  if (set.has(p)) return;
-  set.add(p);
-  try {
-    await mkdir(dirname(file), { recursive: true });
-    await writeFile(file, JSON.stringify({ tmuxPrefixes: [...set].sort() }, null, 2) + "\n", "utf8");
-  } catch { /* best effort */ }
+  has(prefix: string): boolean {
+    return this.load().has(prefix);
+  }
+
+  /** Forget the cached prefixes (optionally seed them) — tests. */
+  reset(seed: string[] = []): void {
+    this.learned = new Set(seed.map((s) => s.toLowerCase()));
+  }
+
+  /** Remember that `prefix` means "tmux" (after the user confirmed it). */
+  async learnTmuxPrefix(prefix: string): Promise<void> {
+    const p = prefix.toLowerCase().trim();
+    if (!p || p === "tmux") return;
+    const set = this.load();
+    if (set.has(p)) return;
+    set.add(p);
+    try {
+      await mkdir(dirname(this.file), { recursive: true });
+      await writeFile(this.file, JSON.stringify({ tmuxPrefixes: [...set].sort() }, null, 2) + "\n", "utf8");
+    } catch { /* best effort */ }
+  }
 }
 
 function words(text: string): string[] {
@@ -94,7 +107,7 @@ function words(text: string): string[] {
  * Does `text` sound like "tmux <left|right|up|down|zoom>"? Only short
  * utterances (2–3 words) qualify, so real sentences are never rewritten.
  */
-export function inferTmuxIntent(text: string): RecoveredIntent | undefined {
+export function inferTmuxIntent(text: string, learned: LearnedIntents): RecoveredIntent | undefined {
   const w = words(text);
   if (w.length < 2 || w.length > 3) return undefined;
   const sub = SUBCOMMANDS[w[w.length - 1]];
@@ -102,7 +115,7 @@ export function inferTmuxIntent(text: string): RecoveredIntent | undefined {
   const prefixWords = w.slice(0, -1);
   const prefix = prefixWords.join(" ");
   if (prefix === "tmux") return undefined; // already canonical; grammar handles it
-  const isLearned = loadLearned().has(prefix);
+  const isLearned = learned.has(prefix);
   let shape = false;
   let known = false;
   if (prefixWords.length === 1) {
@@ -125,12 +138,12 @@ const TERMINAL_APPS = /^(?:ghostty|iterm2?|terminal|wezterm(?:-gui)?|kitty|alacr
  * "tmarks", "team max", "too much". Used to arm a short follow-up window in
  * which a lone "left"/"down"/… completes the command.
  */
-export function isBareTmux(text: string): boolean {
+export function isBareTmux(text: string, learned: LearnedIntents): boolean {
   const w = words(text);
-  if (w.length === 1) return WHOLE_WORD_TMUX.test(w[0]) || loadLearned().has(w[0]);
+  if (w.length === 1) return WHOLE_WORD_TMUX.test(w[0]) || learned.has(w[0]);
   if (w.length === 2) {
     const p = w.join(" ");
-    return (FIRST_HALF.test(w[0]) && SECOND_HALF.test(w[1])) || loadLearned().has(p);
+    return (FIRST_HALF.test(w[0]) && SECOND_HALF.test(w[1])) || learned.has(p);
   }
   return false;
 }
@@ -160,6 +173,7 @@ export function inferPolicy(env = process.env): InferPolicy | undefined {
 export function decideRecovery(
   intent: RecoveredIntent,
   frontmostApp: string | undefined,
+  learned: LearnedIntents,
   policy: InferPolicy | undefined = inferPolicy(),
 ): "run" | "confirm" | "ignore" {
   if (policy === "off") return "ignore";
@@ -168,6 +182,6 @@ export function decideRecovery(
   // Default: trust context. Looking at a terminal → it's almost certainly tmux.
   if (isTerminalApp(frontmostApp)) return "run";
   // Learned mishears are trusted anywhere.
-  if (intent.confidence === "high" && loadLearned().has(intent.heardPrefix)) return "run";
+  if (intent.confidence === "high" && learned.has(intent.heardPrefix)) return "run";
   return "confirm";
 }

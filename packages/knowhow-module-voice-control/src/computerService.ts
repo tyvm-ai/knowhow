@@ -3,24 +3,17 @@
  *
  * Order: the service the computer-use module injected into the knowhow Tools
  * context (`Tools.getContext().ComputerUse`), else a standalone
- * ComputerService with the Rust core driver. Cached after first success.
+ * ComputerService with the Rust core driver.
  *
  * This is the ONLY file in voice-control that `require()`s
  * `@tyvm/knowhow-module-computer-use`; everything else gets the typed
  * `ComputerUseAdapter` from here.
  */
 
+import { services } from "@tyvm/knowhow/sdk";
 import type { ComputerUseAdapter } from "./smartSelector";
 
 export type { ComputerUseAdapter } from "./smartSelector";
-
-let cached: ComputerUseAdapter | undefined;
-
-export function setComputerService(service: unknown): void {
-  if (service && typeof (service as { typeText?: unknown }).typeText === "function") {
-    cached = service as ComputerUseAdapter;
-  }
-}
 
 /**
  * Build a standalone ComputerService backed by the native Rust core driver
@@ -43,20 +36,19 @@ export function createStandaloneComputerService(): ComputerUseAdapter | undefine
   return undefined;
 }
 
-export function getComputerService(): ComputerUseAdapter | undefined {
-  if (cached) return cached;
+/**
+ * Resolve the computer-use service: the one the computer-use module injected
+ * into the knowhow Tools context, else a standalone ComputerService. Not
+ * cached here — `services.computer` (see services/index.ts) caches it per session.
+ */
+export function resolveComputerService(): ComputerUseAdapter | undefined {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { services } = require("@tyvm/knowhow/ts_build/src/services");
     const ctxService = services()?.Tools?.getContext?.()?.ComputerUse;
     if (ctxService && typeof ctxService.accessibilityElements === "function") {
-      cached = ctxService as ComputerUseAdapter;
-      return cached;
+      return ctxService as ComputerUseAdapter;
     }
   } catch {
     // knowhow core not resolvable here
   }
-  const standalone = createStandaloneComputerService();
-  if (standalone) cached = standalone;
-  return cached;
+  return createStandaloneComputerService();
 }

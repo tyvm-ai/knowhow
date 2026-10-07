@@ -6,6 +6,7 @@ import { VoiceSession } from "../src/VoiceSession";
 import { collectVoiceCommands, VOICE_COMMAND_EXTENSION, VoiceCommandExtension } from "../src/voiceCommands";
 import type { TranscriptEvent, TranscriptSource, VoiceSessionEvent, UtteranceTiming } from "../src/types";
 import voiceControlModule, { voiceControlAction } from "../src";
+import { createTestServices } from "./helpers/services";
 
 const previousEyeUrl = process.env.KNOWHOW_EYE_URL;
 beforeAll(() => { process.env.KNOWHOW_EYE_URL = "http://127.0.0.1:9"; });
@@ -47,6 +48,7 @@ describe("VoiceSession registered commands + latency", () => {
     const logFile = join(mkdtempSync(join(tmpdir(), "voice-sess-")), "latency.jsonl");
     const t = timing();
     const session = new VoiceSession(runtime, new ListSource([final("Zoom in.", "u1", t)]), undefined, {
+      services: createTestServices(),
       agent: "x", initialMode: "command", mouse,
       commands: collectVoiceCommands({ moduleExtensions: [{ owner: "my-module", extension: zoom }] }),
       latencyLogFile: logFile,
@@ -77,6 +79,7 @@ describe("VoiceSession registered commands + latency", () => {
     const pause = moduleCommand("pause video", ["command", "agent"]);
     const events: VoiceSessionEvent[] = [];
     const session = new VoiceSession(runtime, new ListSource([final("Pause video", "u2")]), undefined, {
+      services: createTestServices(),
       agent: "x", initialMode: "agent", mouse,
       commands: collectVoiceCommands({ moduleExtensions: [{ owner: "m", extension: pause }] }),
       onEvent: (e) => events.push(e),
@@ -91,6 +94,7 @@ describe("VoiceSession registered commands + latency", () => {
     const zoom = moduleCommand("zoom out");
     const localRuntime = { start: jest.fn(async () => ({ done: Promise.resolve({ answer: "" }), stop: async () => undefined, send: async () => undefined, events: (async function* () {})() })) } as any;
     const session = new VoiceSession(localRuntime, new ListSource([final("zoom out", "u3")]), undefined, {
+      services: createTestServices(),
       agent: "x", initialMode: "agent", mouse,
       commands: collectVoiceCommands({ moduleExtensions: [{ owner: "m", extension: zoom }] }),
     });

@@ -18,7 +18,8 @@ import { join, dirname } from "path";
 import { homedir } from "os";
 import { spawnOsa } from "./actions/osa";
 import { APP_ALIASES } from "./grammar/slots";
-import { setPending, peekPending, clearPending, PendingAction } from "./pendingAction";
+import type { Clock } from "./services/clock";
+import type { PendingAction, PendingActionStore } from "./services/pending";
 
 export const LEARNED_APP_ALIASES_FILE =
   process.env.KNOWHOW_VOICE_APP_ALIASES_FILE ?? join(homedir(), ".knowhow", "voice-app-aliases.json");
@@ -30,12 +31,60 @@ export const APP_SUGGEST_TTL_MS = 20_000;
 
 // ─── Learned aliases ────────────────────────────────────────────────────────
 
-let _learnedLoaded = false;
+/**
+ * Per-session app-suggest state: whether the learned aliases are loaded and
+ * the installed-apps cache (`services.appSuggest`).
+ */
+export class AppSuggestState {
+  learnedLoaded = false;
+  installed: { at: number; names: Set<string> } | undefined;
+  /** Where confirmed mishearings are persisted. */
+  readonly file: string;
+  /** Persist confirmed mishearings (tests turn this off). */
+  readonly persist: boolean;
+  /** Desktop notification when a suggestion is held (tests inject a no-op). */
+  readonly notify: (title: string, message: string) => void;
 
-/** Load learned mishearings into APP_ALIASES (idempotent). */
-export function loadLearnedAppAliases(file = LEARNED_APP_ALIASES_FILE): Record<string, string> {
-  if (_learnedLoaded && file === LEARNED_APP_ALIASES_FILE) return {};
-  if (file === LEARNED_APP_ALIASES_FILE) _learnedLoaded = true;
+  constructor(opts: { file?: string; persist?: boolean; notify?: (title: string, message: string) => void } = {}) {
+    this.file = opts.file ?? LEARNED_APP_ALIASES_FILE;
+    this.persist = opts.persist ?? true;
+    this.notify = opts.notify ?? notifyMac;
+  }
+
+  /** Remember that `spoken` means `app` (in APP_ALIASES now, and on disk when `persist`). */
+  async learnAlias(spoken: string, app: string): Promise<void> {
+    await learnAppAlias(spoken, app, this.file, this.persist);
+  }
+
+  /** Load learned mishearings into APP_ALIASES (idempotent for the default file). */
+  loadLearnedAppAliases(file = this.file): Record<string, string> {
+    if (this.learnedLoaded && file === this.file) return {};
+    if (file === this.file) this.learnedLoaded = true;
+    return readLearnedAppAliases(file);
+  }
+
+  /** Case-insensitive check against /Applications and /System/Applications (cached 60 s). */
+  isInstalledApp(name: string, now = Date.now()): boolean {
+    if (process.platform !== "darwin") return false;
+    if (!this.installed || now - this.installed.at > 60_000) {
+      const names = new Set<string>();
+      for (const dir of ["/Applications", "/System/Applications", "/System/Applications/Utilities", join(homedir(), "Applications")]) {
+        try {
+          for (const f of readdirSync(dir)) {
+            if (f.endsWith(".app")) names.add(normaliseName(f.slice(0, -4)));
+          }
+        } catch { /* missing dir */ }
+      }
+      this.installed = { at: now, names };
+    }
+    const want = normaliseName(name);
+    if (this.installed.names.has(want)) return true;
+    for (const n of this.installed.names) if (n.split(" ").includes(want)) return true;
+    return false;
+  }
+}
+
+function readLearnedAppAliases(file: string): Record<string, string> {
   try {
     if (!existsSync(file)) return {};
     const data = JSON.parse(readFileSync(file, "utf8")) as Record<string, string>;
@@ -48,11 +97,16 @@ export function loadLearnedAppAliases(file = LEARNED_APP_ALIASES_FILE): Record<s
   }
 }
 
-export async function learnAppAlias(spoken: string, app: string, file = LEARNED_APP_ALIASES_FILE): Promise<void> {
+export async function learnAppAlias(
+  spoken: string,
+  app: string,
+  file = LEARNED_APP_ALIASES_FILE,
+  persist = true,
+): Promise<void> {
   const key = normaliseName(spoken);
   if (!key || normaliseName(app) === key) return;
   APP_ALIASES[key] = app;
-  if (process.env.NODE_ENV === "test" && file === LEARNED_APP_ALIASES_FILE) return;
+  if (!persist) return;
   let data: Record<string, string> = {};
   try {
     if (existsSync(file)) data = JSON.parse(readFileSync(file, "utf8"));
@@ -169,28 +223,8 @@ export interface AppSlotCheckOptions {
   notify?: (title: string, message: string) => void;
   /** Accept names of installed (not running) apps, for commands that launch. */
   allowInstalled?: boolean;
-}
-
-let _installed: { at: number; names: Set<string> } | undefined;
-
-/** Case-insensitive check against /Applications and /System/Applications (cached 60 s). */
-export function isInstalledApp(name: string): boolean {
-  if (process.platform !== "darwin") return false;
-  if (!_installed || Date.now() - _installed.at > 60_000) {
-    const names = new Set<string>();
-    for (const dir of ["/Applications", "/System/Applications", "/System/Applications/Utilities", join(homedir(), "Applications")]) {
-      try {
-        for (const f of readdirSync(dir)) {
-          if (f.endsWith(".app")) names.add(normaliseName(f.slice(0, -4)));
-        }
-      } catch { /* missing dir */ }
-    }
-    _installed = { at: Date.now(), names };
-  }
-  const want = normaliseName(name);
-  if (_installed.names.has(want)) return true;
-  for (const n of _installed.names) if (n.split(" ").includes(want)) return true;
-  return false;
+  /** Session services this check needs (learned aliases + installed cache, pending store, timers). */
+  services: { appSuggest: AppSuggestState; pending: PendingActionStore; clock: Clock };
 }
 
 /**
@@ -198,7 +232,7 @@ export function isInstalledApp(name: string): boolean {
  * confirm) when the name isn't a running app but closely resembles one.
  */
 export async function checkAppSlot(opts: AppSlotCheckOptions): Promise<AppSlotCheck> {
-  loadLearnedAppAliases();
+  opts.services.appSuggest.loadLearnedAppAliases();
   const spoken = opts.spoken.trim();
   if (!spoken || !opts.listRunningApps) return { status: "ok" };
   let running: string[] = [];
@@ -209,7 +243,7 @@ export async function checkAppSlot(opts: AppSlotCheckOptions): Promise<AppSlotCh
   }
   if (!running.length || namesRunningApp(spoken, running)) return { status: "ok" };
   // Installed but not running ("open spotify") — let the command launch it.
-  if (opts.allowInstalled && isInstalledApp(spoken)) return { status: "ok" };
+  if (opts.allowInstalled && opts.services.appSuggest.isInstalledApp(spoken, opts.services.clock.now())) return { status: "ok" };
 
   const suggestion = suggestApp(spoken, running);
   if (!suggestion || normaliseName(suggestion.app) === normaliseName(spoken)) return { status: "ok" };
@@ -220,22 +254,22 @@ export async function checkAppSlot(opts: AppSlotCheckOptions): Promise<AppSlotCh
     describe,
     accept: async () => {
       opts.log(`[voice] using ${suggestion.app} for "${spoken}" (remembered for next time)`);
-      await learnAppAlias(spoken, suggestion.app);
+      await opts.services.appSuggest.learnAlias(spoken, suggestion.app);
       await opts.rerun(suggestion.app);
     },
     reject: () => {
       opts.log(`[voice] ok, not running "${corrected}"`);
     },
   };
-  setPending(pending);
-  const timer = setTimeout(() => {
-    if (peekPending() === pending) clearPending();
+  opts.services.pending.set(pending);
+  const timer = opts.services.clock.setTimeout(() => {
+    if (opts.services.pending.peek() === pending) opts.services.pending.clear();
   }, APP_SUGGEST_TTL_MS);
   timer.unref?.();
 
   const prompt = `No running app called "${spoken}". Did you mean ${suggestion.app}? Say "yes" to run "${corrected}", or "no".`;
   opts.log(`[voice] ${prompt}`);
-  (opts.notify ?? notifyMac)("Voice: did you mean…?", `${corrected} — say "yes" or "no"`);
+  (opts.notify ?? opts.services.appSuggest.notify)("Voice: did you mean…?", `${corrected} — say "yes" or "no"`);
   return { status: "suggested", suggestion };
 }
 
@@ -247,7 +281,7 @@ function replaceWord(text: string, word: string, replacement: string): string {
 
 /** Non-blocking macOS notification (no shell; text passed as an argument). */
 export function notifyMac(title: string, message: string): void {
-  if (process.platform !== "darwin" || process.env.NODE_ENV === "test") return;
+  if (process.platform !== "darwin") return;
   const script = `on run argv
 display notification (item 2 of argv) with title (item 1 of argv)
 end run`;

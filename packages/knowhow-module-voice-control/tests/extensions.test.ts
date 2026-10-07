@@ -1,7 +1,9 @@
 /**
  * Tests for the automation-SDK extensions (Contract 3).
  */
-import { gazeExtension, voiceExtension, AUTOMATION_SDK_EXTENSION, AutomationExtensionContext } from "../src/extensions";
+import { AUTOMATION_SDK_EXTENSION } from "@tyvm/knowhow/sdk";
+import type { AutomationExtensionContext } from "@tyvm/knowhow/sdk";
+import { gazeExtension, voiceExtension } from "../src/extensions";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

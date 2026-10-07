@@ -1,15 +1,16 @@
+import { normalizeCommandAction } from "@tyvm/knowhow/sdk";
 import type {
   InitParams,
   KnowhowModule,
   ModulePlugin,
-} from "@tyvm/knowhow/ts_build/src/services/modules/types";
+} from "@tyvm/knowhow/sdk";
 import { runVoiceAgent, VoiceAgentCommandOptions } from "./command";
 import { runVoiceCommandsList } from "./commandsCli";
 import { runEyeTracking } from "./eyeTracking";
 import { GazePlugin } from "./GazePlugin";
 import { gazeExtension, voiceExtension } from "./extensions";
-import { registerHintSlot } from "./packs/hints";
-import { voiceCommandExtensions } from "./packs/index";
+import { allPacks, voiceCommandExtensions } from "./packs/index";
+import { registerPackSlots } from "./packs/define";
 import { hintsExtension } from "./extensions";
 import { parseUtterance } from "./grammar";
 import { collectVoiceCommands, readKnowhowConfig } from "./voiceCommands";
@@ -32,43 +33,25 @@ export * from "./axEnabler";
 export * from "./latency";
 export * from "./whisperServer";
 
+type VoiceControlOptions = VoiceAgentCommandOptions & Record<string, any>;
+
 /**
  * Action for `knowhow voice-agent [subcommand]` / `knowhow voice-control [subcommand]`.
  * `voice-control commands` lists registered voice commands; no subcommand runs the agent.
- * Works with both commander v2 (options on the command object) and v14
- * (options object as the second argument).
+ * Commander v2/v14 argument differences are handled by core's `normalizeCommandAction`.
  */
-export async function voiceControlAction(subcommand: unknown, argsOrOpts: any, optsOrCmd?: any): Promise<void> {
-  // Commander v14: action(subcommand, extraArgs[], options, command)
-  // Commander v2:  action(subcommand, options)
-  // We registered [subcommand] [args...], so argsOrOpts may be the variadic args array.
-  let extraArgs: string[] = [];
-  let options: VoiceAgentCommandOptions;
-  if (Array.isArray(argsOrOpts)) {
-    extraArgs = argsOrOpts;
-    options = optsOrCmd as VoiceAgentCommandOptions;
-  } else {
-    options = argsOrOpts as VoiceAgentCommandOptions;
-  }
-  if (typeof subcommand !== "string") {
-    // Defensive: if no positional slot was filled, some commander versions
-    // pass the options/command object first.
-    const resolved = subcommand && typeof subcommand === "object" ? (subcommand as VoiceAgentCommandOptions) : options;
-    return runVoiceAgent(resolved as VoiceAgentCommandOptions);
+export const voiceControlAction = normalizeCommandAction<VoiceControlOptions>(async (args, options) => {
+  const [subcommand, ...extraArgs] = args;
+  if (subcommand === undefined) {
+    return runVoiceAgent(options);
   }
   if (subcommand === "commands") {
-    await runVoiceCommandsList({ json: !!(options as any)?.json, conflicts: !!(options as any)?.conflicts });
+    await runVoiceCommandsList({ json: !!options?.json, conflicts: !!options?.conflicts });
     return;
   }
   if (subcommand === "parse") {
     // `knowhow voice-control parse "<utterance>" [--json]`
-    // The utterance comes from the variadic args, remaining args, or --once option
-    const utterance =
-      extraArgs[0] ??
-      (options as any)?.args?.[0] ??
-      (options as any)?._?.[0] ??
-      (options as any)?.once ??
-      "";
+    const utterance = extraArgs[0] ?? options?.once ?? "";
     if (!utterance) {
       process.stderr.write('Usage: knowhow voice-control parse "<utterance>" [--json]\n');
       process.exit(1);
@@ -81,7 +64,7 @@ export async function voiceControlAction(subcommand: unknown, argsOrOpts: any, o
       builtins: [],
     });
     const result = parseUtterance(utterance, allCommands);
-    if ((options as any)?.json) {
+    if (options?.json) {
       process.stdout.write(JSON.stringify(result, null, 2) + "\n");
     } else {
       if (result.kind === "none") {
@@ -99,7 +82,7 @@ export async function voiceControlAction(subcommand: unknown, argsOrOpts: any, o
   }
   if (subcommand === "hints") {
     // `knowhow voice-control hints [--json] [--x N] [--y N] [--all] [--app NAME]`
-    const o = options as any;
+    const o = options;
     const xVal = o?.x ?? extraArgs.find((_: string, i: number) => extraArgs[i - 1] === "--x");
     const yVal = o?.y ?? extraArgs.find((_: string, i: number) => extraArgs[i - 1] === "--y");
     await runHintsCli({
@@ -116,7 +99,7 @@ export async function voiceControlAction(subcommand: unknown, argsOrOpts: any, o
     return;
   }
   throw new Error(`Unknown voice-control subcommand "${subcommand}". Available: commands, parse, hints`);
-}
+});
 
 interface VoiceControlConfig {
   tts?: {
@@ -357,8 +340,8 @@ const voiceControlModule: KnowhowModule = {
     }
   },
   async init() {
-    // Register the 'hint' slot type with the grammar engine.
-    registerHintSlot();
+    // Slot types contributed by packs (the shipped `hint` slot is built into the grammar).
+    registerPackSlots(allPacks());
   },
   tools: [],
   agents: [],

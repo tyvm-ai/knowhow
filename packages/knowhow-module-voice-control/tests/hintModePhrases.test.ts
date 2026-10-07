@@ -1,7 +1,7 @@
 import { normaliseTranscript, tokenise } from "../src/grammar/normalise";
 import { getSlotMatcher } from "../src/grammar/slots";
-import { nameFuzzyScore, resolveHintRef, setHintState, getHintStateAt, clearHintState, Candidate } from "../src/smartSelector";
-import { notePointerPlaced, clearPlacedPointer, clickTarget } from "../src/pointerMemory";
+import { nameFuzzyScore, resolveHintRef, SelectorState, Candidate } from "../src/smartSelector";
+import { PointerMemory } from "../src/services";
 
 function phrase(text: string) {
   const toks = tokenise(normaliseTranscript(text));
@@ -39,23 +39,22 @@ describe("hint phrases", () => {
   });
 
   test("labels resolve against what was on screen at speech onset", () => {
-    clearHintState();
+    const selector = new SelectorState();
     const a = { candidates: [cand("text 1", "Old")], timestamp: Date.now() - 1000, selectedIndex: -1, ttlMs: 60000 };
     const b = { candidates: [cand("text 1", "New")], timestamp: Date.now(), selectedIndex: -1, ttlMs: 60000 };
-    setHintState(a);
-    setHintState(b);
-    expect(getHintStateAt(Date.now() - 500)?.candidates[0].element.title).toBe("Old");
-    expect(getHintStateAt(Date.now())?.candidates[0].element.title).toBe("New");
-    clearHintState();
+    selector.setHintState(a);
+    selector.setHintState(b);
+    expect(selector.getHintStateAt(Date.now() - 500)?.candidates[0].element.title).toBe("Old");
+    expect(selector.getHintStateAt(Date.now())?.candidates[0].element.title).toBe("New");
+    selector.clearHintState();
   });
 
   test("plain click uses the pointer a hint just placed while gaze is near it", () => {
-    clearPlacedPointer();
+    const pointer = new PointerMemory();
     const ctx = (gaze?: { x: number; y: number }) => ({ gaze, target: () => gaze });
-    expect(clickTarget(ctx({ x: 500, y: 500 }))).toEqual({ x: 500, y: 500 });
-    notePointerPlaced({ x: 520, y: 480 });
-    expect(clickTarget(ctx({ x: 600, y: 600 }))).toEqual({ x: 520, y: 480 });
-    expect(clickTarget(ctx({ x: 2000, y: 600 }))).toEqual({ x: 2000, y: 600 });
-    clearPlacedPointer();
+    expect(pointer.clickTarget(ctx({ x: 500, y: 500 }))).toEqual({ x: 500, y: 500 });
+    pointer.notePlaced({ x: 520, y: 480 });
+    expect(pointer.clickTarget(ctx({ x: 600, y: 600 }))).toEqual({ x: 520, y: 480 });
+    expect(pointer.clickTarget(ctx({ x: 2000, y: 600 }))).toEqual({ x: 2000, y: 600 });
   });
 });

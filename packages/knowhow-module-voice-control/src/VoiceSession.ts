@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { AgentInput, InteractiveAgentHandle } from "@tyvm/knowhow/ts_build/src/services/InteractiveAgentRuntime";
+import type { AgentInput, InteractiveAgentHandle } from "@tyvm/knowhow/sdk";
 import {
   PlaybackHandle,
   TranscriptEvent,
@@ -29,15 +29,16 @@ import type { RegisteredVoiceCommand } from "./voiceCommands";
 import { appendLatencyRecord, buildLatencyRecord } from "./latency";
 import type { CommandSource, UtteranceTiming } from "./types";
 import { appendCommandDecision } from "./commandLog";
-import { getPlatformActions } from "./actions/index";
-import { checkAppSlot, loadLearnedAppAliases } from "./appSuggest";
-import { isDictationMode } from "./packs/text";
-import { setPending } from "./pendingAction";
+import { checkAppSlot } from "./appSuggest";
+import { PackRuntime } from "./packs/define";
+import { allPacks } from "./packs/index";
+import { createVoiceLogger, createVoiceServices } from "./services";
+import type { TimerHandle } from "./services";
+import type { VoiceServices } from "./services";
 import {
   decideRecovery,
   inferTmuxIntent,
   isBareTmux,
-  learnTmuxPrefix,
   loneSubcommand,
 } from "./intentRecovery";
 
@@ -76,17 +77,18 @@ export class VoiceSession {
   private readonly conversation: ConversationEntry[] = [];
   private pendingSpeechUtterance?: string;
   private recentPlayback?: { text: string; endedAt: number };
-  private idleTimer?: NodeJS.Timeout;
+  private idleTimer?: TimerHandle;
   private sleeping = false;
 
   // ─── Command/agent mode ────────────────────────────────────────────────────
   private mode: VoiceMode;
   private readonly router: ModeRouter;
   private gazeFollow?: GazeFollowController;
-  private hubPollTimer?: NodeJS.Timeout;
+  private hubPollTimer?: TimerHandle;
   private readonly hubUrl: string;
   private readonly mover?: import("./commandMode").MouseMover;
-  private readonly platformActions = getPlatformActions();
+  private readonly services: VoiceServices;
+  private readonly packRuntime: PackRuntime;
   private readonly commandHistory: unknown[] = [];
 
   constructor(
@@ -98,8 +100,16 @@ export class VoiceSession {
     this.sessionId = options.sessionId || randomUUID();
     this.mode = options.initialMode ?? "agent";
     this.hubUrl = resolveGazeHubUrl();
+    this.services =
+      options.services ??
+      createVoiceServices(
+        options.log
+          ? { log: createVoiceLogger({ sink: (_level, line) => options.log?.(line) }) }
+          : {},
+      );
+    this.packRuntime = new PackRuntime(this.services, options.packs ?? allPacks());
     // Mishearings you've accepted before ("ghosting" → Ghostty) parse directly.
-    loadLearnedAppAliases();
+    this.services.appSuggest.loadLearnedAppAliases();
 
     // Use injected mouse mover if provided; otherwise try to load from computer-use.
     let mover: import("./commandMode").MouseMover | undefined = options.mouse;
@@ -110,7 +120,7 @@ export class VoiceSession {
 
     this.mover = mover;
     if (mover) {
-      this.gazeFollow = new GazeFollowController(mover, { hubUrl: this.hubUrl });
+      this.gazeFollow = new GazeFollowController(mover, { hubUrl: this.hubUrl, gaze: this.services.gaze, clock: this.services.clock });
     }
 
     this.router = new ModeRouter({
@@ -149,7 +159,7 @@ export class VoiceSession {
   private tmuxLatchUntil = 0;
 
   private async frontmostAppQuick(): Promise<string | undefined> {
-    const actions = this.platformActions;
+    const actions = this.services.platform;
     if (!actions?.frontmostApp) return undefined;
     return actions.frontmostApp({ maxWaitMs: 400 }).catch(() => undefined);
   }
@@ -169,17 +179,17 @@ export class VoiceSession {
         return `tmux ${sub}`;
       }
     }
-    if (isBareTmux(text) || /^tmux\.?$/i.test(text.trim())) {
+    if (isBareTmux(text, this.services.intents) || /^tmux\.?$/i.test(text.trim())) {
       this.tmuxLatchUntil = Date.now() + TMUX_LATCH_MS;
       console.log(`[voice] heard bare "tmux" ("${text}") — say left/right/up/down/zoom within ${TMUX_LATCH_MS / 1000}s`);
       return "handled";
     }
 
     // 2) Fuzzy "tmux <dir>" ("too much love", "15 months left").
-    const intent = inferTmuxIntent(text);
+    const intent = inferTmuxIntent(text, this.services.intents);
     if (!intent) return undefined;
     const app = await this.frontmostAppQuick();
-    const decision = decideRecovery(intent, app);
+    const decision = decideRecovery(intent, app, this.services.intents);
     if (decision === "ignore") return undefined;
     if (decision === "run") {
       console.log(`[voice] inferred: "${text}" → "${intent.text}" (${app ? `frontmost ${app}` : "policy"}, ${intent.confidence})`);
@@ -190,10 +200,10 @@ export class VoiceSession {
       ts: Date.now(), utteranceId, text, decision: "rejected",
       rejectedReason: `awaiting-confirm: ${intent.text}`,
     });
-    setPending({
+    this.services.pending.set({
       describe: `${intent.text} (heard "${text}")`,
       accept: async () => {
-        void learnTmuxPrefix(intent.heardPrefix);
+        void this.services.intents.learnTmuxPrefix(intent.heardPrefix);
         const spokenAt = Date.now();
         await this.router.routeCommandModeUtterance(
           intent.text,
@@ -225,7 +235,8 @@ export class VoiceSession {
       gazeFollow: this.gazeFollow,
       setMode: (mode) => this.router.setMode(mode),
       log: (msg) => this.options.log?.(`[${command.name}] ${msg}`),
-      actions: this.platformActions ?? undefined,
+      actions: this.services.platform,
+      services: this.services,
       history: this.commandHistory,
       slots: invocation.slots ?? {},
       repeat: invocation.repeat ?? 1,
@@ -233,9 +244,10 @@ export class VoiceSession {
     // Misheard app name ("maximize ghosting")? Suggest the closest running app
     // and wait for "yes"/"no" instead of silently doing nothing.
     const spokenApp = typeof ctx.slots?.app === "string" ? (ctx.slots.app as string) : undefined;
-    const actions = this.platformActions;
+    const actions = this.services.platform;
     if (spokenApp && actions?.listRunningApps && !invocation.slots?.__appChecked) {
       const check = await checkAppSlot({
+        services: this.services,
         spoken: spokenApp,
         commandText: invocation.text,
         listRunningApps: () => actions.listRunningApps!(),
@@ -289,6 +301,7 @@ export class VoiceSession {
     // Emit initial mode.
     this.emit({ type: "mode.changed", mode: this.mode });
     this.startHubPoll(signal);
+    await this.packRuntime.start();
     try {
       for await (const event of this.transcripts.events(signal)) {
         if (signal.aborted || this.stopped) break;
@@ -316,6 +329,7 @@ export class VoiceSession {
     this.clearIdleTimer();
     this.stopHubPoll();
     this.gazeFollow?.stop();
+    await this.packRuntime.stop();
     this.setState("stopping");
     await this.stopPlayback(reason);
     await this.agent?.stop(reason);
@@ -343,14 +357,14 @@ export class VoiceSession {
       }
     };
     void poll();
-    this.hubPollTimer = setInterval(() => void poll(), 1_000);
+    this.hubPollTimer = this.services.clock.setInterval(() => void poll(), 1_000);
     this.hubPollTimer.unref?.();
     signal.addEventListener("abort", () => this.stopHubPoll(), { once: true });
   }
 
   private stopHubPoll(): void {
     if (this.hubPollTimer) {
-      clearInterval(this.hubPollTimer);
+      this.services.clock.clearInterval(this.hubPollTimer);
       this.hubPollTimer = undefined;
     }
   }
@@ -445,7 +459,7 @@ export class VoiceSession {
       const audioMs = timing?.audioMs;
 
       // Dictation mode: every utterance is typed unless it's a stop command.
-      if (isDictationMode()) {
+      if (this.services.typing.dictation) {
         // Allow "stop dictating" / "end dictation" / "stop dictation" to exit
         const stopPhrases = ["stop dictating", "end dictation", "stop dictation"];
         const lower = text.toLowerCase().trim();
@@ -453,10 +467,10 @@ export class VoiceSession {
           this.emit({ type: "transcript", final: true, utteranceId: event.utteranceId, text });
           // Type the text via platform actions
           try {
-            if (this.platformActions) {
+            if (this.services.platform) {
               const { convertDictation } = await import("./grammar/dictation");
               const typed = convertDictation(text.replace(/\.$/, "").trim());
-              if (typed) await this.platformActions.typeText(typed);
+              if (typed) await this.services.platform.typeText(typed);
             }
           } catch (e) {
             this.options.log?.(`[voice] dictation type error: ${e}`);
@@ -830,7 +844,7 @@ export class VoiceSession {
     this.clearIdleTimer();
     this.transcripts.renewActiveWindow?.();
     const delay = this.options.conversationIdleMs ?? 30_000;
-    this.idleTimer = setTimeout(() => {
+    this.idleTimer = this.services.clock.setTimeout(() => {
       this.idleTimer = undefined;
       this.sleeping = true;
       this.transcripts.deactivate?.();
@@ -839,7 +853,7 @@ export class VoiceSession {
   }
 
   private clearIdleTimer(): void {
-    if (this.idleTimer) clearTimeout(this.idleTimer);
+    if (this.idleTimer) this.services.clock.clearTimeout(this.idleTimer);
     this.idleTimer = undefined;
   }
 

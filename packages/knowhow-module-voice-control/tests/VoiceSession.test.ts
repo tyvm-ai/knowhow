@@ -17,7 +17,8 @@ import type {
   AgentInput,
   AgentRuntimeEvent,
   InteractiveAgentHandle,
-} from "@tyvm/knowhow/ts_build/src/services/InteractiveAgentRuntime";
+} from "@tyvm/knowhow/sdk";
+import { createTestHarness, createTestServices } from "./helpers/services";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -193,6 +194,7 @@ describe("VoiceSession", () => {
     const runtime = new FakeRuntime();
     const controller = new AbortController();
     const session = new VoiceSession(runtime, source, undefined, {
+      services: createTestServices(),
       agent: "Developer",
       maxTaskCostUsd: 0.1,
     });
@@ -213,7 +215,9 @@ describe("VoiceSession", () => {
     const runtime = new FakeRuntime();
     const controller = new AbortController();
     const events: VoiceSessionEvent[] = [];
+    const { services, clock } = createTestHarness();
     const session = new VoiceSession(runtime, source, undefined, {
+      services,
       agent: "Developer",
       conversationIdleMs: 5,
       onEvent: (event) => events.push(event),
@@ -223,7 +227,9 @@ describe("VoiceSession", () => {
     source.queue.push(final("do this task", "utterance-idle"));
     await runtime.started.promise;
     runtime.handle.complete("done");
-    await new Promise((resolve) => setTimeout(resolve, 15));
+    // let the completion be processed, then let the idle window elapse on the fake clock
+    for (let i = 0; i < 20 && !source.renewActiveWindow.mock.calls.length; i++) await new Promise<void>((r) => setImmediate(r));
+    clock.advance(15);
 
     expect(source.renewActiveWindow).toHaveBeenCalled();
     expect(source.deactivate).toHaveBeenCalled();
@@ -250,6 +256,7 @@ describe("VoiceSession", () => {
       },
     };
     const session = new VoiceSession(runtime, source, speech, {
+      services: createTestServices(),
       agent: "Developer",
       sessionId: "session-echo",
     });
@@ -283,6 +290,7 @@ describe("VoiceSession", () => {
     const controller = new AbortController();
     const events: VoiceSessionEvent[] = [];
     const session = new VoiceSession(runtime, source, undefined, {
+      services: createTestServices(),
       agent: "Developer",
       sessionId: "session-1",
       onEvent: (event) => events.push(event),
@@ -314,6 +322,7 @@ describe("VoiceSession", () => {
     const runtime = new SequentialRuntime();
     const controller = new AbortController();
     const session = new VoiceSession(runtime, source, undefined, {
+      services: createTestServices(),
       agent: "Developer",
       sessionId: "session-context",
     });
@@ -378,6 +387,7 @@ describe("VoiceSession", () => {
       },
     };
     const session = new VoiceSession(runtime, source, speech, {
+      services: createTestServices(),
       agent: "Developer",
       sessionId: "session-e2e",
     });
@@ -439,6 +449,7 @@ describe("VoiceSession", () => {
       },
     };
     const session = new VoiceSession(runtime, source, speech, {
+      services: createTestServices(),
       agent: "Developer",
       sessionId: "session-2",
     });

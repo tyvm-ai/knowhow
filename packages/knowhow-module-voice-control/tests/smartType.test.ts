@@ -15,18 +15,39 @@ import { ModeRouter } from "../src/commandMode";
 import { collectVoiceCommands, VoiceCommandContext } from "../src/voiceCommands";
 import { SMART_TYPE_PACK } from "../src/packs/smartType";
 import { buildScreenContext } from "../src/packs/smartType";
-import { setPending, takePending, clearPending, peekPending } from "../src/pendingAction";
+import type { PreviewDialog } from "../src/packs/smartType";
 import META_PACK from "../src/packs/meta";
 import TEXT_PACK from "../src/packs/text";
-import { setSmartTypeServices } from "../src/smartTypeService";
 import { stripFences } from "../src/smartTypeService";
+import type { SmartTypeServices } from "../src/smartTypeService";
+import { createTestServices } from "./helpers/services";
+import type { VoiceServices } from "../src/services";
+import type { PendingAction } from "../src/services";
+
+// Every test gets a fresh services container (fake clock, no real tmux / osascript / dialogs;
+// smart-type pack state = live providers off, no preview dialog).
+let services: VoiceServices;
+beforeEach(() => {
+  services = createTestServices();
+});
+
+// Short names for the per-session seams the tests drive.
+const setSmartTypeServices = (s: SmartTypeServices) => {
+  services.ai = s;
+};
+const setPending = (a: PendingAction) => services.pending.set(a);
+const takePending = () => services.pending.take();
+const peekPending = () => services.pending.peek();
+const clearPending = () => services.pending.clear();
+const setPreviewDialog = (dialog: PreviewDialog | undefined) =>
+  void services.packs.patch(SMART_TYPE_PACK, { previewDialog: dialog });
 
 // ─── Grammar routing ──────────────────────────────────────────────────────────
 
 describe("smartType grammar routing", () => {
   function makeRouter() {
     const commands = collectVoiceCommands({
-      builtins: [...META_PACK, ...TEXT_PACK, ...SMART_TYPE_PACK],
+      builtins: [...META_PACK.extensions, ...TEXT_PACK.extensions, ...SMART_TYPE_PACK.extensions],
     });
     const dispatched: Array<{ phrase: string; slots: Record<string, unknown> }> = [];
     const router = new ModeRouter({
@@ -107,6 +128,8 @@ function makeFakeActions(appName = "Google Chrome") {
 }
 
 function makeCtx(actions: ReturnType<typeof makeFakeActions>): VoiceCommandContext {
+  // The session's platform actions are `services.platform` (ctx.actions is the same object).
+  services.platform = actions as any;
   return {
     phrase: "smart type",
     text: "smart type hello world",
@@ -122,6 +145,7 @@ function makeCtx(actions: ReturnType<typeof makeFakeActions>): VoiceCommandConte
     repeat: 1,
     actions: actions as any,
     history: [],
+    services,
   };
 }
 
@@ -140,7 +164,7 @@ describe("smarttype command execution", () => {
       },
     });
 
-    const cmd = SMART_TYPE_PACK.find((c) => c.phrase === "smart type")!;
+    const cmd = SMART_TYPE_PACK.extensions.find((c) => c.phrase === "smart type")!;
     const ctx = makeCtx(actions);
     ctx.slots = { text: "command to list sizes" };
     ctx.text = "smart type command to list sizes";
@@ -168,7 +192,7 @@ describe("smarttype command execution", () => {
       },
     });
 
-    const cmd = SMART_TYPE_PACK.find((c) => c.phrase === "smart type")!;
+    const cmd = SMART_TYPE_PACK.extensions.find((c) => c.phrase === "smart type")!;
     const ctx = makeCtx(actions);
     ctx.slots = { text: "list files" };
 
@@ -192,7 +216,7 @@ describe("smarttype command execution", () => {
       },
     });
 
-    const cmd = SMART_TYPE_PACK.find((c) => c.phrase === "smart type")!;
+    const cmd = SMART_TYPE_PACK.extensions.find((c) => c.phrase === "smart type")!;
     const ctx = makeCtx(actions);
     ctx.slots = { text: "hello" };
 
@@ -222,7 +246,7 @@ describe("smarttype command execution", () => {
       },
     });
 
-    const cmd = SMART_TYPE_PACK.find((c) => c.phrase === "smart type")!;
+    const cmd = SMART_TYPE_PACK.extensions.find((c) => c.phrase === "smart type")!;
     const ctx = makeCtx(actions);
     ctx.slots = { text: "multi line" };
 
@@ -374,12 +398,12 @@ describe("meta pack confirm/cancel/redo via pendingAction", () => {
       reject: async () => undefined,
     });
 
-    const confirmCmd = META_PACK.find((c) => c.phrase === "confirm")!;
+    const confirmCmd = META_PACK.extensions.find((c) => c.phrase === "confirm")!;
     const ctx: VoiceCommandContext = {
       phrase: "confirm", text: "confirm", spokenAt: Date.now(), recognizedAt: Date.now(),
       gaze: undefined, mouse: undefined, gazeFollow: undefined,
       target: () => undefined, setMode: () => undefined, log: () => undefined,
-      slots: {}, repeat: 1, history: [],
+      slots: {}, repeat: 1, history: [], services,
     };
     await confirmCmd.run(ctx);
     expect(accepted).toBe(true);
@@ -394,12 +418,12 @@ describe("meta pack confirm/cancel/redo via pendingAction", () => {
       reject: async () => { rejected = true; },
     });
 
-    const cancelCmd = META_PACK.find((c) => c.phrase === "cancel")!;
+    const cancelCmd = META_PACK.extensions.find((c) => c.phrase === "cancel")!;
     const ctx: VoiceCommandContext = {
       phrase: "cancel", text: "cancel", spokenAt: Date.now(), recognizedAt: Date.now(),
       gaze: undefined, mouse: undefined, gazeFollow: undefined,
       target: () => undefined, setMode: () => undefined, log: () => undefined,
-      slots: {}, repeat: 1, history: [],
+      slots: {}, repeat: 1, history: [], services,
     };
     await cancelCmd.run(ctx);
     expect(rejected).toBe(true);
@@ -414,13 +438,13 @@ describe("meta pack confirm/cancel/redo via pendingAction", () => {
       redo: async () => { redone = true; },
     });
 
-    const redoCmd = META_PACK.find((c) => c.phrase === "redo")!;
+    const redoCmd = META_PACK.extensions.find((c) => c.phrase === "redo")!;
     expect(redoCmd).toBeDefined();
     const ctx: VoiceCommandContext = {
       phrase: "redo", text: "redo", spokenAt: Date.now(), recognizedAt: Date.now(),
       gaze: undefined, mouse: undefined, gazeFollow: undefined,
       target: () => undefined, setMode: () => undefined, log: () => undefined,
-      slots: {}, repeat: 1, history: [],
+      slots: {}, repeat: 1, history: [], services,
     };
     await redoCmd.run(ctx);
     expect(redone).toBe(true);
@@ -429,7 +453,6 @@ describe("meta pack confirm/cancel/redo via pendingAction", () => {
 
 // ─── Preview dialog races voice confirmation ─────────────────────────────────
 
-import { setPreviewDialog } from "../src/packs/smartType";
 import type { PreviewChoice } from "../src/packs/smartType";
 
 describe("smarttype preview dialog", () => {
@@ -452,7 +475,7 @@ describe("smarttype preview dialog", () => {
     const d = fakeDialog();
     const actions = makeFakeActions("Google Chrome");
     setSmartTypeServices({ ai: { complete: async () => "hello there", runAgent: async () => "" } });
-    const cmd = SMART_TYPE_PACK.find((c) => c.phrase === "smart type")!;
+    const cmd = SMART_TYPE_PACK.extensions.find((c) => c.phrase === "smart type")!;
     await cmd.run(makeCtx(actions));
     expect(d.state.shown).toBe("hello there");
     d.click("type");
@@ -465,7 +488,7 @@ describe("smarttype preview dialog", () => {
     const d = fakeDialog();
     const actions = makeFakeActions("Google Chrome");
     setSmartTypeServices({ ai: { complete: async () => "abc", runAgent: async () => "" } });
-    await SMART_TYPE_PACK.find((c) => c.phrase === "smart type")!.run(makeCtx(actions));
+    await SMART_TYPE_PACK.extensions.find((c) => c.phrase === "smart type")!.run(makeCtx(actions));
     await takePending()!.accept();
     await new Promise((r) => setTimeout(r, 20));
     expect(d.state.closed).toBe(true);

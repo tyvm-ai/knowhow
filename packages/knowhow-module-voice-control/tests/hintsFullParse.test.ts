@@ -7,10 +7,10 @@ import { rankCandidates, AXElement, HINT_DENSITY, sortReadingOrder } from "../sr
 import { parseUtterance } from "../src/grammar";
 import { collectVoiceCommands, BUILTIN_VOICE_COMMANDS } from "../src/voiceCommands";
 import GAZE_MOUSE_PACK from "../src/packs/gazeMouse";
-import { HINTS_PACK, getHintDensity } from "../src/packs/hints";
-import { notePointerPlaced, clearPlacedPointer, doubleClickTarget } from "../src/pointerMemory";
+import { HINTS_PACK, createHintsState, density } from "../src/packs/hints";
+import { createTestServices } from "./helpers/services";
 
-const cmds = collectVoiceCommands({ builtins: [...BUILTIN_VOICE_COMMANDS, ...GAZE_MOUSE_PACK, ...HINTS_PACK] });
+const cmds = collectVoiceCommands({ builtins: [...BUILTIN_VOICE_COMMANDS, ...GAZE_MOUSE_PACK.extensions, ...HINTS_PACK.extensions] });
 const match = (u: string) => {
   const r = parseUtterance(u, cmds) as any;
   return r.kind === "match" ? r.result : undefined;
@@ -23,7 +23,7 @@ describe("full-window parse", () => {
   it("is the default density and labels far more than a handful", () => {
     expect(HINT_DENSITY.all.full).toBe(true);
     expect(HINT_DENSITY.all.labels).toBeGreaterThanOrEqual(200);
-    if (!process.env.KNOWHOW_HINT_DENSITY) expect(getHintDensity()).toBe("all");
+    if (!process.env.KNOWHOW_HINT_DENSITY) expect(density(createHintsState(createTestServices()))).toBe("all");
   });
 
   it("labels all 60 inbox rows (no per-name cap) in top-to-bottom order", () => {
@@ -72,26 +72,29 @@ describe("hint grammar", () => {
 });
 
 describe("double click after mouse over", () => {
-  afterEach(() => clearPlacedPointer());
+  let services: ReturnType<typeof createTestServices>;
+  beforeEach(() => {
+    services = createTestServices();
+  });
 
   it("targets the placed pointer even when gaze has moved far away", () => {
-    notePointerPlaced({ x: 100, y: 100 });
-    expect(doubleClickTarget({ gaze: { x: 1500, y: 900 }, target: () => ({ x: 1500, y: 900 }) })).toEqual({ x: 100, y: 100 });
+    services.pointer.notePlaced({ x: 100, y: 100 });
+    expect(services.pointer.doubleClickTarget({ gaze: { x: 1500, y: 900 }, target: () => ({ x: 1500, y: 900 }) })).toEqual({ x: 100, y: 100 });
   });
 
   it("targets the placed pointer even while gaze-follow is running", () => {
-    notePointerPlaced({ x: 100, y: 100 });
+    services.pointer.notePlaced({ x: 100, y: 100 });
     expect(
-      doubleClickTarget({ gazeFollow: { isRunning: () => true }, target: () => ({ x: 1500, y: 900 }) }),
+      services.pointer.doubleClickTarget({ gazeFollow: { isRunning: () => true }, target: () => ({ x: 1500, y: 900 }) }),
     ).toEqual({ x: 100, y: 100 });
   });
 
   it("falls back to gaze without a recent placement", () => {
-    expect(doubleClickTarget({ target: () => ({ x: 1500, y: 900 }) })).toEqual({ x: 1500, y: 900 });
+    expect(services.pointer.doubleClickTarget({ target: () => ({ x: 1500, y: 900 }) })).toEqual({ x: 1500, y: 900 });
   });
 
   it("'double click' command double-clicks at the placed pointer, not the gaze", async () => {
-    notePointerPlaced({ x: 100, y: 100 });
+    services.pointer.notePlaced({ x: 100, y: 100 });
     const m = match("double click");
     expect(m).toBeDefined();
     const mouse = { moveMouse: jest.fn(), clickAt: jest.fn(), doubleClickAt: jest.fn() };
@@ -101,6 +104,7 @@ describe("double click after mouse over", () => {
       target: () => ({ x: 1500, y: 900 }),
       mouse,
       log: () => undefined,
+      services,
     } as any);
     expect(mouse.doubleClickAt).toHaveBeenCalledWith(100, 100);
   });

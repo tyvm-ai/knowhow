@@ -4,13 +4,14 @@
  * Shows what will be typed before typing it.
  * - Prints to terminal
  * - On macOS: shows an osascript dialog (non-blocking, killable)
- * - Voice confirmation via pendingAction registry
+ * - Voice confirmation via the pending-action store (services.pending)
  *
  * Whichever resolves first (dialog button or voice) wins; the other is torn down.
  */
 
 import type { ChildProcess } from "child_process";
 import { spawnOsa } from "./actions/osa";
+import type { PendingActionStore } from "./services/pending";
 
 export interface TypePreviewOptions {
   /** The text to preview. */
@@ -27,6 +28,8 @@ export interface TypePreviewOptions {
   };
   /** Called on confirm, with the text to type and the app to type into. */
   onConfirm(text: string, app: string | undefined): Promise<void>;
+  /** Where the voice confirmation is registered (`services.pending`). */
+  pending: PendingActionStore;
   /** Called on cancel. */
   onCancel(): void;
   /** Called on redo. */
@@ -43,7 +46,7 @@ export interface PreviewHandle {
  * Returns a handle to dismiss programmatically.
  */
 export function showTypePreview(opts: TypePreviewOptions): PreviewHandle {
-  const { text, originalApp, log, actions, onConfirm, onCancel, onRedo } = opts;
+  const { text, originalApp, log, actions, onConfirm, onCancel, onRedo, pending } = opts;
 
   log?.(`[voice] smarttype preview (say "confirm" or "cancel"): ${text}`);
 
@@ -75,8 +78,7 @@ export function showTypePreview(opts: TypePreviewOptions): PreviewHandle {
   };
 
   // Register pending action for voice confirmation
-  const { setPending } = require("./pendingAction") as typeof import("./pendingAction");
-  setPending({
+  pending.set({
     describe: `smarttype: "${text.slice(0, 60)}${text.length > 60 ? "…" : ""}"`,
     accept: () => resolve("confirm"),
     reject: () => resolve("cancel"),

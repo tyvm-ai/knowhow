@@ -465,12 +465,7 @@ interface VisualCache {
   at: number;
   elements: AXElement[];
 }
-let _cache: VisualCache | null = null;
 const VISUAL_CACHE_TTL_MS = 800;
-
-export function invalidateVisualCache(): void {
-  _cache = null;
-}
 
 export interface VisualTimings {
   ocrMs: number;
@@ -480,7 +475,15 @@ export interface VisualTimings {
   boxes: number;
 }
 
-export let lastVisualTimings: VisualTimings | undefined;
+/** The screenshot-scan cache and the timings of the last scan (one per selector / session). */
+export class VisualScanState {
+  cache: VisualCache | null = null;
+  lastTimings: VisualTimings | undefined;
+
+  invalidate(): void {
+    this.cache = null;
+  }
+}
 
 /**
  * Scan `scan` (desktop coords) and return pseudo AX elements. OCR and box
@@ -494,12 +497,15 @@ export async function getVisualElements(
     recognitionLevel?: "fast" | "accurate";
     ttlMs?: number;
     minConfidence?: number;
+    /** Cache + timings; omit for a one-off scan with no caching. */
+    state?: VisualScanState;
   } = {},
 ): Promise<AXElement[]> {
+  const state = opts.state ?? new VisualScanState();
   const r = round(scan);
   const key = `${r.x},${r.y},${r.width},${r.height}`;
-  if (_cache && _cache.key === key && Date.now() - _cache.at < (opts.ttlMs ?? VISUAL_CACHE_TTL_MS)) {
-    return _cache.elements;
+  if (state.cache && state.cache.key === key && Date.now() - state.cache.at < (opts.ttlMs ?? VISUAL_CACHE_TTL_MS)) {
+    return state.cache.elements;
   }
   const t0 = Date.now();
   let ocrMs = 0;
@@ -541,12 +547,13 @@ export async function getVisualElements(
   // Icon budget scales with the area (a whole feed has 100+ action icons).
   const maxIcons = Math.max(60, Math.round((r.width * r.height) / 20000));
   const elements = fuseVisualElements(lines, boxes, { area: r, maxIcons });
-  lastVisualTimings = { ocrMs, regionsMs, totalMs: Date.now() - t0, lines: lines.length, boxes: boxes.length };
+  const timings: VisualTimings = { ocrMs, regionsMs, totalMs: Date.now() - t0, lines: lines.length, boxes: boxes.length };
+  state.lastTimings = timings;
   opts.log?.(
     `[visual-hints] ${elements.length} elements from ${lines.length} OCR lines + ${boxes.length} boxes ` +
-      `in ${lastVisualTimings.totalMs}ms (ocr ${ocrMs}ms, regions ${regionsMs}ms) over ${r.width}x${r.height}`,
+      `in ${timings.totalMs}ms (ocr ${ocrMs}ms, regions ${regionsMs}ms) over ${r.width}x${r.height}`,
   );
-  _cache = { key, at: Date.now(), elements };
+  state.cache = { key, at: Date.now(), elements };
   return elements;
 }
 

@@ -8,7 +8,7 @@ import { parseUtterance } from "../src/grammar";
 import { WINDOWS_PACK } from "../src/packs/windows";
 import { HINTS_PACK } from "../src/packs/hints";
 
-const commands = [...WINDOWS_PACK, ...HINTS_PACK];
+const commands = [...WINDOWS_PACK.extensions, ...HINTS_PACK.extensions];
 
 function parse(text: string): string[] {
   const r = parseUtterance(text, commands);

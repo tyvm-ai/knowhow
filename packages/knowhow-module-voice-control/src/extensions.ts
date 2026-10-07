@@ -5,10 +5,14 @@
  * "computer-use.automation-sdk" and exposed as `sdk.ext.gaze` and
  * `sdk.ext.voice` inside automations.
  *
- * We do NOT import from @tyvm/knowhow-module-computer-use here to avoid a
- * hard dependency cycle.  The extension types are defined locally.
+ * The contract types (`AutomationSdkExtension`, `AutomationExtensionContext`)
+ * come from core (`@tyvm/knowhow/sdk`), so there is no dependency on
+ * @tyvm/knowhow-module-computer-use.
  */
 
+import { AUTOMATION_SDK_EXTENSION } from "@tyvm/knowhow/sdk";
+import type { AutomationExtensionContext, AutomationSdkExtension } from "@tyvm/knowhow/sdk";
+import { createVoiceServices } from "./services";
 import { GazeSample } from "./eyeTracking";
 import {
   VoiceCommandSpec,
@@ -21,31 +25,6 @@ import {
 } from "./voiceHub";
 import { GazeClient, GAZE_TIMEOUT, GAZE_ERROR_RADIUS } from "./gaze";
 import { randomUUID } from "crypto";
-
-// ─── Extension framework types (local, contract-compatible) ──────────────────
-
-/** Matches AutomationExtensionContext from Contract 1 (defined in computer-use). */
-export interface AutomationExtensionContext {
-  automationName: string;
-  dryRun: boolean;
-  signal: AbortSignal;
-  isPaused(): boolean;
-  log(data: unknown): void;
-  onDispose(fn: () => void | Promise<void>): void;
-  sdk: unknown;
-}
-
-/** Matches AutomationSdkExtension from Contract 1. */
-export interface AutomationSdkExtension {
-  type: "computer-use.automation-sdk";
-  name: string;
-  description: string;
-  typings?: string;
-  create(ctx: AutomationExtensionContext): unknown | Promise<unknown>;
-  [key: string]: unknown;
-}
-
-export const AUTOMATION_SDK_EXTENSION = "computer-use.automation-sdk" as const;
 
 // ─── Gaze extension ──────────────────────────────────────────────────────────
 
@@ -289,9 +268,8 @@ interface VoiceExtension {
 import {
   rankCandidates,
   showHintOverlay,
-  clearHintState,
-  getHintState,
-  setHintState,
+  SelectorState,
+  HintState,
   resolveHintRef,
   parseHintRef,
   Candidate,
@@ -327,11 +305,12 @@ export interface HintsExtensionApi {
   show(opts?: { wholeWindow?: boolean; query?: string[] }): Promise<Candidate[]>;
   pick(ref: string): Candidate | undefined;
   clear(): void;
-  state(): ReturnType<typeof getHintState>;
+  state(): HintState | null;
 }
 
 function createHintsApi(
   ctx: AutomationExtensionContext,
+  selector: SelectorState,
   getAdapter: () => SdkComputerAdapter | null,
   getGaze: () => Promise<GazeSample | null>,
 ): HintsExtensionApi {
@@ -350,20 +329,20 @@ function createHintsApi(
         query: opts.query,
         wholeWindow: opts.wholeWindow,
       });
-      setHintState({ candidates, timestamp: Date.now(), selectedIndex: -1, ttlMs: Number.POSITIVE_INFINITY });
-      await showHintOverlay(adapter as unknown as ComputerUseAdapter, candidates);
+      selector.setHintState({ candidates, timestamp: selector.clock.now(), selectedIndex: -1, ttlMs: Number.POSITIVE_INFINITY });
+      await showHintOverlay(selector, adapter as unknown as ComputerUseAdapter, candidates);
       return candidates;
     },
     pick(ref: string): Candidate | undefined {
-      const state = getHintState();
+      const state = selector.getHintState();
       if (!state) return undefined;
       return resolveHintRef(parseHintRef(ref), state.candidates);
     },
     clear() {
-      clearHintState();
+      selector.clearHintState();
     },
     state() {
-      return getHintState();
+      return selector.getHintState();
     },
   };
 }
@@ -390,15 +369,17 @@ interface HintsExtension {
 `,
   create(ctx: AutomationExtensionContext): HintsExtensionApi {
     const hubUrl = resolveHubUrl();
+    // Each automation gets its own hint state (and services); disposed with it.
+    const services = createVoiceServices();
+    const selector = new SelectorState(services.clock);
+    ctx.onDispose(() => selector.dispose());
     const getAdapter = (): SdkComputerAdapter | null => {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { services } = require("@tyvm/knowhow/ts_build/src/services");
-        return services().ComputerUse ?? null;
+        return (services.computer as SdkComputerAdapter | undefined) ?? null;
       } catch { return null; }
     };
     const gazeClient = new GazeClient({ hubUrl });
     const getGaze = () => gazeClient.current({ maxAgeMs: 2000, timeoutMs: GAZE_TIMEOUT.normal });
-    return createHintsApi(ctx, getAdapter, getGaze);
+    return createHintsApi(ctx, selector, getAdapter, getGaze);
   },
 };

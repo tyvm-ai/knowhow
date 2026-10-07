@@ -12,7 +12,7 @@ import { createServer } from "net";
 import { existsSync } from "fs";
 import { basename } from "path";
 import { CommandUtteranceRecognizer, UtteranceRecognizer } from "./continuous";
-import { inferTmuxIntent, isBareTmux } from "./intentRecovery";
+import { inferTmuxIntent, isBareTmux, LearnedIntents } from "./intentRecovery";
 
 export type ServerSpawn = (command: string, args: readonly string[]) => ChildProcessWithoutNullStreams;
 
@@ -98,6 +98,8 @@ const defaultSpawn: ServerSpawn = (command, args) =>
   nodeSpawn(command, [...args], { stdio: ["pipe", "pipe", "pipe"] });
 
 export interface WhisperServerRecognizerOptions {
+  /** Learned mishearings used by the prompt-bias guard (default: a fresh store). */
+  intents?: LearnedIntents;
   /** whisper-server executable. */
   command: string;
   /** ggml model path. */
@@ -153,10 +155,12 @@ export class WhisperServerRecognizer implements UtteranceRecognizer {
   private exited = false;
   private promptPhrases: string[] = [];
   private readonly fetchImpl: typeof fetch;
+  private readonly intents: LearnedIntents;
   private readonly onProcessExit = () => this.kill();
 
   constructor(private readonly options: WhisperServerRecognizerOptions) {
     this.fetchImpl = options.fetch ?? fetch;
+    this.intents = options.intents ?? new LearnedIntents();
   }
 
   get url(): string {
@@ -231,7 +235,7 @@ export class WhisperServerRecognizer implements UtteranceRecognizer {
         // The prompt often swallows half of "tmux left" ("tmux." vs unprompted
         // "Team Max love."). If the unprompted pass is itself a recognisable
         // tmux mishear, hand that on so intent recovery can use it.
-        if (plain.trim() && (inferTmuxIntent(plain) || isBareTmux(plain))) {
+        if (plain.trim() && (inferTmuxIntent(plain, this.intents) || isBareTmux(plain, this.intents))) {
           console.log(`[voice] prompt bias: "${text}" vs unprompted "${plain.trim()}" — using unprompted`);
           return plain.trim();
         }
@@ -367,6 +371,8 @@ export interface CreateWhisperRecognizerOptions {
   serverCommand?: string;
   /** F2: Enable verbose_json for confidence gating. Default false. */
   verboseJson?: boolean;
+  /** Learned mishearings shared with the session (default: a fresh store). */
+  intents?: LearnedIntents;
   exists?: (path: string) => boolean;
   log?: (message: string) => void;
   /** Test seams. */
@@ -402,6 +408,7 @@ export async function createWhisperRecognizer(
     model: options.model,
     prompt: options.prompt,
     verboseJson: options.verboseJson,
+    intents: options.intents,
   };
   const server = options.createServer ? options.createServer(serverOptions) : new WhisperServerRecognizer(serverOptions);
   const startedAt = Date.now();

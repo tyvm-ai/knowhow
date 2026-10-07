@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { spawn, ChildProcess } from "child_process";
 import { createInterface, Interface } from "readline/promises";
 import { stdin, stdout } from "process";
-import { voiceToText } from "@tyvm/knowhow/ts_build/src/microphone";
+import { voiceToText } from "@tyvm/knowhow/sdk";
 import {
   PlaybackHandle,
   PlaybackProgress,

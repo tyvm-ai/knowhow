@@ -12,7 +12,6 @@
 
 import type { PlatformActions, PlatformAdapterExtension } from "./types";
 import { DarwinPlatformActions } from "./darwin";
-import { getComputerService } from "../computerService";
 
 // Re-export types (snapRect, resolveMonitor etc live in types.ts)
 export * from "./types";
@@ -61,20 +60,6 @@ export function getPlatformActions(
 
   // Stub for unsupported platforms — gives a clear error message.
   return makeUnsupportedAdapter(plat);
-}
-
-let _shared: { platform: NodeJS.Platform; actions: PlatformActions } | undefined;
-
-/**
- * Process-wide PlatformActions for the current platform (created lazily, so
- * short-TTL caches such as `frontmostApp({ maxAgeMs })` are shared by every
- * caller). Use `getPlatformActions()` when you need an isolated instance.
- */
-export function sharedPlatformActions(): PlatformActions {
-  if (!_shared || _shared.platform !== process.platform) {
-    _shared = { platform: process.platform, actions: getPlatformActions(getComputerService()) };
-  }
-  return _shared.actions;
 }
 
 function makeUnsupportedAdapter(platform: string): PlatformActions {
