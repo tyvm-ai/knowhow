@@ -77,20 +77,23 @@ describe("double click after mouse over", () => {
     services = createTestServices();
   });
 
-  it("targets the placed pointer even when gaze has moved far away", () => {
+  const doubleClickPoint = async (ctx: Parameters<typeof services.targets.resolve>[0]) =>
+    (await services.targets.resolve(ctx, "doubleClick"))?.point;
+
+  it("targets the placed pointer even when gaze has moved far away", async () => {
     services.pointer.notePlaced({ x: 100, y: 100 });
-    expect(services.pointer.doubleClickTarget({ gaze: { x: 1500, y: 900 }, target: () => ({ x: 1500, y: 900 }) })).toEqual({ x: 100, y: 100 });
+    expect(await doubleClickPoint({ gaze: { x: 1500, y: 900 }, target: () => ({ x: 1500, y: 900 }) })).toEqual({ x: 100, y: 100 });
   });
 
-  it("targets the placed pointer even while gaze-follow is running", () => {
+  it("targets the placed pointer even while gaze-follow is running", async () => {
     services.pointer.notePlaced({ x: 100, y: 100 });
     expect(
-      services.pointer.doubleClickTarget({ gazeFollow: { isRunning: () => true }, target: () => ({ x: 1500, y: 900 }) }),
+      await doubleClickPoint({ gazeFollow: { isRunning: () => true }, target: () => ({ x: 1500, y: 900 }) }),
     ).toEqual({ x: 100, y: 100 });
   });
 
-  it("falls back to gaze without a recent placement", () => {
-    expect(services.pointer.doubleClickTarget({ target: () => ({ x: 1500, y: 900 }) })).toEqual({ x: 1500, y: 900 });
+  it("falls back to gaze without a recent placement", async () => {
+    expect(await doubleClickPoint({ target: () => ({ x: 1500, y: 900 }) })).toEqual({ x: 1500, y: 900 });
   });
 
   it("'double click' command double-clicks at the placed pointer, not the gaze", async () => {

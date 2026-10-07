@@ -1,5 +1,5 @@
 /**
- * Tests for chromeDomProvider.ts — pure logic only.
+ * Tests for adapters/chrome.ts (the Chrome DOM provider) — pure logic only.
  *
  * Does NOT invoke osascript (OS-dependent). Tests:
  *   - domElementsToAXElements: DOM → AXElement coordinate transform
@@ -14,7 +14,7 @@ import {
   isAppleEventsJSDisabled,
   resetAppleEventsWarning,
   DOMElement,
-} from "../src/chromeDomProvider";
+} from "../src/adapters/chrome";
 
 beforeEach(() => {
   resetAppleEventsWarning();

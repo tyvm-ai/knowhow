@@ -7,7 +7,8 @@ import { collectVoiceCommands, BUILTIN_VOICE_COMMANDS } from "../src/voiceComman
 import { parseUtterance } from "../src/grammar";
 import GAZE_MOUSE_PACK from "../src/packs/gazeMouse";
 import { HINTS_PACK } from "../src/packs/hints";
-import { PointerMemory } from "../src/services";
+import { performClick } from "../src/targeting/act";
+import { createTestServices } from "./helpers/services";
 
 const cmds = collectVoiceCommands({ builtins: [...BUILTIN_VOICE_COMMANDS, ...GAZE_MOUSE_PACK.extensions, ...HINTS_PACK.extensions] });
 
@@ -17,9 +18,15 @@ function match(u: string) {
 }
 
 describe("click that", () => {
-  let pointer: PointerMemory;
+  let services: ReturnType<typeof createTestServices>;
+  const clickThat = (mouse: object) =>
+    performClick(
+      { gaze: { x: 900, y: 900 }, target: () => ({ x: 900, y: 900 }), mouse, services, log: () => undefined } as any,
+      "click",
+      { that: true }
+    );
   beforeEach(() => {
-    pointer = new PointerMemory();
+    services = createTestServices();
   });
 
   it("routes 'click that' / 'click it' to click-that, plain 'click' to click", () => {
@@ -30,16 +37,16 @@ describe("click that", () => {
 
   it("clicks in place without moving to the gaze point", async () => {
     const mouse = { clickAt: jest.fn(), doubleClickAt: jest.fn(), clickHere: jest.fn() };
-    pointer.notePlaced({ x: 100, y: 100 });
-    await pointer.clickThat({ gaze: { x: 900, y: 900 }, target: () => ({ x: 900, y: 900 }), mouse });
+    services.pointer.notePlaced({ x: 100, y: 100 });
+    await clickThat(mouse);
     expect(mouse.clickHere).toHaveBeenCalledWith("left");
     expect(mouse.clickAt).not.toHaveBeenCalled();
   });
 
   it("without clickHere, uses the placed pointer even when gaze is far away", async () => {
     const mouse = { clickAt: jest.fn(), doubleClickAt: jest.fn() };
-    pointer.notePlaced({ x: 100, y: 100 });
-    await pointer.clickThat({ gaze: { x: 900, y: 900 }, target: () => ({ x: 900, y: 900 }), mouse });
+    services.pointer.notePlaced({ x: 100, y: 100 });
+    await clickThat(mouse);
     expect(mouse.clickAt).toHaveBeenCalledWith(100, 100, "left");
   });
 });

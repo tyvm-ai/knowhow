@@ -81,6 +81,37 @@ describe("WhisperServerRecognizer", () => {
     await expect(rec.start()).rejects.toThrow(/exited during startup/);
   });
 
+  describe("prompt-bias guard asks the recovery engine about the plain transcription", () => {
+    async function recognizeWith(recoverable: ((plain: string, alts?: string[]) => boolean) | undefined) {
+      // prompted pass says "kubectl.", the unprompted pass says "cube control get"
+      const fetchMock = async (url: string, init?: any) => {
+        if (url.endsWith("/")) return response(200, "");
+        return response(200, init.body.get("prompt") ? " kubectl.\n" : " Cube control get\n");
+      };
+      const rec = new WhisperServerRecognizer({
+        command: "whisper-server", model: "m", port: 3, spawn: () => fakeChild(), fetch: fetchMock as any,
+        prompt: "hey knowhow.", recoverable,
+      });
+      await rec.start();
+      rec.setPromptPhrases(["run kubectl"]);
+      const out = await rec.recognize(wav, signal());
+      await rec.close();
+      return out;
+    }
+
+    test("a recoverable plain transcription is handed on instead of the prompted one", async () => {
+      const seen: Array<[string, string[] | undefined]> = [];
+      const out = await recognizeWith((plain, alts) => { seen.push([plain, alts]); return true; });
+      expect(out).toBe("Cube control get");
+      expect(seen).toEqual([["Cube control get", ["kubectl."]]]);
+    });
+
+    test("otherwise (or without a hook) the disagreement is rejected as prompt bias", async () => {
+      expect(await recognizeWith(() => false)).toBe("");
+      expect(await recognizeWith(undefined)).toBe("");
+    });
+  });
+
   test("non-2xx responses throw", async () => {
     const rec = new WhisperServerRecognizer({
       command: "whisper-server", model: "m", port: 2, spawn: () => fakeChild(),

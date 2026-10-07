@@ -1,7 +1,8 @@
 import { stabilizeLabels, duplicateLabels, resolveHintRef, Candidate } from "../src/smartSelector";
-import { suggestApp, appNameSimilarity, namesRunningApp, checkAppSlot } from "../src/appSuggest";
-import { createTestHarness, createTestServices } from "./helpers/services";
-import { APP_SUGGEST_TTL_MS } from "../src/appSuggest";
+import { suggestApp, appNameSimilarity, namesRunningApp, appNameRecoverer } from "../src/appSuggest";
+import { APP_ALIASES } from "../src/grammar/slots";
+import { RecoveryEngine, RECOVERY_CONFIRM_TTL_MS } from "../src/recovery/engine";
+import { createFakePlatform, createTestHarness } from "./helpers/services";
 
 function cand(role: string, idx: number, x: number, y: number, name?: string): Candidate {
   return {
@@ -58,53 +59,55 @@ describe("app name suggestions", () => {
     expect(suggestApp("banana", running)).toBeUndefined();
   });
 
-  test("checkAppSlot holds the command and 'yes' re-runs it with the fix", async () => {
-    const services = createTestServices();
-    const reran: string[] = [];
-    const res = await checkAppSlot({
-      services,
-      spoken: "ghosting",
-      commandText: "maximize ghosting.",
-      listRunningApps: async () => running,
-      rerun: async (app) => { reran.push(app); },
-      log: () => undefined,
-      notify: () => undefined,
-    });
-    expect(res.status).toBe("suggested");
+  /** The app-name recoverer through the engine, for `maximize ghosting` with `running` apps. */
+  function setup(spoken = "ghosting", text = "maximize ghosting.") {
+    const harness = createTestHarness({ platform: createFakePlatform({ listRunningApps: async () => running }) });
+    const logs: string[] = [];
+    const ran: string[] = [];
+    const engine = new RecoveryEngine({ recoverers: [appNameRecoverer], services: harness.services, log: (l) => logs.push(l) });
+    const recover = () =>
+      engine.recover(
+        { text, normalised: text.toLowerCase(), match: { command: "voice-control.windows.maximize", slots: { app: spoken } } },
+        { run: async (t) => { ran.push(t); } },
+      );
+    return { ...harness, engine, logs, ran, recover };
+  }
+
+  test("a near-miss app is held as a pending question and 'yes' runs the corrected command", async () => {
+    const { services, recover, ran } = setup();
+    const out = await recover();
+    expect(out).toEqual({ kind: "handled", asked: "maximize ghostty" });
     const pending = services.pending.take();
     expect(pending?.describe).toContain("maximize ghostty");
     await pending!.accept();
-    expect(reran).toEqual(["ghostty"]);
+    expect(ran).toEqual(["maximize ghostty"]);
+    // remembered in the shared learned store, and applied to the grammar's aliases
+    expect(services.learned.list("app-name")).toEqual(["ghosting=>ghostty"]);
+    expect(APP_ALIASES["ghosting"]).toBe("ghostty");
+    delete APP_ALIASES["ghosting"];
   });
 
   test("a held suggestion is dropped after its TTL on the injected clock, and nothing is persisted in tests", async () => {
-    const { services, clock } = createTestHarness();
-    const res = await checkAppSlot({
-      services,
-      spoken: "ghosting",
-      commandText: "maximize ghosting.",
-      listRunningApps: async () => running,
-      rerun: async () => undefined,
-      log: () => undefined,
-    });
-    expect(res.status).toBe("suggested");
+    const { services, clock, recover } = setup();
+    expect(await recover()).toMatchObject({ kind: "handled" });
     expect(services.pending.peek()).toBeDefined();
-    clock.advance(APP_SUGGEST_TTL_MS + 1);
+    clock.advance(RECOVERY_CONFIRM_TTL_MS + 1);
     expect(services.pending.peek()).toBeUndefined();
     expect(clock.pendingTimers()).toBe(0);
-    expect(services.appSuggest.persist).toBe(false);
   });
 
-  test("checkAppSlot passes through a running app", async () => {
-    const res = await checkAppSlot({
-      services: createTestServices(),
-      spoken: "Google Chrome",
-      commandText: "maximize chrome",
-      listRunningApps: async () => running,
-      rerun: async () => undefined,
-      log: () => undefined,
-      notify: () => undefined,
-    });
-    expect(res.status).toBe("ok");
+  test("a running app passes through untouched", async () => {
+    const { recover, services } = setup("chrome", "maximize chrome");
+    expect(await recover()).toEqual({ kind: "none" });
+    expect(services.pending.peek()).toBeUndefined();
+  });
+
+  test("learned aliases are re-applied at engine init", () => {
+    const { engine, services } = setup();
+    delete APP_ALIASES["zzz-heard"];
+    services.learned.reset({ "app-name": ["zzz-heard=>ghostty"] });
+    engine.init();
+    expect(APP_ALIASES["zzz-heard"]).toBe("ghostty");
+    delete APP_ALIASES["zzz-heard"];
   });
 });

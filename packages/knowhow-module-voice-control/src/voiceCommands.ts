@@ -21,6 +21,7 @@ import { defineVoicePack } from "./packs/define";
 import { aliasesWithSynonyms, defineCommand, VOICE_COMMAND_EXTENSION } from "./commands/define";
 import { analyzeCommands, applyOverrides } from "./commands/registry";
 import { runDoubleClick } from "./commands/doubleClick";
+import { performClick } from "./targeting/act";
 import type { CommandConflict } from "./commands/registry";
 import { mergeSynonyms } from "./grammar/compile";
 
@@ -162,7 +163,7 @@ export const BUILTIN_PACK = defineVoicePack({
     aliases: ["click it", "click this", "click that one"],
     description: "Left-click whatever is under the pointer right now (no gaze re-targeting)",
     run: async (ctx) => {
-      await ctx.services.pointer.clickThat(ctx, "left");
+      await performClick(ctx, "click", { that: true });
     },
     minVoicedMs: 100,
   }),
@@ -172,8 +173,7 @@ export const BUILTIN_PACK = defineVoicePack({
     aliases: ["click here", "click there", "click click", "clique"],
     description: "Left-click the pointer a hint just placed, else where you are looking",
     run: async (ctx) => {
-      const pos = ctx.services.pointer.clickTarget(ctx);
-      if (pos && ctx.mouse) await ctx.mouse.clickAt(pos.x, pos.y, "left");
+      await performClick(ctx, "click");
     },
     minVoicedMs: 100,
   }),
@@ -191,7 +191,7 @@ export const BUILTIN_PACK = defineVoicePack({
       "double-click here",
     ],
     description:
-      "Double-click the hinted pointer, else where you are looking. 'double click that/it/here' first acts on the element a 'mouse over' just hovered (plays Spotify rows, presses buttons)",
+      "Double-click the hinted pointer, else where you are looking. 'double click that/it/here' first acts on the element a 'mouse over' just hovered (the front app's adapter decides: e.g. plays a track row, presses a button)",
     run: runDoubleClick,
     minVoicedMs: 150,
   }),
@@ -201,8 +201,7 @@ export const BUILTIN_PACK = defineVoicePack({
     aliases: ["rightclick"],
     description: "Right-click the hinted pointer, else where you are looking",
     run: async (ctx) => {
-      const pos = ctx.services.pointer.clickTarget(ctx);
-      if (pos && ctx.mouse) await ctx.mouse.clickAt(pos.x, pos.y, "right");
+      await performClick(ctx, "rightClick");
     },
     minVoicedMs: 150,
   }),

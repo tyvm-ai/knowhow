@@ -85,13 +85,13 @@ describe("PointerMemory", () => {
     expect(pointer.recentPlaced()).toBeNull();
   });
 
-  it("clickTarget: gaze-follow wins; double click ignores gaze distance", () => {
-    const pointer = new PointerMemory(new FakeClock());
-    pointer.notePlaced({ x: 10, y: 10 });
-    const ctx = { gaze: { x: 1500, y: 900 }, target: () => ({ x: 1500, y: 900 }) };
-    expect(pointer.clickTarget(ctx)).toEqual({ x: 1500, y: 900 });
-    expect(pointer.doubleClickTarget(ctx)).toEqual({ x: 10, y: 10 });
-    expect(pointer.clickTarget({ ...ctx, gazeFollow: { isRunning: () => true } })).toEqual({ x: 1500, y: 900 });
+  it("peekPlaced reports age, element and app", () => {
+    const clock = new FakeClock();
+    const pointer = new PointerMemory(clock);
+    pointer.notePlaced({ x: 10, y: 10 }, undefined, "Notes");
+    clock.advance(1200);
+    expect(pointer.peekPlaced()).toEqual({ x: 10, y: 10, ageMs: 1200, candidate: undefined, app: "Notes" });
+    expect(pointer.peekPlaced(1000)).toBeNull();
   });
 
   it("two containers do not share a pointer", () => {

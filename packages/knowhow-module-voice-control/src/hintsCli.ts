@@ -187,6 +187,7 @@ export async function runHintsCli(opts: HintsCliOptions = {}): Promise<void> {
       wholeWindow: density.wholeWindow,
       log,
       appName: opts.app,
+      adapters: services.adapters,
       source: opts.source,
       scanFactor: density.scanFactor,
       maxCandidates: Math.max(20, density.labels),

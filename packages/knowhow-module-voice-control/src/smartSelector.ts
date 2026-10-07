@@ -13,7 +13,7 @@ import type { Clock, TimerHandle } from "./services/clock";
 import { systemClock } from "./services/clock";
 import type { PointerMemory } from "./services/pointer";
 import { enableAXForPid, shouldEnableWebAX, hasActionableWebContent } from "./axEnabler";
-import { getChromeDOMElements } from "./chromeDomProvider";
+import type { AppAdapterRegistry } from "./targeting/adapter";
 import {
   getVisualElements,
   VisualScanState,
@@ -280,7 +280,7 @@ const AX_CACHE_TTL_MS = 500;
  * - Drop elements where width or height <= 2 (invisible / height-1 sentinel
  *   used by virtualized lists for off-viewport items).
  * - Drop elements entirely outside the window bounds (if known).
- * - Deduplicate same role + name + rounded bounds (Spotify reports some
+ * - Deduplicate same role + name + rounded bounds (some apps report some
  *   elements twice in the tree).
  */
 export function filterAndDedupeElements(elements: AXElement[], windowBounds?: Rect): AXElement[] {
@@ -324,7 +324,7 @@ async function getCachedElements(
   if (cache && cache.windowKey === windowKey && now - cache.timestamp < AX_CACHE_TTL_MS) {
     return cache.elements;
   }
-  // Use larger depth + element budget so Spotify (depth 16–27) and Chrome
+  // Use larger depth + element budget so deep trees (depth 16–27, e.g. media players) and Chrome
   // web content (depth up to 60) are fully captured. The Rust AX scanner
   // returns results in ~180–360 ms at these limits, within the 500 ms budget.
   // Accessibility can fail outright (e.g. "No focused accessibility
@@ -508,6 +508,8 @@ export interface RankOptions {
    * left→right) so "row 48" is predictable.
    */
   fullParse?: boolean;
+  /** App-specific short-label hook (from an AppAdapter); undefined result = generic label. */
+  labelFor?: (el: AXElement) => string | undefined;
 }
 
 export function rankCandidates(opts: RankOptions): Candidate[] {
@@ -540,7 +542,7 @@ export function rankCandidates(opts: RankOptions): Candidate[] {
     if (!wholeWindow && gScore < 0.01) continue;
     // Include the derived short name (e.g. "like", "reply", "play rubber head")
     // so spoken commands match the action verb, not the raw "14 Likes. Like" string.
-    const shortName = deriveShortName(el);
+    const shortName = deriveShortName(el, opts.labelFor);
     // canonicalName: the primary human name — used for specificity (word count).
     // Use shortName if it's shorter/more specific than the raw title/description.
     const canonicalName = shortName || el.title || el.description || el.value || "";
@@ -629,7 +631,7 @@ export function rankCandidates(opts: RankOptions): Candidate[] {
         }).length;
         if (childCount >= 2) continue;
       }
-      const dn = deriveShortName(s.element) || `${s.element.role}`;
+      const dn = deriveShortName(s.element, opts.labelFor) || `${s.element.role}`;
       nameCounts[dn] = (nameCounts[dn] ?? 0) + 1;
       if (nameCounts[dn] > maxPerName) continue;
       diversified.push(s);
@@ -666,7 +668,7 @@ export function rankCandidates(opts: RankOptions): Candidate[] {
     roleCounters[roleName] = (roleCounters[roleName] ?? 0) + 1;
     const roleIndex = roleCounters[roleName];
     const label = `${roleName} ${roleIndex}`;
-    const displayName = deriveShortName(s.element) || undefined;
+    const displayName = deriveShortName(s.element, opts.labelFor) || undefined;
     return {
       element: s.element,
       score: s.total,
@@ -685,9 +687,7 @@ export function rankCandidates(opts: RankOptions): Candidate[] {
 /**
  * Derive a short matchable display name from AX element name fields.
  *
- * Handles patterns seen in Spotify and X:
- *   "Play Rubber Head by Cliff Martinez" → "play rubber head"
- *   "More options for A Real Hero feat Electric Youth" → "more options"
+ * Generic patterns:
  *   "Add to Liked Songs" → "add to liked songs"
  *   "120 Likes. Like" → "like" (verb after last ". ")
  *   "32 Replies. Reply" → "reply"
@@ -695,13 +695,16 @@ export function rankCandidates(opts: RankOptions): Candidate[] {
  *   "Share post" → "share post"
  *   "Bookmark" → "bookmark"
  *
+ * App-specific label rules ("Play X by Y" → "play x") come from an AppAdapter's
+ * `labelFor`, passed as `labelFor`; its answer wins over the generic fallback.
+ *
  * Returns a lowercase string of <= 40 chars, suitable for fuzzy matching.
  */
-export function deriveShortName(el: AXElement): string {
+export function deriveShortName(el: AXElement, labelFor?: (el: AXElement) => string | undefined): string {
   const raw = (el.title || el.description || el.value || "").trim();
   if (!raw) return "";
 
-  // X pattern: "N Likes. Like", "N Replies. Reply", "N reposts. Repost"
+  // "N Likes. Like", "N Replies. Reply", "N reposts. Repost"
   // Extract the action word after the last ". "
   const dotSplit = raw.split(". ");
   if (dotSplit.length >= 2) {
@@ -712,15 +715,8 @@ export function deriveShortName(el: AXElement): string {
     }
   }
 
-  // Spotify pattern: "Play <song> by <artist>" → "play <song>"
-  const playByMatch = raw.match(/^play\s+(.+?)\s+by\s+.+$/i);
-  if (playByMatch) {
-    return `play ${playByMatch[1]}`.toLowerCase().slice(0, 40);
-  }
-
-  // "More options for <song>" → "more options"
-  const moreForMatch = raw.match(/^more options for\s+.+/i);
-  if (moreForMatch) return "more options";
+  const appLabel = labelFor?.(el);
+  if (appLabel !== undefined) return appLabel;
 
   // "Add to Liked Songs" → keep as-is (short enough)
   return raw.toLowerCase().slice(0, 40);
@@ -1025,11 +1021,14 @@ export async function collectCandidates(
     visualTtlMs?: number;
     /** Full-window parse: label everything, number in reading order (see RankOptions.fullParse). */
     fullParse?: boolean;
+    /** App adapters: extra elements (DOM), label rules and candidate filters for `appName`. */
+    adapters?: AppAdapterRegistry;
   } = {},
 ): Promise<Candidate[]> {
   const log = opts.log ?? ((msg: string) => process.stderr.write(msg + "\n"));
   const source: HintSource =
     opts.source ?? (process.env.KNOWHOW_HINT_SOURCE as HintSource | undefined) ?? "auto";
+  const candidateFilter = opts.adapters?.filterFnFor(opts.appName);
   const rankWith = (els: AXElement[]) =>
     rankCandidates({
       gaze,
@@ -1039,7 +1038,8 @@ export async function collectCandidates(
       wholeWindow: opts.wholeWindow,
       maxCandidates: opts.maxCandidates,
       fullParse: opts.fullParse,
-    });
+      labelFor: opts.adapters?.labelFnFor(opts.appName),
+    }).filter((c) => !candidateFilter || candidateFilter(c.element));
 
   if (source === "visual") {
     return rankWith(await collectVisualElements(selector, adapter, gaze, errorRadius, !!opts.wholeWindow || opts.visualScan === "window", log, opts.visualTtlMs, opts.scanFactor));
@@ -1070,20 +1070,21 @@ export async function collectCandidates(
     }
   }
 
-  // If AX still lacks actionable web content, try Chrome DOM provider
+  // Let the front app's adapters add elements the AX tree cannot see (e.g. DOM elements).
   let effectiveElements = elements;
-  if (!hasActionableWebContent(elements) && opts.appName) {
-    log(`[smart-selector] AX has no actionable web content; trying Chrome DOM provider for "${opts.appName}"...`);
-    try {
-      const domElements = await getChromeDOMElements(elements, opts.appName, log);
-      if (domElements.length > 0) {
-        log(`[smart-selector] Chrome DOM provider returned ${domElements.length} elements`);
-        effectiveElements = [...elements, ...domElements];
-      } else {
-        log("[smart-selector] Chrome DOM provider returned no elements");
+  if (opts.appName && opts.adapters) {
+    const axLooksEmpty = !hasActionableWebContent(elements);
+    for (const adapter of opts.adapters.forApp(opts.appName)) {
+      if (!adapter.extraElements) continue;
+      try {
+        const extra = await adapter.extraElements({ elements, appName: opts.appName, axLooksEmpty, log });
+        if (extra.length > 0) {
+          log(`[smart-selector] ${adapter.name} adapter added ${extra.length} elements`);
+          effectiveElements = [...effectiveElements, ...extra];
+        }
+      } catch (e) {
+        log(`[smart-selector] ${adapter.name} adapter error: ${e}`);
       }
-    } catch (e) {
-      log(`[smart-selector] Chrome DOM provider error: ${e}`);
     }
   }
 
@@ -1198,7 +1199,7 @@ export async function activateElement(
   adapter: ComputerUseAdapter,
   candidate: Candidate,
   action: "click" | "focus" | "check" | "rightClick" = "click",
-  deps: { pointer?: PointerMemory; clock?: Clock } = {},
+  deps: { pointer?: PointerMemory; clock?: Clock; app?: string } = {},
 ): Promise<void> {
   const clock = deps.clock ?? systemClock;
   let resolvedCandidate = candidate;
@@ -1223,7 +1224,7 @@ export async function activateElement(
       // can ignore a click that arrives in the same instant as the move.
       await clock.sleep(60);
       await adapter.click("left");
-      deps.pointer?.notePlaced({ x: cx, y: cy }, resolvedCandidate);
+      deps.pointer?.notePlaced({ x: cx, y: cy }, resolvedCandidate, deps.app);
     }
     if (bounds) {
       await postGazeCorrection({ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 });
@@ -1250,80 +1251,6 @@ export async function activateElement(
       await postGazeCorrection({ x: cx, y: cy });
     }
   }
-}
-
-// ─── Play <song> lookup ───────────────────────────────────────────────────────
-
-/**
- * Find the "Play <song> by <artist>" AXButton for a given song name query.
- * Searches the full window AX tree via a fresh query (not the cache).
- * Returns the best matching Candidate, or the nearest AXRow if no play button
- * matches well enough, or undefined.
- *
- * @param adapter   The computer-use adapter
- * @param songQuery Words from the spoken song name (e.g. ["a", "real", "hero"])
- * @param gaze      Current gaze point for distance-based tie-breaking
- */
-export async function findPlayButton(
-  adapter: ComputerUseAdapter,
-  songQuery: string[],
-  gaze: { x: number; y: number },
-): Promise<Candidate | undefined> {
-  let elements: AXElement[];
-  try {
-    elements = await adapter.accessibilityElements({
-      interactiveOnly: false,
-      maxDepth: 40,
-      maxElements: 4000,
-    });
-  } catch {
-    return undefined;
-  }
-
-  // Filter to AXButton elements that support AXPress
-  const playButtons = elements.filter(
-    (el) => el.role === "AXButton" && el.actions.includes("AXPress"),
-  );
-
-  // Score by song name match (shortName for play buttons is "play <song>")
-  let bestBtn: AXElement | undefined;
-  let bestScore = 0;
-  for (const btn of playButtons) {
-    const shortName = deriveShortName(btn);
-    // Strip "play " prefix so the query "a real hero" matches "play a real hero"
-    const songPart = shortName.startsWith("play ") ? shortName.slice(5) : shortName;
-    const fullScore = nameFuzzyScore(songQuery, songPart);
-    // Also try matching against the full description ("Play X by Y") directly
-    const rawName = (btn.title ?? btn.description ?? "").toLowerCase();
-    const rawScore = nameFuzzyScore(songQuery, rawName);
-    const score = Math.max(fullScore, rawScore);
-    if (score > bestScore) {
-      bestScore = score;
-      bestBtn = btn;
-    }
-  }
-
-  if (bestBtn && bestScore >= 0.4) {
-    return {
-      element: bestBtn,
-      score: bestScore,
-      label: "button 1",
-      roleName: "button",
-      roleIndex: 1,
-      displayName: deriveShortName(bestBtn),
-    };
-  }
-
-  // Fallback: find nearest AXRow that contains the song name in its title
-  const filtered = filterAndDedupeElements(elements);
-  return rankCandidates({
-    gaze,
-    errorRadius: { x: 400, y: 400 },
-    elements: filtered,
-    query: songQuery,
-    wholeWindow: true,
-    maxCandidates: 1,
-  })[0];
 }
 
 // ─── Smart mouse controller ───────────────────────────────────────────────────

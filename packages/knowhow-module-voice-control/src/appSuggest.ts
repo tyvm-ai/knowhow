@@ -1,66 +1,39 @@
 /**
- * "Did you mean Ghostty?" — suggest a correction when a command's {app}
- * slot doesn't name a running app but sounds like one ("maximize ghosting").
+ * "Did you mean Ghostty?" — the `app-name` recoverer.
  *
- * Flow:
- *   1. checkAppSlot() resolves the spoken name against running apps and the
- *      alias table. A clean match → run the command as usual.
- *   2. A near miss → the command is held as a pending action and the user is
- *      asked to say "yes"/"confirm" (or "no"/"cancel").
- *   3. Accepting runs the command with the corrected app and remembers the
- *      mishearing (~/.knowhow/voice-app-aliases.json), so next time
- *      "ghosting" maps straight to Ghostty.
+ * When a matched command's {app} slot doesn't name a running app but sounds
+ * like one ("maximize ghosting"), the recoverer proposes the rewritten command
+ * ("maximize ghostty"). The RecoveryEngine asks "yes"/"no" (never auto-runs a
+ * guess), runs it on "yes" and remembers the mishearing in the shared learned
+ * store (`app-name`: "ghosting=>ghostty"), after which "ghosting" maps straight
+ * to Ghostty through the grammar's APP_ALIASES.
  */
 
-import { readFileSync, existsSync, readdirSync } from "fs";
-import { mkdir, writeFile } from "fs/promises";
-import { join, dirname } from "path";
+import { readdirSync } from "fs";
+import { join } from "path";
 import { homedir } from "os";
 import { spawnOsa } from "./actions/osa";
 import { APP_ALIASES } from "./grammar/slots";
-import type { Clock } from "./services/clock";
-import type { PendingAction, PendingActionStore } from "./services/pending";
-
-export const LEARNED_APP_ALIASES_FILE =
-  process.env.KNOWHOW_VOICE_APP_ALIASES_FILE ?? join(homedir(), ".knowhow", "voice-app-aliases.json");
+import type { IntentRecoverer, RecoveryResult } from "./recovery/types";
 
 /** Similarity needed before we suggest anything (0..1). */
 export const APP_SUGGEST_MIN_SCORE = 0.55;
 /** A pending suggestion is dropped after this long. */
 export const APP_SUGGEST_TTL_MS = 20_000;
 
-// ─── Learned aliases ────────────────────────────────────────────────────────
+// ─── Per-session state ──────────────────────────────────────────────────────
 
 /**
  * Per-session app-suggest state: whether the learned aliases are loaded and
  * the installed-apps cache (`services.appSuggest`).
  */
 export class AppSuggestState {
-  learnedLoaded = false;
   installed: { at: number; names: Set<string> } | undefined;
-  /** Where confirmed mishearings are persisted. */
-  readonly file: string;
-  /** Persist confirmed mishearings (tests turn this off). */
-  readonly persist: boolean;
-  /** Desktop notification when a suggestion is held (tests inject a no-op). */
+  /** Desktop notification when a suggestion is asked (tests inject a no-op). */
   readonly notify: (title: string, message: string) => void;
 
-  constructor(opts: { file?: string; persist?: boolean; notify?: (title: string, message: string) => void } = {}) {
-    this.file = opts.file ?? LEARNED_APP_ALIASES_FILE;
-    this.persist = opts.persist ?? true;
+  constructor(opts: { notify?: (title: string, message: string) => void } = {}) {
     this.notify = opts.notify ?? notifyMac;
-  }
-
-  /** Remember that `spoken` means `app` (in APP_ALIASES now, and on disk when `persist`). */
-  async learnAlias(spoken: string, app: string): Promise<void> {
-    await learnAppAlias(spoken, app, this.file, this.persist);
-  }
-
-  /** Load learned mishearings into APP_ALIASES (idempotent for the default file). */
-  loadLearnedAppAliases(file = this.file): Record<string, string> {
-    if (this.learnedLoaded && file === this.file) return {};
-    if (file === this.file) this.learnedLoaded = true;
-    return readLearnedAppAliases(file);
   }
 
   /** Case-insensitive check against /Applications and /System/Applications (cached 60 s). */
@@ -82,40 +55,6 @@ export class AppSuggestState {
     for (const n of this.installed.names) if (n.split(" ").includes(want)) return true;
     return false;
   }
-}
-
-function readLearnedAppAliases(file: string): Record<string, string> {
-  try {
-    if (!existsSync(file)) return {};
-    const data = JSON.parse(readFileSync(file, "utf8")) as Record<string, string>;
-    for (const [spoken, app] of Object.entries(data)) {
-      if (typeof app === "string" && spoken && !(spoken in APP_ALIASES)) APP_ALIASES[spoken] = app;
-    }
-    return data;
-  } catch {
-    return {};
-  }
-}
-
-export async function learnAppAlias(
-  spoken: string,
-  app: string,
-  file = LEARNED_APP_ALIASES_FILE,
-  persist = true,
-): Promise<void> {
-  const key = normaliseName(spoken);
-  if (!key || normaliseName(app) === key) return;
-  APP_ALIASES[key] = app;
-  if (!persist) return;
-  let data: Record<string, string> = {};
-  try {
-    if (existsSync(file)) data = JSON.parse(readFileSync(file, "utf8"));
-  } catch { /* start fresh */ }
-  data[key] = app;
-  try {
-    await mkdir(dirname(file), { recursive: true });
-    await writeFile(file, JSON.stringify(data, null, 2) + "\n", "utf8");
-  } catch { /* best effort */ }
 }
 
 // ─── Fuzzy matching ─────────────────────────────────────────────────────────
@@ -204,79 +143,60 @@ export function namesRunningApp(spoken: string, runningApps: string[]): boolean 
   });
 }
 
-// ─── Command gate ───────────────────────────────────────────────────────────
+// ─── The recoverer ──────────────────────────────────────────────────────────
 
-export interface AppSlotCheck {
-  /** "ok": run as-is. "suggested": held for confirmation. */
-  status: "ok" | "suggested";
-  suggestion?: AppSuggestion;
+export const APP_NAME_RECOVERER = "app-name";
+
+/** Learned-store key for "spoken" meaning "app". */
+export function appAliasKey(spoken: string, app: string): string {
+  return `${normaliseName(spoken)}=>${app}`;
 }
 
-export interface AppSlotCheckOptions {
-  spoken: string;
-  /** Text of the command for the prompt, e.g. "maximize ghosting". */
-  commandText: string;
-  listRunningApps?: () => Promise<string[]>;
-  /** Re-run the command with the corrected app. */
-  rerun: (app: string) => Promise<void>;
-  log: (msg: string) => void;
-  notify?: (title: string, message: string) => void;
-  /** Accept names of installed (not running) apps, for commands that launch. */
-  allowInstalled?: boolean;
-  /** Session services this check needs (learned aliases + installed cache, pending store, timers). */
-  services: { appSuggest: AppSuggestState; pending: PendingActionStore; clock: Clock };
-}
+/** Commands whose app may be installed-but-not-running (they launch it). */
+const LAUNCHING_COMMAND = /focus|open|switch|launch/;
 
-/**
- * Check a command's {app} slot. Returns "suggested" (and registers a pending
- * confirm) when the name isn't a running app but closely resembles one.
- */
-export async function checkAppSlot(opts: AppSlotCheckOptions): Promise<AppSlotCheck> {
-  opts.services.appSuggest.loadLearnedAppAliases();
-  const spoken = opts.spoken.trim();
-  if (!spoken || !opts.listRunningApps) return { status: "ok" };
-  let running: string[] = [];
-  try {
-    running = await opts.listRunningApps();
-  } catch {
-    return { status: "ok" };
-  }
-  if (!running.length || namesRunningApp(spoken, running)) return { status: "ok" };
-  // Installed but not running ("open spotify") — let the command launch it.
-  if (opts.allowInstalled && opts.services.appSuggest.isInstalledApp(spoken, opts.services.clock.now())) return { status: "ok" };
+export const appNameRecoverer: IntentRecoverer = {
+  name: APP_NAME_RECOVERER,
+  stage: "matched",
+  onLearned(key) {
+    const [spoken, app] = key.split("=>");
+    if (spoken && app && !(spoken in APP_ALIASES)) APP_ALIASES[spoken] = app;
+  },
+  async recover({ text, match }, { services }): Promise<RecoveryResult | undefined> {
+    const spoken = typeof match?.slots.app === "string" ? match.slots.app.trim() : "";
+    const listRunningApps = services.platform?.listRunningApps;
+    if (!match || !spoken || !listRunningApps) return undefined;
+    let running: string[] = [];
+    try {
+      running = await listRunningApps.call(services.platform);
+    } catch {
+      return undefined;
+    }
+    if (!running.length || namesRunningApp(spoken, running)) return undefined;
+    // Installed but not running ("open spotify") — let the command launch it.
+    if (LAUNCHING_COMMAND.test(match.command) && services.appSuggest.isInstalledApp(spoken, services.clock.now())) return undefined;
 
-  const suggestion = suggestApp(spoken, running);
-  if (!suggestion || normaliseName(suggestion.app) === normaliseName(spoken)) return { status: "ok" };
+    const suggestion = suggestApp(spoken, running);
+    if (!suggestion || normaliseName(suggestion.app) === normaliseName(spoken)) return undefined;
+    const corrected = replaceWord(text, spoken, suggestion.app);
+    if (!corrected) return undefined;
+    return {
+      kind: "rewrite",
+      text: corrected,
+      confidence: "low",
+      learnKey: appAliasKey(spoken, suggestion.app),
+      prompt: `No running app called "${spoken}". Did you mean ${suggestion.app}? Say "yes" to run "${corrected}", or "no".`,
+      describe: `${corrected} (heard "${spoken}")`,
+      onAsk: () => services.appSuggest.notify("Voice: did you mean…?", `${corrected} — say "yes" or "no"`),
+    };
+  },
+};
 
-  const corrected = replaceWord(opts.commandText, spoken, suggestion.app);
-  const describe = `${corrected} (heard "${spoken}")`;
-  const pending: PendingAction = {
-    describe,
-    accept: async () => {
-      opts.log(`[voice] using ${suggestion.app} for "${spoken}" (remembered for next time)`);
-      await opts.services.appSuggest.learnAlias(spoken, suggestion.app);
-      await opts.rerun(suggestion.app);
-    },
-    reject: () => {
-      opts.log(`[voice] ok, not running "${corrected}"`);
-    },
-  };
-  opts.services.pending.set(pending);
-  const timer = opts.services.clock.setTimeout(() => {
-    if (opts.services.pending.peek() === pending) opts.services.pending.clear();
-  }, APP_SUGGEST_TTL_MS);
-  timer.unref?.();
-
-  const prompt = `No running app called "${spoken}". Did you mean ${suggestion.app}? Say "yes" to run "${corrected}", or "no".`;
-  opts.log(`[voice] ${prompt}`);
-  (opts.notify ?? opts.services.appSuggest.notify)("Voice: did you mean…?", `${corrected} — say "yes" or "no"`);
-  return { status: "suggested", suggestion };
-}
-
-function replaceWord(text: string, word: string, replacement: string): string {
+/** `text` with `word` replaced by `replacement`; undefined when `word` isn't in the text. */
+function replaceWord(text: string, word: string, replacement: string): string | undefined {
   const re = new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
   const cleaned = text.replace(/[.!?]+$/, "");
-  return re.test(cleaned) ? cleaned.replace(re, replacement) : `${cleaned} → ${replacement}`;
+  return re.test(cleaned) ? cleaned.replace(re, replacement) : undefined;
 }
 
 /** Non-blocking macOS notification (no shell; text passed as an argument). */

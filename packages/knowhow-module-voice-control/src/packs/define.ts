@@ -33,7 +33,10 @@
 
 import { defineCommand } from "../commands/define";
 import type { CommandDefinition } from "../commands/define";
+import { registerNormaliser } from "../grammar/normalise";
+import type { NormaliseRule } from "../grammar/normalise";
 import { registerSlotType } from "../grammar/slots";
+import type { IntentRecoverer } from "../recovery/types";
 import { getDefaultServices } from "../services";
 import type { VoiceServices } from "../services";
 import type { VoiceCommandContext, VoiceCommandExtension } from "../voiceCommands";
@@ -78,6 +81,10 @@ export interface VoicePackDefinition<S = void> {
   slots?: SlotTypeDef[];
   /** Vocabulary synonyms applied to every command of the pack. */
   synonyms?: Record<string, string[]>;
+  /** Mishear rewrites ("tea mux" → "tmux") applied by `normaliseTranscript` (see `registerPackNormalisers`). */
+  normalisers?: NormaliseRule[];
+  /** Intent recoverers run by the session's `RecoveryEngine` (see src/recovery/). */
+  recoverers?: IntentRecoverer[];
   onSessionStart?(ctx: PackLifecycleContext<S>): void | Promise<void>;
   onSessionStop?(ctx: PackLifecycleContext<S>): void | Promise<void>;
 }
@@ -118,6 +125,11 @@ export type AnyVoicePack = VoicePack<any>;
 /** Register every pack's slot types with the grammar engine (idempotent). */
 export function registerPackSlots(packs: readonly AnyVoicePack[]): void {
   for (const pack of packs) for (const slot of pack.slots ?? []) registerSlotType(slot.name, slot.matcher);
+}
+
+/** Register every pack's normaliser rules with the grammar (idempotent per pack). */
+export function registerPackNormalisers(packs: readonly AnyVoicePack[]): void {
+  for (const pack of packs) if (pack.normalisers?.length) registerNormaliser(pack.name, pack.normalisers);
 }
 
 /**

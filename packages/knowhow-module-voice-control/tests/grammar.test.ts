@@ -3,6 +3,8 @@
  */
 
 import { compilePattern } from "../src/grammar/compile";
+import { registerPackNormalisers } from "../src/packs/define";
+import { TMUX_PACK } from "../src/packs/tmux";
 import { matchPattern } from "../src/grammar/match";
 import { normaliseTranscript, tokenise } from "../src/grammar/normalise";
 import { convertDictation, applyCase, expandSpell } from "../src/grammar/dictation";
@@ -52,7 +54,9 @@ describe("normaliseTranscript", () => {
     expect(normaliseTranscript("crome")).toBe("chrome");
   });
 
-  test("fixes tmux mishear", () => {
+  // The tmux mishear rules are contributed by the tmux pack (see also tmuxPack.test.ts).
+  test("applies a pack's normaliser rules (tmux pack: tea mux → tmux)", () => {
+    registerPackNormalisers([TMUX_PACK]);
     expect(normaliseTranscript("tea mux")).toBe("tmux");
   });
 

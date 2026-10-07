@@ -17,7 +17,7 @@ import { createTmuxState } from "../../src/packs/tmux";
 import { tmpdir } from "os";
 import { join } from "path";
 import { AppSuggestState } from "../../src/appSuggest";
-import { LearnedIntents } from "../../src/intentRecovery";
+import { LearnedStore } from "../../src/recovery/learned";
 import { createMemoryLogger, createVoiceServices } from "../../src/services";
 import type { Clock, TimerHandle, VoiceServices } from "../../src/services";
 
@@ -139,8 +139,8 @@ export function createTestServices(
     clock: new FakeClock(),
     log: createMemoryLogger(),
     // Never read or write the user's learned files, never show notifications.
-    intents: new LearnedIntents(join(tmpdir(), `knowhow-voice-test-intents-${process.pid}-${Math.random().toString(36).slice(2)}.json`)),
-    appSuggest: new AppSuggestState({ persist: false, notify: () => undefined }),
+    learned: new LearnedStore({ file: join(tmpdir(), `knowhow-voice-test-learned-${process.pid}-${Math.random().toString(36).slice(2)}.json`), persist: false }),
+    appSuggest: new AppSuggestState({ notify: () => undefined }),
     ...overrides,
   });
   const defaults: Record<string, unknown> = {

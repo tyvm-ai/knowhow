@@ -19,26 +19,6 @@ const MISHEAR_TABLE: Array<[RegExp, string]> = [
   [/\bghosty\b/g, "ghostty"],
   [/\bcrome\b/g, "chrome"],
   [/\bcrown\b/g, "chrome"],
-  // tmux
-  [/\btea\s+mux\b/g, "tmux"],
-  [/\bt\s+mux\b/g, "tmux"],
-  [/\btymo?x\b/g, "tmux"],
-  [/\bt-mux\b/g, "tmux"],
-  [/\b(?:tee|team|ti|tim)\s*-?mux\b/g, "tmux"],
-  [/\bteamucks\b/g, "tmux"],
-  // "tmux left/right" is short and whisper splits it into real words:
-  // "too much left", "tea much right", "teammates left", "two mouse left",
-  // "two months left", "two mux up", … Only at the start of an utterance and
-  // only when a tmux sub-command follows (plus at most two more words), so
-  // "two months left of my contract" or "too much" on its own is untouched.
-  [
-    /^(?:(?:too|two|to|tea|tee|team|tim|tu)\s*-?\s*(?:much|mutch|mux|mucks|mox|mouse|months|month|max|mix|marks|mocks|mugs)|teammates?|tumux|timux|tmax|teamux|teemux|tmucks|demux)\b(?=\s+(?:left|lift|laughed|right|write|rite|up|down|zoom|tab|tabs|pane|pain|split|resize|grow|new|next|previous|prev|last|copy|interrupt|go)(?:\s+\S+){0,2}\s*$)/,
-    "tmux",
-  ],
-  [/^tmux\s+(?:write|rite|wright|bright|righ)$/, "tmux right"],
-  [/^tmux\s+(?:lift|laughed|lefts?|leaf|loft)$/, "tmux left"],
-  [/\btmux\s+(?:tap|tad|tabs)\b/g, "tmux tab"],
-  [/\btmux\s+(?:pain|pained)\b/g, "tmux pane"],
   // Numbers / homophones
   // Only AFTER a numbered noun ("monitor to" → "monitor two"). The old rule
   // rewrote "to" BEFORE those words, turning "move chrome to monitor 1" into
@@ -75,6 +55,19 @@ const MISHEAR_TABLE: Array<[RegExp, string]> = [
   [/^(press\s.+?)\s+(\d+|four|five|six|seven|eight|nine|ten)\s+times$/, "$1 $2"],
 ];
 
+/** A mishear rewrite contributed by a pack. */
+export type NormaliseRule = [RegExp, string];
+
+const packRules = new Map<string, NormaliseRule[]>();
+
+/**
+ * Register a pack's normaliser rules (idempotent per pack name). They run
+ * before the generic table, in registration order.
+ */
+export function registerNormaliser(packName: string, rules: readonly NormaliseRule[]): void {
+  packRules.set(packName, [...rules]);
+}
+
 /** Strip trailing period/comma/quotes that Whisper adds. */
 function stripWhisperSuffix(text: string): string {
   // Remove surrounding quotes: "hello" → hello
@@ -95,6 +88,9 @@ function stripWhisperSuffix(text: string): string {
 export function normaliseTranscript(text: string): string {
   let s = text.trim().toLowerCase();
   s = stripWhisperSuffix(s);
+  for (const rules of packRules.values()) {
+    for (const [pattern, replacement] of rules) s = s.replace(pattern, replacement);
+  }
   for (const [pattern, replacement] of MISHEAR_TABLE) {
     s = s.replace(pattern, replacement);
   }

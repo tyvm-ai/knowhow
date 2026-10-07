@@ -1,5 +1,5 @@
 /**
- * chromeDomProvider.ts — Chrome DOM candidate provider via Apple Events JS.
+ * adapters/chrome.ts — Chrome app adapter: DOM candidates via Apple Events JS.
  *
  * When Chrome's AX tree lacks actionable web content (renderer accessibility
  * is in minimal mode), we fall back to injecting a JavaScript snippet via
@@ -17,8 +17,9 @@
  *   const candidates = await getChromeDOMCandidates(axElements, appName, log);
  */
 
-import { appleScriptString, runAppleScriptSync } from "./actions/osa";
-import { AXElement, Candidate, Rect } from "./smartSelector";
+import { appleScriptString, runAppleScriptSync } from "../actions/osa";
+import type { AXElement, Candidate, Rect } from "../smartSelector";
+import type { AppAdapter } from "../targeting/adapter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -269,3 +270,25 @@ export function isAppleEventsJSDisabled(error: string): boolean {
     error.includes("not enabled") || error.includes("not allowed") ||
     error.includes("Allow JavaScript");
 }
+
+// ─── The adapter ──────────────────────────────────────────────────────────────
+
+/** Chromium browsers whose active tab can run JavaScript through Apple Events. */
+export const CHROME_APP = /chrom|brave|edge|vivaldi|opera|\barc\b/i;
+
+export const chromeAdapter: AppAdapter = {
+  name: "chrome",
+  app: CHROME_APP,
+  /** When the AX tree has no actionable web content, read the DOM of the active tab. */
+  async extraElements({ elements, appName, axLooksEmpty, log }) {
+    if (!axLooksEmpty) return [];
+    log(`[smart-selector] AX has no actionable web content; trying Chrome DOM provider for "${appName}"...`);
+    const dom = await getChromeDOMElements(elements, appName, log);
+    log(
+      dom.length > 0
+        ? `[smart-selector] Chrome DOM provider returned ${dom.length} elements`
+        : "[smart-selector] Chrome DOM provider returned no elements"
+    );
+    return dom;
+  },
+};

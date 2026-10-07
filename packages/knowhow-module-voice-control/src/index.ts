@@ -32,6 +32,7 @@ export * from "./commandsCli";
 export * from "./axEnabler";
 export * from "./latency";
 export * from "./whisperServer";
+export * from "./recovery/index";
 
 type VoiceControlOptions = VoiceAgentCommandOptions & Record<string, any>;
 

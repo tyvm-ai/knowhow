@@ -35,11 +35,11 @@ import {
   HINT_DENSITY,
   HintDensity,
   stabilizeLabels,
-  findPlayButton,
 } from "../smartSelector";
 import { HintRef } from "../grammar/slots";
 import { convertDictation } from "../grammar/dictation";
 import { GAZE_ERROR_RADIUS, GAZE_TIMEOUT } from "../gaze";
+import { centerOf } from "../targeting/resolver";
 import { defineVoicePack } from "./define";
 import type { PackCommandContext } from "./define";
 import type { TimerHandle, VoiceServices } from "../services";
@@ -263,6 +263,7 @@ class HintModeController {
         getWindowKey(this.ctx),
         {
           appName: await getFrontmostAppName(this.ctx),
+          adapters: this.ctx.services.adapters,
           scanFactor: cfg.scanFactor,
           maxCandidates: Math.max(20, cfg.labels),
           log: () => undefined, // quiet: this runs every few seconds
@@ -434,6 +435,7 @@ async function scanMap(ctx: HintsCtx, spec: MapSpec, log: (msg: string) => void)
     wholeWindow: cfg.wholeWindow,
     log,
     appName: await getFrontmostAppName(ctx),
+    adapters: ctx.services.adapters,
     scanFactor: cfg.scanFactor,
     maxCandidates: Math.max(20, cfg.labels),
     fullParse: !!cfg.full,
@@ -555,12 +557,175 @@ const MAP_SAME_PAGE_MAX_CHANGE = 0.5;
 
 // ─── Find best candidate matching a HintRef ───────────────────────────────────
 
-async function findAndAct(
-  ctx: HintsCtx,
+type HintAction = "click" | "focus" | "check" | "rightClick" | "hover";
+type HintActionOptions = { newTab?: boolean; typeText?: string };
+
+/** Why a numbered label could not be found (pure; the caller logs it and shows fresh labels). */
+export function missingLabelMessage(ref: HintRef, labelsWereOnScreen: boolean): string {
+  const what = `${ref.roleName ?? "hint"} ${ref.index}`;
+  return labelsWereOnScreen
+    ? `[hints] There is no "${what}" on screen — showing fresh labels; say it again`
+    : `[hints] The labels have expired, so "${what}" may point at something else now — showing fresh labels; say it again`;
+}
+
+/** The words a spoken ref contributes to a candidate query. */
+export function queryWordsFor(ref: HintRef): string[] {
+  return [ref.name, ref.roleName].filter(Boolean) as string[];
+}
+
+/** Pick the freshly-collected candidate a ref means, or say why none (pure). */
+export function pickFreshCandidate(
   ref: HintRef,
-  action: "click" | "focus" | "check" | "rightClick" | "hover",
-  extraOptions?: { newTab?: boolean; typeText?: string }
+  candidates: Candidate[],
+  gaze: { x: number; y: number }
+): { candidate?: Candidate; reason?: "ambiguous" | "no-match" } {
+  // Ambiguity only matters when no explicit number or name was given.
+  if (isAmbiguous(candidates) && ref.index === undefined && !ref.name) return { reason: "ambiguous" };
+  const candidate = resolveHintRef(ref, candidates, gaze);
+  // A spoken name that matches nothing must not act on whatever happens
+  // to rank first ("mouse over thea" used to hover an unrelated input).
+  if (!candidate && ref.name) return { reason: "no-match" };
+  // Best guess for role-only refs ("click button").
+  return { candidate: candidate ?? candidates[0] };
+}
+
+/** Show `candidates` as the hint overlay (publishing their numbering). */
+async function showCandidateOverlay(ctx: HintsCtx, adapter: ComputerUseAdapter, candidates: Candidate[]): Promise<void> {
+  const labels = HINT_DENSITY[density(ctx.state)].labels;
+  await showHintOverlay(
+    ctx.state.selector,
+    adapter,
+    publishHints(ctx.state, candidates, labels, await getFrontmostAppName(ctx)),
+    HINT_OVERLAY_MS,
+    labels
+  );
+}
+
+/**
+ * Find the on-screen element a ref means: first the labels that were up when
+ * you started speaking, else a fresh scan. Returns undefined when it already
+ * told the user what to do instead (fresh labels shown, ambiguity, no match).
+ */
+async function resolveHintCandidate(
+  ctx: HintsCtx,
+  adapter: ComputerUseAdapter,
+  ref: HintRef,
+  gaze: { x: number; y: number }
+): Promise<Candidate | undefined> {
+  // First try the labels that were on screen when you started speaking.
+  const existingState = ctx.state.selector.getHintStateAt(ctx.spokenAt);
+  const known = existingState ? resolveHintRef(ref, existingState.candidates, gaze) : undefined;
+  if (known) return known;
+
+  // A number refers to a label you saw. If that label isn't on screen (expired,
+  // or never drawn), a rescan would renumber everything and "text 11" would hit
+  // some other element — so show fresh labels and let you say it again.
+  if (ref.index !== undefined) {
+    ctx.log(missingLabelMessage(ref, !!existingState));
+    await showHintsNear(ctx, false);
+    return undefined;
+  }
+
+  const candidates = await collectCandidates(
+    ctx.state.selector,
+    adapter,
+    { x: gaze.x, y: gaze.y },
+    getErrorRadius(),
+    getWindowKey(ctx),
+    // In full-parse mode a spoken name may be anywhere in the window (gaze
+    // still breaks ties between equal matches).
+    {
+      query: queryWordsFor(ref),
+      appName: await getFrontmostAppName(ctx),
+      adapters: ctx.services.adapters,
+      wholeWindow: !!HINT_DENSITY[density(ctx.state)].full,
+    }
+  );
+
+  if (!candidates.length) {
+    ctx.log(`[hints] No candidates found near gaze`);
+    if (ref.roleName && !ref.name) {
+      ctx.log(`[hints] No ${ref.roleName} element found near gaze`);
+    } else if (ref.name) {
+      ctx.log(`[hints] No element named "${ref.name}" near gaze — showing hints`);
+      await showHintsNear(ctx, false);
+    }
+    return undefined;
+  }
+
+  const picked = pickFreshCandidate(ref, candidates, gaze);
+  if (picked.reason === "ambiguous") {
+    await showCandidateOverlay(ctx, adapter, candidates);
+    ctx.log("[hints] Ambiguous — showing hints, please specify (e.g. 'button 1')");
+    return undefined;
+  }
+  if (picked.reason === "no-match") {
+    ctx.log(`[hints] Nothing matching "${ref.name}" near gaze — showing hints`);
+    await showCandidateOverlay(ctx, adapter, candidates);
+    return undefined;
+  }
+  let candidate = picked.candidate;
+
+  // Don't replace a map that's on screen with this query's few matches —
+  // the drawn labels must keep meaning what they say.
+  if (candidate && !isHintModeRunning(ctx.state) && !ctx.state.selector.getHintState()) {
+    const published = publishHints(
+      ctx.state,
+      candidates,
+      HINT_DENSITY[density(ctx.state)].labels,
+      await getFrontmostAppName(ctx)
+    );
+    const chosen = candidate;
+    candidate = published.find((c) => c.element === chosen.element) ?? candidate;
+  }
+  return candidate;
+}
+
+/** Do `action` on a resolved candidate (the resolver/adapters decide how the press is delivered). */
+async function actOnCandidate(
+  ctx: HintsCtx,
+  adapter: ComputerUseAdapter,
+  candidate: Candidate,
+  action: HintAction,
+  extra?: HintActionOptions
 ): Promise<void> {
+  const center = centerOf(candidate.element);
+  const deps = { pointer: ctx.services.pointer, clock: ctx.services.clock };
+
+  if (extra?.newTab) {
+    if (center) {
+      await adapter.moveMouse(center);
+      await adapter.hotkey("meta");
+      await adapter.click("left");
+      await postGazeCorrection(center);
+    }
+    return;
+  }
+
+  if (extra?.typeText !== undefined) {
+    await activateElement(adapter, candidate, "focus", deps);
+    await ctx.services.clock.sleep(100);
+    await adapter.typeText(extra.typeText);
+    if (center) await postGazeCorrection(center);
+    return;
+  }
+
+  if (action === "hover") {
+    if (center) {
+      await adapter.moveMouse(center);
+      // Remember position, element AND app so "click that" / "double click that"
+      // can hand the hovered element to that app's adapter.
+      ctx.services.pointer.notePlaced(center, candidate, await getFrontmostAppName(ctx));
+    }
+    return;
+  }
+
+  await activateElement(adapter, candidate, action, deps);
+  ctx.state.hintMode?.refreshSoon();
+  ctx.state.mapWatch?.refreshSoon();
+}
+
+async function findAndAct(ctx: HintsCtx, ref: HintRef, action: HintAction, extra?: HintActionOptions): Promise<void> {
   const adapter = getAdapter(ctx);
   if (!adapter) {
     ctx.log("[hints] No computer-use adapter available");
@@ -572,148 +737,11 @@ async function findAndAct(
     return;
   }
 
-  const errorRadius = getErrorRadius();
-  const windowKey = getWindowKey(ctx);
-
-  // First try the labels that were on screen when you started speaking.
-  let candidate: Candidate | undefined;
-  const existingState = ctx.state.selector.getHintStateAt(ctx.spokenAt);
-  if (existingState) {
-    candidate = resolveHintRef(ref, existingState.candidates, gaze);
-  }
-
-  // A number refers to a label you saw. If that label isn't on screen (expired,
-  // or never drawn), a rescan would renumber everything and "text 11" would hit
-  // some other element — so show fresh labels and let you say it again.
-  if (!candidate && ref.index !== undefined) {
-    const what = `${ref.roleName ?? "hint"} ${ref.index}`;
-    ctx.log(
-      existingState
-        ? `[hints] There is no "${what}" on screen — showing fresh labels; say it again`
-        : `[hints] The labels have expired, so "${what}" may point at something else now — showing fresh labels; say it again`
-    );
-    await showHintsNear(ctx, false);
-    return;
-  }
-
-  if (!candidate) {
-    // Collect fresh candidates
-    const queryWords = [ref.name, ref.roleName].filter(Boolean) as string[];
-    const appName = await getFrontmostAppName(ctx);
-    const candidates = await collectCandidates(
-      ctx.state.selector,
-      adapter,
-      { x: gaze.x, y: gaze.y },
-      errorRadius,
-      windowKey,
-      // In full-parse mode a spoken name may be anywhere in the window (gaze
-      // still breaks ties between equal matches).
-      { query: queryWords, appName, wholeWindow: !!HINT_DENSITY[density(ctx.state)].full }
-    );
-
-    if (!candidates.length) {
-      ctx.log(`[hints] No candidates found near gaze`);
-      // Fall back: if it was a role-only reference and no element found, log clearly
-      if (ref.roleName && !ref.name) {
-        ctx.log(`[hints] No ${ref.roleName} element found near gaze`);
-      } else if (ref.name) {
-        ctx.log(`[hints] No element named "${ref.name}" near gaze — showing hints`);
-        await showHintsNear(ctx, false);
-      }
-      return;
-    }
-
-    // Check ambiguity (only when no explicit number given)
-    if (isAmbiguous(candidates) && ref.index === undefined && !ref.name) {
-      await showHintOverlay(
-        ctx.state.selector,
-        adapter,
-        publishHints(ctx.state, candidates, HINT_DENSITY[density(ctx.state)].labels, await getFrontmostAppName(ctx)),
-        HINT_OVERLAY_MS,
-        HINT_DENSITY[density(ctx.state)].labels
-      );
-      ctx.log("[hints] Ambiguous — showing hints, please specify (e.g. 'button 1')");
-      return;
-    }
-
-    candidate = resolveHintRef(ref, candidates, gaze);
-    if (!candidate && ref.name) {
-      // A spoken name that matches nothing must not act on whatever happens
-      // to rank first ("mouse over thea" used to hover an unrelated input).
-      ctx.log(`[hints] Nothing matching "${ref.name}" near gaze — showing hints`);
-      await showHintOverlay(
-        ctx.state.selector,
-        adapter,
-        publishHints(ctx.state, candidates, HINT_DENSITY[density(ctx.state)].labels, await getFrontmostAppName(ctx)),
-        HINT_OVERLAY_MS,
-        HINT_DENSITY[density(ctx.state)].labels
-      );
-      return;
-    }
-    if (!candidate) {
-      candidate = candidates[0]; // Best guess for role-only refs ("click button")
-    }
-
-    // Don't replace a map that's on screen with this query's few matches —
-    // the drawn labels must keep meaning what they say.
-    if (!isHintModeRunning(ctx.state) && !ctx.state.selector.getHintState()) {
-      const published = publishHints(
-        ctx.state,
-        candidates,
-        HINT_DENSITY[density(ctx.state)].labels,
-        await getFrontmostAppName(ctx)
-      );
-      const chosen = candidate;
-      candidate = published.find((c) => c.element === chosen.element) ?? candidate;
-    }
-  }
-
-  if (!candidate) {
-    ctx.log(`[hints] Could not resolve hint reference`);
-    return;
-  }
+  const candidate = await resolveHintCandidate(ctx, adapter, ref, gaze);
+  if (!candidate) return;
 
   ctx.log(`[hints] Acting on: ${candidate.label}${candidate.displayName ? ` (${candidate.displayName})` : ""}`);
-
-  if (extraOptions?.newTab) {
-    const bounds = candidate.element.bounds;
-    if (bounds) {
-      const cx = bounds.x + bounds.width / 2;
-      const cy = bounds.y + bounds.height / 2;
-      await adapter.moveMouse({ x: cx, y: cy });
-      await adapter.hotkey("meta");
-      await adapter.click("left");
-      await postGazeCorrection({ x: cx, y: cy });
-    }
-    return;
-  }
-
-  if (extraOptions?.typeText !== undefined) {
-    await activateElement(adapter, candidate, "focus", { pointer: ctx.services.pointer, clock: ctx.services.clock });
-    await ctx.services.clock.sleep(100);
-    await adapter.typeText(extraOptions.typeText);
-    const bounds = candidate.element.bounds;
-    if (bounds) {
-      await postGazeCorrection({ x: bounds.x + bounds.width / 2, y: bounds.y + bounds.height / 2 });
-    }
-    return;
-  }
-
-  if (action === "hover") {
-    const b = candidate.element.bounds;
-    if (b) {
-      const p = { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2) };
-      await adapter.moveMouse(p);
-      // Remember both position AND element so "click that" / "double click that"
-      // can AXPress the hovered element (Spotify hover-only play buttons).
-      ctx.services.pointer.notePlaced(p, candidate);
-    }
-    return;
-  }
-
-  await activateElement(adapter, candidate, action, { pointer: ctx.services.pointer, clock: ctx.services.clock });
-  ctx.state.hintMode?.refreshSoon();
-  ctx.state.mapWatch?.refreshSoon();
+  await actOnCandidate(ctx, adapter, candidate, action, extra);
 }
 
 // ─── Get hint ref from slots (slot value is a HintRef from grammar) ───────────
@@ -1167,7 +1195,7 @@ export const HINTS_PACK = defineVoicePack<HintsState>({
       phrase: "play song",
       patterns: ["play {song:songphrase}", "click play {song:songphrase}"],
       description:
-        "Play a Spotify song by name: 'play a real hero', 'click play rubber head'. Uses AXPress on the song's play button.",
+        "Play a track by name: 'play a real hero', 'click play rubber head'. The front app's adapter finds the play button and it is AXPressed.",
       run: async (ctx) => {
         const adapter = getAdapter(ctx);
         if (!adapter) {
@@ -1197,7 +1225,12 @@ export const HINTS_PACK = defineVoicePack<HintsState>({
           return;
         }
         ctx.log(`[hints] Looking for play button for: "${songQuery.join(" ")}"`);
-        const candidate = await findPlayButton(adapter, songQuery, gaze ?? { x: 960, y: 540 });
+        // The front app's adapter knows how to find "play <name>" (media apps); any adapter that can will do.
+        const app = await getFrontmostAppName(ctx);
+        const playAdapter =
+          ctx.services.adapters.find(app, "playTarget") ??
+          ctx.services.adapters.list().find((a) => a.playTarget);
+        const candidate = await playAdapter?.playTarget?.(songQuery, gaze ?? { x: 960, y: 540 }, ctx.services);
         if (!candidate) {
           ctx.log(`[hints] No play button found for "${songQuery.join(" ")}"`);
           return;

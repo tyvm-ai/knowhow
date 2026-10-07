@@ -11,8 +11,12 @@ import META_PACK from "../src/packs/meta";
 import GAZE_MOUSE_PACK from "../src/packs/gazeMouse";
 import { SYSTEM_PACK } from "../src/packs/system";
 import { TMUX_PACK, createTmuxState, isVimCommand } from "../src/packs/tmux";
+import { registerPackNormalisers } from "../src/packs/define";
 import { createTestServices } from "./helpers/services";
 import type { VoiceServices } from "../src/services";
+
+// The mishear table ("too much left" → "tmux left") is contributed by the tmux pack.
+beforeAll(() => registerPackNormalisers([TMUX_PACK]));
 
 let tmuxCalls: string[][] = [];
 let shellCalls: string[] = [];

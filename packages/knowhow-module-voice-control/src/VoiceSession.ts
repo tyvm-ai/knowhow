@@ -29,21 +29,13 @@ import type { RegisteredVoiceCommand } from "./voiceCommands";
 import { appendLatencyRecord, buildLatencyRecord } from "./latency";
 import type { CommandSource, UtteranceTiming } from "./types";
 import { appendCommandDecision } from "./commandLog";
-import { checkAppSlot } from "./appSuggest";
 import { PackRuntime } from "./packs/define";
 import { allPacks } from "./packs/index";
 import { createVoiceLogger, createVoiceServices } from "./services";
 import type { TimerHandle } from "./services";
 import type { VoiceServices } from "./services";
-import {
-  decideRecovery,
-  inferTmuxIntent,
-  isBareTmux,
-  loneSubcommand,
-} from "./intentRecovery";
-
-/** How long a bare "tmux" waits for a follow-up "left"/"down"/…. */
-const TMUX_LATCH_MS = 5000;
+import { RecoveryEngine, collectRecoverers } from "./recovery/engine";
+import { normaliseTranscript } from "./grammar/normalise";
 
 interface ActivePlayback {
   generationId: string;
@@ -89,6 +81,7 @@ export class VoiceSession {
   private readonly mover?: import("./commandMode").MouseMover;
   private readonly services: VoiceServices;
   private readonly packRuntime: PackRuntime;
+  private readonly recovery: RecoveryEngine;
   private readonly commandHistory: unknown[] = [];
 
   constructor(
@@ -107,9 +100,11 @@ export class VoiceSession {
           ? { log: createVoiceLogger({ sink: (_level, line) => options.log?.(line) }) }
           : {},
       );
-    this.packRuntime = new PackRuntime(this.services, options.packs ?? allPacks());
-    // Mishearings you've accepted before ("ghosting" → Ghostty) parse directly.
-    this.services.appSuggest.loadLearnedAppAliases();
+    const packs = options.packs ?? allPacks();
+    this.packRuntime = new PackRuntime(this.services, packs);
+    this.recovery = options.recovery ?? new RecoveryEngine({ recoverers: collectRecoverers(packs), services: this.services });
+    // Mishearings you've confirmed before ("ghosting" → Ghostty) are applied again.
+    this.recovery.init();
 
     // Use injected mouse mover if provided; otherwise try to load from computer-use.
     let mover: import("./commandMode").MouseMover | undefined = options.mouse;
@@ -155,65 +150,41 @@ export class VoiceSession {
     return this.router.getRegisteredCommands();
   }
 
-  /** Set when a bare "tmux" was heard: a lone direction word completes it. */
-  private tmuxLatchUntil = 0;
-
   private async frontmostAppQuick(): Promise<string | undefined> {
     const actions = this.services.platform;
     if (!actions?.frontmostApp) return undefined;
     return actions.frontmostApp({ maxWaitMs: 400 }).catch(() => undefined);
   }
 
+  /** Dispatch a (recovered) command text as if it had just been heard. */
+  private async dispatchText(text: string): Promise<void> {
+    const spokenAt = Date.now();
+    await this.router.routeCommandModeUtterance(
+      text,
+      randomUUID(),
+      spokenAt,
+      () => gazeNearestTime(spokenAt, this.hubUrl, GAZE_TIMEOUT.fast),
+    );
+  }
+
   /**
-   * Try to recover an utterance the grammar didn't match.
-   * Returns the canonical command text to dispatch, "handled" when it was
+   * Try to recover an utterance the grammar didn't match (pack recoverers).
+   * Returns the command text to dispatch, "handled" when it was
    * consumed (latch armed / confirmation asked), or undefined.
    */
-  private async recoverIntent(text: string, utteranceId: string): Promise<string | "handled" | undefined> {
-    // 1) Follow-up to a bare "tmux": "tmarks" … "left."
-    if (this.tmuxLatchUntil > Date.now()) {
-      const sub = loneSubcommand(text);
-      if (sub) {
-        this.tmuxLatchUntil = 0;
-        console.log(`[voice] inferred: "${text}" → "tmux ${sub}" (follow-up to bare tmux)`);
-        return `tmux ${sub}`;
-      }
+  private async recoverUnmatched(text: string, utteranceId: string): Promise<string | "handled" | undefined> {
+    const outcome = await this.recovery.recover(
+      { text, normalised: normaliseTranscript(text) },
+      { frontApp: () => this.frontmostAppQuick(), run: (t) => this.dispatchText(t) },
+    );
+    if (outcome.kind === "rewrite") return outcome.text;
+    if (outcome.kind !== "handled") return undefined;
+    if (outcome.asked) {
+      void appendCommandDecision({
+        ts: Date.now(), utteranceId, text, decision: "rejected",
+        rejectedReason: `awaiting-confirm: ${outcome.asked}`,
+      });
     }
-    if (isBareTmux(text, this.services.intents) || /^tmux\.?$/i.test(text.trim())) {
-      this.tmuxLatchUntil = Date.now() + TMUX_LATCH_MS;
-      console.log(`[voice] heard bare "tmux" ("${text}") — say left/right/up/down/zoom within ${TMUX_LATCH_MS / 1000}s`);
-      return "handled";
-    }
-
-    // 2) Fuzzy "tmux <dir>" ("too much love", "15 months left").
-    const intent = inferTmuxIntent(text, this.services.intents);
-    if (!intent) return undefined;
-    const app = await this.frontmostAppQuick();
-    const decision = decideRecovery(intent, app, this.services.intents);
-    if (decision === "ignore") return undefined;
-    if (decision === "run") {
-      console.log(`[voice] inferred: "${text}" → "${intent.text}" (${app ? `frontmost ${app}` : "policy"}, ${intent.confidence})`);
-      return intent.text;
-    }
-    console.log(`[voice] did you mean "${intent.text}"? (heard "${text}") — say "yes" or "no"`);
-    void appendCommandDecision({
-      ts: Date.now(), utteranceId, text, decision: "rejected",
-      rejectedReason: `awaiting-confirm: ${intent.text}`,
-    });
-    this.services.pending.set({
-      describe: `${intent.text} (heard "${text}")`,
-      accept: async () => {
-        void this.services.intents.learnTmuxPrefix(intent.heardPrefix);
-        const spokenAt = Date.now();
-        await this.router.routeCommandModeUtterance(
-          intent.text,
-          randomUUID(),
-          spokenAt,
-          () => gazeNearestTime(spokenAt, this.hubUrl, GAZE_TIMEOUT.fast),
-        );
-      },
-      reject: () => undefined,
-    });
     return "handled";
   }
 
@@ -241,26 +212,14 @@ export class VoiceSession {
       slots: invocation.slots ?? {},
       repeat: invocation.repeat ?? 1,
     });
-    // Misheard app name ("maximize ghosting")? Suggest the closest running app
-    // and wait for "yes"/"no" instead of silently doing nothing.
-    const spokenApp = typeof ctx.slots?.app === "string" ? (ctx.slots.app as string) : undefined;
-    const actions = this.services.platform;
-    if (spokenApp && actions?.listRunningApps && !invocation.slots?.__appChecked) {
-      const check = await checkAppSlot({
-        services: this.services,
-        spoken: spokenApp,
-        commandText: invocation.text,
-        listRunningApps: () => actions.listRunningApps!(),
-        allowInstalled: /focus|open|switch|launch/.test(command.name),
-        log: (msg) => this.options.log?.(msg),
-        rerun: (app) =>
-          this.runRegisteredCommand(command, {
-            ...invocation,
-            slots: { ...(invocation.slots ?? {}), app, __appChecked: true },
-          }),
-      });
-      if (check.status === "suggested") return;
-    }
+    // A matched command may still be worth a second look (e.g. a misheard {app}
+    // slot): recoverers ask, rewrite or let it through.
+    const recovered = await this.recovery.recover(
+      { text: invocation.text, normalised: normaliseTranscript(invocation.text), match: { command: command.name, slots: ctx.slots ?? {} } },
+      { frontApp: () => this.frontmostAppQuick(), run: (t) => this.dispatchText(t) },
+    );
+    if (recovered.kind === "handled") return;
+    if (recovered.kind === "rewrite") return this.dispatchText(recovered.text);
     // Handle repeatable commands: run repeat times if repeat > 1.
     const repeatCount = ctx.repeat ?? 1;
     if (repeatCount > 1 && command.repeatable !== false) {
@@ -480,13 +439,12 @@ export class VoiceSession {
         // Fall through to command routing so "stop dictating" is dispatched normally
       }
 
-      // Context-aware recovery of misheard commands ("too much love" →
-      // "tmux left" when a terminal is frontmost; elsewhere ask to confirm).
-      // Runs before the F1 gate so a recovered/latched command isn't dropped
-      // for being short ("tmarks" 240ms, then "left." 80ms).
+      // Context-aware recovery of misheard commands: pack recoverers rewrite,
+      // ask ("did you mean …?") or arm a latch. Runs before the F1 gate so a
+      // recovered/latched command isn't dropped for being short.
       let recoveredCommand = false;
       if (!this.router.matchRegistered(text, "command") && !matchPhrase(text, this.router.getDynamicSpecs()).matched) {
-        const recovery = await this.recoverIntent(text, event.utteranceId);
+        const recovery = await this.recoverUnmatched(text, event.utteranceId);
         if (recovery === "handled") return;
         if (recovery) {
           text = recovery;

@@ -147,6 +147,8 @@ export interface VoiceSessionOptions {
   services?: import("./services").VoiceServices;
   /** Packs whose lifecycle hooks this session runs. Default: every shipped pack. */
   packs?: readonly import("./packs/define").AnyVoicePack[];
+  /** Intent-recovery engine (misheard commands). Default: one built from the recoverers of `packs`. */
+  recovery?: import("./recovery/engine").RecoveryEngine;
   /** Injected mouse mover — avoids a direct require of computer-use in VoiceSession. */
   mouse?: {
     moveMouse(x: number, y: number): Promise<void>;

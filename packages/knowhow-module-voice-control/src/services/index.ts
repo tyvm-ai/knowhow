@@ -15,9 +15,11 @@ import { getPlatformActions } from "../actions/index";
 import type { PlatformActions } from "../actions/types";
 import { resolveComputerService } from "../computerService";
 import type { ComputerUseAdapter } from "../computerService";
+import { builtinAdapters } from "../adapters/index";
 import { AppSuggestState } from "../appSuggest";
 import { GazeClient } from "../gaze";
-import { LearnedIntents } from "../intentRecovery";
+import { LatchStore } from "../recovery/latch";
+import { LearnedStore } from "../recovery/learned";
 import type { SmartTypeServices } from "../smartTypeService";
 import type { Clock } from "./clock";
 import { systemClock } from "./clock";
@@ -27,6 +29,11 @@ import { PackStateStore } from "./packState";
 import { PendingActionStore } from "./pending";
 import { PointerMemory } from "./pointer";
 import { TypingMemory } from "./typing";
+import { AppAdapterRegistry } from "../targeting/adapter";
+import { TargetResolver } from "../targeting/resolver";
+
+export { AppAdapterRegistry } from "../targeting/adapter";
+export { TargetResolver } from "../targeting/resolver";
 
 export type { Clock, TimerHandle } from "./clock";
 export { systemClock } from "./clock";
@@ -50,12 +57,18 @@ export interface VoiceServices {
   mcp: { callByMethod: McpCallByMethod };
   /** Where "mouse over X" last put the pointer (shared by click / double click). */
   pointer: PointerMemory;
+  /** App-specific targeting behaviour (music apps, browser DOM, …); register your own with `adapters.register(...)`. */
+  adapters: AppAdapterRegistry;
+  /** Decides where click / double click / right click land (pointer vs gaze vs follow policies). */
+  targets: TargetResolver;
   /** Pending confirm/cancel/redo action. */
   pending: PendingActionStore;
   /** What was last typed and whether dictation is on (shared by text + smarttype). */
   typing: TypingMemory;
-  /** Learned tmux mishearings (persisted). */
-  intents: LearnedIntents;
+  /** Everything the user confirmed for any recoverer (`{ [recoverer]: string[] }`, persisted). */
+  learned: LearnedStore;
+  /** "Waiting for the rest of the command" state (e.g. a bare "tmux"). */
+  latch: LatchStore;
   /** App-name suggestion state (learned aliases, installed-apps cache). */
   appSuggest: AppSuggestState;
   /** Per-pack state, created lazily from each pack's `createState`. */
@@ -80,13 +93,17 @@ const coreMcp: VoiceServices["mcp"] = {
 export function createVoiceServices(overrides: Partial<VoiceServices> = {}): VoiceServices {
   const clock = overrides.clock ?? systemClock;
   const packs = overrides.packs ?? new PackStateStore();
+  const pointer = overrides.pointer ?? new PointerMemory(clock);
   const services = {
     gaze: overrides.gaze ?? new GazeClient(),
     mcp: overrides.mcp ?? coreMcp,
-    pointer: overrides.pointer ?? new PointerMemory(clock),
+    pointer,
+    adapters: overrides.adapters ?? new AppAdapterRegistry(builtinAdapters()),
+    targets: overrides.targets ?? new TargetResolver({ pointer }),
     pending: overrides.pending ?? new PendingActionStore(),
     typing: overrides.typing ?? new TypingMemory(),
-    intents: overrides.intents ?? new LearnedIntents(),
+    learned: overrides.learned ?? new LearnedStore(),
+    latch: overrides.latch ?? new LatchStore(clock),
     appSuggest: overrides.appSuggest ?? new AppSuggestState(),
     packs,
     log: overrides.log ?? createVoiceLogger(),

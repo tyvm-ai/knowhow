@@ -28,6 +28,8 @@ import {
   MlxSpeechOutput,
 } from "./mlxSpeech";
 import { VoiceSession } from "./VoiceSession";
+import { allPacks } from "./packs/index";
+import { RecoveryEngine, collectRecoverers } from "./recovery/engine";
 import { mouseMoverFromComputerService } from "./commandMode";
 import { createStandaloneComputerService } from "./computerService";
 import { SpeechOutput, VoiceAgentRuntime, VoiceSessionEvent } from "./types";
@@ -335,6 +337,8 @@ export async function runVoiceAgent(options: VoiceAgentCommandOptions): Promise<
     log: createVoiceLogger({ sink: (_level, line) => void process.stderr.write(`${line}\n`) }),
   });
   const voiceLog = (message: string) => voiceServices.log.info(message);
+  // One recovery engine for the run: the session uses it, and so does the whisper prompt-bias guard.
+  const recovery = new RecoveryEngine({ recoverers: collectRecoverers(allPacks()), services: voiceServices });
   // Start the persistent whisper-server (model load) in parallel with service setup.
   const localRecognizerPromise: Promise<UtteranceRecognizer> | undefined =
     useContinuous && localCommand
@@ -354,7 +358,7 @@ export async function runVoiceAgent(options: VoiceAgentCommandOptions): Promise<
           // the whisper-server binary doesn't support the field.
           verboseJson: true,
           log: voiceLog,
-          intents: voiceServices.intents,
+          recoverable: (plain, alternatives) => recovery.canRecover(plain, alternatives),
         })
       : undefined;
   // Don't leave an unhandled rejection if service setup throws first.
@@ -471,6 +475,7 @@ export async function runVoiceAgent(options: VoiceAgentCommandOptions): Promise<
       mouse: mouseMover,
       commands: voiceCommands,
       services: voiceServices,
+      recovery,
       latencyLogFile: options.latencyLog === false ? undefined : DEFAULT_LATENCY_LOG,
       log: voiceLog,
       maxTaskCostUsd: options.maxTaskCostUsd === undefined

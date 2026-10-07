@@ -13,6 +13,7 @@ import {
   AXElement,
   Rect,
 } from "../src/smartSelector";
+import { spotifyLabel } from "../src/adapters/spotify";
 import { HINTS_PACK } from "../src/packs/hints";
 import { BUILTIN_VOICE_COMMANDS } from "../src/voiceCommands";
 
@@ -60,17 +61,17 @@ describe("deriveShortName", () => {
 
   it("extracts song name from Spotify play button 'Play Rubber Head by Cliff Martinez'", () => {
     const e = el({ role: "AXButton", title: "", description: "Play Rubber Head by Cliff Martinez" });
-    expect(deriveShortName(e)).toBe("play rubber head");
+    expect(deriveShortName(e, spotifyLabel)).toBe("play rubber head");
   });
 
   it("extracts song name from 'Play A Real Hero (feat. Electric Youth) by College'", () => {
     const e = el({ role: "AXButton", description: "Play A Real Hero (feat. Electric Youth) by College" });
-    expect(deriveShortName(e)).toBe("play a real hero (feat. electric youth)");
+    expect(deriveShortName(e, spotifyLabel)).toBe("play a real hero (feat. electric youth)");
   });
 
   it("returns 'more options' for 'More options for <song>'", () => {
     const e = el({ role: "AXPopUpButton", description: "More options for A Real Hero by College" });
-    expect(deriveShortName(e)).toBe("more options");
+    expect(deriveShortName(e, spotifyLabel)).toBe("more options");
   });
 
   it("returns lowercase for 'Bookmark'", () => {
@@ -207,11 +208,8 @@ describe("audio cap on hover-hint and click-hint commands", () => {
 
 // ─── findPlayButton helper (mocked adapter) ────────────────────────────────────
 
-import {
-  findPlayButton,
-  rankCandidates,
-  Candidate,
-} from "../src/smartSelector";
+import { rankCandidates, Candidate } from "../src/smartSelector";
+import { findPlayButton } from "../src/adapters/spotify";
 import { PointerMemory } from "../src/services";
 
 describe("findPlayButton", () => {

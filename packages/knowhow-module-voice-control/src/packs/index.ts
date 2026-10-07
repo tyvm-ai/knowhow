@@ -9,6 +9,7 @@
 import type { VoiceCommandExtension } from "../voiceCommands";
 import { BUILTIN_PACK } from "../voiceCommands";
 import type { AnyVoicePack } from "./define";
+import { registerPackNormalisers } from "./define";
 import META_PACK from "./meta";
 import GAZE_MOUSE_PACK from "./gazeMouse";
 import TEXT_PACK from "./text";
@@ -19,10 +20,11 @@ import { HINTS_PACK } from "./hints";
 import { TMUX_PACK } from "./tmux";
 import { BROWSER_PACK } from "./browser";
 import { SMART_TYPE_PACK } from "./smartType";
+import { APP_NAME_PACK } from "./appName";
 
 /** Every command pack, in priority order. */
 export function allPacks(): AnyVoicePack[] {
-  return [
+  const packs = [
     BUILTIN_PACK,
     META_PACK,
     GAZE_MOUSE_PACK,
@@ -34,7 +36,11 @@ export function allPacks(): AnyVoicePack[] {
     TMUX_PACK,
     BROWSER_PACK,
     SMART_TYPE_PACK,
+    APP_NAME_PACK,
   ];
+  // Pack mishear rules are process-wide grammar state; make sure they're registered wherever the packs are used.
+  registerPackNormalisers(packs);
+  return packs;
 }
 
 /** Flat list of every shipped voice command extension. */

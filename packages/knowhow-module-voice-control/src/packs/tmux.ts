@@ -17,6 +17,7 @@ import { execFile as nodeExecFile } from "child_process";
 import { promisify } from "util";
 import type { VoiceCommandExtension } from "../voiceCommands";
 import { defineVoicePack } from "./define";
+import { NORMALISE_RULES, TMUX_RECOVERER } from "./tmuxRecovery";
 import type { PackApi, PackCommandContext } from "./define";
 
 const execFileP = promisify(nodeExecFile);
@@ -184,6 +185,8 @@ export const TMUX_PACK = defineVoicePack<TmuxState>({
   prefix: "voice-control.tmux.",
   defaults: { repeatable: false },
   createState: () => createTmuxState(),
+  normalisers: NORMALISE_RULES,
+  recoverers: [TMUX_RECOVERER],
   commands: ({ command }) => [
     navigate(command, "left"),
     navigate(command, "right"),

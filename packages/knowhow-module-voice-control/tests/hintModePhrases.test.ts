@@ -1,7 +1,7 @@
 import { normaliseTranscript, tokenise } from "../src/grammar/normalise";
 import { getSlotMatcher } from "../src/grammar/slots";
 import { nameFuzzyScore, resolveHintRef, SelectorState, Candidate } from "../src/smartSelector";
-import { PointerMemory } from "../src/services";
+import { PointerMemory, TargetResolver } from "../src/services";
 
 function phrase(text: string) {
   const toks = tokenise(normaliseTranscript(text));
@@ -49,12 +49,14 @@ describe("hint phrases", () => {
     selector.clearHintState();
   });
 
-  test("plain click uses the pointer a hint just placed while gaze is near it", () => {
+  test("plain click uses the pointer a hint just placed while gaze is near it", async () => {
     const pointer = new PointerMemory();
+    const targets = new TargetResolver({ pointer });
     const ctx = (gaze?: { x: number; y: number }) => ({ gaze, target: () => gaze });
-    expect(pointer.clickTarget(ctx({ x: 500, y: 500 }))).toEqual({ x: 500, y: 500 });
+    const click = async (gaze: { x: number; y: number }) => (await targets.resolve(ctx(gaze), "click"))?.point;
+    expect(await click({ x: 500, y: 500 })).toEqual({ x: 500, y: 500 });
     pointer.notePlaced({ x: 520, y: 480 });
-    expect(pointer.clickTarget(ctx({ x: 600, y: 600 }))).toEqual({ x: 520, y: 480 });
-    expect(pointer.clickTarget(ctx({ x: 2000, y: 600 }))).toEqual({ x: 2000, y: 600 });
+    expect(await click({ x: 600, y: 600 })).toEqual({ x: 520, y: 480 });
+    expect(await click({ x: 2000, y: 600 })).toEqual({ x: 2000, y: 600 });
   });
 });
