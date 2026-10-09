@@ -9,8 +9,7 @@ import {
   KnowhowSimpleClient,
   KNOWHOW_API_URL,
 } from "../../services/KnowhowClient";
-import { AgentSyncKnowhowWeb } from "../../services/AgentSyncKnowhowWeb";
-import { AgentSyncFs } from "../../services/AgentSyncFs";
+import { KnowhowWebChannel, persistRemoteIdentity } from "../../services/stateful";
 import { AgentModule } from "./AgentModule";
 import { TaskInfo } from "../types";
 import { getConfig, updateConfig } from "../../config";
@@ -334,14 +333,13 @@ export class RemoteSyncModule extends BaseChatModule {
         return;
       }
       console.log(`\n🔗 Using task from message placeholder: ${knowhowTaskId}`);
-      const webSync = new AgentSyncKnowhowWeb(KNOWHOW_API_URL);
       console.log(`✅ Remote task created: ${knowhowTaskId}`);
 
       // Step 4: Update local task info with remote IDs
       taskInfo.knowhowMessageId = messageId;
       taskInfo.knowhowTaskId = knowhowTaskId;
       taskInfo.chatSessionId = sessionId;
-      await AgentSyncFs.persistRemoteIdentity(taskId, knowhowTaskId, messageId);
+      await persistRemoteIdentity(taskId, knowhowTaskId, messageId);
 
       // Update session manager
       const sessionManager = this.agentModule.getSessionManager();
@@ -350,19 +348,31 @@ export class RemoteSyncModule extends BaseChatModule {
       // Step 5: Wire up live sync
       console.log(`\n🚀 Syncing thread progress to remote...`);
       const agent = taskInfo.agent;
-      if (agent) {
+      const session = this.agentModule.getSession(taskId);
+      if (session) {
+        // The web channel's first publish carries the full state (it has no
+        // persisted cursor yet), which catches the remote up; a finished
+        // session publishes its terminal state.
+        await session.attach(
+          KnowhowWebChannel.existing(knowhowTaskId, { client: this.client })
+        );
         if (taskInfo.status === "completed" || taskInfo.status === "failed") {
-          // Task already done — push final state directly
-          await webSync.setupAgentSync(agent, knowhowTaskId);
-          await webSync.updateChatTask(knowhowTaskId, agent, false, "Synced from CLI");
+          await session.flush();
           console.log(`✅ Sync complete!`);
         } else {
-          // Task still running — attach live sync
-          await webSync.setupAgentSync(agent, knowhowTaskId);
           console.log(
             `✅ Live sync attached! Thread updates will push as the agent runs.`
           );
         }
+      } else if (agent) {
+        // No session (task finished in an earlier process state): push the final state directly.
+        await this.client.updateChatTask(knowhowTaskId, {
+          threads: agent.getThreads(),
+          totalUsdCost: agent.getTotalCostUsd(),
+          inProgress: false,
+          result: "Synced from CLI",
+        });
+        console.log(`✅ Sync complete!`);
       } else {
         console.log("⚠️  Agent not found in task info; skipping live sync.");
       }

@@ -9,3 +9,4 @@ export * from "./channels/delta";
 export * from "./channels/inputStream";
 export * from "./channels/MemoryChannel";
 export * from "./channels/JsonFileChannel";
+export * from "./agent";

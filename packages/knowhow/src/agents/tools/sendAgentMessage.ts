@@ -12,7 +12,7 @@ function agentsDir(): string {
 /**
  * Append one JSON record to a task's input.txt (a single O_APPEND write, so
  * concurrent senders can never clobber each other). The reader
- * (AgentSyncFs.processInput) delivers each record as ONE message, so a /poke is
+ * (the agent's AgentSession input channel) delivers each record as ONE message, so a /poke is
  * only a command for its own record.
  */
 function appendToInput(inputPath: string, line: string): void {
@@ -43,7 +43,7 @@ export interface SendAgentMessageParams {
  * appending it to that agent's input.txt. This is the "down/lateral edge" of
  * agent-to-agent communication — the complement to replyToParent (the up edge).
  *
- * The recipient's AgentSyncFs picks up the message on its next sync cycle and
+ * The recipient's AgentSession (input channel) picks up the message on its next sync cycle and
  * adds it as a pending user message. If `poke` is true, it is delivered as a
  * `/poke` command which interrupts the recipient's current step.
  *

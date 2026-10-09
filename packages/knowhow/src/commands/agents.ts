@@ -14,7 +14,7 @@
  *   - A partial task ID (substring match)
  *   - `-i <number>` / `--index <number>` to select by row number from `agents list`
  *
- * Data source: .knowhow/processes/agents/<taskId>/metadata.json (written by AgentSyncFs)
+ * Data source: .knowhow/processes/agents/<taskId>/metadata.json (written by AgentFsChannel)
  * and .knowhow/chats/sessions/<taskId>.json (written by SessionManager).
  */
 
@@ -92,7 +92,7 @@ function pidAlive(pid: number): boolean {
 
 /**
  * Get the effective status, reconciling persisted state with process liveness.
- * An agent can be terminated before AgentSyncFs gets a chance to finalize its
+ * An agent can be terminated before its AgentSession gets a chance to finalize its
  * files; those records must not remain "running" forever.
  */
 export function getStatus(taskId: string, meta: any | null): string {

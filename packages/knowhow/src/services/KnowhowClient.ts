@@ -78,6 +78,29 @@ export interface UpdateOrgTaskResponse {
   inProgress: boolean;
 }
 
+/** Status fields any per-thread write may carry. */
+export interface TaskStatusFields {
+  inProgress?: boolean;
+  totalUsdCost?: number;
+  result?: any;
+  error?: { message: string; code?: string; details?: any };
+}
+
+export interface TaskThreadWriteResponse {
+  id: string;
+  applied: "appended" | "alreadyApplied" | "replaced" | "noop";
+  revision: number;
+  /** Stored length of every thread after the write */
+  lengths: number[];
+  lastHashes?: string[];
+  inProgress: boolean;
+  status: string;
+  totalUsdCost: number;
+  updatedAt: string;
+  /** Unprocessed messages queued for the agent */
+  pendingMessages: Array<{ id: string; message: string; role: string; createdAt: string }>;
+}
+
 // Agent task synchronization interfaces
 export interface TaskDetailsResponse {
   taskId: string;
@@ -325,6 +348,37 @@ export class KnowhowSimpleClient {
       {
         headers: this.headers,
       }
+    );
+  }
+
+  /**
+   * Per-thread write: push messages onto thread `index`. `length` is the thread
+   * length AFTER the append. 409 = server length differs (caller re-sends the thread).
+   */
+  async appendTaskThread(
+    taskId: string,
+    index: number,
+    body: TaskStatusFields & { length: number; messages: Message[]; expectedLastHash?: string }
+  ) {
+    await this.checkJwt();
+    return http.post<TaskThreadWriteResponse>(
+      `${this.baseUrl}/api/chat/tasks/${taskId}/threads/${index}/append`,
+      body,
+      { headers: this.headers }
+    );
+  }
+
+  /** Per-thread write: replace (or create, when index == thread count) thread `index`. */
+  async replaceTaskThread(
+    taskId: string,
+    index: number,
+    body: TaskStatusFields & { messages: Message[]; expectedLength?: number; expectedLastHash?: string }
+  ) {
+    await this.checkJwt();
+    return http.put<TaskThreadWriteResponse>(
+      `${this.baseUrl}/api/chat/tasks/${taskId}/threads/${index}`,
+      body,
+      { headers: this.headers }
     );
   }
 

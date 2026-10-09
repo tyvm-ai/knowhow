@@ -189,6 +189,21 @@ export abstract class StatefulProcess<
     this.afterCommit(prev, next, opts.events ?? [], opts.reason);
   }
 
+  /**
+   * Commit `next` as the new state WITHOUT cloning the previous one (for big
+   * states built from a fresh copy, e.g. a thread snapshot). The caller must
+   * not keep a reference it later mutates.
+   */
+  protected replaceState(
+    next: S,
+    opts: { events?: E[]; reason?: string } = {}
+  ): void {
+    const prev = this._state;
+    this._state = next;
+    this._version++;
+    this.afterCommit(prev, next, opts.events ?? [], opts.reason);
+  }
+
   /** Publish events without changing state (no version bump). */
   protected emit(...events: E[]): void {
     this.afterCommit(this._state, this._state, events, undefined, false);

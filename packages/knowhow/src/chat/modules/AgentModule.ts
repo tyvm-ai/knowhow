@@ -7,9 +7,14 @@ import {
   SessionManager,
   TaskRegistry,
   SyncedAgentWatcher,
-  SyncerService,
   AgentService,
 } from "../../services/index";
+import {
+  AgentSession,
+  agentChannels,
+  loadAgentRestoreState,
+} from "../../services/stateful";
+import { startAgentTaskCleanup } from "../../services/AgentTaskCleanup";
 import { AttachableAgent } from "../../services/SyncedAgentWatcher";
 import * as fs from "fs";
 import * as fsPromises from "fs/promises";
@@ -27,11 +32,9 @@ import {
 } from "../../clients/types";
 import { ChatInteraction } from "../../types";
 import { Marked } from "../../utils/index";
-import { applyDefaultMessageProcessors } from "../../processors/defaultProcessors";
 import { TaskInfo } from "../types";
 import { createAgent, agentConstructors, AgentName } from "../../agents";
 import { ToolCallEvent } from "../../agents/base/base";
-import { rollbackAgentInteractions } from "../../agents/historyRollback";
 import { KnowhowSimpleClient } from "../../services/KnowhowClient";
 import { TraceAll } from "../../util/Trace";
 
@@ -57,6 +60,9 @@ export class AgentModule extends BaseChatModule {
   private reasoningEffort: CompletionOptions["reasoning_effort"] | undefined = undefined;
   /** Whether to request a reasoning summary from supporting models */
   private summarizeReasoning: boolean = true;
+
+  /** Live (and finished) agent sessions by task id, for late attaches such as /sync:remote. */
+  private sessions = new Map<string, AgentSession>();
 
   /** Delayed finalAnswer output, cancelled when the task's done event arrives. */
   private pendingFinalAnswers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -732,7 +738,8 @@ export class AgentModule extends BaseChatModule {
         .filter(Boolean)
         .join("\n");
 
-      // Restore the full message history from the last thread
+      // The session builds the request context from the last thread (after
+      // rolling back whole interactions) plus the resume prompt.
       const threads = session.threads || [];
       // Guard against sessions saved with a flat Message[] instead of Message[][]
       // (a bug where threadUpdate emitted a single thread instead of all threads)
@@ -740,25 +747,6 @@ export class AgentModule extends BaseChatModule {
         threads.length > 0 && !Array.isArray(threads[0])
           ? [threads as unknown as Message[]]
           : (threads as Message[][]);
-      const rolledBackThreads = rollbackAgentInteractions(normalizedThreads, rollback);
-      const resumeMessages = rolledBackThreads[rolledBackThreads.length - 1] || [];
-
-      // Append the resume prompt to the last user message (or add a new one)
-      const reversedIndex = [...resumeMessages]
-        .reverse()
-        .findIndex((e) => e.role === "user" && typeof e.content === "string");
-
-      if (reversedIndex === -1) {
-        resumeMessages.push({ role: "user", content: resumePrompt });
-      } else {
-        const actualIndex = resumeMessages.length - 1 - reversedIndex;
-        resumeMessages[actualIndex] = {
-          ...resumeMessages[actualIndex],
-          content:
-            resumeMessages[actualIndex].content +
-            `\n\n<Workflow>[RESUME CONTEXT]: ${resumePrompt}</Workflow>`,
-        };
-      }
 
       console.log("🚀 Session resuming...");
       const context = this.chatService?.getContext();
@@ -789,6 +777,11 @@ export class AgentModule extends BaseChatModule {
         syncRemote: !!remoteTaskId,
         taskId: session.taskId || sessionId,
         chatHistory: [],
+        history: {
+          mode: "resume",
+          threads: normalizedThreads,
+          rollbackInteractions: rollback,
+        },
         run: false, // Don't run yet, we need to set up event listeners first
         // Prefer authoritative task metadata over potentially incomplete sessions.
         model: savedSettings.model || session.model,
@@ -816,12 +809,7 @@ export class AgentModule extends BaseChatModule {
         }
       });
 
-      await this.attachedAgentChatLoop(
-        taskId,
-        agent,
-        resumePrompt,
-        resumeMessages
-      );
+      await this.attachedAgentChatLoop(taskId, agent, resumePrompt);
     } catch (error) {
       console.error(
         `Failed to resume session ${sessionId}:`,
@@ -861,6 +849,21 @@ export class AgentModule extends BaseChatModule {
     return false;
   }
 
+  public getSession(taskId: string): AgentSession | undefined {
+    return this.sessions.get(taskId);
+  }
+
+  /** Run the session's agent loop without awaiting it (completion is observed via the done event). */
+  private startSession(session: AgentSession): void {
+    session
+      .start()
+      .catch((error) => {
+        console.error(`Agent task ${session.meta.id} failed:`, error?.message ?? error);
+      })
+      // release the channels (watchers / pollers) once the run is over
+      .finally(() => session.close().catch(() => undefined));
+  }
+
   /**
    * Setup and run an agent directly with CLI options (for CLI usage)
    */
@@ -886,6 +889,12 @@ export class AgentModule extends BaseChatModule {
     reasoningEffort?: CompletionOptions["reasoning_effort"];
     summarizeReasoning?: boolean;
     enabledTools?: string[];
+    /** resume / fork: the prior threads (the session builds the request context). */
+    history?: {
+      mode: "resume" | "fork";
+      threads: Message[][];
+      rollbackInteractions?: number;
+    };
   }) {
     const { input, chatHistory = [], agentName } = options;
     const agentContext = this.agentService.getAgentContext();
@@ -906,47 +915,19 @@ export class AgentModule extends BaseChatModule {
       }
     }
 
-    if (options.enabledTools) {
-      agent.restoreEnabledTools(options.enabledTools);
-    }
-
-    // Restore persisted configuration before registering or saving this task.
-    // Otherwise the newly constructed agent's defaults can overwrite the
-    // original run settings during resume setup.
-    if (options.model) {
-      console.log("Setting model:", options.model);
-      agent.setModel(options.model);
-      agent.setModelPreferences([
-        { model: options.model, provider: options.provider as any },
-      ]);
-    }
-
-    if (options.provider) {
-      agent.setProvider(options.provider as any);
-    }
-
     const effectiveReasoningEffort =
       options.reasoningEffort !== undefined
         ? options.reasoningEffort
         : this.reasoningEffort;
-    if (effectiveReasoningEffort !== undefined) {
-      agent.setReasoningEffort(effectiveReasoningEffort);
-    }
-    agent.setSummarizeReasoning(
-      options.summarizeReasoning !== undefined
-        ? options.summarizeReasoning
-        : this.summarizeReasoning
-    );
 
-    let done = false;
-    let output = "Done";
     const taskId = options.taskId || this.sessionManager.generateTaskId(input);
     // Backwards compatibility for callers that historically supplied a remote
     // UUID as taskId with syncRemote. Timestamped local slugs never qualify.
     const remoteTaskId =
       asRemoteTaskId(options.remoteTaskId) ||
       (options.syncRemote ? asRemoteTaskId(taskId) : undefined);
-    let knowhowTaskId: string | undefined;
+    let done = false;
+    let output = "Done";
 
     try {
       // Get context for plugins
@@ -960,11 +941,60 @@ export class AgentModule extends BaseChatModule {
         chatHistory
       );
 
+      startAgentTaskCleanup();
+
+      // The session sets up the run: run config, processors, limits, history
+      // (new / resume / fork), channels (fs always; web by messageId /
+      // syncRemote), input handling and flush. The CLI-only parts below
+      // (renderer, askHuman, session JSON, task registry) stay here.
+      const session = await AgentSession.create({
+        agent,
+        taskId,
+        parentTaskId: options.parentTaskId,
+        name: agentName,
+        prompt: formattedPrompt,
+        displayPrompt: input,
+        runConfig: {
+          enabledTools: options.enabledTools,
+          model: options.model,
+          provider: options.provider,
+          reasoningEffort: effectiveReasoningEffort,
+          summarizeReasoning:
+            options.summarizeReasoning !== undefined
+              ? options.summarizeReasoning
+              : this.summarizeReasoning,
+        },
+        processors: "default",
+        history: options.history
+          ? {
+              mode: options.history.mode,
+              threads: options.history.threads,
+              rollbackInteractions: options.history.rollbackInteractions,
+            }
+          : { mode: "new" },
+        limits: {
+          maxRunTimeMs: options.maxTimeLimit
+            ? options.maxTimeLimit * 60 * 1000 // minutes -> ms
+            : undefined,
+          maxSpendUsd: options.maxSpendLimit,
+        },
+        restore: await loadAgentRestoreState(taskId),
+        channels: agentChannels({
+          taskId,
+          messageId: options.messageId,
+          remoteTaskId,
+          syncFs: options.syncFs,
+          syncRemote: options.syncRemote,
+        }),
+      });
+      this.sessions.set(taskId, session);
+      const webTaskId = session.meta.links?.remoteTaskId;
+
       // Create task info object
       let taskInfo: TaskInfo = {
         taskId,
         knowhowMessageId: options.remoteMessageId || options.messageId,
-        knowhowTaskId: remoteTaskId,
+        knowhowTaskId: webTaskId,
         chatSessionId: options.chatSessionId,
         agentName,
         agent,
@@ -986,28 +1016,6 @@ export class AgentModule extends BaseChatModule {
       // Save initial session
       this.saveSession(taskId, taskInfo, []);
 
-      // Create a fresh SyncerService per agent task so that detaching from one
-      // agent and starting another doesn't tear down the first agent's sync.
-      const syncer = new SyncerService();
-
-      // Create sync task (SyncerService decides web vs fs internally)
-      const syncTaskId = await syncer.createTask({
-        taskId,
-        prompt: input,
-        remoteTaskId,
-        messageId: options.messageId,
-        syncFs: options.syncFs,
-        syncRemote: options.syncRemote,
-        agentName,
-        parentTaskId: options.parentTaskId,
-      });
-
-      const webTaskId = syncer.getCreatedWebTaskId();
-      taskInfo.knowhowTaskId = webTaskId;
-      this.taskRegistry.register(taskId, taskInfo);
-
-      await syncer.setupAgentSync(agent, syncTaskId);
-
       // Set up session update listener
       const threadUpdateHandler = async (threadState: any) => {
         taskInfo.totalCost = agent.getTotalCostUsd();
@@ -1028,18 +1036,6 @@ export class AgentModule extends BaseChatModule {
       );
       console.log(Marked.parse(`**Task:** ${input}`));
 
-      // Initialize new task
-      await agent.newTask(taskId);
-
-      // Record the parent task id on the agent so self-referential tools
-      // (e.g. replyToParent) can resolve who spawned this agent without
-      // relying solely on reading metadata.json off disk.
-      if (options.parentTaskId) {
-        agent.setParentTaskId(options.parentTaskId);
-      }
-
-      // Set up message processors like in original startAgent
-
       // Register an override for askHuman to use CLI input method
       // This keeps the askHuman tool CLI-agnostic while enabling CLI-specific behavior
       // through the override system, achieving better separation of concerns
@@ -1059,8 +1055,6 @@ export class AgentModule extends BaseChatModule {
         },
         10 // Priority level
       );
-
-      applyDefaultMessageProcessors(agent);
 
       // Set up event listeners
       // Each task gets a fresh agent instance (via createAgent), so no stale listeners exist.
@@ -1180,8 +1174,9 @@ export class AgentModule extends BaseChatModule {
           this.renderer.setActiveTaskId(undefined);
           this.activeAgentTaskId = undefined;
 
-          // Wait for AgentSync to finish before resolving
-          await syncer.waitForFinalization();
+          // Wait for the session to finish flushing every channel before
+          // resolving, then release the channels (watchers, timers).
+          await session.close();
 
           if (taskInfo) {
             taskInfo.status = "completed";
@@ -1198,11 +1193,6 @@ export class AgentModule extends BaseChatModule {
         });
       });
 
-      // Set up time limit if provided
-      if (options.maxTimeLimit) {
-        agent.setMaxRunTime(options.maxTimeLimit * 60 * 1000); // Convert minutes to milliseconds
-      }
-
       console.log(`🤖 Starting agent: ${options.agentName}`);
       console.log(`📝 Task: ${options.input}`);
 
@@ -1215,7 +1205,7 @@ export class AgentModule extends BaseChatModule {
       console.log("─".repeat(50));
 
       if (options.run) {
-        agent.call(formattedPrompt);
+        this.startSession(session);
       }
 
       return {
@@ -1224,6 +1214,7 @@ export class AgentModule extends BaseChatModule {
         formattedPrompt,
         initialInput: input,
         taskCompleted,
+        session,
       };
     } catch (error) {
       console.error("Agent setup failed:", error);
@@ -1372,36 +1363,6 @@ export class AgentModule extends BaseChatModule {
       .filter(Boolean)
       .join("\n");
 
-    // Roll back at assistant boundaries so tool calls and their results are
-    // removed together, never leaving an invalid orphaned tool message.
-    const rolledBackThreads = rollbackAgentInteractions(
-      threads || [],
-      options.rollback || 0
-    );
-    const lastThread =
-      rolledBackThreads.length > 0
-        ? rolledBackThreads[rolledBackThreads.length - 1]
-        : [];
-    const resumeMessages = [...lastThread];
-
-    // find last user message index
-    const resumeIndex = [...lastThread]
-      .reverse()
-      .findIndex((e) => e.role === "user" && typeof e.content === "string");
-
-    if (resumeIndex === -1) {
-      resumeMessages.push({
-        role: "user",
-        content: resumePrompt,
-      });
-    } else {
-      const actualIndex = resumeMessages.length - 1 - resumeIndex;
-      resumeMessages[actualIndex] = {
-        ...resumeMessages[actualIndex],
-        content: `${resumeMessages[actualIndex].content}\n\n<Workflow>[RESUME CONTEXT]: ${resumePrompt}</Workflow>`,
-      };
-    }
-
     const result = await this.setupAgent({
       agentName,
       input: resumePrompt,
@@ -1413,6 +1374,13 @@ export class AgentModule extends BaseChatModule {
       syncFs: options.syncFs,
       remoteTaskId,
       run: false,
+      // Roll back at assistant boundaries so tool calls and their results are
+      // removed together; the session builds the request context.
+      history: {
+        mode: options.fork ? "fork" : "resume",
+        threads: threads || [],
+        rollbackInteractions: options.rollback || 0,
+      },
       syncRemote: !options.fork && !!remoteTaskId,
       model: options.model,
       provider: options.provider,
@@ -1436,12 +1404,7 @@ export class AgentModule extends BaseChatModule {
         this.remoteSyncModule.syncTaskInBackground(result.taskId);
       }
 
-      await this.attachedAgentChatLoop(
-        result.taskId,
-        result.agent,
-        resumePrompt,
-        resumeMessages
-      );
+      await this.attachedAgentChatLoop(result.taskId, result.agent, resumePrompt);
       return {
         taskCompleted: result.taskCompleted,
         taskId: result.taskId,
@@ -1458,7 +1421,7 @@ export class AgentModule extends BaseChatModule {
       result.agent.eventTypes,
       result.agent.name
     );
-    result.agent.call(resumePrompt, resumeMessages);
+    this.startSession(result.session);
 
     return { taskCompleted: result.taskCompleted, taskId: result.taskId };
   }
@@ -1607,11 +1570,17 @@ export class AgentModule extends BaseChatModule {
 
       // Now start the agent if we have an initial input (this means we're starting, not just attaching)
       if (initialInput) {
-        const taskInfo = this.taskRegistry.get(taskId);
-        (agent as BaseAgent).call(
-          taskInfo?.formattedPrompt || taskInfo?.initialInput || initialInput,
-          initialMessages
-        );
+        const session = this.sessions.get(taskId);
+        if (session) {
+          // the session owns the run: prompt, resume/fork context, limits
+          this.startSession(session);
+        } else {
+          const taskInfo = this.taskRegistry.get(taskId);
+          (agent as BaseAgent).call(
+            taskInfo?.formattedPrompt || taskInfo?.initialInput || initialInput,
+            initialMessages
+          );
+        }
       }
     } catch (error) {
       console.error("Agent execution failed:", error);

@@ -2,6 +2,11 @@ import { randomUUID } from "crypto";
 import { MessageContent } from "../clients/types";
 import { IAgent } from "../agents/interface";
 import { EventService } from "./EventService";
+import type { BaseAgent } from "../agents/base/base";
+import { AgentSession } from "./stateful/agent/AgentSession";
+import type { AgentChannel } from "./stateful/agent/AgentSession";
+import type { AgentEvent, AgentState } from "./stateful/agent/types";
+import type { StateChange } from "./stateful/types";
 
 export interface AgentInput {
   id: string;
@@ -39,6 +44,12 @@ export interface StartInteractiveAgentOptions {
   initialInput: AgentInput;
   taskId?: string;
   signal?: AbortSignal;
+  /**
+   * Memory only by default. Pass channels (e.g. `agentChannels({ taskId })`) to
+   * sync the task to the filesystem / knowhow-web so it can be attached from
+   * another terminal.
+   */
+  channels?: AgentChannel[];
 }
 
 /** The subset of BaseAgent used by the interactive transport. */
@@ -126,19 +137,24 @@ class AsyncEventChannel<T> {
 }
 
 /**
- * Adapts the existing BaseAgent lifecycle to a transport-friendly handle.
- * Audio, WebSocket and terminal transports can all use this without owning the
- * agent loop. A handle is intentionally task-scoped.
+ * Task-scoped, transport-friendly view of an AgentSession (voice, WebSocket and
+ * terminal transports use it without owning the agent loop). The session owns
+ * the process half (inputs, control, lifecycle, channels); this class maps
+ * session changes onto `AgentRuntimeEvent`s. Memory only: pass
+ * `options.channels` (e.g. `agentChannels({ taskId })`) to also sync to fs/web,
+ * which makes the task attachable from another terminal.
  */
 export class BaseInteractiveAgentHandle implements InteractiveAgentHandle {
   readonly taskId: string;
   readonly done: Promise<InteractiveAgentResult>;
+  readonly session: AgentSession;
 
   private readonly channel = new AsyncEventChannel<AgentRuntimeEvent>();
-  private readonly listeners: Array<[string, (...args: any[]) => void]> = [];
+  private readonly unsubscribe: Array<() => void> = [];
   private generation = 0;
   private lastOutputText = "";
   private lastCostUsd = -1;
+  private lastStatus: "running" | "paused" | "done" | "failed" = "running";
   private settled = false;
   private stopping = false;
   private abortCleanup?: () => void;
@@ -149,8 +165,14 @@ export class BaseInteractiveAgentHandle implements InteractiveAgentHandle {
     private readonly onFinished?: () => void
   ) {
     this.taskId = options.taskId || randomUUID();
-    this.agent.newTask(this.taskId);
-    this.bindEvents();
+    this.session = AgentSession.createSync({
+      agent: agent as unknown as BaseAgent,
+      taskId: this.taskId,
+      prompt: inputText(options.initialInput),
+    });
+    this.unsubscribe.push(
+      this.session.onStateUpdated((change) => this.onChange(change))
+    );
     this.channel.push({ type: "status", status: "running" });
 
     if (options.signal) {
@@ -162,7 +184,7 @@ export class BaseInteractiveAgentHandle implements InteractiveAgentHandle {
       if (signal.aborted) onAbort();
     }
 
-    this.done = this.run(options.initialInput);
+    this.done = this.run(options.channels);
   }
 
   events(signal?: AbortSignal): AsyncIterable<AgentRuntimeEvent> {
@@ -172,78 +194,83 @@ export class BaseInteractiveAgentHandle implements InteractiveAgentHandle {
   async send(input: AgentInput): Promise<void> {
     this.ensureActive();
     if (input.interrupt) return this.interrupt(input);
-    this.agent.addPendingUserMessage({ role: "user", content: input.content });
+    const structured = typeof input.content !== "string";
+    this.session.send("message", {
+      text: inputText(input),
+      ...(structured ? { content: input.content } : {}),
+    });
+    await this.session.flush();
   }
 
   async interrupt(input: AgentInput): Promise<void> {
     this.ensureActive();
-    this.agent.interrupt(inputText(input));
+    this.session.interrupt(inputText(input));
+    await this.session.flush();
   }
 
   async stop(reason = "user stopped the interactive task"): Promise<void> {
     if (this.settled || this.stopping) return;
     this.stopping = true;
-    await this.agent.kill();
+    this.session.cancel(); // onCancel -> agent.kill()
+    await this.session.flush();
     // kill() queues the wrap-up instruction (and releases BaseAgent's pause
     // waiter when needed). Use the default control signal so the human-facing
     // stop reason is not added as another user turn.
     this.agent.interrupt();
   }
 
-  private bind(event: string, listener: (...args: any[]) => void): void {
-    this.agent.agentEvents.on(event, listener);
-    this.listeners.push([event, listener]);
+  private pushStatus(status: "running" | "paused" | "done" | "failed"): void {
+    if (status === this.lastStatus && status !== "running") return;
+    this.lastStatus = status;
+    this.channel.push({ type: "status", status });
   }
 
-  private bindEvents(): void {
-    const types = this.agent.eventTypes;
-    this.bind(types.agentSay, (data: any) => {
-      const text = typeof data === "string" ? data : data?.message;
-      if (typeof text === "string" && text.length) {
-        this.lastOutputText = text;
+  /** session changes -> runtime events */
+  private onChange(change: StateChange<AgentState, AgentEvent>): void {
+    for (const event of change.events) {
+      if (event.type === "say") {
+        const text = event.message;
+        if (typeof text === "string" && text.length) {
+          this.lastOutputText = text;
+          this.channel.push({
+            type: "output.completed",
+            generationId: `${this.taskId}:${++this.generation}`,
+            text,
+          });
+          this.pushCost();
+        }
+      } else if (event.type === "tool_call") {
         this.channel.push({
-          type: "output.completed",
-          generationId: `${this.taskId}:${++this.generation}`,
-          text,
+          type: "tool.started",
+          toolCallId: event.toolCall?.id || randomUUID(),
+          name: event.toolCall?.function?.name || "unknown",
+        });
+      } else if (event.type === "tool_result") {
+        this.channel.push({
+          type: "tool.completed",
+          toolCallId: event.toolCall?.id || randomUUID(),
+          name: event.toolCall?.function?.name || "unknown",
+          committed: true,
         });
         this.pushCost();
       }
-    });
-    this.bind(types.toolCall, (data: any) => {
-      const toolCall = data?.toolCall;
-      this.channel.push({
-        type: "tool.started",
-        toolCallId: toolCall?.id || randomUUID(),
-        name: toolCall?.function?.name || "unknown",
-      });
-    });
-    this.bind(types.toolUsed, (data: any) => {
-      const toolCall = data?.toolCall;
-      this.channel.push({
-        type: "tool.completed",
-        toolCallId: toolCall?.id || randomUUID(),
-        name: toolCall?.function?.name || "unknown",
-        committed: true,
-      });
-      this.pushCost();
-    });
-    this.bind(types.pause, () =>
-      this.channel.push({ type: "status", status: "paused" })
-    );
-    this.bind(types.unpause, () =>
-      this.channel.push({ type: "status", status: "running" })
-    );
+    }
+    if (change.reason === "status:paused") this.pushStatus("paused");
+    else if (change.reason === "status:running" && this.lastStatus === "paused") {
+      this.pushStatus("running");
+    }
   }
 
-  private async run(initialInput: AgentInput): Promise<InteractiveAgentResult> {
+  private async run(channels?: StartInteractiveAgentOptions["channels"]): Promise<InteractiveAgentResult> {
     try {
       if (this.stopping) {
         throw new Error("Interactive agent task was aborted before it started");
       }
+      for (const ch of channels ?? []) await this.session.attach(ch);
       // Providers may resolve an aborted/budget-limited generation with null.
       // Normalize it so cancellation preserves the original error instead of
       // throwing a secondary `null.trim()` exception.
-      const answer = (await this.agent.call(inputText(initialInput))) ?? "";
+      const answer = ((await this.session.start()) as string | null) ?? "";
       const result = {
         answer,
         costUsd: this.agent.getTotalCostUsd?.() || 0,
@@ -258,19 +285,17 @@ export class BaseInteractiveAgentHandle implements InteractiveAgentHandle {
         });
       }
       this.channel.push({ type: "final", answer });
-      this.channel.push({ type: "status", status: "done" });
+      this.pushStatus("done");
       return result;
     } catch (error) {
-      this.channel.push({ type: "status", status: "failed" });
+      this.pushStatus("failed");
       throw error;
     } finally {
       this.settled = true;
-      for (const [event, listener] of this.listeners) {
-        this.agent.agentEvents.off(event, listener);
-      }
-      this.listeners.length = 0;
+      for (const off of this.unsubscribe.splice(0)) off();
       this.channel.close();
       this.abortCleanup?.();
+      await this.session.close().catch(() => undefined);
       this.onFinished?.();
     }
   }
