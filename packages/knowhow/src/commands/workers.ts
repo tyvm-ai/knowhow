@@ -94,11 +94,26 @@ export function addTunnelCommand(program: Command): void {
       "Share this tunnel with your organization (allows other users to use it)"
     )
     .option("--unshare", "Make this tunnel private (only you can use it)")
+    .option(
+      "-p, --port <ports...>",
+      "Allow these local ports on the tunnel (e.g. --port 3000 8080, or 5432:tcp). " +
+      "Missing ports are added to worker.tunnel.allowedPorts in knowhow.json before starting."
+    )
     .action(async (options) => {
+      if (options.port?.length) {
+        const { ensureTunnelPorts } = await import("../tunnel");
+        const added = await ensureTunnelPorts(options.port);
+        console.log(
+          added.length
+            ? `➕ Added tunnel port(s) ${added.join(", ")} to knowhow.json`
+            : `✅ Tunnel port(s) ${options.port.join(", ")} already allowed`
+        );
+      }
       console.log("🌐 Starting tunnel (minimal worker) mode...");
       console.log(`   Tools: ${TUNNEL_MINIMAL_TOOLS.join(", ")}`);
       await worker({
-        ...options,
+        share: options.share,
+        unshare: options.unshare,
         allowedTools: TUNNEL_MINIMAL_TOOLS,
       });
     });

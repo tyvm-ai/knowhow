@@ -3,7 +3,8 @@ import { WebSocket } from "ws";
 import { createTunnelHandler, TunnelHandler } from "@tyvm/knowhow-tunnel";
 import { loadJwt } from "./login";
 import { wait } from "./utils";
-import { getConfig } from "./config";
+import { getConfig, updateConfig } from "./config";
+import type { AllowedTunnelPort } from "./types";
 import { KNOWHOW_API_URL } from "./services/KnowhowClient";
 import { ModulesService } from "./services/modules";
 import { WorkerPasskeyAuthService } from "./workers/auth/WorkerPasskeyAuth";
@@ -11,6 +12,53 @@ import { WsMiddlewareStack } from "./workers/auth/WsMiddleware";
 import { makeAuthMiddleware } from "./workers/auth/authMiddleware";
 
 const PROD_TUNNEL_WORKER_DOMAIN = "worker.tyvm-apps.com";
+
+/**
+ * Parse a CLI port spec: "3000", "5432:tcp", "8080:http".
+ */
+export function parseTunnelPortSpec(spec: string | number): AllowedTunnelPort {
+  const [rawPort, rawTransport] = String(spec).trim().split(":");
+  const port = Number(rawPort);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid tunnel port: ${spec}`);
+  }
+  if (!rawTransport) return port;
+  const transport = rawTransport.toLowerCase();
+  if (transport !== "http" && transport !== "tcp") {
+    throw new Error(`Invalid tunnel transport "${rawTransport}" (use http or tcp)`);
+  }
+  return transport === "http" ? port : { port, transport };
+}
+
+export function tunnelPortNumber(entry: AllowedTunnelPort): number {
+  return typeof entry === "number" ? entry : entry.port;
+}
+
+/**
+ * Make sure each port is in worker.tunnel.allowedPorts (persisted to knowhow.json).
+ * Existing entries are left untouched; returns the specs that were added.
+ */
+export async function ensureTunnelPorts(
+  specs: Array<string | number>
+): Promise<string[]> {
+  const config = await getConfig();
+  config.worker = config.worker || {};
+  config.worker.tunnel = config.worker.tunnel || {};
+  const allowed = config.worker.tunnel.allowedPorts || [];
+  const added: string[] = [];
+  for (const spec of specs) {
+    const entry = parseTunnelPortSpec(spec);
+    const port = tunnelPortNumber(entry);
+    if (allowed.some((e) => tunnelPortNumber(e) === port)) continue;
+    allowed.push(entry);
+    added.push(String(spec));
+  }
+  if (added.length) {
+    config.worker.tunnel.allowedPorts = allowed;
+    await updateConfig(config);
+  }
+  return added;
+}
 
 /**
  * Resolve the tunnel domain and protocol from the environment and API URL.
