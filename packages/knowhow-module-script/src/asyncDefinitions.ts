@@ -11,7 +11,7 @@ export const startScriptDefinition: Tool = {
   function: {
     name: "startScript",
     description:
-      "Start a TypeScript script asynchronously in a sandbox worker. Returns a runId immediately — the script continues running in the background. Optional args are exposed as the read-only scriptArgs global (for example: const maxCycles = scriptArgs.maxCycles ?? 4). Use sendScriptMessage to send messages into it, getScriptEvents / waitForScriptEvents to observe output, and waitForScript to wait for completion.\n\nInside the script, use:\n- emit(type, data?) — emit a named event visible via getScriptEvents\n- waitForMessage({ type?, timeoutMs? }) — block until a matching inbound message arrives\n- onMessage(handler, { type? }) — register a message handler loop and return its numeric id\n- offMessage(id) — stop a registered message handler loop\n- isCancelled() — check if cancellation was requested\n- untilCancelled() — await until cancel signal received\n\nTo support the /workflow graph UI, first emit workflow_announce with { name, stages: [{ id, label?, description? }], links: [{ from, to, label? }] }. Then emit workflow_started, phase_started, workflow_status, phase_completed or phase_failed, and workflow_completed. Phase events use { phase: <stage id>, message: <status text>, taskId?: <child agent id> }. workflow_status appends phase log text without changing stage state; phase_started/completed/failed update the graph. Child agent_progress events are associated with a phase when its taskId was included on phase_started.\n\nLifecycle events automatically emitted (visible via getScriptEvents channel:'lifecycle'):\n- started — script began, includes quotas\n- agent_start_requested / agent_spawned / agent_sync_ready — distinct child startup phases\n- agent_status — change-only status/cost updates\n- agent_progress — child replyToParent milestone updates\n- agent_completed / agent_failed — child terminal state\n- agent_started — compatibility alias after spawn\n- run_completed / run_failed / run_cancelled / run_timedOut — script terminal events",
+      "Start a TypeScript script asynchronously in a sandbox worker. Returns a runId immediately — the script continues running in the background. Optional args are exposed as the read-only scriptArgs global (for example: const maxCycles = scriptArgs.maxCycles ?? 4). Use sendScriptMessage to send messages into it, getScriptEvents / waitForScriptEvents to observe output, and waitForScript to wait for completion.\n\nInside the script, use:\n- emit(type, data?) — emit a named event visible via getScriptEvents\n- waitForMessage({ type?, timeoutMs? }) — block until a matching inbound message arrives\n- onMessage(handler, { type? }) — register a message handler loop and return its numeric id\n- offMessage(id) — stop a registered message handler loop\n- isCancelled() — check if cancellation was requested\n- untilCancelled() — await until cancel signal received\n- setState(patch) — persist resumable progress (shallow merge into scriptState; resolves once on disk)\n- scriptState — read-only state persisted by setState ({} on a fresh run); runInfo — { runId, resumed, resumeCount }\n- checkpoint() — safe point: blocks while the run is paused, throws if cancelled (tool/llm/agent calls are safe points too)\n\nRuns are persisted to .knowhow/processes/scripts/<runId>/ and can be paused, messaged, cancelled and RESUMED from any terminal (knowhow scripts ...). Resuming starts the script fresh with the last scriptState, so make a long script resumable by destructuring its progress: const { done = [] } = scriptState; ... await setState({ done: [...done, item] }).\n\nTo support the /workflow graph UI, first emit workflow_announce with { name, stages: [{ id, label?, description? }], links: [{ from, to, label? }] }. Then emit workflow_started, phase_started, workflow_status, phase_completed or phase_failed, and workflow_completed. Phase events use { phase: <stage id>, message: <status text>, taskId?: <child agent id> }. workflow_status appends phase log text without changing stage state; phase_started/completed/failed update the graph. Child agent_progress events are associated with a phase when its taskId was included on phase_started.\n\nLifecycle events automatically emitted (visible via getScriptEvents channel:'lifecycle'):\n- started — script began, includes quotas\n- agent_start_requested / agent_spawned / agent_sync_ready — distinct child startup phases\n- agent_status — change-only status/cost updates\n- agent_progress — child replyToParent milestone updates\n- agent_completed / agent_failed — child terminal state\n- agent_started — compatibility alias after spawn\n- run_completed / run_failed / run_cancelled / run_timedOut — script terminal events",
     parameters: {
       type: "object",
       usesContext: true,
@@ -135,7 +135,7 @@ export const listScriptsDefinition: Tool = {
         status: {
           type: "string",
           description:
-            "Filter by status: starting, running, cancelRequested, completed, failed, cancelled, timedOut.",
+            "Filter by status: starting, running, paused, cancelRequested, completed, failed, cancelled, timedOut.",
         },
         includeTerminal: {
           type: "boolean",
@@ -300,6 +300,39 @@ export const cancelScriptDefinition: Tool = {
           type: "string",
           description: "The runId of the script run to cancel.",
         },
+      },
+      required: ["runId"],
+    },
+  },
+};
+
+export const pauseScriptDefinition: Tool = {
+  type: "function",
+  function: {
+    name: "pauseScript",
+    description:
+      "Pause a running script run. The run stops at its next safe point (any tool/llm/agent call, setState or checkpoint()) until resumeScript is called. Works for runs owned by other knowhow processes too.",
+    parameters: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "The runId of the script run to pause." },
+      },
+      required: ["runId"],
+    },
+  },
+};
+
+export const resumeScriptDefinition: Tool = {
+  type: "function",
+  function: {
+    name: "resumeScript",
+    description:
+      "Resume a script run. A paused run is unpaused. A failed, cancelled or orphaned run (its owner process exited) is restarted in this process with the same runId, args and its last persisted scriptState (runInfo.resumed is true). Completed runs are only restarted with force: true.",
+    parameters: {
+      type: "object",
+      properties: {
+        runId: { type: "string", description: "The runId of the script run to resume." },
+        force: { type: "boolean", description: "Also restart a completed run." },
       },
       required: ["runId"],
     },

@@ -102,6 +102,10 @@ const RESERVED_GLOBALS = new Set([
   "offMessage",
   "isCancelled",
   "untilCancelled",
+  "scriptState",
+  "runInfo",
+  "setState",
+  "checkpoint",
 ]);
 
 /**
@@ -281,6 +285,17 @@ export function generateScriptTypeDefs(tools: Tool[]): string {
   lines.push("declare function isCancelled(): Promise<boolean>;");
   lines.push("/** Resolves when the outer agent sends a cancel request. */");
   lines.push("declare function untilCancelled(): Promise<void>;");
+  lines.push("");
+
+  // Resumable runs
+  lines.push("/** State persisted by setState(). {} on a fresh run; the last saved value when the run is resumed.\n * Resumable scripts destructure their progress from it: const { cursor = 0 } = scriptState; */");
+  lines.push("declare const scriptState: Readonly<Record<string, any>>;");
+  lines.push("/** Identity of this run. resumed is true when this attempt was started by a resume. */");
+  lines.push("declare const runInfo: Readonly<{ runId?: string; name?: string | null; resumed: boolean; resumeCount: number }>;");
+  lines.push("/** Persist resumable progress (shallow merge, or replace with { replace: true }). Resolves with the new state once it is saved. */");
+  lines.push("declare function setState(patch: Record<string, any>, options?: { replace?: boolean }): Promise<Record<string, any>>;");
+  lines.push("/** Safe point: resolves immediately when running, waits while the run is paused, throws if it was cancelled. */");
+  lines.push("declare function checkpoint(): Promise<void>;");
   lines.push("");
 
   return lines.join("\n");

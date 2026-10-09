@@ -9,13 +9,15 @@
  * against its live ToolsService/AIClient and sends results back.
  *
  * IPC protocol — Parent → Worker:
- *   { type: 'run', script, args, quotas, policy, availableTools }
+ *   { type: 'run', script, args, quotas, policy, availableTools, scriptState?, runInfo? }
  *   { type: 'tool_result',  id, result?, error? }
  *   { type: 'llm_result',   id, result?, error? }
  *   { type: 'decision_result', id, result?, error? }
  *   { type: 'agent_result', id, result?, error? }
  *   { type: 'script_message', message }          — inbound message for onMessage/waitForMessage
  *   { type: 'wait_for_message_result', id, message }  — reply to a wait_for_message request
+ *   { type: 'state_result', id, result?, error? }     — reply to set_state (the new scriptState)
+ *   { type: 'checkpoint_result', id, result?, error? } — reply to checkpoint (after any pause)
  *   { type: 'cancel' }                           — cooperative cancellation request
  *
  * IPC protocol — Worker → Parent:
@@ -27,6 +29,8 @@
  *   { type: 'decision_call', id, state, questions, options }
  *   { type: 'agent_call', id, agentName, query }
  *   { type: 'wait_for_message', id, messageType?, afterSequence?, timeoutMs? }
+ *   { type: 'set_state', id, patch, replace? }   — persist resumable scriptState
+ *   { type: 'checkpoint', id }                   — safe point: blocks while paused
  *   { type: 'done',  result }
  *   { type: 'error', error }
  */
@@ -113,10 +117,28 @@ async function setupIsolatedContext(
   vmContext: ivm.Context,
   ivm: typeof import("isolated-vm"),
   availableTools: string[],
-  scriptArgs: Record<string, unknown>
+  scriptArgs: Record<string, unknown>,
+  resumable: { scriptState: Record<string, unknown>; runInfo: Record<string, unknown> } = {
+    scriptState: {},
+    runInfo: { resumed: false, resumeCount: 0 },
+  }
 ): Promise<void> {
   const globalRef = vmContext.global;
   await globalRef.set("globalThis", globalRef.derefInto());
+
+  // Resumable state: a resumed run is a FRESH run of the same script whose
+  // `scriptState` global holds whatever it last persisted with setState().
+  // Scripts resume by destructuring it: const { cursor = 0 } = scriptState;
+  await globalRef.set("scriptState", new ivm.ExternalCopy(resumable.scriptState ?? {}).copyInto());
+  await globalRef.set("runInfo", new ivm.ExternalCopy(resumable.runInfo ?? {}).copyInto());
+  await vmContext.eval(`
+    for (const __k of ["scriptState", "runInfo"]) {
+      Object.freeze(globalThis[__k]);
+      Object.defineProperty(globalThis, __k, {
+        value: globalThis[__k], writable: false, configurable: false, enumerable: true
+      });
+    }
+  `);
 
   // ExternalCopy ensures scripts cannot retain references to host-owned data.
   // The property descriptor prevents the read-only global itself from being
@@ -260,6 +282,15 @@ async function setupIsolatedContext(
     }
   );
 
+  // ── setState() — persist resumable state (shallow merge; replace with opts) ─
+  await exposeAsync("setState", async (patch: any, options?: { replace?: boolean }) => {
+    return await ipcCall("set_state", { patch: patch ?? {}, replace: !!options?.replace });
+  });
+
+  // ── checkpoint() — safe point: resolves at once, blocks while paused, ─────
+  //    rejects when the run is cancelled.
+  await exposeAsync("checkpoint", async () => ipcCall("checkpoint", {}));
+
   // ── isCancelled() — check if a cancel has been requested ─────────────────
   await exposeAsync("isCancelled", async () => _cancelled);
 
@@ -308,7 +339,7 @@ async function setupIsolatedContext(
   const reserved = new Set([
     "callTool", "llm", "decide", "noul", "choice", "score", "agent", "sleep", "createArtifact",
     "getQuotaUsage", "console", "globalThis", "executeScript",
-    "scriptArgs", "emit", "waitForMessage", "onMessage", "offMessage", "isCancelled", "untilCancelled",
+    "scriptArgs", "scriptState", "runInfo", "setState", "checkpoint", "emit", "waitForMessage", "onMessage", "offMessage", "isCancelled", "untilCancelled",
   ]);
   const safeToolNames = availableTools.filter(
     (n) =>
@@ -391,6 +422,8 @@ async function runScript(msg: {
   quotas: any;
   policy: any;
   availableTools: string[];
+  scriptState?: Record<string, unknown>;
+  runInfo?: Record<string, unknown>;
 }): Promise<void> {
   try {
     _artifacts = [];
@@ -414,7 +447,10 @@ async function runScript(msg: {
 
     try {
       const vmContext = await isolate.createContext();
-      await setupIsolatedContext(vmContext, ivm, msg.availableTools || [], scriptArgs);
+      await setupIsolatedContext(vmContext, ivm, msg.availableTools || [], scriptArgs, {
+        scriptState: JSON.parse(JSON.stringify(msg.scriptState ?? {})),
+        runInfo: JSON.parse(JSON.stringify(msg.runInfo ?? { resumed: false, resumeCount: 0 })),
+      });
 
       const scriptWithReturn = injectReturnForLastExpression(msg.script);
       const wrappedScript = `(async function() { "use strict"; ${scriptWithReturn} })()`;
@@ -456,7 +492,9 @@ process.on("message", async (msg: any) => {
     msg.type === "llm_result" ||
     msg.type === "decision_result" ||
     msg.type === "agent_result" ||
-    msg.type === "wait_for_message_result"
+    msg.type === "wait_for_message_result" ||
+    msg.type === "state_result" ||
+    msg.type === "checkpoint_result"
   ) {
     const pending = pendingCalls.get(msg.id);
     if (pending) {

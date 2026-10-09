@@ -6,6 +6,9 @@ import {
   ManagedProcessInfo, processDirectory,
 } from "../processes/ProcessManager";
 import { runManagedProcessShim } from "../processes/managedProcessShim";
+import {
+  controlProcess, listAllProcesses, resolveProcessEntry, sendToProcess,
+} from "../processes/registry";
 
 const terminal = new Set(["exited", "failed", "stopped"]);
 function resolveProcess(value?: string, index?: string, options: any = {}): ManagedProcess {
@@ -15,12 +18,15 @@ function resolveProcess(value?: string, index?: string, options: any = {}): Mana
     if (!Number.isInteger(parsed) || parsed < 0) {
       throw new Error(`Invalid process index '${index}'. Use the index shown by 'knowhow processes list'.`);
     }
-    const items = filtered(options);
-    const item = items[parsed];
+    // same rows (and order) as `knowhow processes list`
+    const item = listAllProcesses({ all: !!options.all, kinds: kindsOption(options) })[parsed];
     if (!item) {
-      throw new Error(`Managed process index ${parsed} not found. Run 'knowhow processes list${options.all ? " --all" : ""}' to see valid indices.`);
+      throw new Error(`Process index ${parsed} not found. Run 'knowhow processes list${options.all ? " --all" : ""}' to see valid indices.`);
     }
-    return new ManagedProcess(item.id, item.directory);
+    if (item.source !== "exec") {
+      throw new Error(`#${parsed} is a ${item.kind}; logs/attach/signal are for exec'd processes (see 'knowhow ${item.kind === "agent" ? "agents" : "scripts"}')`);
+    }
+    return new ManagedProcess(item.id, item.dir);
   }
   if (!value) {
     throw new Error("Provide a process id, or use -i <index> from 'knowhow processes list'.");
@@ -58,46 +64,55 @@ function truncateMiddle(value: string, width: number): string {
 }
 function printProcessTable(rows: Array<Record<string, string | number>>): void {
   const terminalWidth = process.stdout.columns || 120;
-  const available = Math.max(80, Math.min(terminalWidth, 180));
-  const widths = {
-    index: Math.max(1, String(rows.length - 1).length),
-    state: Math.max(5, ...rows.map((row) => String(row.state).length)),
-    pid: Math.max(3, ...rows.map((row) => String(row.pid).length)),
-    background: 2,
-    id: Math.min(38, Math.max(12, ...rows.map((row) => String(row.id).length))),
-    parent: Math.min(20, Math.max(6, ...rows.map((row) => String(row.parent).length))),
-  };
-  const fixedWidth = widths.index + widths.state + widths.pid + widths.background
-    + widths.id + widths.parent + 12;
-  const commandWidth = Math.max(20, available - fixedWidth);
-  const header = ["#".padEnd(widths.index), "STATE".padEnd(widths.state),
-    "PID".padEnd(widths.pid), "BG".padEnd(widths.background),
-    "ID".padEnd(widths.id), "PARENT".padEnd(widths.parent), "COMMAND"];
-  console.log(header.join("  "));
-  console.log("─".repeat(Math.min(available, fixedWidth + commandWidth)));
+  const available = Math.max(80, Math.min(terminalWidth, 200));
+  const cols = ["index", "kind", "state", "pid", "id", "parent"] as const;
+  const caps: Record<string, number> = { id: 44, parent: 24, kind: 10 };
+  const widths: Record<string, number> = {};
+  for (const col of cols) {
+    const header = col === "index" ? "#" : col.toUpperCase();
+    widths[col] = Math.min(caps[col] ?? 99, Math.max(header.length, ...rows.map((row) => String(row[col]).length)));
+  }
+  const fixedWidth = cols.reduce((sum, col) => sum + widths[col] + 2, 0);
+  const summaryWidth = Math.max(20, available - fixedWidth);
+  console.log([...cols.map((col) => (col === "index" ? "#" : col.toUpperCase()).padEnd(widths[col])), "COMMAND / SUMMARY"].join("  "));
+  console.log("─".repeat(Math.min(available, fixedWidth + summaryWidth)));
   for (const row of rows) {
     console.log([
-      String(row.index).padEnd(widths.index),
-      String(row.state).padEnd(widths.state),
-      String(row.pid).padEnd(widths.pid),
-      String(row.background).padEnd(widths.background),
-      truncateMiddle(String(row.id), widths.id).padEnd(widths.id),
-      truncateMiddle(String(row.parent), widths.parent).padEnd(widths.parent),
-      truncate(String(row.command).replace(/\s+/g, " "), commandWidth),
+      ...cols.map((col) => (col === "id" || col === "parent"
+        ? truncateMiddle(String(row[col]), widths[col])
+        : truncate(String(row[col]), widths[col])).padEnd(widths[col])),
+      truncate(String(row.summary).replace(/\s+/g, " "), summaryWidth),
     ].join("  "));
   }
 }
+function kindsOption(options: any): string[] | undefined {
+  const raw = options.kind ? [].concat(options.kind) : [];
+  const kinds = raw.flatMap((k: string) => String(k).split(",")).map((k) => k.trim()).filter(Boolean)
+    .map((k) => (k === "agents" ? "agent" : k === "scripts" ? "script" : k === "managed" ? "exec" : k));
+  return kinds.length ? kinds : undefined;
+}
+/**
+ * Every process under .knowhow/processes: exec'd commands, agents, scripts and
+ * any other StatefulProcess. (--parent / --background only apply to exec ones.)
+ */
 function printList(options: any): void {
-  const rows = filtered(options).map(({ id, status }, index) => ({
-    index, id, state: status.state, pid: status.pid || "-", background: status.background ? "yes" : "no",
-    parent: status.parentProcessId || "-", command: [status.command, ...status.args].join(" "),
+  const managedOnly = options.parent !== undefined || options.background !== undefined;
+  const entries = managedOnly
+    ? filtered(options).map((m) => ({ ...listAllProcesses({ all: true, kinds: ["exec"] }).find((e) => e.id === m.id)! }))
+      .filter((e) => e.id)
+    : listAllProcesses({ all: !!options.all, kinds: kindsOption(options) });
+  const rows = entries.map((e, index) => ({
+    index, kind: e.kind, id: e.id, state: e.status, pid: e.pid || "-",
+    parent: e.parentId || "-", summary: e.summary, name: e.name ?? "", dir: e.dir,
+    startedAt: e.startedAt ?? "",
   }));
   if (options.json) console.log(JSON.stringify(rows, null, 2));
   else if (rows.length) printProcessTable(rows);
-  else console.log("No managed processes.");
+  else console.log(options.all ? "No processes." : "No active or recent processes (use --all for older ones).");
 }
 function addFilters(command: Command): Command {
   return command.option("-a, --all", "include completed processes")
+    .option("-k, --kind <kinds>", "only these kinds, comma separated: exec, agent, script, ...")
     .option("--parent <id>", "filter by parent process/task id")
     .option("--background", "show only background processes")
     .option("--json", "emit JSON");
@@ -142,9 +157,9 @@ function parseMaxAge(value: string): number {
 }
 
 export function addProcessesCommand(program: Command): void {
-  const processes = addFilters(program.command("processes").description("inspect and control managed processes"));
+  const processes = addFilters(program.command("processes").description("list and control everything running under .knowhow/processes: exec'd commands, agents, scripts"));
   processes.action((rawOptions, command) => printList(commandOptions(rawOptions, command)));
-  addFilters(processes.command("list").description("list managed processes"))
+  addFilters(processes.command("list").description("list processes of every kind (see --kind)"))
     .action((rawOptions, command) => printList(commandOptions(rawOptions, command)));
 
   processes.command("run").description("internal managed process shim").requiredOption("--config <path>")
@@ -168,12 +183,31 @@ export function addProcessesCommand(program: Command): void {
       if (options.follow) await followFiles(files);
     });
 
-  processes.command("send <id> [input...]").option("-n, --no-newline", "do not append newline")
+  processes.command("send <id> [input...]")
+    .description("write to an exec'd process's stdin, or an agent's/script's input.txt")
+    .option("-n, --no-newline", "do not append newline (exec processes)")
     .action(async (id, input: string[], rawOptions, command) => {
       const options = commandOptions(rawOptions, command);
-      const managed = resolveProcess(id);
-      await managed.write((input || []).join(" ") + (options.newline ? "\n" : ""));
+      const entry = resolveProcessEntry(id);
+      const text = (input || []).join(" ");
+      if (entry.source === "exec") {
+        await resolveProcess(entry.id).write(text + (options.newline ? "\n" : ""));
+      } else {
+        await sendToProcess(entry, text);
+      }
     });
+
+  for (const [name, desired, description] of [
+    ["pause", "paused", "pause any process (exec: SIGSTOP; agents/scripts: at their next safe point)"],
+    ["resume", "running", "resume a paused process (exec: SIGCONT). To restart a dead script use `knowhow scripts resume`"],
+    ["cancel", "cancelled", "cancel any process (exec: SIGTERM; agents: killed; scripts: cancelled)"],
+  ] as const) {
+    processes.command(`${name} <id>`).description(description).action(async (id) => {
+      const entry = resolveProcessEntry(id);
+      await controlProcess(entry, desired);
+      console.log(`${name} requested for ${entry.kind} ${entry.id}`);
+    });
+  }
 
   processes.command("signal <id> [signal]").action((id, signal = "SIGTERM") => resolveProcess(id).signal(signal.toUpperCase() as NodeJS.Signals));
   processes.command("stop <id>").action((id) => resolveProcess(id).signal("SIGTERM"));
@@ -242,6 +276,19 @@ export function addProcessesCommand(program: Command): void {
           }
           removed++;
         }
+      }
+      // finished stateful processes (scripts/<runId>, ...) by their last update
+      for (const entry of listAllProcesses({ all: true })) {
+        if (entry.source !== "stateful" || !entry.terminal || entry.status === "orphaned") continue;
+        const age = now - new Date(entry.updatedAt ?? 0).getTime();
+        if (age <= maxAgeMs) continue;
+        const label = `${entry.kind}/${entry.id} (age: ${Math.round(age / 60000)}m)`;
+        if (options.dryRun) console.log(`[dry-run] would remove: ${label}`);
+        else {
+          console.log(`🧹 Removing: ${label}`);
+          fs.rmSync(entry.dir, { recursive: true, force: true });
+        }
+        removed++;
       }
       console.log(`${options.dryRun ? "[dry-run] " : ""}${removed} process director${removed === 1 ? "y" : "ies"} ${options.dryRun ? "would be" : ""} removed.`);
     });

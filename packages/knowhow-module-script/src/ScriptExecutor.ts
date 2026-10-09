@@ -86,6 +86,7 @@ import { AIClient } from "@tyvm/knowhow/ts_build/src/clients";
 import { SandboxContext } from "./SandboxContext";
 import { ScriptTracer } from "./ScriptTracer";
 import { fork } from "child_process";
+import { createHostBridge } from "./hostBridge";
 import { ScriptPolicyEnforcer } from "./ScriptPolicy";
 import {
   ExecutionRequest,
@@ -548,6 +549,16 @@ export class ScriptExecutor {
       // Forward child stderr to our stderr for visibility
       child.stderr?.pipe(process.stderr);
 
+      const bridge = createHostBridge({
+        toolsService: this.toolsService,
+        clients: this.clients,
+        policyEnforcer,
+        onToolStart: (toolName) => tracer.emitEvent("tool_call_start", { toolName }),
+        onToolResult: (toolName) => tracer.emitEvent("tool_call_success", { toolName }),
+        onToolError: (toolName, _params, err) =>
+          tracer.emitEvent("tool_call_error", { toolName, error: err.message }),
+      });
+
       const finish = (result: ExecutionResult) => {
         unsubscribe?.();
         if (!child.killed) child.kill();
@@ -568,76 +579,8 @@ export class ScriptExecutor {
         } else if (msg.type === "event") {
           // Relay trace events to the caller's onEvent handler
           tracer.emitEvent(msg.event.type, msg.event.data ?? {});
-        } else if (msg.type === "tool_call") {
-          // Bridge: run the tool in this process using the live ToolsService
-          try {
-            policyEnforcer.recordToolCall();
-            tracer.emitEvent("tool_call_start", { toolName: msg.toolName });
-            const toolCall = {
-              id: `script-worker-tool-${Date.now()}`,
-              type: "function" as const,
-              function: {
-                name: msg.toolName,
-                arguments: JSON.stringify(msg.params ?? {}),
-              },
-            };
-            const rawResult = await this.toolsService.callTool(toolCall);
-            const result =
-              rawResult && typeof rawResult === "object" && "functionResp" in rawResult
-                ? rawResult.functionResp
-                : rawResult;
-            tracer.emitEvent("tool_call_success", { toolName: msg.toolName });
-            child.send({ type: "tool_result", id: msg.id, result: result ?? null });
-          } catch (err: any) {
-            tracer.emitEvent("tool_call_error", { toolName: msg.toolName, error: err?.message });
-            child.send({ type: "tool_result", id: msg.id, result: null, error: err?.message ?? String(err) });
-          }
-        } else if (msg.type === "llm_call") {
-          // Bridge: run LLM call via the live AIClient
-          try {
-            const result = await this.clients.createCompletion("", {
-              messages: msg.messages,
-              model: msg.options?.model,
-              max_tokens: msg.options?.maxTokens,
-            });
-            child.send({ type: "llm_result", id: msg.id, result: result ?? null });
-          } catch (err: any) {
-            child.send({ type: "llm_result", id: msg.id, result: null, error: err?.message ?? String(err) });
-          }
-        } else if (msg.type === "decision_call") {
-          try {
-            const result = await this.clients.decide(msg.options?.provider ?? "jev", {
-              state: msg.state,
-              questions: msg.questions,
-              model: msg.options?.model ?? "jev-latest",
-            });
-            child.send({ type: "decision_result", id: msg.id, result });
-          } catch (err: any) {
-            child.send({
-              type: "decision_result", id: msg.id, result: null,
-              error: err?.message ?? String(err),
-            });
-          }
-        } else if (msg.type === "agent_call") {
-          // Bridge: run agent call via callTool('agentCall', ...)
-          try {
-            const toolCall = {
-              id: `script-worker-agent-${Date.now()}`,
-              type: "function" as const,
-              function: {
-                name: "agentCall",
-                arguments: JSON.stringify({ agentName: msg.agentName, query: msg.query }),
-              },
-            };
-            const rawResult = await this.toolsService.callTool(toolCall);
-            const result =
-              rawResult && typeof rawResult === "object" && "functionResp" in rawResult
-                ? rawResult.functionResp
-                : rawResult;
-            child.send({ type: "agent_result", id: msg.id, result: result ?? null });
-          } catch (err: any) {
-            child.send({ type: "agent_result", id: msg.id, result: null, error: err?.message ?? String(err) });
-          }
+        } else if (await bridge(msg, child)) {
+          // tool/llm/decision/agent requests answered by the shared host bridge
         } else if (msg.type === "done") {
           finish({
             success: true,

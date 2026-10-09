@@ -38,6 +38,8 @@ function summarizeRun(record: ScriptRunRecord) {
     ownerTaskId: record.ownerTaskId ?? null,
     childPid: record.childPid ?? null,
     lastEventSequence: record.nextEventSequence - 1,
+    resumeCount: record.resumeCount ?? 0,
+    orphaned: (record as any).orphaned ?? false,
     droppedEventCount: record.droppedEventCount,
     error: record.error ?? null,
   };
@@ -452,5 +454,40 @@ export async function cancelScript(
       error: error instanceof Error ? error.message : String(error),
       runId,
     };
+  }
+}
+
+// ── pauseScript / resumeScript ────────────────────────────────────────────────
+
+export async function pauseScript(
+  this: ToolsService | void,
+  { runId }: { runId: string }
+) {
+  try {
+    const svc = getScriptRunService();
+    await svc.pause(runId);
+    return { success: true, runId, status: svc.get(runId).status, desired: "paused" };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error), runId };
+  }
+}
+
+export async function resumeScript(
+  this: ToolsService | void,
+  { runId, force }: { runId: string; force?: boolean }
+) {
+  try {
+    const { Tools, Clients } = getContext(this);
+    const svc = getScriptRunService();
+    const outcome = await svc.resume(runId, Tools, Clients, { force });
+    return {
+      success: true,
+      runId: outcome.run.runId,
+      mode: outcome.mode,
+      status: outcome.run.status,
+      resumeCount: outcome.run.resumeCount ?? 0,
+    };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : String(error), runId };
   }
 }

@@ -1,105 +1,73 @@
 /**
- * ScriptRunService — singleton registry for async script runs.
+ * ScriptRunService — starts, resumes and finds script runs.
  *
- * Every async run gets a unique runId and is tracked here.  Agent-facing tools
- * (startScript, listScripts, sendScriptMessage, etc.) delegate to this service.
+ * Each run is a `ScriptRun` (a StatefulProcess) persisted under
+ * `.knowhow/processes/scripts/<runId>/` (see ScriptRunStore). This service
+ * keeps the runs THIS process owns (`live`) and reads everything else from
+ * disk, so listing, events, pause/cancel/messages and resume work across
+ * terminals and after the owning CLI has exited.
  *
- * The registry is process-local: it lives only as long as the CLI session.
- * Finished runs are retained for TTL_MS (30 min) then pruned on the next
- * `listScripts` call.
+ * Runs owned here are pruned from memory TTL_MS after finishing; their
+ * directories stay (`knowhow processes cleanup` removes old ones).
  */
 
-import { ChildProcess, fork } from "child_process";
+import { fork } from "child_process";
 import * as path from "path";
 import { promises as fs } from "fs";
-import { randomUUID } from "crypto";
 import { ScriptTracer } from "./ScriptTracer";
 import { ScriptPolicyEnforcer } from "./ScriptPolicy";
 import { SandboxContext } from "./SandboxContext";
+import { createHostBridge } from "./hostBridge";
 import {
   ExecutionRequest,
   ExecutionResult,
   ResourceQuotas,
   SecurityPolicy,
 } from "./types";
-import { ToolsService } from "@tyvm/knowhow/ts_build/src/services/Tools";
-import { AIClient } from "@tyvm/knowhow/ts_build/src/clients";
+import {
+  ScriptMessage,
+  ScriptRun,
+  ScriptRunEvent,
+  ScriptRunRecord,
+  ScriptRunStatus,
+  isTerminalScriptStatus,
+} from "./ScriptRun";
+import { PersistedScriptRun, ScriptRunStore } from "./ScriptRunStore";
+import type { ToolsService } from "@tyvm/knowhow/ts_build/src/services/Tools";
+import type { AIClient } from "@tyvm/knowhow/ts_build/src/clients";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+export * from "./ScriptRun";
 
-export type ScriptRunStatus =
-  | "starting"
-  | "running"
-  | "cancelRequested"
-  | "completed"
-  | "failed"
-  | "cancelled"
-  | "timedOut";
+const TTL_MS = 30 * 60 * 1000; // 30 min (in-memory only)
+const AGENT_START_TOOLS = new Set(["startAgentTask", "agentCall"]);
 
-export interface ScriptRunEvent {
-  runId: string;
-  sequence: number;
-  id: string;
-  timestamp: string;
-  type: string;
-  channel: "script" | "console" | "trace" | "lifecycle";
-  data: unknown;
-}
-
-export interface ScriptRunRecord {
-  runId: string;
+export type StartScriptRequest = ExecutionRequest & {
   name?: string;
-  status: ScriptRunStatus;
-  createdAt: string;
-  startedAt?: string;
-  finishedAt?: string;
   ownerTaskId?: string;
-  childPid?: number;
-  result?: ExecutionResult;
-  error?: string;
-  /** Bounded ring of events emitted by/for this run */
-  events: ScriptRunEvent[];
-  nextEventSequence: number;
-  /** Number of events dropped due to ring cap */
-  droppedEventCount: number;
-  /** Pending `waitForMessage` waiters from inside the script */
-  _messageWaiters: Array<{
-    type?: string;
-    afterSequence?: number;
-    resolve: (msg: ScriptMessage | null) => void;
-    timeoutHandle?: ReturnType<typeof setTimeout>;
-  }>;
-  /** FIFO of messages sent into the script that haven't been consumed yet */
-  _messageQueue: ScriptMessage[];
-  /** Next sequence for outbound messages */
-  nextInputSequence: number;
-  /** Promise that resolves when the run reaches a terminal state */
-  _completion: Promise<ExecutionResult>;
-  _resolveCompletion: (r: ExecutionResult) => void;
-  _rejectCompletion: (e: Error) => void;
-  _child?: ChildProcess;
-  _tracer?: ScriptTracer;
+  /** file the script came from (informational; the text is persisted) */
+  sourcePath?: string;
+  /** initial scriptState (e.g. seeded by the caller) */
+  scriptState?: Record<string, unknown>;
+};
+
+export interface ScriptRunServiceOptions {
+  store?: ScriptRunStore;
+  /** write runs to disk (default true; tests may turn it off) */
+  persist?: boolean;
 }
 
-export interface ScriptMessage {
-  id: string;
-  sequence: number;
-  timestamp: string;
-  type: string;
-  data: unknown;
-  correlationId?: string;
-  source?: { taskId?: string; tool?: string };
-}
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const MAX_EVENTS_PER_RUN = 1000;
-const TTL_MS = 30 * 60 * 1000; // 30 min
-
-// ── Service ───────────────────────────────────────────────────────────────────
+export type ResumeOutcome =
+  /** a live run in this process was paused: it was unpaused */
+  | { mode: "unpaused"; run: ScriptRunRecord }
+  /** owned by another live process: control.json now says running */
+  | { mode: "signalled"; run: ScriptRunRecord }
+  /** restarted here from its persisted scriptState */
+  | { mode: "restarted"; run: ScriptRun };
 
 export class ScriptRunService {
-  private runs = new Map<string, ScriptRunRecord>();
+  private live = new Map<string, ScriptRun>();
+  readonly store: ScriptRunStore;
+  private persist: boolean;
 
   private defaultQuotas: ResourceQuotas = {
     // isolated-vm requires a memory limit; caller-facing usage limits are opt-in.
@@ -114,218 +82,289 @@ export class ScriptRunService {
     allowFileSystemAccess: false,
   };
 
-  /**
-   * Start a script asynchronously.  Returns the runId immediately; the script
-   * runs in a background child worker.
-   */
+  constructor(opts: ScriptRunServiceOptions = {}) {
+    this.store = opts.store ?? new ScriptRunStore();
+    this.persist = opts.persist ?? true;
+  }
+
+  // ── start / resume ──────────────────────────────────────────────────────────
+
+  /** Start a script in a background worker. Returns as soon as it is registered. */
   async start(
-    request: ExecutionRequest & { name?: string; ownerTaskId?: string },
+    request: StartScriptRequest,
     toolsService: ToolsService,
     clients: AIClient
-  ): Promise<ScriptRunRecord> {
-    const runId = `run-${Date.now()}-${randomUUID().slice(0, 8)}`;
-
-    let resolveCompletion!: (r: ExecutionResult) => void;
-    let rejectCompletion!: (e: Error) => void;
-    const completion = new Promise<ExecutionResult>((res, rej) => {
-      resolveCompletion = res;
-      rejectCompletion = rej;
-    });
-
-    const record: ScriptRunRecord = {
-      runId,
+  ): Promise<ScriptRun> {
+    const run = ScriptRun.create({
       name: request.name,
-      status: "starting",
-      createdAt: new Date().toISOString(),
       ownerTaskId: request.ownerTaskId,
-      events: [],
-      nextEventSequence: 0,
-      droppedEventCount: 0,
-      _messageWaiters: [],
-      _messageQueue: [],
-      nextInputSequence: 0,
-      _completion: completion,
-      _resolveCompletion: resolveCompletion,
-      _rejectCompletion: rejectCompletion,
-    };
-
-    this.runs.set(runId, record);
-
-    // Launch in background — don't await
-    this._launch(record, request, toolsService, clients).catch((err) => {
-      this._terminate(record, "failed", null, err instanceof Error ? err.message : String(err));
+      source: { path: request.sourcePath, length: request.script.length },
+      args: request.args ?? {},
+      quotas: request.quotas,
+      policy: request.policy,
+      scriptState: request.scriptState,
     });
-
-    return record;
+    if (this.persist) this.store.writeSource(run.runId, request.script);
+    return this.launch(run, request, toolsService, clients);
   }
 
-  /** Wait for a run to reach a terminal state */
-  async wait(runId: string, timeoutMs?: number): Promise<ExecutionResult> {
-    const record = this._get(runId);
-    if (timeoutMs !== undefined && timeoutMs > 0) {
-      return new Promise<ExecutionResult>((resolve, reject) => {
-        const timeout = setTimeout(
-          () => reject(new Error(`waitForScript timed out after ${timeoutMs}ms`)),
-          timeoutMs
-        );
-        record._completion.then(
-          (result) => {
-            clearTimeout(timeout);
-            resolve(result);
-          },
-          (error) => {
-            clearTimeout(timeout);
-            reject(error);
-          }
-        );
-      });
-    }
-    return record._completion;
-  }
-
-  /** Send a message into a running script */
-  sendMessage(
+  /**
+   * Resume a run:
+   *  - paused here -> unpause;
+   *  - running in another live process -> ask it (control.json);
+   *  - otherwise (finished, failed, cancelled, orphaned) -> start the same
+   *    script again here, with its persisted scriptState and
+   *    `runInfo.resumed === true`. Completed runs need `force`.
+   */
+  async resume(
     runId: string,
-    type: string,
-    data?: unknown,
-    options?: { correlationId?: string; source?: ScriptMessage["source"] }
-  ): ScriptMessage {
-    const record = this._get(runId);
-    if (this._isTerminal(record.status)) {
-      throw new Error(`Cannot send message to run ${runId} in status '${record.status}'`);
+    toolsService: ToolsService,
+    clients: AIClient,
+    opts: { force?: boolean; onEvent?: ExecutionRequest["onEvent"] } = {}
+  ): Promise<ResumeOutcome> {
+    const own = this.live.get(runId) ?? this.live.get(this.store.resolve(runId).runId);
+    if (own && !own.isTerminal()) {
+      own.resume();
+      return { mode: "unpaused", run: own };
     }
-
-    const msg: ScriptMessage = {
-      id: randomUUID(),
-      sequence: record.nextInputSequence++,
-      timestamp: new Date().toISOString(),
-      type,
-      data: data ?? null,
-      correlationId: options?.correlationId,
-      source: options?.source,
-    };
-
-    // Try to deliver to a waiting waiter first
-    const waiterIdx = record._messageWaiters.findIndex(
-      (w) => !w.type || w.type === type
-    );
-    if (waiterIdx !== -1) {
-      const waiter = record._messageWaiters.splice(waiterIdx, 1)[0];
-      if (waiter.timeoutHandle) clearTimeout(waiter.timeoutHandle);
-      waiter.resolve(msg);
+    let document;
+    if (own) {
+      // finished here: our in-memory document is the newest one
+      await own.close();
+      document = own.snapshot();
     } else {
-      // Queue for the script to consume later
-      record._messageQueue.push(msg);
-    }
-
-    // Also send over IPC if the worker is alive
-    record._child?.send({ type: "script_message", message: msg });
-
-    return msg;
-  }
-
-  /** Request cancellation of a run */
-  async cancel(runId: string): Promise<void> {
-    const record = this._get(runId);
-    if (this._isTerminal(record.status)) return;
-
-    record.status = "cancelRequested";
-    this._appendEvent(record, "lifecycle", "cancel_requested", {});
-
-    // Cooperative: send cancel message into the script
-    record._child?.send({ type: "cancel" });
-
-    // Give 3 s for graceful shutdown then SIGKILL
-    const grace = setTimeout(() => {
-      if (!this._isTerminal(record.status)) {
-        record._child?.kill("SIGKILL");
-        this._terminate(record, "cancelled", null, "Cancelled by request");
+      const persisted = this.store.resolve(runId);
+      if (!isTerminalScriptStatus(persisted.status) && !persisted.orphaned) {
+        await this.store.channel(persisted.runId).writeControl({ desired: "running" });
+        return { mode: "signalled", run: persisted };
       }
-    }, 3000);
-
-    // Clear grace timer when/if run finishes on its own
-    record._completion.finally(() => clearTimeout(grace));
+      document = persisted.document;
+    }
+    const id = document.state.runId;
+    if (document.state.status === "completed" && !opts.force) {
+      throw new Error(`Run ${id} already completed; pass force to run it again`);
+    }
+    const script = this.store.readSource(id);
+    // a stale "cancelled"/"paused" in control.json must not stop the new attempt
+    await this.store.channel(id).writeControl({ desired: "running" });
+    const run = ScriptRun.fromDocument(document);
+    const state = run.getState();
+    await this.launch(
+      run,
+      {
+        script,
+        args: state.args,
+        quotas: state.quotas,
+        policy: state.policy,
+        onEvent: opts.onEvent,
+      },
+      toolsService,
+      clients
+    );
+    return { mode: "restarted", run };
   }
 
-  /** Return the run record (throws if not found) */
+  private async launch(
+    run: ScriptRun,
+    request: ExecutionRequest,
+    toolsService: ToolsService,
+    clients: AIClient
+  ): Promise<ScriptRun> {
+    this.live.set(run.runId, run);
+    if (this.persist) await run.attach(this.store.channel(run.runId));
+    // stop the channel's file watchers once the run is over (after its final write)
+    void run.completion.then(() => run.close()).catch(() => {});
+    this.runWorker(run, request, toolsService, clients).catch((err) => {
+      run.terminate("failed", null, err instanceof Error ? err.message : String(err));
+    });
+    return run;
+  }
+
+
+  // ── queries ─────────────────────────────────────────────────────────────────
+
+  /** A live run of this process, or the persisted record. Throws if unknown. */
   get(runId: string): ScriptRunRecord {
-    return this._get(runId);
+    const own = this.live.get(runId);
+    if (own) return own;
+    try {
+      return this.store.resolve(runId);
+    } catch {
+      throw new Error(`Script run '${runId}' not found`);
+    }
   }
 
-  /** Return all runs, optionally filtered */
+  /** Live runs of this process (no disk). */
+  getLive(runId: string): ScriptRun | undefined {
+    return this.live.get(runId);
+  }
+
+  /** Runs owned here plus runs on disk (other terminals, earlier sessions). */
   list(options?: {
     status?: ScriptRunStatus | ScriptRunStatus[];
     includeTerminal?: boolean;
     ownerTaskId?: string;
     limit?: number;
+    /** only runs owned by this process */
+    localOnly?: boolean;
   }): ScriptRunRecord[] {
-    this._prune();
-    let runs = Array.from(this.runs.values());
-
-    if (options?.ownerTaskId) {
-      runs = runs.filter((r) => r.ownerTaskId === options.ownerTaskId);
+    this.prune();
+    const byId = new Map<string, ScriptRunRecord>();
+    if (this.persist && !options?.localOnly) {
+      for (const r of this.store.list()) byId.set(r.runId, r);
     }
+    for (const r of this.live.values()) byId.set(r.runId, r);
+    let runs = [...byId.values()];
 
+    if (options?.ownerTaskId) runs = runs.filter((r) => r.ownerTaskId === options.ownerTaskId);
     if (options?.status) {
       const statuses = Array.isArray(options.status) ? options.status : [options.status];
       runs = runs.filter((r) => statuses.includes(r.status));
     } else if (options?.includeTerminal === false) {
-      runs = runs.filter((r) => !this._isTerminal(r.status));
+      runs = runs.filter((r) => !isTerminalScriptStatus(r.status));
     }
-
     runs.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-
-    if (options?.limit && options.limit > 0) {
-      runs = runs.slice(0, options.limit);
-    }
-
+    if (options?.limit && options.limit > 0) runs = runs.slice(0, options.limit);
     return runs;
   }
 
+  /** Wait for a run to reach a terminal state (polls disk for foreign runs). */
+  async wait(runId: string, timeoutMs?: number): Promise<ExecutionResult> {
+    const own = this.live.get(runId);
+    const done: Promise<ExecutionResult> = own
+      ? // resolve only once the terminal state is on disk (callers may exit right after)
+        own.completion.then(async (r) => { await own.flush(); return r; })
+      : this.pollUntil(runId, (r) => isTerminalScriptStatus(r.status) || (r as any).orphaned).then(
+          (r) =>
+            r.result ?? {
+              success: false,
+              error: r.error ?? `run is ${(r as any).orphaned ? "orphaned" : r.status}`,
+              result: null,
+              trace: {} as any,
+              artifacts: [],
+              consoleOutput: [],
+            }
+        );
+    if (timeoutMs === undefined || timeoutMs <= 0) return done;
+    return new Promise<ExecutionResult>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error(`waitForScript timed out after ${timeoutMs}ms`)),
+        timeoutMs
+      );
+      done.then(
+        (r) => { clearTimeout(timer); resolve(r); },
+        (e) => { clearTimeout(timer); reject(e); }
+      );
+    });
+  }
+
   /**
-   * Long-poll for new events.  Resolves when at least one new event arrives,
-   * the run terminates, or timeoutMs elapses.
+   * Long-poll for events after `afterSequence`. Resolves when there is at
+   * least one, the run is terminal, or `timeoutMs` elapses.
    */
   async waitForEvents(
     runId: string,
     afterSequence: number,
     timeoutMs: number
   ): Promise<{ events: ScriptRunEvent[]; terminal: boolean; nextSequence: number }> {
-    const record = this._get(runId);
+    const collect = (r: ScriptRunRecord) => {
+      const events = r.events.filter((e) => e.sequence > afterSequence);
+      const nextSequence = events.length ? events[events.length - 1].sequence + 1 : afterSequence;
+      return { events, terminal: isTerminalScriptStatus(r.status), nextSequence };
+    };
+    const ready = (r: ScriptRunRecord) =>
+      r.events.some((e) => e.sequence > afterSequence) || isTerminalScriptStatus(r.status);
 
-    const existing = record.events.filter((e) => e.sequence > afterSequence);
-    if (existing.length > 0 || this._isTerminal(record.status)) {
-      const next = existing.length > 0 ? existing[existing.length - 1].sequence + 1 : afterSequence;
-      return { events: existing, terminal: this._isTerminal(record.status), nextSequence: next };
+    const own = this.live.get(runId);
+    if (!own) {
+      const r = await this.pollUntil(runId, (x) => ready(x) || (x as any).orphaned, timeoutMs);
+      return collect(r);
     }
-
-    return new Promise((resolve) => {
-      let settled = false;
-      const settle = () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        const evs = record.events.filter((e) => e.sequence > afterSequence);
-        const next = evs.length > 0 ? evs[evs.length - 1].sequence + 1 : afterSequence;
-        resolve({ events: evs, terminal: this._isTerminal(record.status), nextSequence: next });
-      };
-
-      const timer = setTimeout(settle, timeoutMs);
-
-      // Watch for new events via completion (simplified: poll on completion)
-      record._completion.finally(settle);
-
-      // Subscribe to new event notifications via a one-shot listener stored on the record
-      (record as any)._eventWaiters = (record as any)._eventWaiters || [];
-      (record as any)._eventWaiters.push(settle);
-    });
+    if (ready(own)) return collect(own);
+    await Promise.race([
+      own.nextEvent(),
+      new Promise((r) => setTimeout(r, timeoutMs)),
+    ]);
+    return collect(own);
   }
 
-  // ── Internal ──────────────────────────────────────────────────────────────
+  private async pollUntil(
+    runId: string,
+    predicate: (r: PersistedScriptRun) => boolean,
+    timeoutMs?: number
+  ): Promise<PersistedScriptRun> {
+    const started = Date.now();
+    for (;;) {
+      const r = this.store.resolve(runId);
+      if (predicate(r)) return r;
+      if (timeoutMs !== undefined && Date.now() - started >= timeoutMs) return r;
+      await new Promise((res) => setTimeout(res, 250));
+    }
+  }
 
-  private async _launch(
-    record: ScriptRunRecord,
-    request: ExecutionRequest & { name?: string; ownerTaskId?: string },
+  // ── control ─────────────────────────────────────────────────────────────────
+
+  async cancel(runId: string): Promise<void> {
+    const own = this.live.get(runId);
+    if (own) {
+      if (!own.isTerminal()) own.cancel();
+      return;
+    }
+    const r = this.store.resolve(runId);
+    if (isTerminalScriptStatus(r.status)) return;
+    if (r.orphaned) {
+      // nobody owns it: take it over just long enough to record the outcome
+      const run = new ScriptRun({ kind: "script", document: r.document });
+      await run.attach(this.store.channel(r.runId));
+      run.terminate("cancelled", null, "Cancelled (owner process had exited)");
+      await run.close();
+      return;
+    }
+    await this.store.channel(r.runId).writeControl({ desired: "cancelled" });
+  }
+
+  async pause(runId: string): Promise<void> {
+    const own = this.live.get(runId);
+    if (own) return own.pause();
+    const r = this.store.resolve(runId);
+    if (isTerminalScriptStatus(r.status) || r.orphaned) {
+      throw new Error(`Run ${r.runId} is not running (${r.orphaned ? "orphaned" : r.status})`);
+    }
+    await this.store.channel(r.runId).writeControl({ desired: "paused" });
+  }
+
+  /** Send a message into a running script (in-process or via input.txt). */
+  sendMessage(
+    runId: string,
+    type: string,
+    data?: unknown,
+    options?: { correlationId?: string; source?: ScriptMessage["source"] }
+  ): ScriptMessage {
+    const own = this.live.get(runId);
+    if (own) return own.sendMessage(type, data, options);
+    const r = this.store.resolve(runId);
+    if (isTerminalScriptStatus(r.status)) {
+      throw new Error(`Cannot send message to run ${r.runId} in status '${r.status}'`);
+    }
+    const item = { kind: type, payload: { type, data: data ?? null }, from: options?.source?.taskId };
+    void this.store.channel(r.runId).appendInput(item);
+    return {
+      id: "",
+      sequence: -1, // assigned by the owner when it consumes input.txt
+      timestamp: new Date().toISOString(),
+      type,
+      data: data ?? null,
+      correlationId: options?.correlationId,
+      source: options?.source,
+    };
+  }
+
+
+  // ── worker ──────────────────────────────────────────────────────────────────
+
+  private async runWorker(
+    run: ScriptRun,
+    request: ExecutionRequest,
     toolsService: ToolsService,
     clients: AIClient
   ): Promise<void> {
@@ -333,47 +372,73 @@ export class ScriptRunService {
     const policy = { ...this.defaultPolicy, ...request.policy };
     const policyEnforcer = new ScriptPolicyEnforcer(quotas, policy);
     const tracer = new ScriptTracer();
-    record._tracer = tracer;
+    run.tracer = tracer;
 
-    // Collect tool names
     let availableTools: string[] = [];
     try {
-      const ctx = new SandboxContext(toolsService, clients, tracer, policyEnforcer);
-      availableTools = ctx.listToolNames();
+      availableTools = new SandboxContext(toolsService, clients, tracer, policyEnforcer).listToolNames();
     } catch { /* ignore */ }
 
-    record.status = "running";
-    record.startedAt = new Date().toISOString();
-    this._appendEvent(record, "lifecycle", "started", { quotas });
+    // honour a pause/cancel that arrived before the worker started
+    await run.gate();
 
-    const workerJs = path.join(__dirname, "script-worker.js");
+    const child = fork(path.join(__dirname, "script-worker.js"), [], {
+      execArgv: ["--no-node-snapshot", "--enable-source-maps"],
+      stdio: ["pipe", "pipe", "pipe", "ipc"],
+    });
+    child.stderr?.pipe(process.stderr);
+    run.child = child;
+    run.markRunning(child.pid);
+    run.appendEvent("lifecycle", "started", { quotas, resumeCount: run.resumeCount });
+
+    const bridge = createHostBridge({
+      toolsService,
+      clients,
+      taskId: run.ownerTaskId,
+      policyEnforcer,
+      gate: () => run.gate(),
+      setState: (patch, replace) => run.setScriptState(patch, replace),
+      onToolStart: (toolName, params) => {
+        if (!AGENT_START_TOOLS.has(toolName)) return;
+        run.appendEvent("lifecycle", "agent_start_requested", {
+          toolName,
+          requestedTaskId: params?.taskId ?? null,
+          agentName: params?.agentName ?? params?.agent ?? null,
+        });
+      },
+      onToolResult: (toolName, params, result) => {
+        if (AGENT_START_TOOLS.has(toolName)) this.recordAgentStart(run, toolName, params, result);
+      },
+      onToolError: (toolName, params, err) => {
+        if (!AGENT_START_TOOLS.has(toolName)) return;
+        run.appendEvent("lifecycle", "agent_start_failed", {
+          toolName,
+          requestedTaskId: params?.taskId ?? null,
+          error: err.message,
+        });
+      },
+    });
 
     await new Promise<void>((resolveSpawn, rejectSpawn) => {
-      const child = fork(workerJs, [], {
-        execArgv: ["--no-node-snapshot", "--enable-source-maps"],
-        stdio: ["pipe", "pipe", "pipe", "ipc"],
-      });
-      child.stderr?.pipe(process.stderr);
-      record._child = child;
-      record.childPid = child.pid;
-
       // Runs are unbounded unless the caller intentionally supplies a deadline.
       const timeoutMs = quotas.maxExecutionTimeMs;
       const globalTimeout = timeoutMs !== undefined && timeoutMs > 0
         ? setTimeout(() => {
-            if (!this._isTerminal(record.status)) {
+            if (!run.isTerminal()) {
               child.kill("SIGKILL");
-              this._terminate(record, "timedOut", null, `Execution timed out after ${timeoutMs}ms`);
+              run.terminate("timedOut", null, `Execution timed out after ${timeoutMs}ms`);
             }
           }, timeoutMs)
         : undefined;
 
       const finish = (result: ExecutionResult) => {
         if (globalTimeout) clearTimeout(globalTimeout);
-        this._terminate(record, result.success ? "completed" : "failed", result, result.error ?? undefined);
-        // The worker keeps an IPC message listener for the lifetime of a run.
-        // Close that channel after its terminal message so the child can exit
-        // and completed runs do not retain subprocesses.
+        run.terminate(
+          result.success ? "completed" : run.status === "cancelRequested" ? "cancelled" : "failed",
+          result,
+          result.error ?? undefined
+        );
+        // Close IPC after the terminal message so the child can exit.
         if (child.connected) child.disconnect();
         resolveSpawn();
       };
@@ -387,147 +452,28 @@ export class ScriptRunService {
             quotas,
             policy,
             availableTools,
+            scriptState: run.scriptState,
+            runInfo: run.runInfo(),
           });
         } else if (msg.type === "event") {
           const ev = msg.event as { type: string; data?: any };
-          // Route to appropriate channel
           const channel: ScriptRunEvent["channel"] = ev.type.startsWith("console_")
             ? "console"
-            : ev.type === "script_event"
-            ? "script"
-            : "trace";
-          this._appendEvent(record, channel, ev.type, ev.data ?? {});
+            : ev.type === "script_event" ? "script" : "trace";
+          run.appendEvent(channel, ev.type, ev.data ?? {});
           request.onEvent?.(ev as any);
         } else if (msg.type === "script_event") {
-          // Explicit emit() from script
-          this._appendEvent(record, "script", msg.eventType ?? "emit", msg.data ?? {});
-          this._wakeEventWaiters(record);
+          run.appendEvent("script", msg.eventType ?? "emit", msg.data ?? {});
+          request.onEvent?.({ type: msg.eventType ?? "emit", data: msg.data ?? {} } as any);
         } else if (msg.type === "wait_for_message") {
-          // Script is waiting for a message — deliver from queue or register waiter
-          this._handleWaitForMessage(record, msg, child);
-        } else if (msg.type === "tool_call") {
-          try {
-            policyEnforcer.recordToolCall();
-            const isAgentStart = msg.toolName === "startAgentTask" || msg.toolName === "agentCall";
-            if (isAgentStart) {
-              this._appendEvent(record, "lifecycle", "agent_start_requested", {
-                toolName: msg.toolName,
-                requestedTaskId: msg.params?.taskId ?? null,
-                agentName: msg.params?.agentName ?? msg.params?.agent ?? null,
-              });
+          run.waitForMessage(
+            { type: msg.messageType, afterSequence: msg.afterSequence, timeoutMs: msg.timeoutMs },
+            (message) => {
+              if (child.connected) child.send({ type: "wait_for_message_result", id: msg.id, message });
             }
-            const toolCall = {
-              id: `async-run-tool-${Date.now()}`,
-              type: "function" as const,
-              function: { name: msg.toolName, arguments: JSON.stringify(msg.params ?? {}) },
-            };
-            const rawResult = await toolsService.callTool(
-              toolCall,
-              toolsService.getFunctionNames(),
-              {
-                taskId: record.ownerTaskId,
-              }
-            );
-            const result =
-              rawResult && typeof rawResult === "object" && "functionResp" in rawResult
-                ? (rawResult as any).functionResp
-                : rawResult;
-            child.send({ type: "tool_result", id: msg.id, result: result ?? null });
-
-            // ── Emit agent_started event when startAgentTask is called ────────
-            // This lets the outer agent see child taskIds via getScriptEvents
-            // without needing to instrument the script itself.
-            if (isAgentStart) {
-              const taskId = result && typeof result === "object"
-                ? (result as any).taskId ?? (result as any).id ?? null
-                : null;
-              if (taskId) {
-                const details = {
-                  toolName: msg.toolName,
-                  taskId,
-                  status: (result as any)?.status ?? "started",
-                  pid: (result as any)?.pid ?? null,
-                  syncFs: (result as any)?.syncFs ?? null,
-                  syncReady: (result as any)?.syncReady ?? null,
-                  agentDir: (result as any)?.agentDir ?? null,
-                  logPath: (result as any)?.logPath ?? null,
-                  parentTaskId: (result as any)?.parentTaskId ?? record.ownerTaskId ?? null,
-                  agentName: msg.params?.agentName ?? msg.params?.agent ?? null,
-                  prompt: typeof msg.params?.prompt === "string" ? msg.params.prompt.slice(0, 200) : null,
-                };
-                const started = (result as any)?.success !== false;
-                if (started) {
-                  this._appendEvent(record, "lifecycle", "agent_spawned", details);
-                  if (details.syncFs) {
-                    this._appendEvent(
-                      record,
-                      "lifecycle",
-                      details.syncReady ? "agent_sync_ready" : "agent_sync_pending",
-                      details
-                    );
-                  }
-                  // Compatibility event for existing script observers.
-                  this._appendEvent(record, "lifecycle", "agent_started", details);
-                  if (details.agentDir) this._monitorAgent(record, details);
-                } else {
-                  this._appendEvent(record, "lifecycle", "agent_start_failed", {
-                    ...details,
-                    error: (result as any)?.error ?? null,
-                  });
-                }
-              } else {
-                this._appendEvent(record, "lifecycle", "agent_start_failed", {
-                  toolName: msg.toolName,
-                  error: (result as any)?.error ?? "Agent tool returned no taskId",
-                });
-              }
-            }
-          } catch (err: any) {
-            if (msg.toolName === "startAgentTask" || msg.toolName === "agentCall") {
-              this._appendEvent(record, "lifecycle", "agent_start_failed", {
-                toolName: msg.toolName,
-                requestedTaskId: msg.params?.taskId ?? null,
-                error: err?.message ?? String(err),
-              });
-            }
-            child.send({ type: "tool_result", id: msg.id, result: null, error: err?.message ?? String(err) });
-          }
-        } else if (msg.type === "llm_call") {
-          try {
-            const result = await clients.createCompletion("", {
-              messages: msg.messages,
-              model: msg.options?.model,
-              max_tokens: msg.options?.maxTokens,
-            });
-            child.send({ type: "llm_result", id: msg.id, result: result ?? null });
-          } catch (err: any) {
-            child.send({ type: "llm_result", id: msg.id, result: null, error: err?.message ?? String(err) });
-          }
-        } else if (msg.type === "agent_call") {
-          try {
-            const toolCall = {
-              id: `async-run-agent-${Date.now()}`,
-              type: "function" as const,
-              function: {
-                name: "agentCall",
-                arguments: JSON.stringify({ agentName: msg.agentName, query: msg.query }),
-              },
-            };
-            const rawResult = await toolsService.callTool(
-              toolCall,
-              toolsService.getFunctionNames(),
-              {
-                taskId: record.ownerTaskId,
-              }
-            );
-            const result =
-              rawResult && typeof rawResult === "object" && "functionResp" in rawResult
-                ? (rawResult as any).functionResp
-                : rawResult;
-            child.send({ type: "agent_result", id: msg.id, result: result ?? null });
-          } catch (err: any) {
-            child.send({ type: "agent_result", id: msg.id, result: null, error: err?.message ?? String(err) });
-          }
+          );
+        } else if (await bridge(msg, child)) {
+          // tool / llm / decision / agent / setState / checkpoint
         } else if (msg.type === "done") {
           finish({
             success: true,
@@ -551,23 +497,64 @@ export class ScriptRunService {
 
       child.on("error", (err) => {
         if (globalTimeout) clearTimeout(globalTimeout);
-        this._terminate(record, "failed", null, err.message);
+        run.terminate("failed", null, err.message);
         rejectSpawn(err);
       });
 
       child.on("exit", (code) => {
         if (globalTimeout) clearTimeout(globalTimeout);
-        if (!this._isTerminal(record.status) && code !== 0 && code !== null) {
-          this._terminate(record, "failed", null, `Worker exited with code ${code}`);
+        if (!run.isTerminal() && code !== 0 && code !== null) {
+          run.terminate(
+            run.status === "cancelRequested" ? "cancelled" : "failed",
+            null,
+            `Worker exited with code ${code}`
+          );
           resolveSpawn();
         }
       });
     });
   }
 
+  /** agent_spawned / agent_sync_* / agent_started events + child monitoring. */
+  private recordAgentStart(run: ScriptRun, toolName: string, params: any, result: any): void {
+    const taskId = result && typeof result === "object" ? result.taskId ?? result.id ?? null : null;
+    if (!taskId) {
+      run.appendEvent("lifecycle", "agent_start_failed", {
+        toolName,
+        error: result?.error ?? "Agent tool returned no taskId",
+      });
+      return;
+    }
+    const details = {
+      toolName,
+      taskId,
+      status: result?.status ?? "started",
+      pid: result?.pid ?? null,
+      syncFs: result?.syncFs ?? null,
+      syncReady: result?.syncReady ?? null,
+      agentDir: result?.agentDir ?? null,
+      logPath: result?.logPath ?? null,
+      parentTaskId: result?.parentTaskId ?? run.ownerTaskId ?? null,
+      agentName: params?.agentName ?? params?.agent ?? null,
+      prompt: typeof params?.prompt === "string" ? params.prompt.slice(0, 200) : null,
+    };
+    if (result?.success === false) {
+      run.appendEvent("lifecycle", "agent_start_failed", { ...details, error: result?.error ?? null });
+      return;
+    }
+    run.appendEvent("lifecycle", "agent_spawned", details);
+    if (details.syncFs) {
+      run.appendEvent("lifecycle", details.syncReady ? "agent_sync_ready" : "agent_sync_pending", details);
+    }
+    // Compatibility event for existing script observers.
+    run.appendEvent("lifecycle", "agent_started", details);
+    if (details.agentDir) this.monitorAgent(run, details);
+  }
+
+
   /** Relay bounded, change-only child status snapshots into lifecycle events. */
-  private _monitorAgent(
-    record: ScriptRunRecord,
+  private monitorAgent(
+    run: ScriptRun,
     details: { taskId: string; agentDir: string; syncReady?: boolean }
   ): void {
     let lastSnapshot = "";
@@ -583,7 +570,7 @@ export class ScriptRunService {
         missingReads = 0;
         if (!syncReadyEmitted) {
           syncReadyEmitted = true;
-          this._appendEvent(record, "lifecycle", "agent_sync_ready", {
+          run.appendEvent("lifecycle", "agent_sync_ready", {
             taskId: details.taskId,
             agentDir: details.agentDir,
           });
@@ -621,7 +608,7 @@ export class ScriptRunService {
           const progressSignature = `${progressCall.id ?? ""}:${text}`;
           if (text && progressSignature !== lastProgressSignature) {
             lastProgressSignature = progressSignature;
-            this._appendEvent(record, "lifecycle", "agent_progress", {
+            run.appendEvent("lifecycle", "agent_progress", {
               taskId: details.taskId,
               message: text.slice(0, 4000),
               truncated: text.length > 4000,
@@ -631,9 +618,8 @@ export class ScriptRunService {
         const signature = JSON.stringify(snapshot);
         if (signature !== lastSnapshot) {
           lastSnapshot = signature;
-          const terminal = ["completed", "failed", "cancelled", "error"].includes(status);
-          this._appendEvent(
-            record,
+          const terminal = ["completed", "failed", "cancelled", "error", "killed"].includes(status);
+          run.appendEvent(
             "lifecycle",
             terminal ? (status === "completed" ? "agent_completed" : "agent_failed") : "agent_status",
             snapshot
@@ -645,153 +631,24 @@ export class ScriptRunService {
         // Stop eventually rather than retaining an orphaned timer forever.
         missingReads++;
         if (missingReads >= 30) {
-          this._appendEvent(record, "lifecycle", "agent_status_unavailable", {
+          run.appendEvent("lifecycle", "agent_status_unavailable", {
             taskId: details.taskId,
             agentDir: details.agentDir,
           });
           return;
         }
       }
+      if (run.isTerminal()) return;
       setTimeout(poll, 1000).unref?.();
     };
     void poll();
   }
 
-  private _handleWaitForMessage(
-    record: ScriptRunRecord,
-    msg: { id: string; messageType?: string; afterSequence?: number; timeoutMs?: number },
-    child: ChildProcess
-  ) {
-    const { id, messageType, afterSequence, timeoutMs } = msg;
-
-    // Check queue first
-    const idx = record._messageQueue.findIndex(
-      (m) => (!messageType || m.type === messageType) &&
-             (afterSequence === undefined || m.sequence > afterSequence)
-    );
-    if (idx !== -1) {
-      const found = record._messageQueue.splice(idx, 1)[0];
-      child.send({ type: "wait_for_message_result", id, message: found });
-      return;
-    }
-
-    // Register waiter
-    const waiter = {
-      type: messageType,
-      afterSequence,
-      resolve: (message: ScriptMessage | null) => {
-        child.send({ type: "wait_for_message_result", id, message });
-      },
-      timeoutHandle: undefined as ReturnType<typeof setTimeout> | undefined,
-    };
-
-    if (timeoutMs && timeoutMs > 0) {
-      waiter.timeoutHandle = setTimeout(() => {
-        const i = record._messageWaiters.indexOf(waiter);
-        if (i !== -1) record._messageWaiters.splice(i, 1);
-        child.send({ type: "wait_for_message_result", id, message: null });
-      }, timeoutMs);
-    }
-
-    record._messageWaiters.push(waiter);
-  }
-
-  private _terminate(
-    record: ScriptRunRecord,
-    status: ScriptRunStatus,
-    result: ExecutionResult | null,
-    error?: string
-  ) {
-    if (this._isTerminal(record.status)) return;
-    record.status = status;
-    record.finishedAt = new Date().toISOString();
-    record.error = error;
-
-    if (result) {
-      record.result = result;
-      record._resolveCompletion(result);
-    } else {
-      const syntheticResult: ExecutionResult = {
-        success: false,
-        error: error ?? "Unknown error",
-        result: null,
-        trace: record._tracer?.getTrace() ?? ({} as any),
-        artifacts: [],
-        consoleOutput: [],
-      };
-      record.result = syntheticResult;
-      if (status === "completed") {
-        record._resolveCompletion(syntheticResult);
-      } else {
-        record._resolveCompletion(syntheticResult);
-      }
-    }
-
-    this._appendEvent(record, "lifecycle", `run_${status}`, { error });
-    this._wakeEventWaiters(record);
-
-    // Resolve all pending message waiters with null (run ended)
-    for (const waiter of record._messageWaiters) {
-      if (waiter.timeoutHandle) clearTimeout(waiter.timeoutHandle);
-      waiter.resolve(null);
-    }
-    record._messageWaiters = [];
-
-    // Kill child if still running
-    if (record._child && !record._child.killed) {
-      try { record._child.kill(); } catch { /* ignore */ }
-    }
-  }
-
-  private _appendEvent(
-    record: ScriptRunRecord,
-    channel: ScriptRunEvent["channel"],
-    type: string,
-    data: unknown
-  ) {
-    if (record.events.length >= MAX_EVENTS_PER_RUN) {
-      record.events.shift();
-      record.droppedEventCount++;
-    }
-    record.events.push({
-      runId: record.runId,
-      sequence: record.nextEventSequence++,
-      id: randomUUID(),
-      timestamp: new Date().toISOString(),
-      type,
-      channel,
-      data,
-    });
-    this._wakeEventWaiters(record);
-  }
-
-  private _wakeEventWaiters(record: ScriptRunRecord) {
-    const waiters: Array<() => void> = (record as any)._eventWaiters ?? [];
-    (record as any)._eventWaiters = [];
-    for (const w of waiters) {
-      try { w(); } catch { /* ignore */ }
-    }
-  }
-
-  private _get(runId: string): ScriptRunRecord {
-    const record = this.runs.get(runId);
-    if (!record) throw new Error(`Script run '${runId}' not found`);
-    return record;
-  }
-
-  private _isTerminal(status: ScriptRunStatus): boolean {
-    return ["completed", "failed", "cancelled", "timedOut"].includes(status);
-  }
-
-  private _prune() {
+  private prune(): void {
     const cutoff = Date.now() - TTL_MS;
-    for (const [id, record] of this.runs) {
-      if (
-        this._isTerminal(record.status) &&
-        record.finishedAt &&
-        new Date(record.finishedAt).getTime() < cutoff
-      ) {
-        this.runs.delete(id);
+    for (const [id, run] of this.live) {
+      if (run.isTerminal() && run.finishedAt && new Date(run.finishedAt).getTime() < cutoff) {
+        this.live.delete(id);
       }
     }
   }

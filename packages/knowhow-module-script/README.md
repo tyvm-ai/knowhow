@@ -164,6 +164,56 @@ cp ~/dev/knowhow/packages/knowhow/ts_build/src/services/Mcp.js \
 
 ---
 
+## Runs are stateful: watch, pause, message, resume
+
+Every run (`knowhow script --input-file ...` and the `startScript*` tools) is a
+`StatefulProcess` persisted to `.knowhow/processes/scripts/<runId>/`:
+
+| File | Written by | Holds |
+|---|---|---|
+| `state.json` | the run | status, events, result, `scriptState`, resume count |
+| `control.json` | anyone | `{ "desired": "paused" \| "running" \| "cancelled" }` |
+| `input.txt` | anyone (append) | messages for `waitForMessage` / `onMessage` |
+| `script.js` | the run | the source, used to resume |
+
+```bash
+knowhow scripts                       # active + last hour (-a for all)
+knowhow scripts show <id|#>           # status, scriptState, result, recent events
+knowhow scripts events <id> -f        # follow events until it ends
+knowhow scripts workflow <id> -w      # live /workflow graph
+knowhow scripts pause <id>            # stops at the next safe point
+knowhow scripts resume <id>           # unpause, or restart a dead run (see below)
+knowhow scripts cancel <id>
+knowhow scripts send <id> go '{"n":1}'
+knowhow processes                     # everything: exec'd commands, agents, scripts
+```
+
+Safe points (where a pause takes effect, and a cancel throws) are every tool /
+`llm` / `agent` call, `setState()` and `checkpoint()`.
+
+### Writing a resumable script
+
+Resuming does not replay anything: it starts the **same script fresh**, with the
+same `scriptArgs`, and the last value saved with `setState()` in the read-only
+`scriptState` global. A script is resumable when it reads its progress back from
+`scriptState`:
+
+```ts
+const { done = [] } = scriptState;        // {} on a fresh run
+const finished = [...done];
+for (const item of scriptArgs.items) {
+  if (finished.includes(item)) continue;  // skip work saved by an earlier attempt
+  await processItem(item);
+  finished.push(item);
+  await setState({ done: finished });     // shallow merge; resolves once on disk
+}
+({ finished, resumed: runInfo.resumed })  // runInfo: { runId, resumed, resumeCount }
+```
+
+`knowhow scripts resume <id>` (or the `resumeScript` tool) restarts a failed,
+cancelled or **orphaned** run (its owner process exited, e.g. Ctrl-C or a crash)
+under the same runId. Completed runs need `--force`.
+
 ## Script API
 
 Scripts have access to these globals:

@@ -6,6 +6,7 @@ import * as path from "node:path";
 
 import { LazyToolsService } from "../../knowhow/ts_build/src/services/LazyToolsService.js";
 import { ScriptRunService } from "../ts_build/ScriptRunService.js";
+import { ScriptRunStore } from "../ts_build/ScriptRunStore.js";
 
 const tool = (name, properties = {}) => ({
   type: "function",
@@ -92,7 +93,9 @@ return { fileContent, experiment, argsFrozen: Object.isFrozen(scriptArgs), argsR
 `;
 
   try {
-    const service = new ScriptRunService();
+    const service = new ScriptRunService({
+      store: new ScriptRunStore(path.join(tempRoot, "scripts")),
+    });
     const record = await service.start(
       {
         script,
@@ -158,7 +161,7 @@ test("async runs enforce a wall-clock deadline only when explicitly supplied", a
       throw new Error("Inference must not be called by this integration test");
     },
   };
-  const service = new ScriptRunService();
+  const service = new ScriptRunService({ persist: false });
 
   const record = await service.start(
     {

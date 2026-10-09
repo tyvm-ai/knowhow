@@ -7,7 +7,6 @@ import {
 import { persistArtifacts, printManifestSummary } from "./artifactPersistence";
 import { executeScript } from "./handler";
 import { executeScriptDefinition } from "./definition";
-import { ScriptExecutor } from "./ScriptExecutor";
 import { checkScript, formatDiagnostics } from "./checkScript";
 import { generateScriptTypeDefs } from "./typeDefs";
 import {
@@ -20,6 +19,8 @@ import {
   sendScriptMessage,
   waitForScript,
   cancelScript,
+  pauseScript,
+  resumeScript,
 } from "./asyncHandlers";
 import {
   startScriptDefinition,
@@ -31,8 +32,12 @@ import {
   sendScriptMessageDefinition,
   waitForScriptDefinition,
   cancelScriptDefinition,
+  pauseScriptDefinition,
+  resumeScriptDefinition,
 } from "./asyncDefinitions";
 import { workflowCommand } from "./workflow";
+import { getScriptRunService } from "./ScriptRunService";
+import { addScriptsCommand, runInForeground, setupScriptServices } from "./cli";
 
 export { ScriptExecutor } from "./ScriptExecutor";
 export { SandboxContext } from "./SandboxContext";
@@ -47,6 +52,9 @@ export * from "./asyncDefinitions";
 export * from "./artifactPersistence";
 export * from "./asciiWorkflow";
 export * from "./workflow";
+export * from "./ScriptRunStore";
+export * from "./hostBridge";
+export { addScriptsCommand, followRun, renderScriptEvent } from "./cli";
 
 const scriptModule: KnowhowModule = {
   extensions: [{
@@ -118,6 +126,7 @@ emit("progress", { step: "done", message: "Script finished" });
         "--sample",
         "Print a sample script demonstrating common patterns and exit"
       )
+      .option("--name <name>", "Name shown by `knowhow scripts` (default: the file name)")
       .option(
         "--artifact-dir <path>",
         "Directory to persist script artifacts. Each run creates a timestamped subdirectory containing artifact files and a manifest.json."
@@ -135,13 +144,8 @@ emit("progress", { step: "done", message: "Script finished" });
           // models, modules, AND registered agents (so tools like agentCall /
           // startAgentTask work inside scripts). Previously this command
           // duplicated setup and never registered agents.
-          const { setupServices } = await import(
-            "@tyvm/knowhow/ts_build/src/commands/services"
-          );
-          const { Tools, Clients } = await setupServices();
-
-          // Enable all tools so scripts can access MCP tools
-          Tools.enableTools(["*"]);
+          // (all tools enabled so scripts can access MCP tools)
+          const { Tools, Clients } = await setupScriptServices();
 
           const toolDefs =
             typeof (Tools as any).getTools === "function"
@@ -160,7 +164,7 @@ emit("progress", { step: "done", message: "Script finished" });
               const desc = def?.function?.description?.split("\n")[0] ?? "";
               console.log(`  ${name.padEnd(35)} ${desc}`);
             }
-            console.log("\nBuilt-in globals: scriptArgs, callTool, llm, agent, sleep, emit, waitForMessage, onMessage, isCancelled, untilCancelled, createArtifact, getQuotaUsage, console");
+            console.log("\nBuilt-in globals: scriptArgs, scriptState, runInfo, setState, checkpoint, callTool, llm, agent, sleep, emit, waitForMessage, onMessage, isCancelled, untilCancelled, createArtifact, getQuotaUsage, console");
             return process.exit(0);
           }
 
@@ -215,50 +219,23 @@ emit("progress", { step: "done", message: "Script finished" });
              return process.exit(1);
            }
  
-          const executor = new ScriptExecutor(Tools, Clients);
-
-          // Render trace events live as the script runs so that console.log
-          // output (and other interesting events like tool calls) appear
-          // immediately rather than being buffered until the script finishes.
-          const renderEvent = (event: { type: string; data: any }) => {
-            switch (event.type) {
-              case "console_log":
-                process.stdout.write(`[script] ${event.data.message}\n`);
-                break;
-              case "console_info":
-                process.stdout.write(`[script:info] ${event.data.message}\n`);
-                break;
-              case "console_warn":
-                process.stderr.write(`[script:warn] ${event.data.message}\n`);
-                break;
-              case "console_error":
-                process.stderr.write(`[script:error] ${event.data.message}\n`);
-                break;
-              case "tool_call_start":
-                process.stderr.write(`[script:tool] → ${event.data.toolName}\n`);
-                break;
-              case "tool_call_success":
-                process.stderr.write(`[script:tool] ✓ ${event.data.toolName}\n`);
-                break;
-              case "tool_call_error":
-                process.stderr.write(
-                  `[script:tool] ✗ ${event.data.toolName}: ${event.data.error}\n`
-                );
-                break;
-              // Other events (llm calls, agent calls, etc.) are silently
-              // recorded in the trace but not printed to avoid noise. Add
-              // cases here to expose more detail.
-            }
-          };
-
-          const result = await executor.execute({
-            script: scriptContent,
-            args: scriptArgs,
-            policy: {
-              allowNetworkAccess: !!options.allowNetwork,
-            },
-            onEvent: renderEvent,
-          });
+          // Run through ScriptRunService so foreground runs are persisted
+          // (.knowhow/processes/scripts/<runId>) and can be paused, messaged,
+          // watched and resumed from another terminal (knowhow scripts ...).
+          const { result } = await runInForeground((onEvent) =>
+            getScriptRunService().start(
+              {
+                script: scriptContent,
+                args: scriptArgs,
+                name: options.name ?? path.basename(scriptPath),
+                sourcePath: scriptPath,
+                policy: { allowNetworkAccess: !!options.allowNetwork },
+                onEvent,
+              },
+              Tools,
+              Clients
+            )
+          );
 
           // Only print the final return value — live output was already
           // streamed above via onEvent.
@@ -282,7 +259,10 @@ emit("progress", { step: "done", message: "Script finished" });
           console.error("Error running script:", error);
           return process.exit(1);
         }
+        process.exit(0);
       });
+
+    addScriptsCommand(program);
   },
 
   tools: [
@@ -335,6 +315,16 @@ emit("progress", { step: "done", message: "Script finished" });
       name: "cancelScript",
       handler: cancelScript,
       definition: cancelScriptDefinition,
+    },
+    {
+      name: "pauseScript",
+      handler: pauseScript,
+      definition: pauseScriptDefinition,
+    },
+    {
+      name: "resumeScript",
+      handler: resumeScript,
+      definition: resumeScriptDefinition,
     },
   ],
   agents: [],
