@@ -13,7 +13,7 @@ import {
   Region,
   ScreenshotOptions,
   Size,
-} from "@tyvm/knowhow";
+} from "./contracts";
 import { RawScreenshot } from "./drivers/RustCoreDriver";
 import {
   Frame,

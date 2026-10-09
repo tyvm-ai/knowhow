@@ -1,13 +1,11 @@
-import { ComputerUseService } from "@tyvm/knowhow";
+import { ComputerUseService, Region } from "../contracts";
 import {
   ClickColorSequenceOptions,
   ComputerService,
   ReadTextOptions,
   appNameMatches,
 } from "../ComputerService";
-import { ToolsService } from "@tyvm/knowhow/ts_build/src/services/Tools";
-import { ExtensionsService } from "@tyvm/knowhow/ts_build/src/services/ExtensionsService";
-import { Region } from "@tyvm/knowhow/ts_build/src/services/modules/computerUse";
+import { ToolsService, ExtensionsService } from "@tyvm/knowhow/sdk";
 import * as fs from "fs";
 import { runMacro, MacroStep, parseMacroFile } from "../macro";
 import {

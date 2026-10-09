@@ -1,5 +1,5 @@
 import * as fs from "fs";
-import { ComputerUseService, MouseButton } from "@tyvm/knowhow";
+import { ComputerUseService, MouseButton } from "./contracts";
 
 export interface AccessibilityTarget {
   /** A fresh ID from an earlier accessibilityElements step in this same run. */

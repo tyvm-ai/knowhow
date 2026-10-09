@@ -10,7 +10,7 @@
  */
 
 import { services as coreServices } from "@tyvm/knowhow/sdk";
-import type { McpCallOptions, McpCallResult } from "@tyvm/knowhow/sdk";
+import type { ToolsService } from "@tyvm/knowhow/sdk";
 import { getPlatformActions } from "../actions/index";
 import type { PlatformActions } from "../actions/types";
 import { resolveComputerService } from "../computerService";
@@ -49,9 +49,6 @@ export { PointerMemory, PLACED_POINTER_MAX_AGE_MS } from "./pointer";
 export { TypingMemory } from "./typing";
 export { VoiceStore } from "./voiceStore";
 
-/** Call a connected MCP tool by bare method name (suffix lookup, timeout) — core's `callByMethod`. */
-export type McpCallByMethod = (method: string, args?: object, opts?: McpCallOptions) => Promise<McpCallResult>;
-
 export interface VoiceServices {
   /** Settings: env > knowhow.json (voiceControl.packs.<pack>.<key> / voiceControl.services.<service>.<key>) > default. */
   config: ConfigResolver;
@@ -62,7 +59,13 @@ export interface VoiceServices {
   gaze: GazeClient;
   /** Typed computer-use adapter (accessibility, overlay, mouse); undefined when computer-use isn't available. */
   computer?: ComputerUseAdapter;
-  mcp: { callByMethod: McpCallByMethod };
+  /**
+   * Core's tool registry (the module context's `Tools`). MCP servers register
+   * their tools here as `mcp_<n>_<server>_<method>`, and `getFunction(name)`
+   * resolves by suffix, so `tools.getFunction("browser_tabs")` finds it
+   * whatever the server is called.
+   */
+  tools: Pick<ToolsService, "getFunction">;
   /** Where "mouse over X" last put the pointer (shared by click / double click). */
   pointer: PointerMemory;
   /** App-specific targeting behaviour (music apps, browser DOM, …); register your own with `adapters.register(...)`. */
@@ -89,9 +92,12 @@ export interface VoiceServices {
   ai?: SmartTypeServices;
 }
 
-const coreMcp: VoiceServices["mcp"] = {
-  callByMethod: (method, args, opts) => coreServices().Tools.callByMethod(method, args, opts),
-};
+let moduleTools: ToolsService | undefined;
+
+/** Called from the module's `register()` with `context.Tools`; becomes the default `services.tools`. */
+export function setModuleTools(tools: ToolsService | undefined): void {
+  moduleTools = tools;
+}
 
 /**
  * Production defaults. `platform` and `computer` are resolved lazily on first
@@ -108,7 +114,6 @@ export function createVoiceServices(overrides: Partial<VoiceServices> = {}): Voi
     config,
     store,
     gaze: overrides.gaze ?? new GazeClient({ config }),
-    mcp: overrides.mcp ?? coreMcp,
     pointer,
     adapters: overrides.adapters ?? new AppAdapterRegistry(builtinAdapters()),
     targets: overrides.targets ?? new TargetResolver({ pointer }),
@@ -125,11 +130,12 @@ export function createVoiceServices(overrides: Partial<VoiceServices> = {}): Voi
 
   lazyProperty(services, "platform", overrides, () => getPlatformActions(services.computer));
   lazyProperty(services, "computer", overrides, () => resolveComputerService());
+  lazyProperty(services, "tools", overrides, () => moduleTools ?? coreServices().Tools);
   packs.bind(services);
   return services;
 }
 
-function lazyProperty<K extends "platform" | "computer">(
+function lazyProperty<K extends "platform" | "computer" | "tools">(
   target: VoiceServices,
   key: K,
   overrides: Partial<VoiceServices>,

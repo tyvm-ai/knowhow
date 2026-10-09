@@ -1,4 +1,4 @@
-import { Point, Region } from "@tyvm/knowhow";
+import { Point, Region } from "./contracts";
 import { DesktopBox, scaleFindRegionsOptions } from "./ComputerService";
 import { nativeFindRegions } from "./nativePerception";
 import { NativeScreenStream, RustCoreDriver } from "./drivers/RustCoreDriver";

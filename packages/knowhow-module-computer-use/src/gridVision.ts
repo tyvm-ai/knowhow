@@ -1,4 +1,4 @@
-import { Point, Region } from "@tyvm/knowhow";
+import { Point, Region } from "./contracts";
 import { ScreenFrame } from "./tracking";
 
 export interface VisualPaletteEntry {

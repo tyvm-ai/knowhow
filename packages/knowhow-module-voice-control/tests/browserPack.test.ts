@@ -168,7 +168,7 @@ describe("tab matching", () => {
 });
 
 
-describe("mcpCallerFrom (core callByMethod: resolve MCP method by suffix)", () => {
+describe("mcpCallerFrom (ToolsService.getFunction: resolve MCP method by suffix)", () => {
   function toolsWith(name: string, fn: (args: any) => unknown): ToolsService {
     const tools = new ToolsService();
     tools.defineTools(

@@ -18,7 +18,6 @@ import { CallToolResultSchema } from "@modelcontextprotocol/sdk/types.js";
 import { StdioServerParameters } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { MCPWebSocketTransport } from "./McpWebsocketTransport";
-import { callToolByMethod, McpCallOptions, McpCallResult } from "./McpCallByMethod";
 
 type CachedTool = Anthropic.Tool;
 export type McpTool = CachedTool & {
@@ -35,7 +34,6 @@ export const knowhowConfig = {
 
 export * from "./McpServer";
 export * from "./McpWebsocketTransport";
-export * from "./McpCallByMethod";
 
 /*
  * Returns true if the given URL string points to localhost / 127.x / ::1.
@@ -638,32 +636,6 @@ export class McpService {
         `Failed to call MCP function ${toolName}: ${errorMessage}`
       );
     }
-  }
-
-  /**
-   * Call a connected MCP tool by its bare method name (`"browser_tabs"`),
-   * resolving the wrapped `mcp_<n>_<server>_<method>` name by suffix.
-   * Optionally restrict to `opts.server`, and bound the call with `opts.timeoutMs`.
-   * Result is normalised to `{ text, json?, isError, toolName, raw }`.
-   *
-   * @throws McpToolNotFoundError / McpTimeoutError
-   */
-  async callByMethod(
-    method: string,
-    args: object = {},
-    opts: McpCallOptions = {}
-  ): Promise<McpCallResult> {
-    const tools = await this.getTools();
-    const names = tools.map((t) => t.function.name);
-    return callToolByMethod(
-      {
-        toolNames: () => names,
-        invoke: (toolName, a) => this.getFunction(toolName, opts.timeoutMs)(a),
-      },
-      method,
-      args,
-      opts
-    );
   }
 
   async getFunctions() {

@@ -9,7 +9,7 @@ import {
   Point,
   ScreenshotOptions,
   Size,
-} from "@tyvm/knowhow";
+} from "../contracts";
 
 /**
  * RustCoreDriver — the DEFAULT, knowhow-owned engine.

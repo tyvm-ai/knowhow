@@ -20,27 +20,52 @@
  *   }
  */
 
+import type { ModuleExtension } from "@tyvm/knowhow/sdk";
 import type { AutomationSDK } from "./automation";
-import type {
-  AutomationExtensionContext as CoreAutomationExtensionContext,
-  AutomationSdkExtension as CoreAutomationSdkExtension,
-} from "@tyvm/knowhow/sdk";
 
-// ── Contract types (owned by core: @tyvm/knowhow/sdk) ───────────────────────
+// ── Contract: the "computer-use.automation-sdk" extension point ─────────────
 //
-// Re-exported here, narrowed to this module's live AutomationSDK, for
-// backwards compatibility with existing imports from computer-use.
+// Owned by this module. Contributors (e.g. voice-control's `sdk.ext.gaze`)
+// import these with `import type` from "@tyvm/knowhow-module-computer-use", so
+// there is no runtime dependency on this module.
 
-/** Extension type constant: "computer-use.automation-sdk". */
-// (Kept as a local literal — identical to core's AUTOMATION_SDK_EXTENSION — so
-// this module has no runtime import of the sdk; only the types come from core.)
+/** Extension `type` string for automation SDK extensions. */
 export const AUTOMATION_SDK_EXTENSION = "computer-use.automation-sdk" as const;
 
-/** Context handed to each extension's create() (with `sdk` = the live AutomationSDK). */
-export type AutomationExtensionContext = CoreAutomationExtensionContext<AutomationSDK>;
+/** Context handed to each extension's `create()` once per automation run. */
+export interface AutomationExtensionContext {
+  /** The automation name (from spec.name). */
+  automationName: string;
+  /** True when the run is in dry-run mode (no real mouse/keyboard actions). */
+  dryRun: boolean;
+  /** Aborted when the run stops for any reason (duration / manual / error). */
+  signal: AbortSignal;
+  /** Returns true when the window-focus gate has paused the automation. */
+  isPaused(): boolean;
+  /** Append a structured log entry to the run telemetry (same as sdk.log). */
+  log(data: unknown): void;
+  /**
+   * Register a cleanup callback. All callbacks run (in registration order) in
+   * the runner's finally block.
+   */
+  onDispose(fn: () => void | Promise<void>): void;
+  /** The live AutomationSDK — for extensions that need to move the mouse etc. */
+  sdk: AutomationSDK;
+}
 
-/** An extension exposed to scripts as `sdk.ext.<name>`. */
-export type AutomationSdkExtension = CoreAutomationSdkExtension<AutomationSDK>;
+/** An extension contributed to `sdk.ext.<name>` inside automations. */
+export interface AutomationSdkExtension extends ModuleExtension {
+  /** Must equal AUTOMATION_SDK_EXTENSION. */
+  type: typeof AUTOMATION_SDK_EXTENSION;
+  /** Valid JS identifier (/^[A-Za-z_$][\w$]*$/); exposed as sdk.ext[name]. */
+  name: string;
+  /** One-paragraph description shown to agents and in sdk.extensions(). */
+  description: string;
+  /** Optional TypeScript declaration of the returned API surface. */
+  typings?: string;
+  /** Factory called once per run before the script starts; result is cached. */
+  create(ctx: AutomationExtensionContext): unknown | Promise<unknown>;
+}
 
 // ── Augmentable interface for editor support ─────────────────────────────────
 

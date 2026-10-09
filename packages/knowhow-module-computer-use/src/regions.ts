@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { Region } from "@tyvm/knowhow";
+import { Region } from "./contracts";
 import {
   StoredRegion,
   RegionShape,

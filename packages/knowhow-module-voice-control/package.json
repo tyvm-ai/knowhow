@@ -21,7 +21,8 @@
   "author": "Tyvm AI",
   "license": "MIT",
   "peerDependencies": {
-    "@tyvm/knowhow": "*"
+    "@tyvm/knowhow": "*",
+    "@tyvm/knowhow-module-computer-use": "*"
   },
   "devDependencies": {
     "@types/jest": "^29.5.13",
@@ -32,5 +33,10 @@
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.21"
+  },
+  "peerDependenciesMeta": {
+    "@tyvm/knowhow-module-computer-use": {
+      "optional": true
+    }
   }
 }

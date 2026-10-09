@@ -13,6 +13,7 @@ import {
   createVoiceServices,
   getDefaultServices,
   resetDefaultServices,
+  setModuleTools,
   systemClock,
 } from "../src/services";
 import { FakeClock, createTestServices } from "./helpers/services";
@@ -173,13 +174,15 @@ describe("createVoiceServices", () => {
     resetDefaultServices();
   });
 
-  it("mcp.callByMethod goes through core's Tools.callByMethod", async () => {
-    const calls: unknown[][] = [];
-    const services = createVoiceServices({
-      computer: undefined,
-      mcp: { callByMethod: async (...a) => (calls.push(a), { text: "ok", isError: false, toolName: "t", raw: null }) },
-    });
-    await expect(services.mcp.callByMethod("browser_tabs", { action: "list" }, { timeoutMs: 5 })).resolves.toMatchObject({ text: "ok" });
-    expect(calls).toEqual([["browser_tabs", { action: "list" }, { timeoutMs: 5 }]]);
+  it("tools defaults to the ToolsService injected at register (else core's)", () => {
+    const fake = { getFunction: () => undefined } as any;
+    setModuleTools(fake);
+    try {
+      expect(createVoiceServices({ computer: undefined }).tools).toBe(fake);
+    } finally {
+      setModuleTools(undefined);
+    }
+    const custom = { getFunction: () => undefined };
+    expect(createVoiceServices({ computer: undefined, tools: custom }).tools).toBe(custom);
   });
 });

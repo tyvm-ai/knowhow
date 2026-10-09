@@ -70,7 +70,6 @@ export * from "./processes/ProcessManager";
 // Export module system types for external modules
 export * from "./services/modules/types";
 export { ModulesService } from "./services/modules";
-export * from "./services/modules/computerUse";
 // Export conversion types for external modules (e.g. knowhow-module-pdf)
 export * from "./services/conversion/types";
 export { ConversionService } from "./services/conversion/ConversionService";

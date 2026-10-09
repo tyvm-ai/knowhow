@@ -65,24 +65,6 @@ export { BaseInteractiveAgentHandle, isInteractiveAgent } from "./services/Inter
 export { withFallback, FallbackError, BackendTimeoutError } from "./utils/fallback";
 export type { Backend, WithFallbackOptions, FallbackFailure } from "./utils/fallback";
 
-export {
-  McpTimeoutError,
-  McpToolNotFoundError,
-  callToolByMethod,
-  normalizeMcpResult,
-} from "./services/McpCallByMethod";
-export type {
-  McpCallResult,
-  McpCallOptions,
-  McpMethodSource,
-} from "./services/McpCallByMethod";
-
-export { AUTOMATION_SDK_EXTENSION } from "./services/contracts/automation";
-export type {
-  AutomationSdkExtension,
-  AutomationExtensionContext,
-} from "./services/contracts/automation";
-
 export { createModuleRuntime } from "./services/modules/runtime";
 export type { ModuleRuntime } from "./services/modules/runtime";
 
@@ -125,12 +107,3 @@ export type { Message, Tool, ToolCall } from "./clients/types";
 export type { AIClient } from "./clients";
 export type { Config } from "./types";
 export type { ChatService } from "./chat/types";
-export type {
-  Region,
-  Point,
-  Size,
-  MouseButton,
-  Display,
-  ComputerDriver,
-  ComputerUseService,
-} from "./services/modules/computerUse";

@@ -10,7 +10,7 @@ import {
   OverlayPrimitive,
   Point,
   Region,
-} from "@tyvm/knowhow";
+} from "./contracts";
 import { ToolsService } from "@tyvm/knowhow/ts_build/src/services/Tools";
 import { worldlines, WorldlineRegistry } from "@tyvm/knowhow-module-worldlines";
 import { prologFindPlan } from "@tyvm/knowhow-module-prolog";

@@ -1,9 +1,8 @@
 /**
  * Tests for the automation-SDK extensions (Contract 3).
  */
-import { AUTOMATION_SDK_EXTENSION } from "@tyvm/knowhow/sdk";
-import type { AutomationExtensionContext } from "@tyvm/knowhow/sdk";
-import { gazeExtension, voiceExtension } from "../src/extensions";
+import type { AutomationExtensionContext } from "@tyvm/knowhow-module-computer-use";
+import { AUTOMATION_SDK_EXTENSION, gazeExtension, voiceExtension } from "../src/extensions";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -17,7 +16,7 @@ function makeCtx(overrides?: Partial<AutomationExtensionContext>): AutomationExt
     isPaused: () => false,
     log: () => {},
     onDispose: (fn) => { disposers.push(fn); },
-    sdk: {},
+    sdk: {} as AutomationExtensionContext["sdk"],
     _abort: abort,
     _disposers: disposers,
     ...overrides,
@@ -169,7 +168,7 @@ describe("voiceExtension.create", () => {
       isPaused: () => false,
       log: () => {},
       onDispose: (fn) => { disposers.push(fn); },
-      sdk: {},
+      sdk: {} as AutomationExtensionContext["sdk"],
     };
     const api = voiceExtension.create(ctx) as any;
     api.onCommand("slice", () => {});

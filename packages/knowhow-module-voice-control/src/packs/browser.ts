@@ -232,20 +232,46 @@ export type BrowserConfig = ConfigValues<typeof BROWSER_CONFIG>;
 const DEFAULT_MCP_TIMEOUT_MS = BROWSER_CONFIG.mcpTimeoutMs.default;
 
 /**
- * A caller backed by `services.mcp.callByMethod` (core): registered MCP tools
- * are namespaced `mcp_<index>_<server>_<tool>` and core resolves the bare
- * method by suffix, so the server's name and position in knowhow.json don't
- * matter. `isError` results become thrown errors so the AppleScript fallback
- * takes over.
+ * A caller backed by core's ToolsService: MCP tools are registered there as
+ * `mcp_<index>_<server>_<tool>` and `getFunction` resolves the bare method by
+ * suffix, so the server's name and position in knowhow.json don't matter.
+ * Missing tools, timeouts and `isError` results throw so the AppleScript
+ * fallback takes over.
  */
-export function mcpCallerFrom(mcp: VoiceServices["mcp"], timeoutMs: number | (() => number) = DEFAULT_MCP_TIMEOUT_MS): McpToolCaller {
+export function mcpCallerFrom(
+  tools: VoiceServices["tools"],
+  timeoutMs: number | (() => number) = DEFAULT_MCP_TIMEOUT_MS,
+): McpToolCaller {
   return async (tool, args) => {
-    const result = await mcp.callByMethod(tool, args, { timeoutMs: typeof timeoutMs === "function" ? timeoutMs() : timeoutMs });
-    if (result.isError) {
-      throw new Error(result.text.split("\n").filter((l) => l && !l.startsWith("###"))[0] || `${tool} failed`);
+    const fn = tools.getFunction(tool);
+    if (!fn) throw new Error(`no tool matching "${tool}" is loaded`);
+    const ms = typeof timeoutMs === "function" ? timeoutMs() : timeoutMs;
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${tool} timed out after ${ms}ms`)), ms);
+    });
+    try {
+      const result = await Promise.race([Promise.resolve(fn(args)), timeout]);
+      const text = toolResultText(result);
+      if ((result as { isError?: boolean } | undefined)?.isError) {
+        throw new Error(text.split("\n").filter((l) => l && !l.startsWith("###"))[0] || `${tool} failed`);
+      }
+      return text;
+    } finally {
+      clearTimeout(timer);
     }
-    return result.text;
   };
+}
+
+/** Text of an MCP `{ content: [{ type: "text", text }] }` result (or a plain string). */
+function toolResultText(result: unknown): string {
+  if (typeof result === "string") return result;
+  const content = (result as { content?: unknown } | undefined)?.content;
+  if (!Array.isArray(content)) return result == null ? "" : JSON.stringify(result);
+  return content
+    .filter((c): c is { type: "text"; text: string } => c?.type === "text" && typeof c.text === "string")
+    .map((c) => c.text)
+    .join("\n");
 }
 
 export function mcpBackend(call: McpToolCaller): BrowserBackend {
@@ -358,7 +384,7 @@ export function createBrowserState(
   const mcp =
     opts.mcp ??
     (opts.services
-      ? mcpCallerFrom(opts.services.mcp, () => packConfigView(opts.services!, "browser", BROWSER_CONFIG).mcpTimeoutMs)
+      ? mcpCallerFrom(opts.services.tools, () => packConfigView(opts.services!, "browser", BROWSER_CONFIG).mcpTimeoutMs)
       : () => Promise.reject(new Error("no MCP available")));
   const osa = opts.osa ?? defaultOsaRunner(5000);
   const state: BrowserState = {

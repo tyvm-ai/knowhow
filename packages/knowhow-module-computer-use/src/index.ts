@@ -17,6 +17,7 @@ export * from "./tools";
 export * from "./tracking";
 export * from "./gridVision";
 export { computerToolDefinitions } from "./tools/definitions";
+export * from "./contracts";
 export {
   AUTOMATION_SDK_EXTENSION,
   AutomationExtensions,

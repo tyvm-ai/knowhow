@@ -6,12 +6,14 @@
  * `sdk.ext.voice` inside automations.
  *
  * The contract types (`AutomationSdkExtension`, `AutomationExtensionContext`)
- * come from core (`@tyvm/knowhow/sdk`), so there is no dependency on
- * @tyvm/knowhow-module-computer-use.
+ * are owned by @tyvm/knowhow-module-computer-use. They're imported type-only,
+ * so there is no runtime dependency on that module.
  */
 
-import { AUTOMATION_SDK_EXTENSION } from "@tyvm/knowhow/sdk";
-import type { AutomationExtensionContext, AutomationSdkExtension } from "@tyvm/knowhow/sdk";
+import type { AutomationExtensionContext, AutomationSdkExtension } from "@tyvm/knowhow-module-computer-use";
+
+/** computer-use's extension type; checked against its contract at compile time. */
+export const AUTOMATION_SDK_EXTENSION: AutomationSdkExtension["type"] = "computer-use.automation-sdk";
 import { createVoiceServices } from "./services";
 import { GazeSample } from "./eyeTracking";
 import {

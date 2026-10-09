@@ -1,4 +1,4 @@
-import { Point, Region } from "@tyvm/knowhow";
+import { Point, Region } from "./contracts";
 
 /**
  * Pure-TS perception primitives operating on a raw RGBA frame.

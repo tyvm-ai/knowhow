@@ -1,10 +1,10 @@
 /**
- * Shared, driver-agnostic interface for the computer-use service.
+ * Shared, driver-agnostic contract for the computer-use service.
  *
- * The concrete implementation lives in `@tyvm/knowhow-module-computer-use`, but
- * we declare the shape here so that `ToolContext` / `ModuleContext` can carry a
- * `ComputerUse` service without the core knowhow package taking a runtime
- * dependency on the module.
+ * Owned by this module (not knowhow core). The service is injected into the
+ * shared context as `ComputerUse`; other modules that want typed access import
+ * these types from `@tyvm/knowhow-module-computer-use` (type-only imports
+ * don't create a runtime dependency).
  *
  * An adapter module (e.g. `@tyvm/knowhow-module-computer-use-nutjs`) can
  * register a `ComputerDriver` against the service in its `register` phase; the

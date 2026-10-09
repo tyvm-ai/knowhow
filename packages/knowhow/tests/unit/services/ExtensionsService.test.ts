@@ -1,5 +1,4 @@
 import { ExtensionsService, ModuleExtension } from "../../../src/services/ExtensionsService";
-import { AUTOMATION_SDK_EXTENSION } from "../../../src/services/contracts/automation";
 
 interface VoiceCmd extends ModuleExtension {
   type: "voice.command";
@@ -95,9 +94,5 @@ describe("ExtensionsService", () => {
       const again = svc.defineExtensionPoint<VoiceCmd>("voice.command");
       expect(() => again.register("n", { type: "voice.command", name: "a" })).toThrow();
     });
-  });
-
-  it("exports the automation contract constant", () => {
-    expect(AUTOMATION_SDK_EXTENSION).toBe("computer-use.automation-sdk");
   });
 });

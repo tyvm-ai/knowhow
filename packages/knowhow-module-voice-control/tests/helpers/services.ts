@@ -135,7 +135,7 @@ export function createTestServices(
     platform: createFakePlatform(),
     gaze: createFakeGaze(),
     computer: undefined,
-    mcp: { callByMethod: () => Promise.reject(new Error("no MCP in tests")) },
+    tools: { getFunction: () => undefined },
     clock: new FakeClock(),
     log: createMemoryLogger(),
     // Never read or write the user's learned files, never show notifications.

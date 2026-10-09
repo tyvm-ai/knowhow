@@ -18,6 +18,7 @@ import { runHintsCli } from "./hintsCli";
 import { runConfigCli } from "./configCli";
 import { replayRow, runReplayCli } from "./replay";
 import { defineVoiceExtensionPoints } from "./contributions";
+import { setModuleTools } from "./services";
 
 export * from "./types";
 export * from "./VoiceSession";
@@ -177,6 +178,8 @@ const voiceControlModule: KnowhowModule = {
   async register(params: InitParams) {
     // Typed extension points for third-party adapters / packs (validated at registration).
     if (params.context?.Extensions) defineVoiceExtensionPoints(params.context.Extensions);
+    // Tool calls (incl. MCP tools like browser_tabs) go through the injected ToolsService.
+    setModuleTools(params.context?.Tools);
     const program = params.context?.Program;
     if (!program) return;
     const config = params.config as typeof params.config & {

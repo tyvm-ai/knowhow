@@ -6,8 +6,8 @@ describe("@tyvm/knowhow/sdk", () => {
     for (const name of [
       "services", "getConfig", "getConfigSync", "getGlobalConfig", "setupServices",
       "voiceToText", "ensureDefaultMic", "ExtensionsService", "ToolsService", "BaseAgent",
-      "withFallback", "McpTimeoutError", "McpToolNotFoundError", "createModuleRuntime",
-      "normalizeCommandAction", "AUTOMATION_SDK_EXTENSION", "isInteractiveAgent",
+      "withFallback", "createModuleRuntime",
+      "normalizeCommandAction", "isInteractiveAgent",
     ]) {
       expect((sdk as any)[name]).toBeDefined();
     }
