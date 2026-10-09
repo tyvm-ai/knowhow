@@ -6,7 +6,12 @@ import { BaseAgent } from "../agents/base/base";
 import { TraceAll } from "../util/Trace";
 import { promises as fs } from "fs";
 import * as path from "path";
-import { watch } from "fs";
+import { watch, existsSync, statSync, renameSync, rmSync } from "fs";
+import { readInputBatch } from "./stateful/channels/inputStream";
+import type { FileCursor, InputBatch } from "./stateful/channels/inputStream";
+
+/** A trailing input line without a newline is delivered after the file stops growing this long. */
+const PARTIAL_SETTLE_MS = 1000;
 
 export interface FsSyncOptions {
   taskId: string;
@@ -32,7 +37,21 @@ export class AgentSyncFs {
   private taskPath: string | undefined;
   private eventHandlersSetup: boolean = false;
   private watcher: ReturnType<typeof watch> | null = null;
-  private lastInputContent: string = "";
+  /**
+   * input.txt cursor protocol (stateful/channels/inputStream.ts):
+   *  - inputCursor: how far we have READ (read-ahead)
+   *  - pendingInputCursor: cursor after the last dispatched items
+   *  - committedInputCursor: the cursor written to metadata.json. It only
+   *    advances once the dispatched messages are in the thread (agent has no
+   *    pending user messages), so a message and its cursor land in the same
+   *    atomic-enough metadata write and a crash never loses or replays one.
+   */
+  private inputCursor: FileCursor | undefined;
+  private pendingInputCursor: FileCursor | undefined;
+  private committedInputCursor: FileCursor | undefined;
+  private inputLock: Promise<unknown> = Promise.resolve();
+  private partialSeen: { size: number; since: number } | undefined;
+  private partialTimer: ReturnType<typeof setTimeout> | undefined;
   private finalizationPromise: Promise<void> | null = null;
   private agent: BaseAgent | undefined;
   private threadUpdateHandler: ((...args: any[]) => void) | undefined;
@@ -63,7 +82,8 @@ export class AgentSyncFs {
 
       // Create initial files
       await this.writeStatus("running");
-      await this.writeInput("");
+      // Touch (never truncate): a resumed task may have unread input.
+      await this.touchInput();
       await this.writeMetadata({
         taskId: this.taskId,
         // Record the OS process id of this agent subprocess so orchestrating
@@ -142,18 +162,14 @@ export class AgentSyncFs {
     }
   }
 
-  /**
-   * Write input file (used for initial state)
-   */
-  private async writeInput(content: string): Promise<void> {
+  /** Create input.txt if missing, without truncating existing content. */
+  private async touchInput(): Promise<void> {
     if (!this.taskPath) return;
-
     try {
-      const inputPath = path.join(this.taskPath, "input.txt");
-      await fs.writeFile(inputPath, content, "utf8");
-      this.lastInputContent = content;
+      const handle = await fs.open(path.join(this.taskPath, "input.txt"), "a");
+      await handle.close();
     } catch (error) {
-      console.error(`❌ Failed to write input:`, error);
+      console.error(`❌ Failed to create input file:`, error);
     }
   }
 
@@ -336,6 +352,17 @@ export class AgentSyncFs {
       metadata.enabledTools = agent.getEnabledToolNames();
       metadata.inProgress = inProgress;
       metadata.lastUpdate = new Date().toISOString();
+      // Commit the input cursor together with the threads that now contain
+      // the messages it consumed.
+      if (
+        this.pendingInputCursor &&
+        (agent.getPendingUserMessageCount?.() ?? 0) === 0
+      ) {
+        this.committedInputCursor = this.pendingInputCursor;
+      }
+      if (this.committedInputCursor) {
+        metadata.inputCursor = this.committedInputCursor;
+      }
 
       if (result !== undefined) {
         metadata.result = result;
@@ -348,6 +375,7 @@ export class AgentSyncFs {
         JSON.stringify(metadata, null, 2),
         "utf8"
       );
+      await this.withInputLock(() => this.trimInput(agent));
     } catch (error) {
       console.error(`❌ Failed to update metadata:`, error);
     }
@@ -363,22 +391,6 @@ export class AgentSyncFs {
       const statusPath = path.join(this.taskPath, "status.txt");
       const content = await fs.readFile(statusPath, "utf8");
       return content.trim();
-    } catch (error) {
-      // File might not exist or be accessible
-      return null;
-    }
-  }
-
-  /**
-   * Read and process input file changes
-   */
-  private async readInput(): Promise<string | null> {
-    if (!this.taskPath) return null;
-
-    try {
-      const inputPath = path.join(this.taskPath, "input.txt");
-      const content = await fs.readFile(inputPath, "utf8");
-      return content;
     } catch (error) {
       // File might not exist or be accessible
       return null;
@@ -403,29 +415,163 @@ export class AgentSyncFs {
         await agent.kill();
       }
 
-      // Check for new input/messages
-      const input = await this.readInput();
-      if (input && input !== this.lastInputContent && input.trim() !== "") {
-        console.log(
-          `📬 New message received via filesystem for task ${this.taskId}`
-        );
-        this.lastInputContent = input;
-
-        // Detect slash commands in the input
-        if (input.trim().startsWith("/")) {
-          await this.handleInputCommand(agent, input.trim());
-        } else {
-          agent.addPendingUserMessage({
-            role: "user",
-            content: input,
-          });
-        }
-
-        // Clear the input file after processing
-        await this.writeInput("");
-      }
+      // Check for new input/messages (cursor-based, lossless)
+      await this.withInputLock(() => this.processInput(agent));
     } catch (error) {
       console.error(`❌ Error checking for changes:`, error);
+    }
+  }
+
+  private withInputLock<T>(fn: () => Promise<T>): Promise<T> {
+    const p = this.inputLock.then(fn, fn);
+    this.inputLock = p.catch(() => {});
+    return p;
+  }
+
+  private get inputPath(): string {
+    return path.join(this.taskPath!, "input.txt");
+  }
+
+  private get consumingPath(): string {
+    return this.inputPath + ".consuming";
+  }
+
+  /** Load the persisted cursor (resume / restart) so nothing is replayed. */
+  private async loadInputCursor(): Promise<void> {
+    if (!this.taskPath) return;
+    try {
+      const meta = JSON.parse(
+        await fs.readFile(path.join(this.taskPath, "metadata.json"), "utf8")
+      );
+      if (meta?.inputCursor && typeof meta.inputCursor.offset === "number") {
+        this.inputCursor = this.committedInputCursor = meta.inputCursor;
+      }
+    } catch {
+      // no metadata yet
+    }
+  }
+
+  /**
+   * Read new input records from the cursor up to the last complete newline
+   * and dispatch them one by one. Never clears the file.
+   */
+  private async processInput(agent: BaseAgent): Promise<void> {
+    if (!this.taskPath) return;
+
+    // A rotated file still being drained (see trimInput).
+    if (existsSync(this.consumingPath)) {
+      const st = statSync(this.consumingPath);
+      if (!this.inputCursor || this.inputCursor.inode !== st.ino) {
+        // fully consumed in an earlier run
+        await this.finishRotation();
+      } else {
+        const b = await readInputBatch(this.consumingPath, this.inputCursor, {
+          includePartial: true,
+        });
+        this.dispatchInput(agent, b);
+        return; // the new input.txt is read after the old one is committed+deleted
+      }
+    }
+
+    let batch = await readInputBatch(this.inputPath, this.inputCursor);
+    if (batch.partialPending) {
+      // trailing line without newline (plain `printf hi >> input.txt`):
+      // deliver it once the file stopped growing
+      const now = Date.now();
+      if (this.partialSeen && this.partialSeen.size === batch.size) {
+        if (now - this.partialSeen.since >= PARTIAL_SETTLE_MS) {
+          batch = await readInputBatch(this.inputPath, this.inputCursor, {
+            includePartial: true,
+          });
+          this.partialSeen = undefined;
+        }
+      } else {
+        this.partialSeen = { size: batch.size, since: now };
+      }
+      if (this.partialSeen && !this.partialTimer) {
+        this.partialTimer = setTimeout(() => {
+          this.partialTimer = undefined;
+          this.checkForChanges(agent).catch(() => {});
+        }, PARTIAL_SETTLE_MS + 100);
+        this.partialTimer.unref?.();
+      }
+    } else {
+      this.partialSeen = undefined;
+    }
+    if (batch.exists) this.dispatchInput(agent, batch);
+  }
+
+  private dispatchInput(agent: BaseAgent, batch: InputBatch): void {
+    if (batch.items.length) {
+      console.log(
+        `📬 ${batch.items.length} new message(s) received via filesystem for task ${this.taskId}`
+      );
+    }
+    for (const item of batch.items) {
+      const payload: any = item.payload;
+      const text: string =
+        typeof payload === "string"
+          ? payload
+          : typeof payload?.text === "string"
+            ? payload.text
+            : JSON.stringify(payload ?? "");
+      const from = item.from ? `[from:${item.from}] ` : "";
+      if (item.kind === "interrupt") {
+        agent.interrupt(text || undefined);
+      } else if (text.trim().startsWith("/")) {
+        // commands are interpreted per message
+        void this.handleInputCommand(agent, text.trim());
+      } else {
+        agent.addPendingUserMessage({ role: "user", content: from + text });
+      }
+    }
+    this.inputCursor = this.pendingInputCursor = batch.cursor;
+  }
+
+  private async finishRotation(): Promise<void> {
+    rmSync(this.consumingPath, { force: true });
+    // reset so a reused inode number can never be mistaken for the old file
+    const reset: FileCursor = { inode: 0, offset: 0 };
+    this.inputCursor = this.pendingInputCursor = this.committedInputCursor = reset;
+    await this.writeMetadata({ inputCursor: reset });
+  }
+
+  /**
+   * After a metadata write that committed the cursor: when the committed cursor
+   * is at end of input.txt, rename it to input.txt.consuming, drain what was
+   * appended meanwhile, and delete it once that is committed too. The file is
+   * never truncated, so a concurrent append can never be wiped.
+   */
+  private async trimInput(agent: BaseAgent): Promise<void> {
+    if (!this.taskPath) return;
+    const c = this.committedInputCursor;
+    if (!c) return;
+    if (existsSync(this.consumingPath)) {
+      const st = statSync(this.consumingPath);
+      if (c.inode === st.ino && c.offset >= st.size) await this.finishRotation();
+      return;
+    }
+    let st;
+    try {
+      st = statSync(this.inputPath);
+    } catch {
+      return;
+    }
+    if (c.inode !== st.ino || c.offset === 0 || c.offset !== st.size) return;
+    if (
+      !this.inputCursor ||
+      this.inputCursor.inode !== c.inode ||
+      this.inputCursor.offset !== c.offset
+    ) {
+      return; // read-ahead not committed yet
+    }
+    renameSync(this.inputPath, this.consumingPath);
+    await this.processInput(agent); // drain late appends into the agent
+    if (existsSync(this.consumingPath)) {
+      const after = statSync(this.consumingPath);
+      if (this.committedInputCursor && this.committedInputCursor.offset >= after.size) {
+        await this.finishRotation();
+      }
     }
   }
 
@@ -509,6 +655,8 @@ export class AgentSyncFs {
     } catch (error) {
       // Directory might already exist
     }
+
+    await this.loadInputCursor();
 
     if (!this.eventHandlersSetup) {
       this.setupEventHandlers(agent);
@@ -768,7 +916,10 @@ export class AgentSyncFs {
     this.taskId = undefined;
     this.taskPath = undefined;
     this.eventHandlersSetup = false;
-    this.lastInputContent = "";
+    this.inputCursor = this.pendingInputCursor = this.committedInputCursor = undefined;
+    this.partialSeen = undefined;
+    if (this.partialTimer) clearTimeout(this.partialTimer);
+    this.partialTimer = undefined;
     this.finalizationPromise = null;
     this.pendingThreadUpdatePromise = null;
   }

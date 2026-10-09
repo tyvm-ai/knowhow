@@ -5,6 +5,7 @@ import path from "path";
 import { SyncedAgentWatcher } from "../SyncedAgentWatcher";
 import { messagesToRenderEvents } from "../../chat/renderer/messagesToRenderEvents";
 import { EventService } from "../EventService";
+import { appendInput } from "../stateful/channels/inputStream";
 
 /**
  * Watches an agent running in another process via the filesystem.
@@ -128,7 +129,8 @@ export class FsSyncedAgentWatcher implements SyncedAgentWatcher {
 
   async sendMessage(message: string): Promise<void> {
     const inputPath = path.join(this.taskPath, "input.txt");
-    await fsPromises.writeFile(inputPath, message, "utf8");
+    // true append of one JSON record: never clobbers pending input
+    appendInput(inputPath, { text: message });
   }
 
   async getThreads(): Promise<any[][]> {
@@ -166,7 +168,7 @@ export class FsSyncedAgentWatcher implements SyncedAgentWatcher {
 
   async interrupt(message?: string): Promise<void> {
     const inputPath = path.join(this.taskPath, "input.txt");
-    await fsPromises.writeFile(inputPath, `/poke ${message || ""}`.trim(), "utf8");
+    appendInput(inputPath, { text: `/poke ${message || ""}`.trim() });
     console.log(`🫵 Interrupt written to input for agent: ${this.taskId}`);
   }
 

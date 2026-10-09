@@ -107,3 +107,7 @@ export type { Message, Tool, ToolCall } from "./clients/types";
 export type { AIClient } from "./clients";
 export type { Config } from "./types";
 export type { ChatService } from "./chat/types";
+
+// ── stateful processes (services/stateful) ──────────────────────────────────
+
+export * from "./services/stateful";

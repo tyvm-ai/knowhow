@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { Tool } from "../../clients/types";
 import { ToolCallContext } from "../../services/Tools";
+import { appendInput } from "../../services/stateful/channels/inputStream";
 
 /** Resolve the agents dir lazily so tests (and cwd changes) are respected. */
 function agentsDir(): string {
@@ -64,14 +65,8 @@ function assistantText(msg: any): string | undefined {
 }
 
 function appendToInput(inputPath: string, line: string): void {
-  const existing = fs.existsSync(inputPath)
-    ? fs.readFileSync(inputPath, "utf8")
-    : "";
-  const next =
-    existing && !existing.endsWith("\n")
-      ? `${existing}\n${line}\n`
-      : `${existing}${line}\n`;
-  fs.writeFileSync(inputPath, next, "utf8");
+  // one O_APPEND write of one JSON record; never read-modify-write
+  appendInput(inputPath, { text: line });
 }
 
 const TERMINAL_STATUSES = new Set([

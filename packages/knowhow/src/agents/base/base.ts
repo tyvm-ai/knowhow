@@ -1530,6 +1530,11 @@ export abstract class BaseAgent implements IAgent {
     }
   }
 
+  /** User messages queued but not yet moved into the thread (used by input.txt cursor commit). */
+  getPendingUserMessageCount(): number {
+    return this.pendingUserMessages.length;
+  }
+
   // A new message from users, blocks completion
   addPendingUserMessage(message: Message) {
     if (this.status === this.eventTypes.done) {
