@@ -27,7 +27,7 @@ export interface KnowhowWebChannelOptions {
 const httpStatus = (e: any): number | undefined => e?.status ?? e?.response?.status;
 
 function statusToControl(status?: string): Partial<AgentControl> | undefined {
-  if (status === "killed") return { desired: "cancelled" };
+  if (status === "killed" || status === "cancelled") return { desired: "cancelled" };
   if (status === "paused") return { desired: "paused" };
   if (status === "running") return { desired: "running" };
   return undefined;
@@ -42,7 +42,7 @@ function statusToControl(status?: string): Partial<AgentControl> | undefined {
  *    404/405 (old server) -> full PUT of all threads from then on.
  *  - input: `pendingMessages` from write responses (+ idle poll) are delivered
  *    as inputs and marked processed only after the consumption is persisted.
- *  - control: the task status (paused / killed / running) is edge-triggered.
+ *  - control: `desiredStatus` (fallback: task status) paused / killed / running is edge-triggered.
  */
 export class KnowhowWebChannel extends DuplexChannel<AgentState, AgentControl, AgentEvent> {
   readonly id = "web";
@@ -256,17 +256,23 @@ export class KnowhowWebChannel extends DuplexChannel<AgentState, AgentControl, A
 
   private async onResponse(r: TaskThreadWriteResponse | undefined): Promise<void> {
     if (!r) return;
-    this.observeStatus(r.status);
+    this.observeStatus(r.status, r.desiredStatus);
     if (r.pendingMessages?.length) await this.deliverPending(r.pendingMessages);
     await this.markPending();
   }
 
-  private observeStatus(status?: string) {
-    if (status === undefined || status === this.lastStatus) return;
+  /**
+   * Control comes from `desiredStatus` (new servers: controllers write it, the
+   * owner writes `status`); older servers only have `status`, which carries
+   * paused/killed/running written by the controllers.
+   */
+  private observeStatus(status?: string, desiredStatus?: string | null) {
+    const token = desiredStatus ? desiredStatus : status;
+    if (token === undefined || token === this.lastStatus) return;
     const first = this.lastStatus === undefined;
-    this.lastStatus = status;
+    this.lastStatus = token;
     if (first) return; // baseline
-    const patch = statusToControl(status);
+    const patch = statusToControl(token);
     if (patch) this.ctx.applyControl(patch);
   }
 
@@ -314,7 +320,7 @@ export class KnowhowWebChannel extends DuplexChannel<AgentState, AgentControl, A
         if (this.legacyServer) {
           const id = this.remoteTaskId!;
           const details = (await this.client.getTaskDetails(id)).data;
-          this.observeStatus(details.status);
+          this.observeStatus(details.status, details.desiredStatus);
           const pending = (await this.client.getPendingMessages(id)).data ?? [];
           await this.deliverPending(pending as any);
           await this.markPending();

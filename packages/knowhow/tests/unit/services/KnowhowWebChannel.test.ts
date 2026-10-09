@@ -176,6 +176,25 @@ describe("KnowhowWebChannel", () => {
     await session.close();
   });
 
+  it("prefers desiredStatus over status (new servers: owner writes status, controllers write desiredStatus)", async () => {
+    let n = 0;
+    const client = mockClient({
+      appendTaskThread: jest.fn().mockImplementation(async () => {
+        n++;
+        // status stays "running" (owner-written); only the control changes
+        return resp({ status: "running", desiredStatus: n === 2 ? "paused" : n === 3 ? "running" : null, controlVersion: n });
+      }),
+    });
+    const { agent, session } = await make(client, { messageId: "msg-1" }, { pollMs: 30 });
+    const run = session.start();
+    await waitFor(() => agent.paused);
+    expect(session.getLifecycle().status).toBe("paused");
+    await waitFor(() => !agent.paused);
+    agent.release();
+    await run;
+    await session.close();
+  });
+
   it("stays quiet and keeps the session working when the task cannot be created", async () => {
     const client = mockClient({ createChatTask: jest.fn().mockRejectedValue(new Error("offline")) });
     const { agent, session } = await make(client);

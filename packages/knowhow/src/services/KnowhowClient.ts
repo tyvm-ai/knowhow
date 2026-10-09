@@ -94,7 +94,12 @@ export interface TaskThreadWriteResponse {
   lengths: number[];
   lastHashes?: string[];
   inProgress: boolean;
+  /** Owner-written status (servers with desiredStatus report the effective status here for old clients) */
   status: string;
+  /** Requested state written by controllers: "paused" | "running" | "cancelled" | null (new servers only) */
+  desiredStatus?: string | null;
+  /** Bumped on every control write (new servers only) */
+  controlVersion?: number;
   totalUsdCost: number;
   updatedAt: string;
   /** Unprocessed messages queued for the agent */
@@ -106,6 +111,9 @@ export interface TaskDetailsResponse {
   taskId: string;
   inProgress: boolean;
   status: "running" | "paused" | "killed" | "completed";
+  /** Requested state written by controllers (new servers only) */
+  desiredStatus?: string | null;
+  controlVersion?: number;
   totalUsdCost: number;
   threads: any[][];
   createdAt: string;
