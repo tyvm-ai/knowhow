@@ -18,15 +18,15 @@ describe("voice control module", () => {
     expect(commands).toHaveLength(1);
     const eyeCommands = program.commands.filter((command) => command.name() === "eye-tracking");
     expect(eyeCommands).toHaveLength(1);
-    expect((eyeCommands[0] as any)._alias).toBe("gaze-control");
-    expect((eyeCommands[0] as any).port).toBe("7465");
+    expect(eyeCommands[0].alias()).toBe("gaze-control");
+    expect(eyeCommands[0].getOptionValue("port")).toBe("7465");
     expect(eyeCommands[0].options.map((option) => option.long)).toEqual(
       expect.arrayContaining(["--port", "--host", "--model", "--no-open", "--json"])
     );
-    expect((commands[0] as any)._alias).toBe("voice-control");
-    expect((commands[0] as any).agent).toBe("ComputerUseAgent");
-    expect((commands[0] as any).wakeWord).toBe("hey knowhow");
-    expect((commands[0] as any).wakeWindowMs).toBe("30000");
+    expect(commands[0].alias()).toBe("voice-control");
+    expect(commands[0].getOptionValue("agent")).toBe("ComputerUseAgent");
+    expect(commands[0].getOptionValue("wakeWord")).toBe("hey knowhow");
+    expect(commands[0].getOptionValue("wakeWindowMs")).toBe("30000");
     expect(commands[0].options.map((option) => option.long)).toEqual(
       expect.arrayContaining([
         "--agent",
@@ -78,14 +78,14 @@ describe("voice control module", () => {
     } as any);
 
     const command = program.commands.find((entry) => entry.name() === "voice-agent") as any;
-    expect(command.tts).toBe("mlx");
-    expect(command.ttsModel).toBe("/models/kokoro");
-    expect(command.ttsVoice).toBe("af_bella");
-    expect(command.ttsPython).toBe("/venv/bin/python");
-    expect(command.ttsSpeed).toBe("1.2");
+    expect(command.getOptionValue("tts")).toBe("mlx");
+    expect(command.getOptionValue("ttsModel")).toBe("/models/kokoro");
+    expect(command.getOptionValue("ttsVoice")).toBe("af_bella");
+    expect(command.getOptionValue("ttsPython")).toBe("/venv/bin/python");
+    expect(command.getOptionValue("ttsSpeed")).toBe("1.2");
     const eye = program.commands.find((entry) => entry.name() === "eye-tracking") as any;
-    expect(eye.port).toBe("8123");
-    expect(eye.host).toBe("localhost");
-    expect(eye.model).toBe("/models/face.task");
+    expect(eye.getOptionValue("port")).toBe("8123");
+    expect(eye.getOptionValue("host")).toBe("localhost");
+    expect(eye.getOptionValue("model")).toBe("/models/face.task");
   });
 });

@@ -42,11 +42,11 @@ export async function initTracer(config: TracerConfig): Promise<void> {
     "@opentelemetry/exporter-trace-otlp-http"
   );
 
-  const { Resource } = await import("@opentelemetry/resources");
+  const { resourceFromAttributes } = await import("@opentelemetry/resources");
 
   const {
-    SEMRESATTRS_SERVICE_NAME,
-    SEMRESATTRS_SERVICE_VERSION,
+    ATTR_SERVICE_NAME,
+    ATTR_SERVICE_VERSION,
   } = await import("@opentelemetry/semantic-conventions");
 
   const headers: Record<string, string> = {};
@@ -70,20 +70,26 @@ export async function initTracer(config: TracerConfig): Promise<void> {
     headers,
   });
 
-  const resource = new Resource({
-    [SEMRESATTRS_SERVICE_NAME]: config.serviceName ?? "knowhow-cli",
-    [SEMRESATTRS_SERVICE_VERSION]: "1.0.0",
+  const resource = resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: config.serviceName ?? "knowhow-cli",
+    [ATTR_SERVICE_VERSION]: "1.0.0",
     ...config.resourceAttributes,
   });
 
-  const provider = new NodeTracerProvider({ resource });
   // Use a short scheduledDelayMillis so spans are exported every 2s during the
   // agent run rather than being batched for 5s (the default). This means traces
   // appear in Grafana almost immediately without waiting for process exit.
-  provider.addSpanProcessor(new BatchSpanProcessor(exporter, {
-    scheduledDelayMillis: 2000,
-    maxExportBatchSize: 20,
-  }));
+  // (OTel SDK 2.x: span processors are passed to the constructor;
+  // addSpanProcessor() was removed.)
+  const provider = new NodeTracerProvider({
+    resource,
+    spanProcessors: [
+      new BatchSpanProcessor(exporter, {
+        scheduledDelayMillis: 2000,
+        maxExportBatchSize: 20,
+      }),
+    ],
+  });
   provider.register();
 
   const { trace } = await import("@opentelemetry/api");
