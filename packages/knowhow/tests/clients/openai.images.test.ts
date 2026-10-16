@@ -1,6 +1,14 @@
 import { GenericOpenAiClient } from "../../src/clients/openai";
 import { Message } from "../../src/clients/types";
 
+const withResponse = (data: any) => ({
+  withResponse: async () => ({
+    data,
+    response: new Response(null, { status: 200 }),
+    request_id: "req_test",
+  }),
+});
+
 describe("GenericOpenAiClient image message conversion", () => {
   const imageUrl = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
   let client: GenericOpenAiClient;
@@ -66,11 +74,11 @@ describe("GenericOpenAiClient image message conversion", () => {
   });
 
   it("attaches a tool image as input_image in a Responses API request", async () => {
-    const create = jest.fn().mockResolvedValue({
+    const create = jest.fn().mockReturnValue(withResponse({
       id: "resp_1",
       output: [],
       usage: undefined,
-    });
+    }));
     (client as any).client = { responses: { create } };
 
     await client.createChatResponse({

@@ -433,8 +433,14 @@ export class GenericGeminiClient implements GenericClient {
 
     // Gemini 3.x — use thinkingLevel
     if (GoogleThinkingLevelModels.includes(model)) {
-      // Gemini 3.7 Flash rejects "minimal"; low is its least intensive level.
-      const minimumLevel = model === Models.google.Gemini_37_Flash ? "low" : "minimal";
+      // Gemini 4 Argon, 3.8 Flash and 3.7 Flash reject "minimal"; low is
+      // their least intensive level.
+      const noMinimalModels: string[] = [
+        Models.google.Gemini_4_Argon,
+        Models.google.Gemini_38_Flash,
+        Models.google.Gemini_37_Flash,
+      ];
+      const minimumLevel = noMinimalModels.includes(model) ? "low" : "minimal";
       const levelMap: Record<string, string> = {
         none: minimumLevel,
         minimal: minimumLevel,

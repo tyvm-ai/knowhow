@@ -17,6 +17,7 @@ import {
 
 export const OpenAiModels = {
   GPT_6_Astra: "gpt-6-astra",
+  GPT_61_Sol: "gpt-6.1-sol",
   GPT_6_Sol: "gpt-6-sol",
   GPT_6_Luna: "gpt-6-luna",
   GPT_56_Sol: "gpt-5.6-sol",
@@ -102,6 +103,7 @@ export const OpenAiEmbeddingModels: Record<string, string> = {
 
 export const OpenAiReasoningModels: string[] = [
   OpenAiModels.GPT_6_Astra,
+  OpenAiModels.GPT_61_Sol,
   OpenAiModels.GPT_6_Sol,
   OpenAiModels.GPT_6_Luna,
   OpenAiModels.GPT_5,
@@ -133,6 +135,7 @@ export const OpenAiReasoningModels: string[] = [
 
 export const OpenAiChatModels: string[] = [
   OpenAiModels.GPT_6_Astra,
+  OpenAiModels.GPT_61_Sol,
   OpenAiModels.GPT_6_Sol,
   OpenAiModels.GPT_6_Luna,
   OpenAiModels.GPT_4o,
@@ -166,6 +169,7 @@ export const OpenAiEmbeddingModelsList: string[] = [
 
 export const OpenAiResponsesOnlyModels: string[] = [
   OpenAiModels.GPT_6_Astra,
+  OpenAiModels.GPT_61_Sol,
   OpenAiModels.GPT_6_Sol,
   OpenAiModels.GPT_6_Luna,
   OpenAiModels.GPT_5,
@@ -248,6 +252,13 @@ export const OpenAiTextPricing: Record<string, ModelPricing> = {
     input: 10.0, cached_input: 1.0, cache_write: 12.5, output: 50.0,
     input_gt_200k: 20.0, cached_input_gt_200k: 2.0,
     cache_write_gt_200k: 25.0, output_gt_200k: 75.0,
+    long_context_threshold: 272_000,
+    reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+  },
+  [OpenAiModels.GPT_61_Sol]: {
+    input: 2.0, cached_input: 0.1, cache_write: 2.5, output: 10.0,
+    input_gt_200k: 4.0, cached_input_gt_200k: 0.2,
+    cache_write_gt_200k: 5.0, output_gt_200k: 15.0,
     long_context_threshold: 272_000,
     reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
   },

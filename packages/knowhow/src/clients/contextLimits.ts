@@ -12,6 +12,7 @@ import { FireworksModels } from "./pricing/fireworks";
 export const ContextLimits: Record<string, number> = {
   // ─── OpenAI ───────────────────────────────────────────────────────────────
   [Models.openai.GPT_6_Astra]: 1_050_000,
+  [Models.openai.GPT_61_Sol]: 1_050_000,
   [Models.openai.GPT_6_Sol]: 1_050_000,
   [Models.openai.GPT_6_Luna]: 1_050_000,
   [Models.openai.GPT_56_Sol]: 1_050_000,
@@ -92,6 +93,7 @@ export const ContextLimits: Record<string, number> = {
   [Models.anthropic.Fable5_1]: 1_000_000,
   [Models.anthropic.Opus5_5]: 1_000_000,
   [Models.anthropic.Sonnet5_5]: 1_000_000,
+  [Models.anthropic.Haiku5_5]: 1_000_000,
   [Models.anthropic.Mythos5_1]: 1_000_000,
   [Models.anthropic.Opus4_8Fast]: 1_000_000,
   [Models.anthropic.Opus4_8]: 1_000_000,
@@ -132,6 +134,8 @@ export const ContextLimits: Record<string, number> = {
 
   // ─── Google ───────────────────────────────────────────────────────────────
   // Gemini 3.7 / 3.6 / 3.5 (text)
+  [Models.google.Gemini_4_Argon]: 1_048_576,
+  [Models.google.Gemini_38_Flash]: 1_048_576,
   [Models.google.Gemini_37_Flash]: 1_048_576,
   [Models.google.Gemini_36_Flash]: 1_000_000,
   [Models.google.Gemini_35_Flash]: 1_000_000,
@@ -187,6 +191,7 @@ export const ContextLimits: Record<string, number> = {
   [Models.google.Gemini_15_Pro]: 2_000_000,
 
   // ─── xAI ──────────────────────────────────────────────────────────────────
+  [Models.xai.Grok4_7]: 500_000,
   [Models.xai.Grok4_6]: 500_000,
   [Models.xai.Grok4_3]: 1_000_000,
   [Models.xai.Grok4_1_Fast_Reasoning]: 2_000_000,
@@ -255,6 +260,12 @@ export const ContextLimits: Record<string, number> = {
 
   // OpenAI OSS
   [FireworksModels.GptOss120b]: 131_072,
+
+  // Newer Fireworks models — contextLength from api.fireworks.ai/v1/accounts/fireworks/models/<id>
+  [FireworksModels.MuseGlimmer30b]:             131_072, // Meta
+  [FireworksModels.Qwen3p8Max]:                 262_144, // Qwen
+  [FireworksModels.NemotronLightning3p530bA3b]: 262_144, // NVIDIA
+  [FireworksModels.Inkling]:                    1_048_576, // Thinking Machines Lab
 
   // Fireworks embedding/reranker models — 40k context
   [FireworksModels.Qwen3Embedding8b]: 40_960,

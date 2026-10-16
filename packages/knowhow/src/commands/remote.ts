@@ -5,12 +5,15 @@ import {
   DEFAULT_API_URL,
   DEFAULT_REMOTE_NAME,
   getConfiguredRemotes,
+  getRemoteByName,
   registerRemote,
+  resolveJwtPath,
 } from "../remotes";
 
 export function addRemoteCommand(program: Command): void {
   const command = program
     .command("remote")
+    .alias("remotes")
     .description("Manage Knowhow API remotes");
 
   command
@@ -73,5 +76,17 @@ export function addRemoteCommand(program: Command): void {
         (selectedName === DEFAULT_REMOTE_NAME ? createRemote(DEFAULT_REMOTE_NAME, DEFAULT_API_URL) : undefined);
       if (!remote) throw new Error(`Unknown remote '${selectedName}'.`);
       console.log(remote.apiUrl);
+    });
+
+  command
+    .command("get-jwt-path")
+    .description("Print the absolute JWT path for a remote")
+    .argument("[name]", "Remote name")
+    .action(async (name?: string) => {
+      const config = await getConfig();
+      const selectedName = name ?? config.activeRemote ?? DEFAULT_REMOTE_NAME;
+      const remote = getRemoteByName(config, selectedName);
+      if (!remote) throw new Error(`Unknown remote '${selectedName}'.`);
+      console.log(resolveJwtPath(remote.jwtPath));
     });
 }

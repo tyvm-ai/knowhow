@@ -7,6 +7,7 @@ import { completions, images, videos, ModelCatalogEntry, ModelPricing } from "./
 // ─── Model IDs ────────────────────────────────────────────────────────────────
 
 export const XaiModels = {
+  Grok4_7: "grok-4.7",
   Grok4_6: "grok-4.6",
   Grok4_3: "grok-4.3",
   Grok_4_20_Reasoning: "grok-4.20-0309-reasoning",
@@ -45,7 +46,7 @@ export const XaiModels = {
 // ─── Modality arrays ──────────────────────────────────────────────────────────
 
 export const XaiTextModels: string[] = [
-  XaiModels.Grok4_6, XaiModels.Grok4_3,
+  XaiModels.Grok4_7, XaiModels.Grok4_6, XaiModels.Grok4_3,
   XaiModels.Grok_4_20_Reasoning, XaiModels.Grok_4_20_NonReasoning,
   XaiModels.Grok_4_20_MultiAgent,
   XaiModels.Grok4_1_Fast_Reasoning, XaiModels.Grok4_1_Fast_NonReasoning,
@@ -65,8 +66,9 @@ export const XaiResponsesOnlyModels: string[] = [
 ];
 
 // Models that support the reasoning_effort parameter
-// Grok 4.6, Grok 4.3, Grok 4.20 multi-agent, and grok-3-mini variants support reasoning_effort
+// Grok 4.7, Grok 4.6, Grok 4.3, Grok 4.20 multi-agent, and grok-3-mini variants support reasoning_effort
 export const XaiReasoningModels: string[] = [
+  XaiModels.Grok4_7,
   XaiModels.Grok4_6,
   XaiModels.Grok4_3,
   XaiModels.Grok_4_20_MultiAgent,
@@ -90,6 +92,7 @@ export const XaiVideoModels: string[] = [XaiModels.GrokImagineVideo];
 // ─── Pricing (USD per 1M tokens / per-image / per-second) ────────────────────
 
 export const XaiTextPricing: Record<string, ModelPricing> = {
+  [XaiModels.Grok4_7]:                    { input: 2.0, input_gt_200k: 4.0, cache_hit: 0.50, cache_hit_gt_200k: 1.0, output: 6.0, output_gt_200k: 12.0, reasoningLevels: ["low", "medium", "high", "xhigh"] },
   [XaiModels.Grok4_6]:                    { input: 2.0, input_gt_200k: 4.0, cache_hit: 0.50, cache_hit_gt_200k: 1.0, output: 6.0, output_gt_200k: 12.0, reasoningLevels: ["low", "medium", "high", "xhigh"] },
   [XaiModels.Grok4_3]:                    { input: 1.25, input_gt_200k: 2.5, cache_hit: 0.20, cache_hit_gt_200k: 0.40, output: 2.5, output_gt_200k: 5.0, reasoningLevels: ["none", "low", "medium", "high", "xhigh"] },
   [XaiModels.Grok_4_20_Reasoning]:       { input: 1.25, input_gt_200k: 2.5, cache_hit: 0.20, cache_hit_gt_200k: 0.40, output: 2.5, output_gt_200k: 5.0, useResponsesApi: true },

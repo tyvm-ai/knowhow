@@ -14,6 +14,14 @@ import {
 } from "../../src/types";
 import { GenericXAIClient } from "../../src/clients/xai";
 
+const withResponse = (data: any) => ({
+  withResponse: async () => ({
+    data,
+    response: new Response(null, { status: 200 }),
+    request_id: "req_test",
+  }),
+});
+
 const options = (model: string, reasoning_effort: ReasoningEffort) => ({
   model,
   reasoning_effort,
@@ -47,12 +55,12 @@ describe("reasoning effort values", () => {
 
   it("explicitly disables reasoning in Responses API requests", async () => {
     const client = new GenericOpenAiClient("fake-key");
-    const create = jest.fn().mockResolvedValue({
+    const create = jest.fn().mockReturnValue(withResponse({
       id: "resp_disabled",
       status: "completed",
       output: [{ type: "message", content: [{ type: "output_text", text: "summary" }] }],
       usage: { input_tokens: 1, output_tokens: 1 },
-    });
+    }));
     (client.client as any).responses.create = create;
 
     await client.createChatResponse({
@@ -70,21 +78,21 @@ describe("reasoning effort values", () => {
     const client = new GenericOpenAiClient("fake-key");
     const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
     const create = jest.fn()
-      .mockResolvedValueOnce({
+      .mockReturnValueOnce(withResponse({
         id: "resp_empty",
         status: "incomplete",
         incomplete_details: { reason: "max_output_tokens" },
         output: [{ type: "reasoning", summary: [] }],
         usage: { input_tokens: 2, output_tokens: 3 },
-      })
-      .mockResolvedValueOnce({
+      }))
+      .mockReturnValueOnce(withResponse({
         id: "resp_tool",
         status: "completed",
         output: [{
           type: "function_call", call_id: "call_1", name: "readFile", arguments: "{}",
         }],
         usage: { input_tokens: 2, output_tokens: 3 },
-      });
+      }));
     (client.client as any).responses.create = create;
     const request = {
       model: Models.openai.GPT_56_Sol,
@@ -104,8 +112,13 @@ describe("reasoning effort values", () => {
 
   it("maps all values to valid Gemini thinking levels and budgets", () => {
     const client = new GenericGeminiClient("fake-key");
+    const noMinimalModels: string[] = [
+      Models.google.Gemini_4_Argon,
+      Models.google.Gemini_38_Flash,
+      Models.google.Gemini_37_Flash,
+    ];
     const levelModel = GoogleThinkingLevelModels.find(
-      (model) => model !== Models.google.Gemini_37_Flash
+      (model) => !noMinimalModels.includes(model)
     )!;
     const budgetModel = GoogleThinkingBudgetModels[0];
 
@@ -113,7 +126,9 @@ describe("reasoning effort values", () => {
     expect(client.buildThinkingConfig(options(levelModel, "minimal"))).toEqual({ thinkingLevel: "minimal" });
     expect(client.buildThinkingConfig(options(levelModel, "xhigh"))).toEqual({ thinkingLevel: "high" });
     expect(client.buildThinkingConfig(options(levelModel, "max"))).toEqual({ thinkingLevel: "high" });
-    expect(client.buildThinkingConfig(options(Models.google.Gemini_37_Flash, "minimal"))).toEqual({ thinkingLevel: "low" });
+    for (const model of noMinimalModels) {
+      expect(client.buildThinkingConfig(options(model, "minimal"))).toEqual({ thinkingLevel: "low" });
+    }
     expect(client.buildThinkingConfig(options(budgetModel, "none"))).toEqual({ thinkingBudget: 0 });
     expect(client.buildThinkingConfig(options(budgetModel, "minimal"))).toEqual({ thinkingBudget: 512 });
     expect(client.buildThinkingConfig(options(budgetModel, "medium"))).toEqual({ thinkingBudget: 8192 });

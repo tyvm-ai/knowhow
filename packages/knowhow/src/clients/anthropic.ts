@@ -724,7 +724,9 @@ export class GenericAnthropicClient implements GenericClient {
 
     const totalInputTokens = inputTokens + cacheWriteTokens + cacheReadTokens;
 
-    const useLongContextTier = totalInputTokens > 200_000 && !!p.input_gt_200k;
+    const longContextThreshold = p.long_context_threshold ?? 200_000;
+    const useLongContextTier =
+      totalInputTokens > longContextThreshold && !!p.input_gt_200k;
     const inputRate = useLongContextTier
       ? (p.input_gt_200k as number)
       : p.input;
@@ -777,7 +779,9 @@ export class GenericAnthropicClient implements GenericClient {
     const pricing = AnthropicTextPricing[model];
     // If the model has tiered pricing above 200k tokens, use 200k as the threshold
     const threshold =
-      pricing && "input_gt_200k" in pricing ? 200_000 : contextLimit;
+      pricing && "input_gt_200k" in pricing
+        ? pricing.long_context_threshold ?? 200_000
+        : contextLimit;
     return { contextLimit, threshold };
   }
 

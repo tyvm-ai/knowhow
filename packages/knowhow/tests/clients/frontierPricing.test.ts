@@ -50,7 +50,13 @@ describe("frontier model tiered pricing", () => {
       expect.objectContaining({ input: 4, cache_write: 5, cache_hit: 0.2, output: 20 })
     );
     expect(AnthropicTextPricing[AnthropicModels.Sonnet5_5]).toEqual(
-      expect.objectContaining({ input: 2, cache_write: 2.5, cache_hit: 0.2, output: 10 })
+      expect.objectContaining({ input: 2, cache_write: 2.5, cache_hit: 0.1, output: 10 })
+    );
+    expect(AnthropicTextPricing[AnthropicModels.Haiku5_5]).toEqual(
+      expect.objectContaining({
+        input: 0.1, cache_write: 0.125, cache_hit: 0.01, output: 0.5,
+        input_gt_200k: 0.5, output_gt_200k: 2.5, long_context_threshold: 100_000,
+      })
     );
   });
 

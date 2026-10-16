@@ -88,7 +88,13 @@ export async function spawnManaged(command: string, args: string[] = [], options
   const configPath = path.join(directory, "launch.json");
   fs.writeFileSync(configPath, JSON.stringify({ id, command, args, cwd, env: options.env || {}, background: options.background === true, parentProcessId: options.parentProcessId || null, parentPid: options.parentPid ?? process.pid, shell: options.shell === true, processesDir }, null, 2));
   const shimPath = path.resolve(__dirname, "managedProcessShim.js");
-  const shim = spawn(process.execPath, [shimPath, configPath], { cwd, detached: true, stdio: "ignore", env: process.env });
+  const tsShimPath = path.resolve(__dirname, "managedProcessShim.ts");
+  // When running from TypeScript sources (ts-node / jest) there is no compiled
+  // shim next to this file, so launch the .ts shim through ts-node instead.
+  const shimArgs = !fs.existsSync(shimPath) && fs.existsSync(tsShimPath)
+    ? ["-r", "ts-node/register/transpile-only", tsShimPath, configPath]
+    : [shimPath, configPath];
+  const shim = spawn(process.execPath, shimArgs, { cwd, detached: true, stdio: "ignore", env: process.env });
   shim.unref();
   try { await waitForFile(path.join(directory, "status.json"), 5000); }
   catch (error) { try { fs.rmSync(directory, { recursive: true, force: true }); } catch {} throw error; }

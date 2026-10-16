@@ -139,6 +139,37 @@ describe("Agent Tools Tests", () => {
     expect(result).toContain("Patch applied to");
   }, 60000); // Increase timeout to 60 seconds
 
+  describe("execCommand (real filesystem)", () => {
+    // execCommand runs through the file-backed ProcessManager, so it needs the
+    // real fs (the rest of this suite mocks fs) and an isolated processes dir.
+    const realFs = jest.requireActual<typeof import("fs")>("fs");
+    let tmpDir: string;
+    let prevProcessesDir: string | undefined;
+
+    beforeEach(() => {
+      for (const key of Object.keys(realFs)) {
+        const mockedFn = (mockFs as any)[key];
+        if (jest.isMockFunction(mockedFn)) {
+          mockedFn.mockImplementation((realFs as any)[key]);
+        }
+      }
+      tmpDir = realFs.mkdtempSync(
+        require("path").join(require("os").tmpdir(), "knowhow-exec-")
+      );
+      prevProcessesDir = process.env.KNOWHOW_PROCESSES_DIR;
+      process.env.KNOWHOW_PROCESSES_DIR = tmpDir;
+    });
+
+    afterEach(() => {
+      if (prevProcessesDir === undefined) delete process.env.KNOWHOW_PROCESSES_DIR;
+      else process.env.KNOWHOW_PROCESSES_DIR = prevProcessesDir;
+      realFs.rmSync(tmpDir, { recursive: true, force: true });
+      for (const key of Object.keys(realFs)) {
+        const mockedFn = (mockFs as any)[key];
+        if (jest.isMockFunction(mockedFn)) mockedFn.mockReset();
+      }
+    });
+
   test("execCommand should execute a system command and return its output", async () => {
     const command = 'echo "Hello World"';
     const expectedOutput = '$ echo "Hello World"\nHello World\n';
@@ -155,6 +186,7 @@ describe("Agent Tools Tests", () => {
     // Use the execCommand and expect it to return the correct result
     const result = await execCommand(command);
     expect(result.trim()).toEqual(expectedOutput);
+  });
   });
 
   test("it should run a test", () => {

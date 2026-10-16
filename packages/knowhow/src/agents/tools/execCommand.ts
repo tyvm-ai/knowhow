@@ -2,7 +2,7 @@ import * as fs from "fs";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { services, ToolsService } from "../../services";
-import { getProcessesDir, ManagedProcess, processDirectory, spawnManaged } from "../../processes/ProcessManager";
+import { getProcessesDir, ManagedProcess, ManagedProcessStatus, processDirectory, spawnManaged } from "../../processes/ProcessManager";
 
 export const execAsync = promisify(exec);
 
@@ -80,16 +80,23 @@ const execWithTimeout = async (
   }
 
   let timedOut = false;
+  let finalStatus: ManagedProcessStatus | undefined;
   if (timeout === -1) {
-    await managed.wait();
+    finalStatus = await managed.wait();
   } else {
-    try { await managed.wait(timeout); }
+    try { finalStatus = await managed.wait(timeout); }
     catch {
       timedOut = true;
       await stopAfterTimeout(managed);
     }
   }
   const output = readOutput(managed, maxBuffer);
+  // Preserve the pre-managed-process behaviour (child_process.exec): a
+  // non-zero exit with no stderr is still reported as a failure.
+  const failed = finalStatus && (finalStatus.state === "failed" || (finalStatus.exitCode ?? 0) !== 0);
+  if (!timedOut && failed && !output.stderr) {
+    output.stderr = finalStatus?.error || `Command failed: ${command}`;
+  }
   return { ...output, timedOut, killed: timedOut, ...common };
 };
 
