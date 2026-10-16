@@ -41,7 +41,26 @@ export class KnowhowGenericClient implements GenericClient {
     options: CompletionOptions
   ): Promise<CompletionResponse> {
     const response = await this.client.createChatCompletion(options);
-    return response.data;
+    const data = response.data as any;
+    // The proxy uses a JSON keep-alive (whitespace heartbeats, then one JSON
+    // body), so failures can arrive as a 200 with an error object or with a
+    // whitespace-only body if the server never produced a result.
+    if (data == null || typeof data !== "object") {
+      const raw = typeof data === "string" ? data.trim() : "";
+      throw new Error(
+        `Knowhow proxy returned an invalid chat completion response (${
+          raw ? JSON.stringify(raw.slice(0, 500)) : "empty body"
+        }) for model ${options.model}`
+      );
+    }
+    if (data.error) {
+      throw new Error(
+        `Knowhow proxy error: ${
+          data.error.details || data.error.message || JSON.stringify(data.error)
+        }`
+      );
+    }
+    return data;
   }
 
   async createEmbedding(options: EmbeddingOptions): Promise<EmbeddingResponse> {

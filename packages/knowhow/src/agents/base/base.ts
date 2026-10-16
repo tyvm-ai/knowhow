@@ -1125,13 +1125,28 @@ export abstract class BaseAgent implements IAgent {
           "warn"
         );
         const error = response as any;
-        if (error != null && "response" in error && "data" in error.response) {
+        if (
+          error != null &&
+          typeof error === "object" &&
+          error.response != null &&
+          typeof error.response === "object" &&
+          "data" in error.response
+        ) {
           this.log(
             `Response data: ${JSON.stringify(error.response.data, null, 2)}`,
             "warn"
           );
         }
         if (!response?.choices) {
+          if (typeof response !== "object" || response === null) {
+            const rawValue = response as unknown;
+            const raw = typeof rawValue === "string" ? rawValue.trim() : "";
+            throw new Error(
+              `AI response error: provider returned a non-JSON response (${
+                raw ? JSON.stringify(raw.slice(0, 500)) : "empty body"
+              })`
+            );
+          }
           const errMsg =
             (error?.error?.message ?? error?.message) ||
             JSON.stringify(response);
@@ -1443,7 +1458,8 @@ export abstract class BaseAgent implements IAgent {
       if (
         e != null &&
         typeof e === "object" &&
-        "response" in e &&
+        (e as any).response != null &&
+        typeof (e as any).response === "object" &&
         "data" in (e as any).response
       ) {
         this.log(
