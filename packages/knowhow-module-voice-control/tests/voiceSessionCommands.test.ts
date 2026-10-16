@@ -108,9 +108,9 @@ describe("voice-control commands CLI", () => {
     const program = new Command();
     await voiceControlModule.register?.({ config: {}, cwd: process.cwd(), context: { Program: program } as any } as any);
     const cmd = program.commands.find((c) => c.name() === "voice-agent")!;
-    expect((cmd as any)._alias).toBe("voice-control");
+    expect(cmd.alias()).toBe("voice-control");
     // We now accept [subcommand] [args...] so "parse <utterance>" works.
-    const argNames: string[] = (cmd as any)._args.map((a: any) => a.name);
+    const argNames: string[] = cmd.registeredArguments.map((a) => a.name());
     expect(argNames[0]).toBe("subcommand");
     // args... variadic is optional extra — just ensure subcommand is first
   });
