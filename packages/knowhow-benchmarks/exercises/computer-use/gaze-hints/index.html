@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gaze-Hints Benchmark</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+    }
+    #hud {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 56px;
+      background: rgba(13,17,23,0.97);
+      border-bottom: 1px solid #30363d;
+      display: flex; align-items: center;
+      padding: 0 20px; gap: 28px; z-index: 100;
+    }
+    .hud-item { display: flex; flex-direction: column; align-items: center; }
+    .hud-label { font-size: 10px; color: #7d8590; text-transform: uppercase; letter-spacing: 1px; }
+    .hud-value { font-size: 18px; font-weight: bold; color: #58a6ff; }
+    .hud-value.green { color: #3fb950; }
+    .hud-value.red { color: #f85149; }
+    #main { margin-top: 56px; padding: 20px; display: flex; gap: 20px; flex-wrap: wrap; }
+    .section {
+      background: #161b22; border: 1px solid #30363d; border-radius: 10px;
+      padding: 18px; min-width: 280px; flex: 1;
+    }
+    .section h2 { font-size: 13px; color: #7d8590; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; }
+    .elem-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+    button {
+      padding: 8px 12px; border-radius: 6px; border: 1px solid #30363d;
+      background: #21262d; color: #e6edf3; cursor: pointer; font-size: 13px;
+      transition: background 0.15s;
+    }
+    button:hover { background: #30363d; }
+    button.primary { background: #1f6feb; border-color: #388bfd; }
+    button.primary:hover { background: #388bfd; }
+    button.danger { background: #6e2228; border-color: #f85149; }
+    button.danger:hover { background: #8e3239; }
+    input[type="text"], input[type="email"], textarea, select {
+      padding: 7px 10px; border-radius: 6px; border: 1px solid #30363d;
+      background: #0d1117; color: #e6edf3; font-size: 13px; width: 100%;
+    }
+    input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+    label { font-size: 13px; color: #8b949e; display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .form-group { margin-bottom: 12px; }
+    .form-group > label { margin-bottom: 4px; display: block; }
+    .link-list { list-style: none; }
+    .link-list li { margin-bottom: 8px; }
+    .link-list a { color: #58a6ff; text-decoration: none; font-size: 13px; }
+    .link-list a:hover { text-decoration: underline; }
+    #target-indicator {
+      position: fixed; bottom: 20px; right: 20px;
+      background: #1f6feb; border-radius: 8px; padding: 12px 18px;
+      font-size: 13px; z-index: 200; display: none;
+    }
+    #elements-list {
+      position: fixed; top: 56px; right: 0; width: 300px; height: calc(100vh - 56px);
+      background: #0d1117; border-left: 1px solid #30363d;
+      overflow-y: auto; padding: 12px; display: none;
+      font-size: 11px; font-family: monospace;
+    }
+    #elements-list.visible { display: block; }
+    .el-item { padding: 6px; border-bottom: 1px solid #21262d; cursor: pointer; }
+    .el-item:hover { background: #161b22; }
+    .el-role { color: #79c0ff; }
+    .el-name { color: #e6edf3; }
+    .el-bounds { color: #7d8590; }
+  </style>
+</head>
+<body>
+  <div id="hud">
+    <div class="hud-item"><span class="hud-label">Elements</span><span class="hud-value" id="hud-count">0</span></div>
+    <div class="hud-item"><span class="hud-label">Actionable</span><span class="hud-value green" id="hud-actionable">0</span></div>
+    <div class="hud-item"><span class="hud-label">Gaze X</span><span class="hud-value" id="hud-gx">—</span></div>
+    <div class="hud-item"><span class="hud-label">Gaze Y</span><span class="hud-value" id="hud-gy">—</span></div>
+    <div class="hud-item"><span class="hud-label">Top Hit</span><span class="hud-value" id="hud-top">—</span></div>
+    <button onclick="toggleList()" style="margin-left:auto;font-size:11px;">Show Elements</button>
+  </div>
+
+  <div id="main">
+    <!-- Section 1: Buttons -->
+    <div class="section">
+      <h2>Buttons</h2>
+      <div class="elem-grid">
+        <button data-label="Save" class="primary" onclick="handleClick('Save')">Save</button>
+        <button data-label="Cancel" onclick="handleClick('Cancel')">Cancel</button>
+        <button data-label="Submit" class="primary" onclick="handleClick('Submit')">Submit</button>
+        <button data-label="Delete" class="danger" onclick="handleClick('Delete')">Delete</button>
+        <button data-label="Edit" onclick="handleClick('Edit')">Edit</button>
+        <button data-label="Download" onclick="handleClick('Download')">Download</button>
+        <button data-label="Upload" onclick="handleClick('Upload')">Upload</button>
+        <button data-label="Refresh" onclick="handleClick('Refresh')">Refresh</button>
+        <button data-label="Filter" onclick="handleClick('Filter')">Filter</button>
+        <button data-label="Search" onclick="handleClick('Search')">Search</button>
+        <button data-label="Export" onclick="handleClick('Export')">Export</button>
+        <button data-label="Import" onclick="handleClick('Import')">Import</button>
+      </div>
+    </div>
+
+    <!-- Section 2: Inputs -->
+    <div class="section">
+      <h2>Text Inputs</h2>
+      <div class="form-group"><label>Name</label><input type="text" id="inp-name" placeholder="Full name" /></div>
+      <div class="form-group"><label>Email</label><input type="email" id="inp-email" placeholder="email@example.com" /></div>
+      <div class="form-group"><label>Phone</label><input type="text" id="inp-phone" placeholder="+1 555 000 0000" /></div>
+      <div class="form-group"><label>Message</label><textarea id="inp-message" rows="3" placeholder="Your message..."></textarea></div>
+      <div class="form-group"><label>Subject</label><input type="text" id="inp-subject" placeholder="Email subject" /></div>
+      <div class="form-group"><label>Search</label><input type="text" id="inp-search" placeholder="Search..." /></div>
+    </div>
+
+    <!-- Section 3: Selects & Checkboxes -->
+    <div class="section">
+      <h2>Options</h2>
+      <div class="form-group">
+        <label>Priority</label>
+        <select id="sel-priority">
+          <option>Low</option><option>Medium</option><option>High</option><option>Critical</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <select id="sel-category">
+          <option>General</option><option>Bug</option><option>Feature</option><option>Support</option>
+        </select>
+      </div>
+      <div class="form-group"><label><input type="checkbox" id="chk-newsletter" /> Subscribe to newsletter</label></div>
+      <div class="form-group"><label><input type="checkbox" id="chk-terms" /> Accept terms &amp; conditions</label></div>
+      <div class="form-group"><label><input type="checkbox" id="chk-remember" /> Remember me</label></div>
+      <div class="form-group"><label><input type="checkbox" id="chk-notifications" /> Enable notifications</label></div>
+    </div>
+
+    <!-- Section 4: Links -->
+    <div class="section">
+      <h2>Links</h2>
+      <ul class="link-list">
+        <li><a href="#" onclick="handleClick('Privacy Policy'); return false;">Privacy Policy</a></li>
+        <li><a href="#" onclick="handleClick('Terms of Service'); return false;">Terms of Service</a></li>
+        <li><a href="#" onclick="handleClick('Help Center'); return false;">Help Center</a></li>
+        <li><a href="#" onclick="handleClick('Contact Us'); return false;">Contact Us</a></li>
+        <li><a href="#" onclick="handleClick('Documentation'); return false;">Documentation</a></li>
+        <li><a href="#" onclick="handleClick('GitHub'); return false;">GitHub</a></li>
+        <li><a href="#" onclick="handleClick('Blog'); return false;">Blog</a></li>
+        <li><a href="#" onclick="handleClick('Status Page'); return false;">Status Page</a></li>
+      </ul>
+    </div>
+
+    <!-- Section 5: Mixed form -->
+    <div class="section" style="flex: 2 1 500px;">
+      <h2>Account Form</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group"><label>First Name</label><input type="text" placeholder="First name" /></div>
+        <div class="form-group"><label>Last Name</label><input type="text" placeholder="Last name" /></div>
+        <div class="form-group"><label>Username</label><input type="text" placeholder="@username" /></div>
+        <div class="form-group"><label>Password</label><input type="text" placeholder="Password" /></div>
+        <div class="form-group"><label>Company</label><input type="text" placeholder="Company name" /></div>
+        <div class="form-group"><label>Department</label><input type="text" placeholder="Department" /></div>
+        <div class="form-group"><label>Role</label>
+          <select><option>User</option><option>Admin</option><option>Manager</option></select>
+        </div>
+        <div class="form-group"><label>Language</label>
+          <select><option>English</option><option>Spanish</option><option>French</option></select>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button class="primary" onclick="handleClick('Create Account')">Create Account</button>
+        <button onclick="handleClick('Reset')">Reset</button>
+        <button class="danger" onclick="handleClick('Delete Account')">Delete Account</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="target-indicator">✓ Clicked: <span id="target-label">—</span></div>
+  <div id="elements-list"></div>
+
+  <script>
+    // ── Report element rects to the harness via /api/elements ──────────────
+
+    const ACTIONABLE_ROLES = ['BUTTON', 'A', 'INPUT', 'TEXTAREA', 'SELECT'];
+
+    function getElements() {
+      const all = document.querySelectorAll('button, input, textarea, select, a[href]');
+      return Array.from(all).map((el, i) => {
+        const rect = el.getBoundingClientRect();
+        const screenX = rect.left + window.screenX + (window.outerWidth - window.innerWidth) / 2;
+        const screenY = rect.top + window.screenY + (window.outerHeight - window.innerHeight);
+        return {
+          id: el.id || el.dataset.label || el.textContent?.trim() || `el-${i}`,
+          role: el.tagName.toLowerCase(),
+          title: el.getAttribute('placeholder') || el.textContent?.trim() || el.getAttribute('aria-label') || '',
+          bounds: {
+            x: Math.round(screenX),
+            y: Math.round(screenY),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          },
+          type: el.getAttribute('type') || el.tagName.toLowerCase(),
+        };
+      });
+    }
+
+    // Expose globally for harness
+    window.getElements = getElements;
+
+    // ── Click handler ───────────────────────────────────────────────────────
+    function handleClick(label) {
+      document.getElementById('target-label').textContent = label;
+      const ind = document.getElementById('target-indicator');
+      ind.style.display = 'block';
+      setTimeout(() => { ind.style.display = 'none'; }, 2000);
+      // Report to harness
+      fetch('/api/click', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ label, timestamp: Date.now() }),
+      }).catch(() => {});
+    }
+
+    // ── Element list sidebar ──────────────────────────────────────────────
+    function toggleList() {
+      const el = document.getElementById('elements-list');
+      el.classList.toggle('visible');
+      if (el.classList.contains('visible')) renderList();
+    }
+
+    function renderList() {
+      const els = getElements();
+      const container = document.getElementById('elements-list');
+      document.getElementById('hud-count').textContent = String(els.length);
+      document.getElementById('hud-actionable').textContent = String(els.length);
+      container.innerHTML = els.map((e) =>
+        `<div class="el-item">
+          <span class="el-role">${e.role}</span>
+          <span class="el-name"> ${e.title || e.id}</span><br/>
+          <span class="el-bounds">${e.bounds.x},${e.bounds.y} ${e.bounds.width}×${e.bounds.height}</span>
+        </div>`
+      ).join('');
+    }
+
+    // Update HUD every second
+    setInterval(() => {
+      const els = getElements();
+      document.getElementById('hud-count').textContent = String(els.length);
+      document.getElementById('hud-actionable').textContent = String(els.length);
+    }, 1000);
+  </script>
+</body>
+</html>

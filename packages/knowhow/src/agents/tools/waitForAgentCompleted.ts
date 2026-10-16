@@ -108,7 +108,7 @@ function pidAlive(pid: number): boolean {
 }
 
 /**
- * Discover the pid of a spawned agent task. AgentSyncFs.createTask records the
+ * Discover the pid of a spawned agent task. AgentFsChannel records the
  * agent subprocess's own `process.pid` into metadata.json, so we read the
  * `pid` (or legacy `processId`) field from there. If it's absent (e.g. an older
  * task created before this was persisted), we skip the liveness check.

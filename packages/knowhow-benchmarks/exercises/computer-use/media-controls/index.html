@@ -1,0 +1,103 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Media library</title>
+<style>
+  body { font: 16px sans-serif; max-width: 760px; margin: 2rem; }
+  button, select { padding: .5rem; margin: .25rem; }
+  li { margin: .4rem; }
+  .success { color: green; font-weight: bold; }
+</style>
+<main>
+  <h1>Media library</h1>
+  <p>Use the accessible player controls to complete every checkpoint.</p>
+  <section aria-labelledby="track-heading">
+    <h2 id="track-heading">Tracks</h2>
+    <label for="track">Selected track</label>
+    <select id="track">
+      <option>Sunrise Drive</option>
+      <option>Midnight Signals</option>
+      <option>Ocean Between Us</option>
+    </select>
+    <button id="select-track">Select track</button>
+    <p id="selected">Selected: Sunrise Drive</p>
+  </section>
+  <section aria-label="Player">
+    <button id="play" aria-label="Play Midnight Signals">Play</button>
+    <button id="pause" aria-label="Pause Midnight Signals">Pause</button>
+    <button id="like" aria-label="Like Midnight Signals">Like</button>
+    <p id="player-state">Paused · not liked</p>
+  </section>
+  <h2>Checklist</h2>
+  <ol>
+    <li id="check-selected">□ Select “Midnight Signals”</li>
+    <li id="check-played">□ Play “Midnight Signals”</li>
+    <li id="check-paused">□ Pause “Midnight Signals”</li>
+    <li id="check-liked">□ Like “Midnight Signals”</li>
+  </ol>
+  <p id="status">Incomplete (0/4)</p>
+  <button id="submit">Submit result</button>
+</main>
+<script>
+  const elements = {
+    track: document.getElementById('track'),
+    selectTrack: document.getElementById('select-track'),
+    selected: document.getElementById('selected'),
+    play: document.getElementById('play'),
+    pause: document.getElementById('pause'),
+    like: document.getElementById('like'),
+    playerState: document.getElementById('player-state'),
+    status: document.getElementById('status'),
+    submit: document.getElementById('submit'),
+  };
+  const completed = new Set();
+  let selected = false;
+  let playing = false;
+  let paused = false;
+  let liked = false;
+
+  function mark(key, elementId, text) {
+    if (completed.has(key)) return;
+    completed.add(key);
+    document.getElementById(elementId).textContent = `✓ ${text}`;
+    elements.status.textContent = `${completed.size === 4 ? 'SUCCESS' : 'Incomplete'} (${completed.size}/4)`;
+  }
+
+  elements.selectTrack.addEventListener('click', () => {
+    if (elements.track.value !== 'Midnight Signals') return;
+    selected = true;
+    elements.selected.textContent = 'Selected: Midnight Signals';
+    mark('selected', 'check-selected', 'Select “Midnight Signals”');
+  });
+  elements.play.addEventListener('click', () => {
+    if (!selected || playing) return;
+    playing = true;
+    paused = false;
+    elements.playerState.textContent = `Playing · ${liked ? 'liked' : 'not liked'}`;
+    mark('played', 'check-played', 'Play “Midnight Signals”');
+  });
+  elements.pause.addEventListener('click', () => {
+    if (!playing) return;
+    playing = false;
+    paused = true;
+    elements.playerState.textContent = `Paused · ${liked ? 'liked' : 'not liked'}`;
+    mark('paused', 'check-paused', 'Pause “Midnight Signals”');
+  });
+  elements.like.addEventListener('click', () => {
+    if (!paused || liked) return;
+    liked = true;
+    elements.playerState.textContent = 'Paused · liked';
+    mark('liked', 'check-liked', 'Like “Midnight Signals”');
+  });
+  elements.submit.addEventListener('click', async () => {
+    await fetch('/api/results', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        score: completed.size,
+        complete: completed.size === 4,
+        steps: { selected, played: completed.has('played'), paused, liked },
+      }),
+    });
+    elements.status.textContent += ' · recorded';
+  });
+</script>

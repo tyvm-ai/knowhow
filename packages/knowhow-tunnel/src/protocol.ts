@@ -9,6 +9,7 @@ import {
   TunnelWsUpgrade,
   TunnelWsData,
   TunnelWsClose,
+  AllowedTunnelPort,
 } from "./types";
 
 /**
@@ -180,20 +181,40 @@ export function normalizeHeadersForLocal(
   return normalized;
 }
 
+/** Resolve the configured transport for a port. Numeric entries are legacy HTTP. */
+export function getAllowedPortTransport(
+  port: number,
+  allowedPorts?: AllowedTunnelPort[]
+): "http" | "tcp" | undefined {
+  if (!allowedPorts) return undefined;
+  // Walk backwards to match backend normalization when duplicate ports occur.
+  for (let index = allowedPorts.length - 1; index >= 0; index--) {
+    const entry = allowedPorts[index];
+    const configuredPort = typeof entry === "number" ? entry : entry.port;
+    if (Number(configuredPort) === Number(port)) {
+      return typeof entry === "number" ? "http" : entry.transport || "http";
+    }
+  }
+  return undefined;
+}
+
 /**
  * Check if a port is allowed
  */
-export function isPortAllowed(port: number, allowedPorts?: number[]): boolean {
+export function isPortAllowed(
+  port: number,
+  allowedPorts?: AllowedTunnelPort[]
+): boolean {
   if (!allowedPorts || allowedPorts.length === 0) {
     console.log(`[isPortAllowed] No allowed ports configured, blocking port ${port}`);
     return false; // Block all ports by default (safe default)
   }
 
   // Use a more lenient comparison that handles potential type mismatches
-  // Compare both direct match and string/number coercion
-  const result = allowedPorts.some(allowedPort =>
-    allowedPort === port || Number(allowedPort) === Number(port)
-  );
+  const result = allowedPorts.some((allowedPort) => {
+    const configuredPort = typeof allowedPort === "number" ? allowedPort : allowedPort.port;
+    return Number(configuredPort) === Number(port);
+  });
 
   console.log(`[isPortAllowed] Result: ${result}`);
   return result;

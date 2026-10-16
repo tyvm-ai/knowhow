@@ -84,8 +84,8 @@ function parseModalityChain(raw: string): { via: Modality[]; target: Modality } 
 export function addConvertCommand(program: Command): void {
   program
     .command("convert")
-    .description("Convert a file between modalities (pdf, image, audio, video, text)")
-    .option("-i, --input <path>", "Source file path (required unless --list)")
+    .description("Convert a file or resolvable input between modalities (pdf, image, audio, video, text)")
+    .option("-i, --input <source>", "Source file path, URL, or other resolvable input (required unless --list)")
     .option("-o, --output <path>", "Output file or directory (optional; defaults to stdout for text)")
     .option(
       "--to <chain>",
@@ -94,6 +94,7 @@ export function addConvertCommand(program: Command): void {
     )
     .option("--from <modality>", "Override inferred input modality")
     .option("--prefer <names>", "Comma-separated list of preferred converter names (used when --to is a single modality)")
+    .option("--input-resolver <name>", "Force a registered input resolver (for example fs or video-url)")
     .option("--force", "Ignore cache and re-run converters")
     .option("--model <name>", "Model to use (injected into converterOptions for all converters, e.g. tts-1, dall-e-3, gpt-4o)")
     .option("--start-page <n>", "First page (documents)", parseInt)
@@ -128,20 +129,17 @@ export function addConvertCommand(program: Command): void {
                 : c.inputModality ?? "?";
               console.log(`  • ${c.name.padEnd(24)} ${input} → ${c.outputType}${c.cache ? " (cached)" : ""}`);
             }
+            console.log("\n🔎 Registered input resolvers:\n");
+            for (const resolver of Conversion.listResolvers()) {
+              console.log(`  • ${resolver.name}`);
+            }
             console.log();
           }
           return;
         }
 
-        // Validate --input
         if (!opts.input) {
-          console.error("Error: --input <path> is required (use --list to see converters)");
-          process.exit(1);
-        }
-
-        const inputPath = path.resolve(opts.input);
-        if (!fs.existsSync(inputPath)) {
-          console.error(`Error: input file not found: ${inputPath}`);
+          console.error("Error: --input <source> is required (use --list to see converters)");
           process.exit(1);
         }
 
@@ -202,10 +200,11 @@ export function addConvertCommand(program: Command): void {
           : [];
 
         const chainDisplay = [...viaModalities, targetModality].join(" → ");
-        console.error(`🔄 Converting ${inputPath} → ${chainDisplay}...`);
+        console.error(`🔄 Converting ${opts.input} → ${chainDisplay}...`);
 
         const convertOpts: ConvertOptions = {
           force: opts.force ?? false,
+          inputResolver: opts.inputResolver,
           preferredConverters,
           startPage: opts.startPage,
           endPage: opts.endPage,
@@ -221,7 +220,7 @@ export function addConvertCommand(program: Command): void {
           ...(viaModalities.length > 0 ? { via: viaModalities } : {}),
         };
 
-        const result = await Conversion.convert(inputPath, targetModality, convertOpts);
+        const result = await Conversion.convert(opts.input, targetModality, convertOpts);
         process.stderr.write("\n");
 
         if (opts.json) {

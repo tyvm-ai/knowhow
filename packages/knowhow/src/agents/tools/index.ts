@@ -13,6 +13,7 @@ export * from "./readFile";
 export * from "./scanFile";
 export * from "./textSearch";
 export * from "./visionTool";
+export * from "./loadImageAsBase64";
 export * from "./writeFile";
 export * from "./fileSearch";
 export * from "./language";

@@ -5,6 +5,7 @@ import { inspectTools } from "../agents/tools/minimal/inspectTools";
 import { minimalDefinitions } from "../agents/tools/minimal/definitions";
 import { finalAnswer } from "../agents/tools/finalAnswer";
 import { includedTools } from "../agents/tools/list";
+import { TraceAll } from "../util/Trace";
 
 /*
  * MinimalToolsService
@@ -19,6 +20,7 @@ import { includedTools } from "../agents/tools/list";
  * - Works on all providers and older models (no provider-specific defer_loading needed).
  * - Agents discover tools via inspectTools() and call them via callTool().
  */
+@TraceAll()
 export class MinimalToolsService extends ToolsService {
   /** Full catalog of every registered tool (base + extended). */
   private allToolsCatalog: Tool[] = [];

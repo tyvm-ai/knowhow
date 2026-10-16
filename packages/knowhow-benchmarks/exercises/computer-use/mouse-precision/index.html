@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mouse Precision Benchmark</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+      user-select: none;
+    }
+    #hud {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 60px;
+      background: rgba(13,17,23,0.92);
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      gap: 32px;
+      z-index: 100;
+    }
+    .hud-item { display: flex; flex-direction: column; align-items: center; }
+    .hud-label { font-size: 10px; color: #7d8590; text-transform: uppercase; letter-spacing: 1px; }
+    .hud-value { font-size: 20px; font-weight: bold; color: #58a6ff; }
+    #arena {
+      position: fixed;
+      top: 60px; left: 0; right: 0; bottom: 0;
+      cursor: crosshair;
+    }
+    #target {
+      position: absolute;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: box-shadow 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: bold;
+      color: rgba(0,0,0,0.5);
+      box-shadow: 0 0 20px rgba(255,255,255,0.2);
+    }
+    #target:hover { box-shadow: 0 0 30px rgba(255,255,255,0.4); }
+    #target.hit {
+      animation: hitPulse 0.3s ease-out forwards;
+    }
+    @keyframes hitPulse {
+      0%   { transform: scale(1.0); opacity: 1; }
+      50%  { transform: scale(1.4); opacity: 0.8; }
+      100% { transform: scale(0.0); opacity: 0; }
+    }
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(13,17,23,0.92);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      z-index: 200;
+    }
+    #overlay h1 { font-size: 36px; color: #58a6ff; }
+    #overlay p { font-size: 16px; color: #7d8590; max-width: 500px; text-align: center; }
+    #overlay button {
+      padding: 14px 40px;
+      background: #238636;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 18px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    #overlay button:hover { background: #2ea043; }
+    #results-panel {
+      position: fixed;
+      inset: 0;
+      background: rgba(13,17,23,0.95);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      z-index: 300;
+    }
+    #results-panel h1 { font-size: 32px; color: #3fb950; }
+    .result-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px 32px;
+      font-size: 15px;
+    }
+    .result-key { color: #7d8590; }
+    .result-val { color: #e6edf3; font-weight: bold; }
+    #log-panel {
+      position: fixed;
+      bottom: 8px;
+      right: 8px;
+      width: 260px;
+      background: rgba(13,17,23,0.8);
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 11px;
+      color: #7d8590;
+      max-height: 120px;
+      overflow-y: auto;
+      z-index: 50;
+    }
+    .log-entry { margin-bottom: 3px; }
+    .log-hit { color: #3fb950; }
+    .log-miss { color: #f85149; }
+  </style>
+</head>
+<body>
+<!-- NOTE: #target must be inside #arena so its positioning is arena-relative -->
+
+<div id="hud">
+  <div class="hud-item">
+    <span class="hud-label">Score</span>
+    <span class="hud-value" id="score-display">0</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-label">Round</span>
+    <span class="hud-value" id="round-display">0 / 0</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-label">Hits</span>
+    <span class="hud-value" id="hits-display">0</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-label">Misses</span>
+    <span class="hud-value" id="misses-display">0</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-label">Avg ms</span>
+    <span class="hud-value" id="avg-display">--</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-label">Target Size</span>
+    <span class="hud-value" id="size-display">--</span>
+  </div>
+  <div class="hud-item">
+    <span class="hud-label">Session</span>
+    <span class="hud-value" id="session-display" style="font-size:12px">--</span>
+  </div>
+</div>
+
+<div id="arena">
+  <div id="target" style="display:none"></div>
+</div>
+
+<div id="overlay">
+  <h1>🎯 Mouse Precision</h1>
+  <p>Click the colored square as fast as you can. Squares get smaller as the game progresses. Your performance is measured and scored.</p>
+  <div style="font-size:13px; color:#58a6ff; background:#0d1117; border:1px solid #30363d; border-radius:6px; padding:12px; max-width:420px; text-align:left;">
+    <strong>API Endpoints:</strong><br/>
+    POST /api/start — start a session<br/>
+    POST /api/click — report a click (hit or miss)<br/>
+    GET  /api/state — current game state<br/>
+    GET  /api/results — final results<br/>
+    GET  /api/score — current score
+  </div>
+  <button id="start-btn">Start Game</button>
+</div>
+
+<div id="results-panel">
+  <h1>🏆 Game Over!</h1>
+  <div class="result-grid" id="result-grid"></div>
+  <button onclick="location.reload()" style="margin-top:16px; padding:10px 28px; background:#238636; color:white; border:none; border-radius:6px; font-size:15px; cursor:pointer; font-family:inherit;">Play Again</button>
+</div>
+
+<div id="log-panel"></div>
+
+<script>
+const API_BASE = 'http://localhost:7432';
+
+let gameState = null;
+let targetAppearedAt = null;
+let sessionId = null;
+let pendingClick = false;
+let clicksEnabled = false;
+
+const arena = document.getElementById('arena');
+const target = document.getElementById('target');
+const overlay = document.getElementById('overlay');
+const resultsPanel = document.getElementById('results-panel');
+const logPanel = document.getElementById('log-panel');
+
+function log(msg, cls = '') {
+  const el = document.createElement('div');
+  el.className = 'log-entry ' + cls;
+  el.textContent = new Date().toLocaleTimeString('en', {hour12:false}) + ' ' + msg;
+  logPanel.prepend(el);
+  while (logPanel.children.length > 30) logPanel.removeChild(logPanel.lastChild);
+}
+
+function updateHUD(state) {
+  document.getElementById('score-display').textContent = state.score ?? 0;
+  document.getElementById('round-display').textContent = `${state.round ?? 0} / ${state.totalRounds ?? 0}`;
+  document.getElementById('hits-display').textContent = state.hits ?? 0;
+  document.getElementById('misses-display').textContent = state.misses ?? 0;
+  document.getElementById('avg-display').textContent = state.avgReactionMs ? Math.round(state.avgReactionMs) : '--';
+  document.getElementById('size-display').textContent = state.currentTarget ? `${state.currentTarget.size}px` : '--';
+  document.getElementById('session-display').textContent = sessionId ? sessionId.slice(0,8) : '--';
+}
+
+function showTarget(t) {
+  const arenaRect = arena.getBoundingClientRect();
+  target.style.display = 'flex';
+  target.style.left = t.x + 'px';
+  target.style.top = t.y + 'px';
+  target.style.width = t.size + 'px';
+  target.style.height = t.size + 'px';
+  target.style.background = t.color;
+  target.style.borderRadius = t.shape === 'circle' ? '50%' : '8px';
+  target.classList.remove('hit');
+  target.dataset.id = t.id;
+  target.textContent = '';
+  targetAppearedAt = Date.now();
+}
+
+function hideTarget() {
+  target.style.display = 'none';
+  target.classList.remove('hit');
+}
+
+async function fetchState() {
+  const r = await fetch(`${API_BASE}/api/state?session=${sessionId}`);
+  return r.json();
+}
+
+async function startGame() {
+  // Use fixed arena size that fits most screens safely
+  // The arena div fills the viewport but targets are constrained to 1200x700 logical area
+  const config = { arenaW: 1200, arenaH: 700 };
+  const r = await fetch(`${API_BASE}/api/start`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ config }) });
+  const data = await r.json();
+  sessionId = data.sessionId;
+  gameState = data;
+  overlay.style.display = 'none';
+  log('Game started: ' + sessionId.slice(0,8) + ` arena:${config.arenaW}x${config.arenaH}`, '');
+  updateHUD(data);
+  if (data.currentTarget) showTarget(data.currentTarget);
+  // Small delay before enabling clicks so the startGame button click doesn't bleed through
+  setTimeout(() => { clicksEnabled = true; }, 100);
+  pollState();
+}
+
+async function reportClick(x, y, hit, targetId, reactionMs) {
+  const r = await fetch(`${API_BASE}/api/click`, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ sessionId, x, y, hit, targetId, reactionMs })
+  });
+  return r.json();
+}
+
+async function pollState() {
+  while (true) {
+    await new Promise(r => setTimeout(r, 300));
+    if (!sessionId) break;
+    try {
+      const state = await fetchState();
+      gameState = state;
+      updateHUD(state);
+      if (state.finished) {
+        hideTarget();
+        showResults(state);
+        break;
+      }
+      if (state.currentTarget) {
+        if (target.dataset.id !== state.currentTarget.id) {
+          showTarget(state.currentTarget);
+        }
+      } else {
+        hideTarget();
+      }
+    } catch(e) { /* ignore transient */ }
+  }
+}
+
+async function showResults(state) {
+  resultsPanel.style.display = 'flex';
+  const grid = document.getElementById('result-grid');
+  const items = [
+    ['Final Score', state.score],
+    ['Hits', state.hits],
+    ['Misses', state.misses],
+    ['Accuracy', state.accuracy ? (state.accuracy * 100).toFixed(1) + '%' : '--'],
+    ['Avg Reaction', state.avgReactionMs ? Math.round(state.avgReactionMs) + ' ms' : '--'],
+    ['Best Reaction', state.bestReactionMs ? Math.round(state.bestReactionMs) + ' ms' : '--'],
+    ['Total Time', state.totalTime ? (state.totalTime / 1000).toFixed(1) + 's' : '--'],
+    ['Session', state.sessionId ? state.sessionId.slice(0,8) : '--'],
+  ];
+  grid.innerHTML = items.map(([k,v]) =>
+    `<span class="result-key">${k}</span><span class="result-val">${v}</span>`
+  ).join('');
+}
+
+// Click on arena = miss unless clicking on target
+arena.addEventListener('click', async (e) => {
+  if (!clicksEnabled || pendingClick || !gameState || gameState.finished || !gameState.currentTarget) return;
+  pendingClick = true;
+  const reactionMs = targetAppearedAt ? Date.now() - targetAppearedAt : 9999;
+  // Check if clicked on target
+  const t = gameState.currentTarget;
+  const arenaRect = arena.getBoundingClientRect();
+  const cx = e.clientX - arenaRect.left;
+  const cy = e.clientY - arenaRect.top;
+  const inTarget = cx >= t.x && cx <= t.x + t.size && cy >= t.y && cy <= t.y + t.size;
+  if (inTarget) {
+    target.classList.add('hit');
+    log(`HIT #${t.id} in ${reactionMs}ms`, 'log-hit');
+  } else {
+    log(`MISS at ${Math.round(cx)},${Math.round(cy)}`, 'log-miss');
+  }
+  try {
+    const result = await reportClick(Math.round(cx), Math.round(cy), inTarget, t.id, reactionMs);
+    gameState = result;
+    updateHUD(result);
+    if (result.finished) {
+      hideTarget();
+      showResults(result);
+    } else if (result.currentTarget) {
+      // Show next target — if same id it's a miss (stay), if new id it's a hit (new target)
+      showTarget(result.currentTarget);
+    }
+  } catch(err) { console.error(err); }
+  pendingClick = false;
+});
+
+document.getElementById('start-btn').addEventListener('click', startGame);
+
+// Keyboard shortcut: press S to start
+document.addEventListener('keydown', (e) => {
+  if (e.key === 's' || e.key === 'S') {
+    if (overlay.style.display !== 'none') startGame();
+  }
+});
+</script>
+</body>
+</html>

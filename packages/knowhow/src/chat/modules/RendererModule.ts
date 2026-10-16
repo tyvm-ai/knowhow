@@ -2,6 +2,7 @@
  * RendererModule - Allows switching the active renderer mid-session via /render command
  */
 import { BaseChatModule } from "./BaseChatModule";
+import { TraceAll } from "../../util/Trace";
 import { ChatCommand, ChatMode, ChatContext, ChatService } from "../types";
 import { loadRenderer } from "../renderer/loadRenderer";
 import { ConsoleRenderer } from "../renderer";
@@ -10,6 +11,7 @@ import { getConfig, updateConfig } from "../../config";
 
 const BUILTIN_RENDERERS = ["basic", "compact", "fancy"];
 
+@TraceAll()
 export class RendererModule extends BaseChatModule {
   name = "renderer";
   description = "Renderer switching functionality";

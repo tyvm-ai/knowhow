@@ -2,7 +2,14 @@ import { AIClient } from "@tyvm/knowhow/ts_build/src/clients";
 import { ScriptTracer } from "./ScriptTracer";
 import { ScriptPolicyEnforcer } from "./ScriptPolicy";
 import { Artifact, QuotaUsage } from "./types";
-import { Message } from "@tyvm/knowhow/ts_build/src/clients/types";
+import {
+  ChoiceQuestion,
+  DecisionContent,
+  DecisionOptions,
+  Message,
+  NoulQuestion,
+  ScoreQuestion,
+} from "@tyvm/knowhow/ts_build/src/clients/types";
 import { ToolsService } from "@tyvm/knowhow/ts_build/src/services/Tools";
 
 /**
@@ -72,20 +79,110 @@ export class SandboxContext {
   };
 
   /**
-   * List the names of all tools available to this script (respecting the
-   * ToolsService's enabled set). Used by the generic function resolver to know
-   * which bare identifiers should route to callTool.
+   * List every function registered on the script's ToolsService. Prompt-visible
+   * tools are intentionally a separate concern from script tool access.
    */
   listToolNames(): string[] {
     try {
       const names =
-        typeof (this.toolsService as any).getToolNames === "function"
-          ? (this.toolsService as any).getToolNames()
+        typeof this.toolsService.getFunctionNames === "function"
+          ? this.toolsService.getFunctionNames()
           : [];
       return Array.isArray(names) ? names : [];
     } catch {
       return [];
     }
+  }
+
+  /** Evaluate one or more typed questions through a decision-model provider. */
+  async decide(
+    state: DecisionContent,
+    questions: DecisionOptions["questions"],
+    options: { provider?: string; model?: string } = {}
+  ) {
+    const provider = options.provider ?? "jev";
+    const estimatedTokens = Math.ceil(
+      JSON.stringify({ state, questions }).length / 4
+    );
+    if (!this.policyEnforcer.checkTokenUsage(estimatedTokens)) {
+      throw new Error("Token quota would be exceeded");
+    }
+
+    this.tracer.emitEvent("decision_call_start", {
+      provider,
+      model: options.model ?? "jev-latest",
+      questionCount: Object.keys(questions).length,
+      estimatedTokens,
+    });
+
+    try {
+      this.policyEnforcer.recordTokenUsage(estimatedTokens);
+      const response = await this.clients.decide(provider, {
+        state,
+        questions,
+        model: options.model ?? "jev-latest",
+      });
+
+      const cost = Number(response.usd_cost) || 0;
+      if (cost > 0) {
+        if (!this.policyEnforcer.checkCost(cost)) {
+          this.tracer.recordCost(cost);
+          this.policyEnforcer.recordCost(cost);
+          throw new Error(
+            `Cost quota would be exceeded by decide() call ($${cost.toFixed(4)})`
+          );
+        }
+        this.tracer.recordCost(cost);
+        this.policyEnforcer.recordCost(cost);
+      }
+
+      this.tracer.emitEvent("decision_call_success", {
+        provider,
+        model: response.model,
+        usage: response.usage,
+        usdCost: response.usd_cost,
+      });
+      return response;
+    } catch (error) {
+      this.tracer.emitEvent("decision_call_error", {
+        provider,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
+
+  async noul(
+    state: DecisionContent,
+    instructions: DecisionContent,
+    criteria?: NoulQuestion["criteria"]
+  ) {
+    const response = await this.decide(state, {
+      answer: { type: "noul", instructions, criteria },
+    });
+    return response.answers.answer;
+  }
+
+  async choice(
+    state: DecisionContent,
+    instructions: DecisionContent,
+    criteria: ChoiceQuestion["criteria"]
+  ) {
+    const response = await this.decide(state, {
+      answer: { type: "choice", instructions, criteria },
+    });
+    return response.answers.answer;
+  }
+
+  async score(
+    state: DecisionContent,
+    instructions: DecisionContent,
+    criteria: ScoreQuestion["criteria"]
+  ) {
+    const response = await this.decide(state, {
+      answer: { type: "score", instructions, criteria },
+    });
+    return response.answers.answer;
   }
 
   /**
@@ -123,7 +220,10 @@ export class SandboxContext {
       };
 
       // Call the actual tool through the Tools service
-      const result = await this.toolsService.callTool(toolCall);
+      const result = await this.toolsService.callTool(
+        toolCall,
+        this.toolsService.getFunctionNames()
+      );
 
       this.tracer.emitEvent("tool_call_success", {
         toolName,
@@ -211,6 +311,7 @@ export class SandboxContext {
     options: {
       model?: string;
       maxTokens?: number;
+      max_tokens?: number;
       temperature?: number;
     } = {}
   ) {
@@ -236,7 +337,7 @@ export class SandboxContext {
       const completionOptions = {
         model: options.model,
         messages,
-        max_tokens: options.maxTokens,
+        max_tokens: options.maxTokens ?? options.max_tokens,
       };
 
       // Detect provider from model or use default

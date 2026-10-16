@@ -3,17 +3,68 @@ import { WebSocket } from "ws";
 import { createTunnelHandler, TunnelHandler } from "@tyvm/knowhow-tunnel";
 import { loadJwt } from "./login";
 import { wait } from "./utils";
-import { getConfig } from "./config";
+import { getConfig, updateConfig } from "./config";
+import type { AllowedTunnelPort } from "./types";
 import { KNOWHOW_API_URL } from "./services/KnowhowClient";
 import { ModulesService } from "./services/modules";
 import { WorkerPasskeyAuthService } from "./workers/auth/WorkerPasskeyAuth";
 import { WsMiddlewareStack } from "./workers/auth/WsMiddleware";
 import { makeAuthMiddleware } from "./workers/auth/authMiddleware";
 
+const PROD_TUNNEL_WORKER_DOMAIN = "worker.tyvm-apps.com";
+
 /**
- * Extract the tunnel domain and protocol from the API URL.
- * e.g., "https://api.knowhow.tyvm.ai" -> { domain: "worker.knowhow.tyvm.ai", useHttps: true }
- * e.g., "http://localhost:4000" -> { domain: "worker.localhost:4000", useHttps: false }
+ * Parse a CLI port spec: "3000", "5432:tcp", "8080:http".
+ */
+export function parseTunnelPortSpec(spec: string | number): AllowedTunnelPort {
+  const [rawPort, rawTransport] = String(spec).trim().split(":");
+  const port = Number(rawPort);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid tunnel port: ${spec}`);
+  }
+  if (!rawTransport) return port;
+  const transport = rawTransport.toLowerCase();
+  if (transport !== "http" && transport !== "tcp") {
+    throw new Error(`Invalid tunnel transport "${rawTransport}" (use http or tcp)`);
+  }
+  return transport === "http" ? port : { port, transport };
+}
+
+export function tunnelPortNumber(entry: AllowedTunnelPort): number {
+  return typeof entry === "number" ? entry : entry.port;
+}
+
+/**
+ * Make sure each port is in worker.tunnel.allowedPorts (persisted to knowhow.json).
+ * Existing entries are left untouched; returns the specs that were added.
+ */
+export async function ensureTunnelPorts(
+  specs: Array<string | number>
+): Promise<string[]> {
+  const config = await getConfig();
+  config.worker = config.worker || {};
+  config.worker.tunnel = config.worker.tunnel || {};
+  const allowed = config.worker.tunnel.allowedPorts || [];
+  const added: string[] = [];
+  for (const spec of specs) {
+    const entry = parseTunnelPortSpec(spec);
+    const port = tunnelPortNumber(entry);
+    if (allowed.some((e) => tunnelPortNumber(e) === port)) continue;
+    allowed.push(entry);
+    added.push(String(spec));
+  }
+  if (added.length) {
+    config.worker.tunnel.allowedPorts = allowed;
+    await updateConfig(config);
+  }
+  return added;
+}
+
+/**
+ * Resolve the tunnel domain and protocol from the environment and API URL.
+ * TUNNEL_WORKER_DOMAIN takes precedence. Otherwise localhost API URLs use the
+ * local tunnel proxy, dev API URLs use the dev tunnel domain, and all other API
+ * URLs use the production tunnel domain.
  */
 export function extractTunnelDomain(apiUrl: string): {
   domain: string;
@@ -22,18 +73,31 @@ export function extractTunnelDomain(apiUrl: string): {
   try {
     const url = new URL(apiUrl);
     const useHttps = url.protocol === "https:";
+    const configuredDomain = process.env.TUNNEL_WORKER_DOMAIN?.trim();
 
-    // For localhost, include port; for production, just use hostname
-    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
-      return {
-        domain: `worker.${url.hostname}:${url.port || "80"}`,
-        useHttps,
-      };
-    }
-    return { domain: `worker.${url.hostname}`, useHttps };
+    const isLocalApi =
+      url.hostname === "localhost" ||
+      url.hostname.endsWith(".localhost") ||
+      url.hostname === "127.0.0.1" ||
+      url.hostname === "[::1]";
+    const isDevApi = url.hostname.split(".").includes("dev");
+    const domain =
+      configuredDomain ||
+      (isLocalApi
+        ? `worker.localhost:${url.port || (useHttps ? "443" : "80")}`
+        : isDevApi
+          ? `worker.dev.tyvm-apps.com`
+          : PROD_TUNNEL_WORKER_DOMAIN);
+
+    return { domain, useHttps };
   } catch (err) {
     console.error("Failed to parse API_URL for tunnel domain:", err);
-    return { domain: "worker.localhost:4000", useHttps: false }; // fallback
+    return {
+      domain:
+        process.env.TUNNEL_WORKER_DOMAIN?.trim() ||
+        PROD_TUNNEL_WORKER_DOMAIN,
+      useHttps: false,
+    };
   }
 }
 
@@ -76,7 +140,9 @@ export function resolveTunnelConfig(
         "🐳 Docker detected: tunnel will use host.docker.internal to reach host services"
       );
     } else {
-      tunnelLocalHost = "127.0.0.1";
+      // "localhost" resolves to both ::1 and 127.0.0.1 and Node tries each,
+      // so services bound only to IPv6 loopback (e.g. Vite) are reachable.
+      tunnelLocalHost = "localhost";
     }
   }
 
@@ -144,7 +210,13 @@ export function connectTunnelWebSocket(
     authService,
   } = options;
 
-  const tunnelConnection = new WebSocket(`${KNOWHOW_API_URL}/ws/tunnel`, { headers });
+  const allowedPorts = config.worker?.tunnel?.allowedPorts || [];
+  const tunnelConnection = new WebSocket(`${KNOWHOW_API_URL}/ws/tunnel`, {
+    headers: {
+      ...headers,
+      "Tunnel-Allowed-Ports": JSON.stringify(allowedPorts),
+    },
+  });
 
   tunnelConnection.on("open", async () => {
     console.log("Tunnel WebSocket connected");
@@ -159,8 +231,6 @@ export function connectTunnelWebSocket(
       stack.use(makeAuthMiddleware(authService));
       stack.wrapSocket(tunnelConnection);
     }
-
-    const allowedPorts = config.worker?.tunnel?.allowedPorts || [];
 
     // Create URL rewriter callback that returns the hostname (without protocol).
     // The tunnel package will add the protocol based on the useHttps config.

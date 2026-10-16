@@ -69,6 +69,7 @@ export interface BenchmarkResults {
 
 export interface LeaderboardEntry {
   model: string;
+  harness: string;
   provider: string;
   language: string;
   toolMode: 'lazy' | 'eager';

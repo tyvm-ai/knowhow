@@ -72,6 +72,20 @@ export async function listMicrophones() {
   return options;
 }
 
+/** Return the saved microphone, prompting with the same picker used by /voice. */
+export async function ensureDefaultMic(): Promise<string> {
+  const saved = getDefaultMic();
+  if (saved) return saved;
+
+  const options = await listMicrophones();
+  if (!options.length) {
+    throw new Error("No microphone inputs were found");
+  }
+  const mic = await ask(`Select a microphone (${options.join()})  : `, options);
+  setDefaultMic(mic);
+  return mic;
+}
+
 // This isn't likely to work for everyone
 export async function recordAudio() {
   const filePath = "/tmp/knowhow.wav";
@@ -91,16 +105,7 @@ sudo apt-get install sox libsox-fmt-all
     process.exit(1);
   }
 
-  if (!defaultMic) {
-    const options = await listMicrophones();
-    const mic = await ask(
-      `Select a microphone (${options.join()})  : `,
-      options
-    );
-    setDefaultMic(mic);
-  }
-
-  const currentDefaultMic = getDefaultMic();
+  const currentDefaultMic = defaultMic || (await ensureDefaultMic());
 
   const defaultCommand = `sox -t coreaudio "$1" -r 16000 -c 1 /tmp/knowhow.wav`;
   const micCommand = getMicCommand();

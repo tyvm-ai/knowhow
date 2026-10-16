@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { Tool } from "../../clients/types";
 import { ToolCallContext } from "../../services/Tools";
+import { appendInput } from "../../services/stateful/channels/inputStream";
 
 /** Resolve the agents dir lazily so tests (and cwd changes) are respected. */
 function agentsDir(): string {
@@ -9,20 +10,13 @@ function agentsDir(): string {
 }
 
 /**
- * Append a line to a task's input.txt without clobbering other pending
- * messages. AgentSyncFs.checkForChanges reads input.txt and turns non-slash
- * content into a pending user message on the target agent (and honors /poke to
- * interrupt).
+ * Append one JSON record to a task's input.txt (a single O_APPEND write, so
+ * concurrent senders can never clobber each other). The reader
+ * (the agent's AgentSession input channel) delivers each record as ONE message, so a /poke is
+ * only a command for its own record.
  */
 function appendToInput(inputPath: string, line: string): void {
-  const existing = fs.existsSync(inputPath)
-    ? fs.readFileSync(inputPath, "utf8")
-    : "";
-  const next =
-    existing && !existing.endsWith("\n")
-      ? `${existing}\n${line}\n`
-      : `${existing}${line}\n`;
-  fs.writeFileSync(inputPath, next, "utf8");
+  appendInput(inputPath, { text: line });
 }
 
 export interface SendAgentMessageParams {
@@ -49,7 +43,7 @@ export interface SendAgentMessageParams {
  * appending it to that agent's input.txt. This is the "down/lateral edge" of
  * agent-to-agent communication — the complement to replyToParent (the up edge).
  *
- * The recipient's AgentSyncFs picks up the message on its next sync cycle and
+ * The recipient's AgentSession (input channel) picks up the message on its next sync cycle and
  * adds it as a pending user message. If `poke` is true, it is delivered as a
  * `/poke` command which interrupts the recipient's current step.
  *

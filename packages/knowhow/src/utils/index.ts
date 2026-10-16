@@ -24,9 +24,10 @@ const inputQueue = new InputQueueManager();
 export const ask = async (
   question: string,
   options: string[] = [],
-  history = []
+  history: string[] = [],
+  footer?: string | (() => string)
 ): Promise<string> => {
-  return inputQueue.ask(question, options, history);
+  return inputQueue.ask(question, options, history, footer);
 };
 
 /**
@@ -38,6 +39,15 @@ export const setOnNewHistoryEntry = (
   callback: ((entry: string) => void) | undefined
 ): void => {
   inputQueue.setOnNewEntry(callback);
+};
+
+/** Remove/restore the interactive input panel around asynchronous output. */
+export const beforeInputPanelOutput = (): boolean => {
+  return inputQueue.beforeOutput();
+};
+
+export const afterInputPanelOutput = (wasVisible: boolean): void => {
+  inputQueue.afterOutput(wasVisible);
 };
 
 

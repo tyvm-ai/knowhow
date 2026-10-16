@@ -1,0 +1,28 @@
+// "map" is a synonym of "hints" (HINTS_SYNONYMS)
+{"heard":"hints","expected":{"command":"hints.show"}}
+{"heard":"show map","expected":{"command":"hints.show"}}
+{"heard":"map on","expected":{"command":"hints.mode"}}
+{"heard":"hide map","expected":{"command":"hints.hide"}}
+{"heard":"hide hints","expected":{"command":"hints.hide"}}
+{"heard":"map off","expected":{"command":"hints.hide"}}
+{"heard":"hints off","expected":{"command":"hints.hide"}}
+{"heard":"more map","expected":{"command":"hints.more"}}
+{"heard":"map more","expected":{"command":"hints.more"}}
+{"heard":"fewer hints","expected":{"command":"hints.fewer"}}
+{"heard":"map all","expected":{"command":"hints.show-all"}}
+{"heard":"refresh map","expected":{"command":"hints.refresh"}}
+// hint numbers, spoken as digits or words
+{"heard":"text eleven","expected":{"command":"hints.bare-hint","slots":{"hint":{"roleName":"text","index":11}}}}
+{"heard":"text 48","expected":{"command":"hints.bare-hint","slots":{"hint":{"roleName":"text","index":48}}}}
+{"heard":"link 3","expected":{"command":"hints.bare-hint","slots":{"hint":{"roleName":"link","index":3}}}}
+{"heard":"button five","expected":{"command":"hints.bare-hint","slots":{"hint":{"roleName":"button","index":5}}}}
+{"heard":"row forty eight","expected":{"command":"hints.bare-hint","slots":{"hint":{"roleName":"row","index":48}}}}
+{"heard":"button forty eight","expected":{"command":"hints.bare-hint","slots":{"hint":{"roleName":"button","index":48}}}}
+{"heard":"select input 2","expected":{"command":"hints.select-hint","slots":{"hint":{"roleName":"input","index":2}}}}
+{"heard":"click button forty eight","expected":{"command":"hints.click-hint","slots":{"hint":{"roleName":"button","index":48}}}}
+{"heard":"click button 48","expected":{"command":"hints.click-hint","slots":{"hint":{"roleName":"button","index":48}}}}
+// a bare number after "click" is a name, not an index (use "click button 48")
+{"heard":"click twenty one","expected":{"command":"hints.click-hint","slots":{"hint":{"name":"twenty one"}}},"note":"documents current behaviour"}
+// a number on its own is not a command
+{"heard":"forty eight","expected":{"rejected":true}}
+{"heard":"48","expected":{"rejected":true}}

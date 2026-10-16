@@ -19,11 +19,13 @@ export async function getHashes() {
 /**
  * Atomically save hashes to disk — writes to a temp file then renames,
  * preventing concurrent writes from producing corrupted/truncated JSON.
+ * The hash directory is optional state and may not exist in a fresh checkout.
  */
 export async function saveHashes(hashes: any) {
   const target = ".knowhow/.hashes.json";
   const tmp = `${target}.tmp.${process.pid}`;
   try {
+    fs.mkdirSync(".knowhow", { recursive: true });
     fs.writeFileSync(tmp, JSON.stringify(hashes, null, 2));
     fs.renameSync(tmp, target);
   } catch (err) {
@@ -93,6 +95,8 @@ const UPLOAD_KEY = "upload";
 
 const DOWNLOAD_KEY = "download";
 
+const DOWNLOAD_REMOTE_VERSION_KEY = "downloadRemoteVersion";
+
 /**
  * Returns true if the file has changed since the last successful upload
  * (or if it has never been uploaded before)
@@ -143,7 +147,11 @@ export async function isLocalFileMatchingDownloadHash(
  * Mutates the provided hashes object with the download hash for localPath.
  * If no hashes object is provided, loads, mutates, and saves independently.
  */
-export async function saveDownloadHash(localPath: string, hashes?: any) {
+export async function saveDownloadHash(
+  localPath: string,
+  hashes?: any,
+  remoteVersion?: string
+) {
   const standalone = !hashes;
   if (standalone) hashes = await getHashes();
   const content = fs.readFileSync(localPath);
@@ -152,7 +160,23 @@ export async function saveDownloadHash(localPath: string, hashes?: any) {
     hashes[localPath] = { fileHash: currentHash, promptHash: "" };
   }
   hashes[localPath][DOWNLOAD_KEY] = currentHash;
+  if (remoteVersion) {
+    hashes[localPath][DOWNLOAD_REMOTE_VERSION_KEY] = remoteVersion;
+  }
   if (standalone) await saveHashes(hashes);
+}
+
+/**
+ * Returns true when both the local content and the listed remote file version
+ * match the state recorded by the last successful download.
+ */
+export async function isDownloadCurrent(
+  localPath: string,
+  remoteVersion: string,
+  hashes: any
+): Promise<boolean> {
+  return hashes[localPath]?.[DOWNLOAD_REMOTE_VERSION_KEY] === remoteVersion &&
+    await isLocalFileMatchingDownloadHash(localPath, hashes);
 }
 
 /**

@@ -1,0 +1,2 @@
+# Inbox
+Use only the visible semantic inbox. In order, open the exact message from **Ada Lovelace** with subject **Quarterly fixture review**, star it, mark the exact **Grace Hopper — Release checklist** message unread, archive **Alan Turing — Archive policy update**, then search exactly `fixture review` and click **Search**. When the visible checklist reads `SUCCESS (5/5)`, click **Submit result** once. Do not call benchmark APIs directly.

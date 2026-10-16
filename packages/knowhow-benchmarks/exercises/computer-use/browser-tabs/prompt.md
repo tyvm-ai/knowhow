@@ -1,0 +1,2 @@
+# Browser tab manager
+Use only the visible tab manager. In order: click **Open Settings tab** and **Open Reports tab**; click the **Reports** tab (using **Switch to Reports**); click **Close Docs**; click **Back**, then **Forward**. Finish with Reports active and visible tab order exactly **Home, Settings, Reports**. When the checklist reads `SUCCESS (5/5)`, click **Submit result** once. Do not call benchmark APIs directly.

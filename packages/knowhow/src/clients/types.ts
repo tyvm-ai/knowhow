@@ -4,11 +4,15 @@ export type ModelModality =
   | "image"
   | "audio"
   | "video"
-  | "transcription";
+  | "transcription"
+  | "decision";
 
 export type MessageContent =
   | { type: "text"; text: string }
-  | { type: "image_url"; image_url: { url: string } }
+  | {
+      type: "image_url";
+      image_url: { url: string; detail?: "auto" | "low" | "high" };
+    }
   | { type: "audio_url"; audio_url: { url: string } }
   | { type: "video_url"; video_url: { url: string } };
 
@@ -23,6 +27,50 @@ export interface Message {
 
 export interface OutputMessage extends Message {
   content?: string | null;
+  /**
+   * The model's reasoning/thinking content, when the provider exposes it.
+   * - OpenAI Responses API: a human-readable summary of the model's reasoning
+   *   (populated when reasoning_summary is requested).
+   */
+  reasoning_summary?: string;
+  /**
+   * OpenAI Responses API only (internal): the raw reasoning output items
+   * (carrying encrypted_content) captured from a stateless response. These are
+   * re-injected into the next request's input to preserve the reasoning chain.
+   * Not intended for display.
+   *
+   * @deprecated Prefer the provider-agnostic `_reasoning_details` slot. This is
+   * retained for backward compatibility with the OpenAI client only.
+   */
+  _reasoning_items?: any[];
+  /**
+   * Provider-agnostic (internal): an opaque, provider-tagged carrier for the
+   * model's reasoning artifact that must be round-tripped verbatim on the next
+   * tool-use turn to preserve reasoning continuity. Each provider stashes its
+   * own native artifact here and re-injects it only when the `provider` tag
+   * matches, so provider-specific payload never leaks into the generic
+   * (OpenAI-format) message shape.
+   *
+   *  - openai / xai: Responses API `reasoning` output items (encrypted_content)
+   *  - anthropic:    `thinking` / `redacted_thinking` blocks (with signature/data)
+   *  - gemini:       `thoughtSignature` strings keyed by tool-call id (+ thought parts)
+   *
+   * Not intended for display.
+   */
+  _reasoning_details?: ReasoningDetails;
+}
+
+/**
+ * Opaque, provider-tagged reasoning artifact. The `items` are provider-native
+ * and only meaningful to the client whose id matches `provider`; any other
+ * client must ignore them (they are never mapped into a foreign provider's
+ * request payload).
+ */
+export interface ReasoningDetails {
+  /** The provider that produced these items, e.g. "openai" | "xai" | "anthropic" | "gemini". */
+  provider: string;
+  /** Provider-native reasoning items to round-trip verbatim on the next turn. */
+  items: any[];
 }
 
 export interface ToolProp {
@@ -30,6 +78,7 @@ export interface ToolProp {
   description?: string;
   properties?: { [key: string]: ToolProp };
   items?: ToolProp;
+  enum?: any[];
 }
 
 export interface Tool {
@@ -55,6 +104,36 @@ export interface Tool {
     };
   };
 }
+
+/**
+ * Provider-neutral rate-limit information derived from response headers.
+ * Reset values are ISO-8601 strings so callback payloads remain JSON-safe.
+ */
+export interface ProviderRateLimitMetadata {
+  limit?: number;
+  remaining?: number;
+  resetAt?: string;
+  retryAfterSeconds?: number;
+  tokenLimit?: number;
+  tokenRemaining?: number;
+  tokenResetAt?: string;
+}
+
+/**
+ * Safe telemetry details for one provider response. `rateLimit` is normalized
+ * by the client for every observed response. `headers`, when present, contains
+ * only the bounded allowlisted raw headers used to derive it.
+ */
+export interface ProviderResponseMetadata {
+  statusCode?: number;
+  rateLimit: ProviderRateLimitMetadata;
+  headers?: Record<string, string>;
+  requestId?: string;
+}
+
+export type ProviderResponseMetadataObserver = (
+  metadata: ProviderResponseMetadata
+) => void;
 
 export interface ToolCall {
   id: string;
@@ -86,6 +165,34 @@ export interface RetryOptions {
    * attempt is cancelled immediately and no further retries are made.
    */
   signal?: AbortSignal;
+  /**
+   * Synchronous observer invoked once for each provider HTTP response visible to
+   * this client, including errors and streaming handshakes.
+   */
+  onResponseMetadata?: ProviderResponseMetadataObserver;
+}
+
+/**
+ * Every reasoning-effort spelling currently exposed by a supported provider.
+ * Individual models may support only a subset; provider clients are responsible
+ * for translating or clamping values where their APIs require it.
+ */
+export const REASONING_EFFORTS = [
+  "none",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+export type ReasoningEffort = typeof REASONING_EFFORTS[number];
+
+export function isReasoningEffort(value: unknown): value is ReasoningEffort {
+  return (
+    typeof value === "string" &&
+    REASONING_EFFORTS.includes(value as ReasoningEffort)
+  );
 }
 
 export interface CompletionOptions extends RetryOptions {
@@ -99,14 +206,17 @@ export interface CompletionOptions extends RetryOptions {
    * Maps to: OpenAI reasoning_effort/reasoning.effort, xAI reasoning.effort,
    *          Gemini thinkingLevel/thinkingBudget, Anthropic thinking mode.
    *
-   * "none"   = disable thinking entirely (Anthropic: thinking.type="disabled",
-   *            OpenAI: reasoning.effort="none").  Only supported by models that
-   *            allow disabling thinking (e.g. claude-sonnet-5).
-   * "low"    = minimal thinking
-   * "medium" = balanced (default for most models)
-   * "high"   = maximum reasoning
+   * "none"    = disable thinking where supported
+   * "minimal" = provider-defined minimum (for example Gemini/OpenAI)
+   * "low"     = low reasoning
+   * "medium"  = balanced reasoning
+   * "high"    = high reasoning
+   * "xhigh"   = extra-high reasoning (for example OpenAI/xAI/Anthropic)
+   * "max"     = maximum reasoning (Anthropic)
+   *
+   * A model may support only a subset of these provider-level values.
    */
-  reasoning_effort?: "none" | "low" | "medium" | "high";
+  reasoning_effort?: ReasoningEffort;
   /**
    * When true, request a summarized view of the model's thinking process.
    * - Anthropic: thinking.display = "summarized"
@@ -114,6 +224,20 @@ export interface CompletionOptions extends RetryOptions {
    * Defaults to false (no summary displayed).
    */
   reasoning_summary?: boolean;
+  /**
+   * OpenAI Responses API only: when true, OpenAI stores the response server-side
+   * so subsequent turns can reference it via `previous_response_id` instead of
+   * resending the full reasoning/message history. Defaults to false (stateless).
+   * When false, the client automatically requests `reasoning.encrypted_content`
+   * and threads the reasoning items back in the next request's input.
+   */
+  store?: boolean;
+  /**
+   * OpenAI Responses API only: the id of a previously-stored response to continue
+   * from. Only meaningful when `store` was true on the prior request. When set,
+   * the model keeps its prior chain-of-thought instead of re-deriving it.
+   */
+  previous_response_id?: string;
   /**
    * When true, hints to the client that this task is long-running and it should
    * use a long-TTL cache where available.
@@ -165,6 +289,12 @@ export interface CompletionResponse {
   model: string;
   usage: TokenUsage | undefined;
   usd_cost?: number;
+  /**
+   * OpenAI Responses API only: the id of this response. When `store` was true,
+   * this can be passed as `previous_response_id` on the next request to continue
+   * the reasoning chain without resending history.
+   */
+  response_id?: string;
 }
 
 /** A single chunk yielded by a streaming completion. */
@@ -343,11 +473,76 @@ export interface FileDownloadResponse {
   mimeType?: string;
 }
 
+// ─── Decision API ────────────────────────────────────────────────────────────
+
+/** JSON-compatible structured content accepted as decision state/instructions. */
+export type DecisionContent =
+  | string
+  | number
+  | boolean
+  | null
+  | DecisionContent[]
+  | { [key: string]: DecisionContent };
+
+export type NoulQuestion = {
+  type: "noul";
+  instructions: DecisionContent;
+  criteria?: { true?: DecisionContent; false?: DecisionContent };
+};
+
+export type ChoiceQuestion = {
+  type: "choice";
+  instructions: DecisionContent;
+  criteria: Record<string, DecisionContent>;
+};
+
+export type ScoreQuestion = {
+  type: "score";
+  instructions: DecisionContent;
+  criteria: DecisionContent[];
+};
+
+export type DecisionQuestion = NoulQuestion | ChoiceQuestion | ScoreQuestion;
+
+export interface DecisionOptions extends RetryOptions {
+  state: DecisionContent;
+  model?: string;
+  questions: Record<string, DecisionQuestion>;
+}
+
+export type NoulAnswer = { type: "noul"; noul: number };
+export type ChoiceAnswer = {
+  type: "choice";
+  choice: string;
+  probabilities: Record<string, number>;
+  confidence: number;
+};
+export type ScoreAnswer = {
+  type: "score";
+  score: number;
+  legend: Record<string, string>;
+  probabilities: Record<string, number>;
+  confidence: number;
+};
+export type DecisionAnswer = NoulAnswer | ChoiceAnswer | ScoreAnswer;
+
+export interface DecisionResponse {
+  model: string;
+  answers: Record<string, DecisionAnswer>;
+  usage: {
+    input_tokens: number;
+    output_tokens: number;
+  };
+  usd_cost?: number;
+}
+
 export interface GenericClient {
   setKey(key: string): void;
   createChatCompletion(options: CompletionOptions): Promise<CompletionResponse>;
   /** Optional streaming variant — yields incremental tokens then a final done chunk. */
-  createChatCompletionStream?(options: CompletionOptions): AsyncGenerator<StreamChunk>;
+  createChatCompletionStream?(
+    options: CompletionOptions
+  ): AsyncGenerator<StreamChunk>;
   createEmbedding(options: EmbeddingOptions): Promise<EmbeddingResponse>;
   createAudioTranscription?(
     options: AudioTranscriptionOptions
@@ -370,6 +565,12 @@ export interface GenericClient {
   /** Download a file from the provider's file storage */
   downloadFile?(options: FileDownloadOptions): Promise<FileDownloadResponse>;
   /**
+   * Evaluate typed yes/no, choice, or score questions. Providers that do not
+   * expose a decision endpoint leave this method undefined; AIClient supplies
+   * the standardized unsupported-provider error.
+   */
+  decide?(options: DecisionOptions): Promise<DecisionResponse>;
+  /**
    * When modality is provided, return only models for that modality (static list).
    * When omitted, return ALL models (backward compat — may do a live API call).
    */
@@ -380,8 +581,8 @@ export interface GenericClient {
    * Returns the context window limit and compression threshold for a given model,
    * or undefined if the model is not known to this client.
    * - contextLimit: the maximum number of tokens the model can handle
-   * - threshold: the point at which compression should kick in; equals contextLimit
-   *   unless the model has tiered pricing (input_gt_200k), in which case it is 200_000
+   * - threshold: the point at which compression should kick in; equals the model's
+   *   long-context pricing threshold when tiered pricing applies, otherwise contextLimit
    */
   getContextLimit?(
     model: string
@@ -391,5 +592,10 @@ export interface GenericClient {
    * Returns undefined for a specific model if no pricing is known.
    * Only implemented by HttpClient-based providers that have been given a pricing map via setPrices().
    */
-  getPricing?(model?: string): import("./pricing/types").ModelPricing | Record<string, import("./pricing/types").ModelPricing> | undefined;
+  getPricing?(
+    model?: string
+  ):
+    | import("./pricing/types").ModelPricing
+    | Record<string, import("./pricing/types").ModelPricing>
+    | undefined;
 }

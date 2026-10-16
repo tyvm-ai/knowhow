@@ -8,6 +8,8 @@ export interface StartAgentTaskParams {
   syncFs?: boolean;
   taskId?: string;
   resume?: boolean;
+  forkTaskId?: string;
+  rollback?: number;
   prompt: string;
   /**
    * Push this agent's work to a remote Knowhow task identified by taskId.
@@ -30,6 +32,20 @@ export interface StartAgentTaskParams {
   parentTaskId?: string;
   /** Per-call context injected by ToolsService.callTool (contains caller + taskId). */
   _ctx?: { caller?: any; taskId?: string; [key: string]: any };
+}
+
+export interface StartAgentTaskResult {
+  success: boolean;
+  status: "started" | "completed" | "failed";
+  taskId: string;
+  pid?: number;
+  syncFs: boolean;
+  syncReady: boolean;
+  agentDir?: string;
+  logPath: string;
+  parentTaskId?: string;
+  exitCode?: number | null;
+  error?: string;
 }
 
 const PROCESSES_DIR = path.join(process.cwd(), ".knowhow", "processes");
@@ -98,12 +114,14 @@ function subagentCapabilitiesNote(): string {
  *   .knowhow/processes/agents/{taskId}/input.txt
  * The agent will pick up the new content and process it as a new message.
  */
-export async function startAgentTask(params: StartAgentTaskParams): Promise<string> {
+export async function startAgentTask(params: StartAgentTaskParams): Promise<StartAgentTaskResult> {
   const {
     messageId,
     prompt,
     taskId: providedTaskId,
     resume,
+    forkTaskId,
+    rollback = 0,
     syncFs,
     syncRemote,
     provider,
@@ -118,11 +136,25 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
   if (!prompt) {
     throw new Error("prompt is required to create a chat task");
   }
+  if (resume && forkTaskId) {
+    throw new Error("resume and forkTaskId are mutually exclusive");
+  }
+  if (resume && !providedTaskId) {
+    throw new Error("taskId is required when resuming");
+  }
+  if (!Number.isInteger(rollback) || rollback < 0) {
+    throw new Error("rollback must be a non-negative integer");
+  }
+  if (rollback > 0 && !resume && !forkTaskId) {
+    throw new Error("rollback requires resume or forkTaskId");
+  }
 
   // Default filesystem synchronization ON unless the caller explicitly opts out
   // (syncFs: false) or is using a messageId-based web sync. This ensures spawned
   // subagents always appear in `knowhow agents list` and can be attached/tailed.
-  const useSyncFs = syncFs !== false && !messageId;
+  // If the caller explicitly passes syncFs: true, honor it even when a messageId
+  // is also provided (messageId handles remote sync; syncFs handles local fs sync).
+  const useSyncFs = syncFs === true ? true : (syncFs !== false && !messageId);
 
   // Use provided taskId if given, otherwise generate one from the prompt
   const taskId = providedTaskId ?? generateTaskId(prompt);
@@ -134,21 +166,29 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
     explicitParentTaskId ?? _ctx?.taskId ?? (_ctx?.caller as any)?.currentTaskId;
 
   // Build args array (no shell escaping needed - args are passed directly)
-  const args: string[] = ["agent"];
+  const isHistoryRun = !!resume || !!forkTaskId;
+  const args: string[] = resume
+    ? ["agents", "resume", providedTaskId!]
+    : forkTaskId
+      ? ["agents", "fork", forkTaskId]
+      : ["agent"];
+
+  if (forkTaskId) args.push("--task-id", taskId);
 
   if (messageId) {
     args.push("--message-id", messageId);
-  } else if (useSyncFs) {
+  }
+  if (useSyncFs) {
     args.push("--sync-fs");
   }
   // When syncRemote is requested, pass it through so the spawned agent pushes
   // its work to the remote task identified by --task-id rather than staying
   // local-only.
-  if (syncRemote) {
+  if (syncRemote && !isHistoryRun) {
     args.push("--sync-remote");
   }
 
-  if (useSyncFs || providedTaskId) {
+  if (!isHistoryRun && (useSyncFs || providedTaskId)) {
     // Pass --task-id whenever we have a known taskId (syncFs or explicit taskId)
     args.push("--task-id", taskId);
   }
@@ -165,20 +205,19 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
     args.push("--agent-name", agentName);
   }
 
-  if (maxTimeLimit !== undefined) {
+  if (maxTimeLimit !== undefined && !isHistoryRun) {
     args.push("--max-time-limit", String(maxTimeLimit));
   }
 
-  if (maxSpendLimit !== undefined) {
+  if (maxSpendLimit !== undefined && !isHistoryRun) {
     args.push("--max-spend-limit", String(maxSpendLimit));
   }
-  if (parentTaskId) {
+  if (parentTaskId && !isHistoryRun) {
     // Tell the child who spawned it so it can report back to the parent.
     args.push("--parent-task-id", parentTaskId);
   }
-  if (resume) {
-    // --resume is a boolean flag; task ID is already passed via --task-id above
-    args.push("--resume");
+  if (rollback > 0) {
+    args.push("--rollback", String(rollback));
   }
 
   const timeoutMs = maxTimeLimit ? maxTimeLimit * 60 * 1000 : 60 * 60 * 1000;
@@ -213,43 +252,54 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<stri
   child.stdin!.write(promptWithCaps, "utf8");
   child.stdin!.end();
 
-  return new Promise<string>((resolve) => {
+  return new Promise<StartAgentTaskResult>((resolve) => {
     let settled = false;
-    const done = (msg: string) => {
+    let exited = false;
+    const done = (result: StartAgentTaskResult) => {
       if (settled) return;
       settled = true;
       try { fs.closeSync(fd); } catch {}
-      resolve(msg);
+      resolve(result);
     };
 
     child.once("error", (e) => {
-      done(`Failed to start agent: ${String(e)}\nLogs: ${logPath}`);
+      done({
+        success: false, status: "failed", taskId, pid, syncFs: useSyncFs,
+        syncReady: false, agentDir: useSyncFs ? agentTaskDir : undefined,
+        logPath, parentTaskId, error: String(e),
+      });
     });
 
-    const syncFsNote = useSyncFs
-      ? `\nTask ID: ${taskId}\nAgent dir: ${agentTaskDir}\n` +
-        `To send agent messages, write to: ${agentTaskDir}/input.txt\n` +
-        `To check status, read: ${agentTaskDir}/status.txt\n`
-      : "";
-
     child.once("exit", (code) => {
-      done(
-        `Agent finished with exit code ${code}.\nLogs: ${logPath}\n` +
-        syncFsNote
-      );
+      exited = true;
+      done({
+        success: code === 0, status: code === 0 ? "completed" : "failed",
+        taskId, pid, syncFs: useSyncFs,
+        syncReady: useSyncFs && fs.existsSync(path.join(agentTaskDir, "metadata.json")),
+        agentDir: useSyncFs ? agentTaskDir : undefined, logPath, parentTaskId,
+        exitCode: code, ...(code === 0 ? {} : { error: `Agent exited with code ${code}` }),
+      });
     });
 
     if (!waitForCompletion) {
-      // Give the agent 5 seconds to finish before detaching (fire-and-forget mode)
-      const detachTime = 5 * 1000;
-      setTimeout(() => {
-        try { child.unref(); } catch {}
-        done(
-          `Agent started (pid=${pid}), running in background.\n` +
-          `Logs: ${logPath}\n` +
-          syncFsNote
-        );
-      }, detachTime);
+      // A spawn is not the same as an initialized fs-sync agent. Poll briefly
+      // so callers can distinguish those states without parsing log prose.
+      const deadline = Date.now() + (useSyncFs ? 5000 : 100);
+      const acknowledge = () => {
+        if (settled || exited) return;
+        const syncReady = useSyncFs && fs.existsSync(path.join(agentTaskDir, "metadata.json"));
+        if (!useSyncFs || syncReady || Date.now() >= deadline) {
+          try { child.unref(); } catch {}
+          done({
+            success: true, status: "started", taskId, pid, syncFs: useSyncFs,
+            syncReady, agentDir: useSyncFs ? agentTaskDir : undefined,
+            logPath, parentTaskId,
+          });
+          return;
+        }
+        setTimeout(acknowledge, 100);
+      };
+      setTimeout(acknowledge, 50);
     }
   });
 }
@@ -319,6 +369,16 @@ export const startAgentTaskDefinition: Tool = {
           type: "boolean",
           description:
             "Resume a previously started task from where it left off. Must be used together with taskId which identifies the task to resume.",
+        },
+        forkTaskId: {
+          type: "string",
+          description:
+            "Fork this existing task into a new task. The source remains unchanged; taskId optionally selects the new task ID.",
+        },
+        rollback: {
+          type: "number",
+          description:
+            "Discard this many newest agent interactions before resuming or forking. Must be a non-negative integer.",
         },
         parentTaskId: {
           type: "string",

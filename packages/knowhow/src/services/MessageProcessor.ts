@@ -1,4 +1,5 @@
 import { Message } from "../clients/types";
+import { TraceAll } from "../util/Trace";
 
 export type ProcessorLifecycle =
   | "initial_call"
@@ -17,6 +18,7 @@ export interface ProcessorRegistration {
   priority: number;
 }
 
+@TraceAll()
 export class MessageProcessor {
   private processors: Map<ProcessorLifecycle, ProcessorRegistration[]> =
     new Map();

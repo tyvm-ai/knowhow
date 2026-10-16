@@ -2,7 +2,7 @@ import {
   Base64ImageProcessor,
   globalBase64ImageDetector,
 } from "../../src/processors/Base64ImageDetector";
-import { Message } from "../../src/clients/types";
+import { Message, MessageContent } from "../../src/clients/types";
 import { ToolsService } from "../../src/services/Tools";
 import * as fs from "fs";
 
@@ -183,6 +183,94 @@ describe("Base64ImageDetector", () => {
           detail: "auto",
         },
       });
+    });
+
+    it("should process tool messages with JSON string containing an ARRAY of image_url parts", () => {
+      // Computer-use screenshot tools and loadWebpage(mode:"screenshot") return
+      // an array of parts, not a single object. This shape was previously missed
+      // by the single-object check, leaving the model to see a raw base64 string.
+      const imageDataUrl =
+        "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCdABmX/9k=";
+
+      const toolResponseJson = JSON.stringify([
+        {
+          type: "image_url",
+          image_url: { url: imageDataUrl },
+        },
+      ]);
+
+      const originalMessages: Message[] = [];
+      const modifiedMessages: Message[] = [
+        {
+          role: "tool",
+          content: toolResponseJson,
+          tool_call_id: "call_arr",
+        },
+      ];
+
+      const processor = detector.createProcessor();
+      processor(originalMessages, modifiedMessages);
+
+      // Tool message content should become a real multimodal array so the model
+      // actually receives the image instead of a base64 JSON string.
+      expect(Array.isArray(modifiedMessages[0].content)).toBe(true);
+      const content = modifiedMessages[0].content as any[];
+      expect(content).toHaveLength(1);
+      expect(content[0].type).toBe("image_url");
+      expect(content[0].image_url.url).toBe(imageDataUrl);
+    });
+
+    it("should process an image result that is not the newest parallel tool result", () => {
+      const imageDataUrl =
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+      const modifiedMessages: Message[] = [
+        {
+          role: "tool",
+          content: JSON.stringify({
+            type: "image_url",
+            image_url: { url: imageDataUrl, detail: "high" },
+          }),
+          tool_call_id: "call_image",
+        },
+        {
+          role: "tool",
+          content: "A later readFile result",
+          tool_call_id: "call_file",
+        },
+        {
+          role: "user",
+          content: "A pending workflow update",
+        },
+      ];
+
+      detector.createProcessor()([], modifiedMessages);
+
+      expect(Array.isArray(modifiedMessages[0].content)).toBe(true);
+      expect((modifiedMessages[0].content as any[])[0]).toEqual({
+        type: "image_url",
+        image_url: { url: imageDataUrl, detail: "high" },
+      });
+    });
+
+    it("should not promote a compressed image URL placeholder to image content", () => {
+      const toolResponseJson = JSON.stringify({
+        type: "image_url",
+        image_url: {
+          url: "[COMPRESSED_JSON_PROPERTY - 24614 tokens]\nKey: compressed_image_url",
+          detail: "high",
+        },
+      });
+      const modifiedMessages: Message[] = [
+        {
+          role: "tool",
+          content: toolResponseJson,
+          tool_call_id: "call_compressed_image",
+        },
+      ];
+
+      detector.createProcessor()([], modifiedMessages);
+
+      expect(modifiedMessages[0].content).toBe(toolResponseJson);
     });
 
     it("should process tool messages with plain base64 string", () => {

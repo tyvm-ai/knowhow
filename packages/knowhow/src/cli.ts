@@ -26,6 +26,7 @@ import { getConfig, getGlobalConfig } from "./config";
 import { getEnabledPlugins } from "./types";
 import { CliChatService } from "./chat/CliChatService";
 import { ModulesService } from "./services/modules";
+import { services as coreServices } from "./services";
 
 // Command registrars
 import { addModulesCommand } from "./commands/modules";
@@ -62,6 +63,8 @@ import { addSkillsCommand } from "./commands/skills";
 import { addAgentsCommand } from "./commands/agents";
 import { addHashCommand } from "./commands/hash";
 import { addSandboxCommand } from "./commands/sandbox";
+import { addProcessesCommand } from "./commands/processes";
+import { addRemoteCommand } from "./commands/remote";
 
 // Handle unhandled promise rejections gracefully — particularly from MCP SDK
 // which fires errors via event emitters that can bypass Promise.allSettled.
@@ -105,6 +108,7 @@ async function main() {
   // Register all commands
   addInitCommand(program);
   addLoginCommand(program);
+  addRemoteCommand(program);
   addUpdateCommand(program);
   addGenerateCommand(program);
   addEmbedCommands(program);
@@ -128,18 +132,24 @@ async function main() {
   addReplayCommand(program);
   addBehaviorsCommand(program);
   addSkillsCommand(program);
-  addAgentsCommand(program);
+  addAgentsCommand(program, getChatService);
   addHashCommand(program);
   addSandboxCommand(program);
+  addProcessesCommand(program);
 
   // Load global modules early (before parse) so they can register CLI subcommands.
   // We pass only the Program in context — no services are spun up at this stage.
   // Each module's command action is responsible for calling setupServices() as needed.
   try {
     const globalConfig = await getGlobalConfig();
+    const globalModules = [...new Set(globalConfig.modules || [])];
+    const localModules = [...new Set(config.modules || [])];
+    // Local modules take precedence: if a module appears in both global and
+    // local configs, use the local version so it resolves against local
+    // node_modules first. This prevents duplicate command registration errors.
     const allModulePaths = [
-      ...(globalConfig.modules || []),
-      ...(config.modules || []),
+      ...globalModules.filter((m) => !localModules.includes(m)),
+      ...localModules,
     ];
     if (allModulePaths.length) {
       const earlyModulesService = new ModulesService();
@@ -147,6 +157,10 @@ async function main() {
         { ...config, modules: allModulePaths },
         {
           Program: program,
+          // Cheap singletons so register() can use params.context.Extensions /
+          // .Tools in the early phase too (no service graph is spun up).
+          Extensions: coreServices().Extensions,
+          Tools: coreServices().Tools,
         }
       );
     }
@@ -156,6 +170,8 @@ async function main() {
 
   await program.parseAsync(process.argv);
 }
+
+export { main };
 
 if (require.main === module) {
   main()

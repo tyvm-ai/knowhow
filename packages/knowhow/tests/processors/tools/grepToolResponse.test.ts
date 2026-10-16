@@ -1,4 +1,7 @@
-import { executeGrep } from "../../../src/processors/tools/grepToolResponse";
+import {
+  executeGrep,
+  grepToolResponseDefinition,
+} from "../../../src/processors/tools/grepToolResponse";
 
 /**
  * Verifies grepToolResponse operates on the decompressed/plain stored content
@@ -68,5 +71,89 @@ describe("executeGrep", () => {
     );
 
     expect(result).toContain("No matches found");
+  });
+
+  it("bounds the total response and advertises the next result page", async () => {
+    const manyMatches = Array.from(
+      { length: 20 },
+      (_, index) => `match ${index} ${"x".repeat(200)}`
+    ).join("\n");
+
+    const result = await executeGrep(
+      manyMatches,
+      toolCallId,
+      "match",
+      [toolCallId],
+      { maxCharacters: 1000, maxResults: 20 }
+    );
+
+    expect(result.length).toBeLessThanOrEqual(1000);
+    expect(result).toContain("More matches available");
+    expect(result).toMatch(/resultOffset=\d+/);
+  });
+
+  it("keeps a large log grep under the default response limit", async () => {
+    const logMatches = Array.from(
+      { length: 500 },
+      (_, index) => `${index}: ${JSON.stringify({ level: 30, message: "sandbox runner", detail: "x".repeat(500) })}`
+    ).join("\n");
+
+    const result = await executeGrep(
+      logMatches,
+      toolCallId,
+      "runner|sandbox",
+      [toolCallId]
+    );
+
+    expect(result.length).toBeLessThanOrEqual(20_000);
+    expect(result).toContain("More matches available");
+  });
+
+  it("paginates matches using resultOffset", async () => {
+    const result = await executeGrep(
+      ["match zero", "match one", "match two"].join("\n"),
+      toolCallId,
+      "match",
+      [toolCallId],
+      { maxResults: 1, resultOffset: 1 }
+    );
+
+    expect(result).not.toContain("match zero");
+    expect(result).toContain("match one");
+    expect(result).not.toContain("match two");
+    expect(result).toContain("resultOffset=2");
+  });
+
+  it("slices very long matching lines and lets callers page within the line", async () => {
+    const longLine = `prefix-${"a".repeat(5000)}-suffix`;
+    const firstPage = await executeGrep(
+      longLine,
+      toolCallId,
+      "prefix",
+      [toolCallId]
+    );
+
+    expect(firstPage.length).toBeLessThan(10_000);
+    expect(firstPage).toContain("line 1 truncated");
+    expect(firstPage).toContain("lineCharacterOffset=4000");
+    expect(firstPage).not.toContain("-suffix");
+
+    const secondPage = await executeGrep(
+      longLine,
+      toolCallId,
+      "prefix",
+      [toolCallId],
+      { lineCharacterOffset: 4000 }
+    );
+
+    expect(secondPage).toContain("-suffix");
+    expect(secondPage).toContain("End of matches");
+  });
+
+  it("exposes pagination controls in the tool schema", () => {
+    const options = (grepToolResponseDefinition.function.parameters.properties as any).options;
+    expect(options.properties.resultOffset).toBeDefined();
+    expect(options.properties.lineCharacterOffset).toBeDefined();
+    expect(options.properties.maxCharacters).toBeDefined();
   });
 });

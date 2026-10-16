@@ -65,13 +65,16 @@ export async function singlePrompt(
     // This ensures generate agent runs produce readable output and are observable
     // via `knowhow agents list/tail/status`, matching `knowhow agent --input` behaviour.
     const { startAgentTask } = await import("./agents/tools/startAgentTask");
-    return startAgentTask({
+    const result = await startAgentTask({
       agentName: agent,
       prompt: userPrompt,
       model: model || undefined,
       waitForCompletion: true,
       ...(agentOptions ?? {}),
     });
+    // singlePrompt is a text API; keep generation pipelines compatible while
+    // the tool itself exposes a structured orchestration result.
+    return JSON.stringify(result);
   }
 
   if (!model) {

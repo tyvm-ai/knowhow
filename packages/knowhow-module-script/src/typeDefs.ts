@@ -84,6 +84,10 @@ function isValidIdentifier(name: string): boolean {
 const RESERVED_GLOBALS = new Set([
   "callTool",
   "llm",
+  "decide",
+  "noul",
+  "choice",
+  "score",
   "agent",
   "sleep",
   "createArtifact",
@@ -91,6 +95,17 @@ const RESERVED_GLOBALS = new Set([
   "console",
   "globalThis",
   "executeScript",
+  "scriptArgs",
+  "emit",
+  "waitForMessage",
+  "onMessage",
+  "offMessage",
+  "isCancelled",
+  "untilCancelled",
+  "scriptState",
+  "runInfo",
+  "setState",
+  "checkpoint",
 ]);
 
 /**
@@ -205,6 +220,24 @@ export function generateScriptTypeDefs(tools: Tool[]): string {
   lines.push(
     "declare function llm(messages: LlmMessage[], options?: LlmOptions): Promise<any>;"
   );
+  lines.push("type DecisionContent = string | number | boolean | null | DecisionContent[] | { [key: string]: DecisionContent };");
+  lines.push('interface NoulQuestion { type: "noul"; instructions: DecisionContent; criteria?: { true?: DecisionContent; false?: DecisionContent }; }');
+  lines.push('interface ChoiceQuestion { type: "choice"; instructions: DecisionContent; criteria: Record<string, DecisionContent>; }');
+  lines.push('interface ScoreQuestion { type: "score"; instructions: DecisionContent; criteria: DecisionContent[]; }');
+  lines.push("type DecisionQuestion = NoulQuestion | ChoiceQuestion | ScoreQuestion;");
+  lines.push('interface NoulAnswer { type: "noul"; noul: number; }');
+  lines.push('interface ChoiceAnswer { type: "choice"; choice: string; probabilities: Record<string, number>; confidence: number; }');
+  lines.push('interface ScoreAnswer { type: "score"; score: number; legend: Record<string, string>; probabilities: Record<string, number>; confidence: number; }');
+  lines.push("type DecisionAnswer = NoulAnswer | ChoiceAnswer | ScoreAnswer;");
+  lines.push("interface DecisionResponse { model: string; answers: Record<string, DecisionAnswer>; usage: { input_tokens: number; output_tokens: number }; }");
+  lines.push("/** Evaluate named typed questions with a decision model. */");
+  lines.push('declare function decide(state: DecisionContent, questions: Record<string, DecisionQuestion>, options?: { provider?: string; model?: string }): Promise<DecisionResponse>;');
+  lines.push("/** Ask a yes/no question and return its probability answer. */");
+  lines.push('declare function noul(state: DecisionContent, instructions: DecisionContent, criteria?: NoulQuestion["criteria"]): Promise<NoulAnswer>;');
+  lines.push("/** Choose one option and return the choice and probability distribution. */");
+  lines.push('declare function choice(state: DecisionContent, instructions: DecisionContent, criteria: ChoiceQuestion["criteria"]): Promise<ChoiceAnswer>;');
+  lines.push("/** Score state against an ordered rubric. */");
+  lines.push('declare function score(state: DecisionContent, instructions: DecisionContent, criteria: ScoreQuestion["criteria"]): Promise<ScoreAnswer>;');
   lines.push(
     "/** Run another registered agent as a node and get its final answer string. */"
   );
@@ -219,12 +252,50 @@ export function generateScriptTypeDefs(tools: Tool[]): string {
   );
   lines.push("/** Get current resource quota usage. */");
   lines.push("declare function getQuotaUsage(): any;");
+  lines.push("/** JSON arguments supplied when the script was started. */");
+  lines.push("declare const scriptArgs: Readonly<Record<string, any>>;");
   lines.push("declare const console: {");
   lines.push("  log(...args: any[]): void;");
   lines.push("  info(...args: any[]): void;");
   lines.push("  warn(...args: any[]): void;");
   lines.push("  error(...args: any[]): void;");
   lines.push("};");
+  lines.push("");
+
+  // Async script messaging globals (only available in startScript async runs)
+  lines.push("declare interface ScriptInboundMessage {");
+  lines.push("  id: string;");
+  lines.push("  sequence: number;");
+  lines.push("  timestamp: string;");
+  lines.push("  type: string;");
+  lines.push("  data: any;");
+  lines.push("  correlationId?: string;");
+  lines.push("}");
+  lines.push("declare interface WaitForMessageOptions { type?: string; afterSequence?: number; timeoutMs?: number; }");
+  lines.push("declare interface OnMessageOptions { type?: string; }");
+  lines.push("/** Emit a named event visible to the outer agent via getScriptEvents / waitForScriptEvents.\n * For /workflow graphs, emit workflow_announce once with stages and links, then use\n * phase_started, workflow_status, phase_completed/phase_failed, and workflow_completed.\n * Phase events should contain { phase: stageId, message, taskId? }. */");
+  lines.push("declare function emit(type: string, data?: any): Promise<void>;");
+  lines.push("/** Block until a matching inbound message arrives (sent via sendScriptMessage). Returns null on timeout or run end. */");
+  lines.push("declare function waitForMessage(options?: WaitForMessageOptions): Promise<ScriptInboundMessage | null>;");
+  lines.push("/** Register a handler loop for inbound messages. Returns a serializable subscription id. */");
+  lines.push("declare function onMessage(handler: (msg: ScriptInboundMessage) => Promise<void> | void, options?: OnMessageOptions): number;");
+  lines.push("/** Stop an inbound-message subscription. */");
+  lines.push("declare function offMessage(subscriptionId: number): boolean;");
+  lines.push("/** Returns true if the outer agent has requested cancellation. */");
+  lines.push("declare function isCancelled(): Promise<boolean>;");
+  lines.push("/** Resolves when the outer agent sends a cancel request. */");
+  lines.push("declare function untilCancelled(): Promise<void>;");
+  lines.push("");
+
+  // Resumable runs
+  lines.push("/** State persisted by setState(). {} on a fresh run; the last saved value when the run is resumed.\n * Resumable scripts destructure their progress from it: const { cursor = 0 } = scriptState; */");
+  lines.push("declare const scriptState: Readonly<Record<string, any>>;");
+  lines.push("/** Identity of this run. resumed is true when this attempt was started by a resume. */");
+  lines.push("declare const runInfo: Readonly<{ runId?: string; name?: string | null; resumed: boolean; resumeCount: number }>;");
+  lines.push("/** Persist resumable progress (shallow merge, or replace with { replace: true }). Resolves with the new state once it is saved. */");
+  lines.push("declare function setState(patch: Record<string, any>, options?: { replace?: boolean }): Promise<Record<string, any>>;");
+  lines.push("/** Safe point: resolves immediately when running, waits while the run is paused, throws if it was cancelled. */");
+  lines.push("declare function checkpoint(): Promise<void>;");
   lines.push("");
 
   return lines.join("\n");

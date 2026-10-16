@@ -1,0 +1,24 @@
+{
+  "name": "@tyvm/knowhow-module-worldlines",
+  "version": "0.0.1",
+  "description": "Evidence-backed, content-addressed state transition journals for Knowhow automations",
+  "main": "ts_build/index.js",
+  "types": "ts_build/index.d.ts",
+  "scripts": {
+    "build": "npm run compile",
+    "compile": "npm run clean && tsc",
+    "clean": "rm -rf ts_build",
+    "test": "npm run compile && node --test tests/*.test.js",
+    "prepublishOnly": "npm run compile"
+  },
+  "keywords": ["knowhow", "worldlines", "state-machine", "replay", "evidence"],
+  "author": "Tyvm AI",
+  "license": "MIT",
+  "peerDependencies": {
+    "@tyvm/knowhow": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.0.0"
+  }
+}

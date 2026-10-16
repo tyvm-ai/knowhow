@@ -1,10 +1,12 @@
 import { BaseChatModule } from "./BaseChatModule";
+import { TraceAll } from "../../util/Trace";
 import { ChatContext, ChatCommand } from "../types";
 import { getConfiguredEmbeddingMap, queryEmbedding } from "../../embeddings";
 import { getConfig } from "../../config";
 import { ask } from "../../utils";
 import { marked } from "marked";
 
+@TraceAll()
 export class SearchModule extends BaseChatModule {
   name = "Search";
   description = "Search through embeddings for relevant information";

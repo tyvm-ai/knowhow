@@ -1,0 +1,12 @@
+// the core click / scroll / window commands
+{"heard":"click","expected":{"command":"voice-control.click"}}
+{"heard":"double click","expected":{"command":"voice-control.double-click"}}
+{"heard":"right click","expected":{"command":"voice-control.right-click"}}
+{"heard":"scroll down","expected":{"command":"voice-control.gaze.scroll-down"}}
+{"heard":"scroll up","expected":{"command":"voice-control.gaze.scroll-up"}}
+{"heard":"stop","expected":{"command":"voice-control.gaze.stop-scrolling"}}
+{"heard":"maximize chrome","expected":{"command":"windows.maximize","slots":{"app":"Google Chrome"}}}
+{"heard":"focus chrome","expected":{"command":"windows.focus-app","slots":{"app":"Google Chrome"}}}
+{"heard":"ok google","expected":{"rejected":true}}
+{"heard":"thank you","expected":{"rejected":true}}
+{"heard":"hello world","expected":{"rejected":true}}

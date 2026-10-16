@@ -85,6 +85,8 @@ import { ToolsService } from "@tyvm/knowhow/ts_build/src/services/Tools";
 import { AIClient } from "@tyvm/knowhow/ts_build/src/clients";
 import { SandboxContext } from "./SandboxContext";
 import { ScriptTracer } from "./ScriptTracer";
+import { fork } from "child_process";
+import { createHostBridge } from "./hostBridge";
 import { ScriptPolicyEnforcer } from "./ScriptPolicy";
 import {
   ExecutionRequest,
@@ -98,10 +100,7 @@ import {
  */
 export class ScriptExecutor {
   private defaultQuotas: ResourceQuotas = {
-    maxToolCalls: 50,
-    maxTokens: 10000,
-    maxExecutionTimeMs: 30000, // 30 seconds
-    maxCostUsd: 1.0,
+    // isolated-vm requires a memory limit; caller-facing usage limits are opt-in.
     maxMemoryMb: 100,
   };
 
@@ -119,38 +118,6 @@ export class ScriptExecutor {
   };
 
   constructor(private toolsService: ToolsService, private clients: AIClient) {
-    this.validateNodejsEnvironment();
-  }
-
-  /**
-   * Validate that Node.js environment is properly configured for isolated-vm
-   */
-  private validateNodejsEnvironment(): void {
-    const nodeVersion = process.version;
-    const majorVersion = parseInt(nodeVersion.slice(1).split(".")[0], 10);
-
-    if (majorVersion >= 20) {
-      const hasNoNodeSnapshot = process.execArgv.includes("--no-node-snapshot");
-
-      if (!hasNoNodeSnapshot) {
-        const errorMessage = [
-          `Node.js ${nodeVersion} detected. The executeScript tool requires the --no-node-snapshot flag for isolated-vm compatibility.`,
-          "",
-          "This flag is automatically included when running knowhow commands via the CLI (e.g., `knowhow agent`, `knowhow chat`).",
-          "",
-          "If you are programmatically using knowhow or running custom scripts:",
-          "1. Start your application with: node --no-node-snapshot your-app.js",
-          '2. Or update your package.json scripts to include the flag:',
-          '   "scripts": {',
-          '     "start": "node --no-node-snapshot dist/index.js"',
-          "   }",
-          "",
-          "Note: This flag is required for Node.js 20+ to ensure isolated-vm works correctly.",
-        ].join("\n");
-
-        throw new Error(errorMessage);
-      }
-    }
   }
 
   /**
@@ -164,6 +131,19 @@ export class ScriptExecutor {
     let unsubscribe: (() => void) | undefined;
     if (request.onEvent) {
       unsubscribe = tracer.onEvent(request.onEvent);
+    }
+
+    // If --no-node-snapshot is not set (e.g. knowhow runs directly as a
+    // Ghostty child for TCC permission inheritance), fork a worker that
+    // carries the flag so isolated-vm can load, and bridge tool/llm/agent
+    // calls back to this process's live ToolsService. This applies to every
+    // execution path, including programmatic executeScript tool calls that do
+    // not provide an onEvent listener.
+    const needsWorker =
+      parseInt(process.version.slice(1).split(".")[0], 10) >= 20 &&
+      !process.execArgv.includes("--no-node-snapshot");
+    if (needsWorker) {
+      return this.executeViaWorker(request);
     }
 
     const quotas = { ...this.defaultQuotas, ...request.quotas };
@@ -211,13 +191,10 @@ export class ScriptExecutor {
         policyEnforcer
       );
 
-      // Execute script with timeout
-      const timeoutMs = quotas.maxExecutionTimeMs;
-
       const result = await this.executeWithTimeout(
         request.script,
         context,
-        timeoutMs,
+        quotas.maxExecutionTimeMs,
         tracer,
         policyEnforcer
       );
@@ -258,15 +235,19 @@ export class ScriptExecutor {
   }
 
   /**
-   * Execute script with timeout protection
+   * Execute a script, adding timeout protection only when explicitly requested.
    */
   private async executeWithTimeout(
     script: string,
     context: SandboxContext,
-    timeoutMs: number,
+    timeoutMs: number | undefined,
     tracer: ScriptTracer,
     policyEnforcer: ScriptPolicyEnforcer
   ): Promise<any> {
+    if (timeoutMs === undefined || timeoutMs <= 0) {
+      return this.executeScriptSecure(script, context, tracer, policyEnforcer);
+    }
+
     return new Promise((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         tracer.emitEvent("execution_timeout", { timeoutMs });
@@ -411,12 +392,24 @@ export class ScriptExecutor {
     await exposeAsync("llm", (messages, options) =>
       sandboxContext.llm(messages, options || {})
     );
+    await exposeAsync("decide", (state, questions, options) =>
+      sandboxContext.decide(state, questions, options || {})
+    );
+    await exposeAsync("noul", (state, instructions, criteria) =>
+      sandboxContext.noul(state, instructions, criteria)
+    );
+    await exposeAsync("choice", (state, instructions, criteria) =>
+      sandboxContext.choice(state, instructions, criteria)
+    );
+    await exposeAsync("score", (state, instructions, criteria) =>
+      sandboxContext.score(state, instructions, criteria)
+    );
     await exposeAsync("agent", (agentName, query) =>
       sandboxContext.agent(agentName as string, query as string)
     );
     await exposeAsync("sleep", (ms) => sandboxContext.sleep(ms));
 
-    await exposeSync("createArtifact", (name, content, type) =>
+    await exposeAsync("createArtifact", (name, content, type) =>
       sandboxContext.createArtifact(name as string, content, type)
     );
     await exposeSync("getQuotaUsage", () => sandboxContext.getQuotaUsage());
@@ -429,6 +422,10 @@ export class ScriptExecutor {
     const reserved = new Set([
       "callTool",
       "llm",
+      "decide",
+      "noul",
+      "choice",
+      "score",
       "agent",
       "sleep",
       "createArtifact",
@@ -497,6 +494,140 @@ export class ScriptExecutor {
    */
   getDefaultPolicy(): SecurityPolicy {
     return { ...this.defaultPolicy };
+  }
+
+  /**
+   * Execute a script via a forked worker process that carries --no-node-snapshot.
+   *
+   * Used when the current process was started WITHOUT --no-node-snapshot (e.g.
+   * when knowhow runs directly as a Ghostty child for macOS TCC permission
+   * inheritance). The worker runs isolated-vm in its own process and bridges
+   * tool/llm/agent calls back here via IPC so the live ToolsService is used.
+   */
+  private async executeViaWorker(request: ExecutionRequest): Promise<ExecutionResult> {
+    const path = require("path") as typeof import("path");
+    const tracer = new ScriptTracer();
+
+    let unsubscribe: (() => void) | undefined;
+    if (request.onEvent) {
+      unsubscribe = tracer.onEvent(request.onEvent);
+    }
+
+    const quotas = { ...this.defaultQuotas, ...request.quotas };
+    const policy = { ...this.defaultPolicy, ...request.policy };
+    const policyEnforcer = new ScriptPolicyEnforcer(quotas, policy);
+
+    // Collect tool names for the worker's shorthand globals
+    let availableTools: string[] = [];
+    try {
+      const context = new SandboxContext(
+        this.toolsService,
+        this.clients,
+        tracer,
+        policyEnforcer
+      );
+      availableTools = context.listToolNames();
+    } catch {
+      availableTools = [];
+    }
+
+    tracer.emitEvent("execution_start", {
+      scriptLength: request.script.length,
+      quotas,
+      via: "worker",
+    });
+
+    return new Promise<ExecutionResult>((resolve) => {
+      // Resolve the compiled worker JS (ts_build mirrors src structure)
+      const workerJs = path.join(__dirname, "script-worker.js");
+
+      const child = fork(workerJs, [], {
+        execArgv: ["--no-node-snapshot", "--enable-source-maps"],
+        stdio: ["pipe", "pipe", "pipe", "ipc"],
+      });
+
+      // Forward child stderr to our stderr for visibility
+      child.stderr?.pipe(process.stderr);
+
+      const bridge = createHostBridge({
+        toolsService: this.toolsService,
+        clients: this.clients,
+        policyEnforcer,
+        onToolStart: (toolName) => tracer.emitEvent("tool_call_start", { toolName }),
+        onToolResult: (toolName) => tracer.emitEvent("tool_call_success", { toolName }),
+        onToolError: (toolName, _params, err) =>
+          tracer.emitEvent("tool_call_error", { toolName, error: err.message }),
+      });
+
+      const finish = (result: ExecutionResult) => {
+        unsubscribe?.();
+        if (!child.killed) child.kill();
+        resolve(result);
+      };
+
+      child.on("message", async (msg: any) => {
+        if (msg.type === "ready") {
+          // Worker is up — send the script
+          child.send({
+            type: "run",
+            script: request.script,
+            args: request.args ?? {},
+            quotas,
+            policy,
+            availableTools,
+          });
+        } else if (msg.type === "event") {
+          // Relay trace events to the caller's onEvent handler
+          tracer.emitEvent(msg.event.type, msg.event.data ?? {});
+        } else if (await bridge(msg, child)) {
+          // tool/llm/decision/agent requests answered by the shared host bridge
+        } else if (msg.type === "done") {
+          finish({
+            success: true,
+            error: null,
+            result: msg.result,
+            trace: tracer.getTrace(),
+            artifacts: [],
+            consoleOutput: [],
+          });
+        } else if (msg.type === "error") {
+          tracer.emitEvent("execution_error", { error: msg.error });
+          finish({
+            success: false,
+            error: msg.error,
+            result: null,
+            trace: tracer.getTrace(),
+            artifacts: [],
+            consoleOutput: [],
+          });
+        }
+      });
+
+      child.on("error", (err) => {
+        tracer.emitEvent("execution_error", { error: err.message });
+        finish({
+          success: false,
+          error: err.message,
+          result: null,
+          trace: tracer.getTrace(),
+          artifacts: [],
+          consoleOutput: [],
+        });
+      });
+
+      child.on("exit", (code) => {
+        if (code !== 0 && code !== null) {
+          finish({
+            success: false,
+            error: `Script worker exited with code ${code}`,
+            result: null,
+            trace: tracer.getTrace(),
+            artifacts: [],
+            consoleOutput: [],
+          });
+        }
+      });
+    });
   }
 
   /**

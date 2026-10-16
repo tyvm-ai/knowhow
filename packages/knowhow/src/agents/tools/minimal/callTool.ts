@@ -1,6 +1,6 @@
-import { minimatch } from "minimatch";
 import { MinimalToolsService } from "../../../services/MinimalToolsService";
 import { ToolsService } from "../../../services/Tools";
+import { minimatch } from "minimatch";
 
 /**
  * Calls any tool by name with the given args.
@@ -16,7 +16,7 @@ export async function callTool(
 
   const allTools = service.getAllTools ? service.getAllTools() : service.getTools();
 
-  // Fuzzy match: exact, endsWith, or glob
+  // Fuzzy match: exact, endsWith (same as ToolsService.getTool), then glob
   const matchedTool =
     allTools.find((t) => t.function.name === name) ||
     allTools.find((t) => t.function.name.endsWith(name)) ||

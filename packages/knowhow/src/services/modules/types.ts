@@ -14,7 +14,9 @@ import { TunnelHandler } from "@tyvm/knowhow-tunnel";
 import { EventService } from "../EventService";
 import { ConversionService } from "../conversion/ConversionService";
 import { BehaviorsService } from "../BehaviorsService";
+import { ExtensionsService, ModuleExtension } from "../ExtensionsService";
 
+import { TracingService as TracingServiceType } from "../TracingService";
 /*
  *
  * A a module should allow the dynamic composition of npm modules that are installed globally by referencing an array of config
@@ -45,6 +47,19 @@ export type ModuleClient = {
   models: string[];
 };
 
+/**
+ * Parameters handed to a module's `register()` and `init()` hooks.
+ *
+ * `context` is the shared service graph. Modules should read services from
+ * `params.context` (`Extensions`, `Tools`, `Events`, `Agents`, `Program`, ...)
+ * instead of looking them up through `services()`:
+ *  - `register()` runs in two passes (early CLI pass with ONLY `Program`
+ *    guaranteed, then the full pass) so always guard optional members.
+ *  - `init()` always receives the full graph (`Extensions`, `Tools`, `Events`,
+ *    `Agents`, `Plugins`, `Clients`, `Embeddings`, ...).
+ * For processes a module starts itself (CLI subcommands) use
+ * `createModuleRuntime()` from `@tyvm/knowhow/sdk`.
+ */
 export type InitParams = {
   config: Config;
   cwd: string;
@@ -62,12 +77,42 @@ export interface ModuleContext {
   Conversion?: ConversionService;
   Tunnel?: TunnelHandler;
   Program?: Command;
-  Behaviors?: BehaviorsService
+  Behaviors?: BehaviorsService;
+  Extensions?: ExtensionsService;
+  [key: string]: any;
+  Tracing?: typeof TracingServiceType;
 }
 
 export interface KnowhowModule {
+  /**
+   * Phase 1 (optional): called first, potentially with ONLY `Program` in
+   * context (e.g. during early CLI command registration). Use this to:
+   *   - register CLI subcommands on `context.Program`
+   *   - inject services into the shared context (e.g.
+   *     `context.Tools?.addContext("ComputerUse", svc)`) so that OTHER modules
+   *     (or a sibling adapter module) can consume them during their own init.
+   *
+   * `register` must be side-effect-light and MUST NOT assume the full service
+   * graph is present — only `Program` is guaranteed during the early phase.
+   * It may be called more than once (early CLI phase + full-services phase);
+   * implementations should be idempotent.
+   */
+  register?: (params: InitParams) => Promise<void>;
+  /**
+   * Phase 2: called with the full service graph available. Use this to
+   * actually connect/start things (open drivers, spin up watchers, read
+   * services registered by other modules' `register` phase, etc.).
+   */
   init: (params: InitParams) => Promise<void>;
+  /**
+   * Phase 3 (optional): called when the CLI is shutting down. Use this to
+   * cleanly release resources — close connections, flush buffers, stop
+   * watchers, etc. Mirror of `init`.
+   */
+  destroy?: (params: InitParams) => Promise<void>;
   commands: ModuleChatCommand[];
+  /** Optional capabilities consumed by core or third-party services. */
+  extensions?: ModuleExtension[];
   tools: ModuleTool[];
   agents: ModuleAgent[];
   plugins: ModulePlugin[];

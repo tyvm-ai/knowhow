@@ -6,6 +6,7 @@ export async function executeScript(
   this: ToolsService | void,
   {
     script,
+    args,
     maxToolCalls,
     maxTokens,
     maxExecutionTimeMs,
@@ -13,6 +14,7 @@ export async function executeScript(
     allowNetworkAccess,
   }: {
     script: string;
+    args?: Record<string, unknown>;
     maxToolCalls?: number;
     maxTokens?: number;
     maxExecutionTimeMs?: number;
@@ -38,11 +40,12 @@ export async function executeScript(
     // Execute the script
     const result = await executor.execute({
       script,
+      args,
       quotas: {
-        maxToolCalls: maxToolCalls || 50,
-        maxTokens: maxTokens || 10000,
-        maxExecutionTimeMs: maxExecutionTimeMs || 30000,
-        maxCostUsd: maxCostUsd || 1.0,
+        maxToolCalls,
+        maxTokens,
+        maxExecutionTimeMs,
+        maxCostUsd,
         maxMemoryMb: 100,
       },
       policy: {

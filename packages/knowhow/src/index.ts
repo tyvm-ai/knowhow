@@ -51,12 +51,21 @@ export {
 } from "./generate";
 
 export * as clients from "./clients";
+export type {
+  Tool,
+  ToolProp,
+  ToolCall,
+  Message,
+  CompletionOptions,
+  CompletionResponse,
+} from "./clients/types";
 export * as agents from "./agents";
 export * as services from "./services";
 export * as embeddings from "./embeddings";
 export * as types from "./types";
 export * as processors from "./processors";
 export * as ai from "./ai";
+export * from "./processes/ProcessManager";
 
 // Export module system types for external modules
 export * from "./services/modules/types";

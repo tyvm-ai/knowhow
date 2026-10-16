@@ -7,7 +7,11 @@ import { completions, embeddings, images, videos, audios, liveApi, ModelCatalogE
 // ─── Model IDs ────────────────────────────────────────────────────────────────
 
 export const GoogleModels = {
-  // Gemini 3.6 / 3.5
+  // Gemini 4
+  Gemini_4_Argon: "gemini-4-argon",
+  // Gemini 3.8 / 3.7 / 3.6 / 3.5
+  Gemini_38_Flash: "gemini-3.8-flash",
+  Gemini_37_Flash: "gemini-3.7-flash",
   Gemini_36_Flash: "gemini-3.6-flash",
   Gemini_35_Flash: "gemini-3.5-flash",
   Gemini_35_Flash_Lite: "gemini-3.5-flash-lite",
@@ -86,6 +90,9 @@ export const GoogleEmbeddingModels: Record<string, string> = {
 // ─── Modality arrays ──────────────────────────────────────────────────────────
 
 export const GoogleTextModels: string[] = [
+  GoogleModels.Gemini_4_Argon,
+  GoogleModels.Gemini_38_Flash,
+  GoogleModels.Gemini_37_Flash,
   GoogleModels.Gemini_36_Flash,
   GoogleModels.Gemini_35_Flash,
   GoogleModels.Gemini_35_Flash_Lite,
@@ -101,6 +108,9 @@ export const GoogleTextModels: string[] = [
 
 // Models that support thinkingLevel (Gemini 3.x series)
 export const GoogleThinkingLevelModels: string[] = [
+  GoogleModels.Gemini_4_Argon,
+  GoogleModels.Gemini_38_Flash,
+  GoogleModels.Gemini_37_Flash,
   GoogleModels.Gemini_36_Flash,
   GoogleModels.Gemini_35_Flash,
   GoogleModels.Gemini_35_Flash_Lite,
@@ -214,7 +224,27 @@ export interface GeminiModelPricing extends ModelPricing {
 }
 
 export const GeminiPricing: Record<string, GeminiModelPricing> = {
-  // ── Gemini 3.6 / 3.5 ──────────────────────────────────────────────────────
+  // ── Gemini 4 ──────────────────────────────────────────────────────────────
+  // Introductory pricing through November 30, 2026. Standard pricing beginning
+  // December 1, 2026 is $4.00 input, $20.00 output, and $0.20 cached input.
+  // Implicit caching only (explicit caching is not supported).
+  [GoogleModels.Gemini_4_Argon]: {
+    input: 2.0, output: 10.0,
+    context_caching: 0.1,
+  },
+  // ── Gemini 3.8 / 3.7 / 3.6 / 3.5 ──────────────────────────────────────────
+  // Introductory pricing through December 31, 2026. Standard pricing beginning
+  // January 1, 2027 is $1.50 input, $7.50 output, and $0.15 cached input.
+  [GoogleModels.Gemini_38_Flash]: {
+    input: 0.75, output: 3.75,
+    context_caching: 0.075, context_caching_storage: 0.5,
+  },
+  // Introductory pricing through December 31, 2026. Standard pricing beginning
+  // January 1, 2027 is $1.50 input, $7.50 output, and $0.15 cached input.
+  [GoogleModels.Gemini_37_Flash]: {
+    input: 0.75, output: 3.75,
+    context_caching: 0.075, context_caching_storage: 0.5,
+  },
   [GoogleModels.Gemini_36_Flash]: {
     input: 1.5, output: 7.5,
     context_caching: 0.15, context_caching_storage: 1.0,

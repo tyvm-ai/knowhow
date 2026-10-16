@@ -1,4 +1,3 @@
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import {
   JSONRPCMessage,
   JSONRPCMessageSchema,
@@ -9,6 +8,7 @@ import { WebSocket } from "ws";
 export class MCPWebSocketTransport implements Transport {
   protected _socket: WebSocket;
   onmessage?: (message: JSONRPCMessage) => void;
+  onrawmessage?: (message: unknown) => boolean | Promise<boolean>;
   onerror?: (error: Error) => void;
   onclose?: () => void;
 
@@ -27,15 +27,19 @@ export class MCPWebSocketTransport implements Transport {
         } else {
           parsed = JSON.parse(data.toString());
         }
-        console.log("MCPW Message received", JSON.stringify(parsed));
-        const message = JSONRPCMessageSchema.parse(parsed);
-        // Process message asynchronously to avoid blocking the WebSocket
-        // event loop while a long-running tool call is in progress.
-        // Without this, all subsequent messages are queued until the
-        // current tool call completes.
-        setImmediate(() => {
-          this.onmessage?.(message);
-        });
+        Promise.resolve(this.onrawmessage?.(parsed) ?? false)
+          .then((consumed) => {
+            if (consumed) return;
+            const message = JSONRPCMessageSchema.parse(parsed);
+            // Process message asynchronously to avoid blocking the WebSocket
+            // event loop while a long-running tool call is in progress.
+            // Without this, all subsequent messages are queued until the
+            // current tool call completes.
+            setImmediate(() => {
+              this.onmessage?.(message);
+            });
+          })
+          .catch((error) => this.onerror?.(error as Error));
       } catch (error) {
         this.onerror?.(error as Error);
       }
@@ -53,7 +57,6 @@ export class MCPWebSocketTransport implements Transport {
   async send(message: JSONRPCMessage): Promise<void> {
     return new Promise((resolve, reject) => {
       const json = JSON.stringify(message);
-      console.log("MCPWs sending", json);
 
       if (this._socket.readyState !== WebSocket.OPEN) {
         return reject(

@@ -1,0 +1,8 @@
+// tab commands
+{"heard":"switch tab gmail","expected":{"command":"voice-control.browser.switch-tab","slots":{"query":"gmail"}}}
+{"heard":"chrome tab docs","expected":{"command":"voice-control.browser.switch-tab","slots":{"query":"docs"}}}
+{"heard":"find tab calendar","expected":{"command":"voice-control.browser.switch-tab","slots":{"query":"calendar"}}}
+{"heard":"switch to chrome tab gmail","expected":{"command":"voice-control.browser.switch-tab","slots":{"query":"gmail"}}}
+{"heard":"new tab","expected":{"command":"windows.new-tab"}}
+{"heard":"close tab","expected":{"command":"windows.close-window"}}
+{"heard":"tab gmail","expected":{"rejected":true}}

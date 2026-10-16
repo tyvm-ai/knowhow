@@ -8,7 +8,13 @@ import {
   ExecuteOptions,
   ExecuteResult,
   OperationIndex,
+  SwaggerRequest,
 } from "./types";
+
+const defaultRequest: SwaggerRequest = async (url, config) => {
+  const response = await axios({ ...config, url });
+  return { status: response.status, statusText: response.statusText, data: response.data };
+};
 
 /**
  * Replace path parameters in a URL path with actual values
@@ -60,13 +66,13 @@ export async function executeOperation(
       ...(options.headers || {}),
     };
 
+    const request = options.request || defaultRequest;
     // Make the HTTP request
     let response;
     if (hasRequestBody) {
       // Send remaining params as request body
-      response = await axios({
+      response = await request(fullUrl, {
         method: operation.method,
-        url: fullUrl,
         data: params,
         headers,
         // Prevent following redirects for security
@@ -75,9 +81,8 @@ export async function executeOperation(
       });
     } else {
       // Send remaining params as query parameters
-      response = await axios({
+      response = await request(fullUrl, {
         method: operation.method,
-        url: fullUrl,
         params,
         headers,
         maxRedirects: 0,
@@ -131,11 +136,13 @@ export class DynamicSwaggerClient {
   private baseUrl: string;
   private swaggerSpec: SwaggerSpec;
   private headers: Record<string, string>;
+  private request?: SwaggerRequest;
 
   constructor(
     baseUrl: string,
     swaggerSpec: SwaggerSpec,
-    headers: Record<string, string> = {}
+    headers: Record<string, string> = {},
+    request?: SwaggerRequest
   ) {
     this.baseUrl = baseUrl;
     this.swaggerSpec = swaggerSpec;
@@ -143,6 +150,7 @@ export class DynamicSwaggerClient {
       "Content-Type": "application/json",
       ...headers,
     };
+    this.request = request;
   }
 
   /**
@@ -187,6 +195,7 @@ export class DynamicSwaggerClient {
       operationId,
       parameters: params,
       headers: this.headers,
+      request: this.request,
     });
 
     if (!result.success) {

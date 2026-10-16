@@ -1,5 +1,11 @@
 import { Tool } from "../../clients";
 import * as jq from "node-jq";
+import { paginateToolResponse } from "./boundedToolResponse";
+
+export interface JqOptions {
+  characterOffset?: number;
+  maxCharacters?: number;
+}
 
 /**
  * Attempts to parse content as JSON and returns parsed object if successful
@@ -47,7 +53,8 @@ export async function executeJqQuery(
   toolCallId: string,
   jqQuery: string,
   availableIds: string[],
-  toolNameMap?: { [toolCallId: string]: string }
+  toolNameMap?: { [toolCallId: string]: string },
+  options?: JqOptions
 ): Promise<string> {
   if (!data) {
     const idList = availableIds
@@ -56,30 +63,39 @@ export async function executeJqQuery(
         return name ? `${id} (${name})` : id;
       })
       .join("\n  - ");
-    return `Error: No tool response found for toolCallId "${toolCallId}". Call listStoredToolResponses to see all available responses with their tool names.\n\nAvailable toolCallIds:\n  - ${idList || "(none)"}`;
+    return paginateToolResponse(
+      `Error: No tool response found for toolCallId "${toolCallId}". Call listStoredToolResponses to see all available responses with their tool names.\n\nAvailable toolCallIds:\n  - ${idList || "(none)"}`,
+      options,
+      "available toolCallId list"
+    );
   }
 
   try {
     // First parse the stored string as JSON, then handle nested JSON strings
     const jsonData = tryParseJson(data);
     if (!jsonData) {
-      return `Error: Tool response data is not valid JSON for toolCallId "${toolCallId}"`;
+      return paginateToolResponse(
+        `Error: Tool response data is not valid JSON for toolCallId "${toolCallId}"`,
+        options,
+        "jq input error"
+      );
     }
     const parsedData = parseNestedJsonStrings(jsonData);
 
     // Execute JQ query
     const result = await jq.run(jqQuery, parsedData, { input: "json" });
 
-    // Handle the result based on its type
+    let rendered: string;
     if (typeof result === "string") {
-      return result;
+      rendered = result;
     } else if (typeof result === "number" || typeof result === "boolean") {
-      return String(result);
+      rendered = String(result);
     } else if (result === null) {
-      return "null";
+      rendered = "null";
     } else {
-      return JSON.stringify(result);
+      rendered = JSON.stringify(result);
     }
+    return paginateToolResponse(rendered, options, "jq result");
   } catch (error: any) {
     // If JQ fails, try to provide helpful error message
     let errorMessage = `JQ Query Error: ${error.message}`;
@@ -99,7 +115,7 @@ export async function executeJqQuery(
       ).substring(0, 500)}...`;
     }
 
-    return errorMessage;
+    return paginateToolResponse(errorMessage, options, "jq error");
   }
 }
 
@@ -108,7 +124,7 @@ export const jqToolResponseDefinition: Tool = {
   function: {
     name: "jqToolResponse",
     description:
-      "Execute a JQ query on a stored tool response to extract specific data. Use this when you need to extract specific information from any tool response that has been stored. This is the preferred way to search or filter compressed JSON tool responses — it parses the data automatically without requiring repeated expandTokens calls. IMPORTANT: You do NOT know the toolCallId at the time you call a tool — you must call listStoredToolResponses first to discover the correct toolCallId. The listStoredToolResponses output shows each response's tool name so you can identify which response belongs to which call. How to determine the correct JQ query: (1) For mcp_* tool responses (external MCP tools like mcp_1_*): the response is stored as a raw JSON object — use '.' to access the root directly, e.g. '.children | map(.name)' or '.state'. Do NOT use .content[0].text | fromjson for these. (2) For compressed MCP tool responses (._mcp_format === true): use '._data' e.g. '._data.children | map(.name)'. (3) For standard built-in tool responses: data may be nested under '.content[0].text | fromjson'. Use jqToolResponse instead of expandTokens whenever the stored data is JSON.",
+      "Execute a JQ query on a stored tool response. Output is bounded to 20,000 characters by default; use options.characterOffset to page through a large result. Prefer a selective JQ query over paging a broad query. Call listStoredToolResponses first to discover the toolCallId. MCP responses are generally rooted at '.' (or '._data' when _mcp_format is true); standard built-in responses may be nested under '.content[0].text | fromjson'.",
     parameters: {
       type: "object",
       positional: true,
@@ -121,6 +137,20 @@ export const jqToolResponseDefinition: Tool = {
           type: "string",
           description:
             "The JQ query to execute on the tool response data. For mcp_* tool responses (raw JSON object): '.children | map({id: .id, name: .name})' (extract fields from children array), '.children | map(select(.state == \"PENDING\")) | length' (count pending children), '.name' (get a top-level field). For compressed responses (._mcp_format true): '._data.children | map(.name)' or '._data | map(select(.state == \"PENDING\")) | length'. For standard built-in tool responses: '.content[0].text | fromjson | map(.title)' (extract titles from standard MCP array), '.content[0].text | fromjson | map(select(.createdAt > \"2025-01-01\"))' (filter by date).",
+        },
+        options: {
+          type: "object",
+          description: "Optional output pagination settings.",
+          properties: {
+            characterOffset: {
+              type: "number",
+              description: "Zero-based character offset into the rendered JQ result.",
+            },
+            maxCharacters: {
+              type: "number",
+              description: "Response size (default 20000, hard maximum 50000).",
+            },
+          },
         },
       },
       required: ["toolCallId", "jqQuery"],

@@ -1,10 +1,12 @@
 import { BaseChatModule } from "./BaseChatModule";
+import { TraceAll } from "../../util/Trace";
 import { CliChatService } from "../CliChatService";
 import { ChatCommand, ChatMode, ChatContext } from "../types";
 import { ask } from "../../utils";
 import { services } from "../../services";
 import { Models } from "../../types";
 
+@TraceAll()
 export class SystemModule extends BaseChatModule {
   name = "system";
   description = "System commands for model, provider, debug, and clear";

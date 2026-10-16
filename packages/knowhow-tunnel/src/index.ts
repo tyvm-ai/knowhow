@@ -19,18 +19,29 @@ export {
   TunnelWsData,
   TunnelWsClose,
   UrlRewriterCallback,
+  AllowedTunnelPort,
   StreamState,
   // PTY types
   TunnelPtyOpen,
   TunnelPtyData,
   TunnelPtyResize,
   TunnelPtyClose,
+  TunnelPtyList,
+  TunnelPtyAttached,
+  TunnelPtyDetach,
+  TunnelPtyListResponse,
+  TunnelPtySessionInfo,
   TunnelPtyExit,
   TunnelPtyMessage,
   AnyTunnelMessage,
   // Addon interface
   TunnelAddon,
   TunnelAddonContext,
+  // Telemetry types
+  TunnelTelemetryHello,
+  TunnelTelemetryControl,
+  TunnelTelemetrySample,
+  TunnelTelemetryMessage,
 } from "./types";
 export {
   parseTunnelMessage,
@@ -38,6 +49,7 @@ export {
   stripHopByHopHeaders,
   normalizeHeadersForLocal,
   isPortAllowed,
+  getAllowedPortTransport,
 } from "./protocol";
 export { Logger } from "./utils";
 export {

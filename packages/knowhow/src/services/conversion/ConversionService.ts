@@ -11,7 +11,9 @@ import {
   ConvertInput,
   ConvertOptions,
   ConvertResult,
+  InputResolver,
   Modality,
+  ResolvedInput,
 } from "./types";
 
 /**
@@ -85,6 +87,7 @@ async function pollVideoJob(
 
 export class ConversionService {
   private converters: Converter[] = [];
+  private inputResolvers: InputResolver[] = [];
   private clients: AIClient;
   private mediaProcessor: MediaProcessorService;
 
@@ -92,6 +95,7 @@ export class ConversionService {
     this.clients = clients;
     this.mediaProcessor = mediaProcessor;
     this.initDefaults();
+    this.initDefaultResolvers();
   }
 
   register(converter: Converter): void {
@@ -100,6 +104,74 @@ export class ConversionService {
 
   list(): Converter[] {
     return [...this.converters];
+  }
+
+  /** Register or replace a named input resolver. */
+  registerResolver(resolver: InputResolver): void {
+    const existingIndex = this.inputResolvers.findIndex(
+      (candidate) => candidate.name === resolver.name
+    );
+    if (existingIndex >= 0) {
+      this.inputResolvers[existingIndex] = resolver;
+      return;
+    }
+    this.inputResolvers.push(resolver);
+  }
+
+  listResolvers(): InputResolver[] {
+    return [...this.inputResolvers];
+  }
+
+  /** Resolve a path, URL, or other source to an existing local file. */
+  async resolveInput(
+    input: string,
+    resolverName?: string
+  ): Promise<ResolvedInput> {
+    let resolver: InputResolver | undefined;
+
+    if (resolverName) {
+      resolver = this.inputResolvers.find(
+        (candidate) => candidate.name === resolverName
+      );
+      if (!resolver) {
+        const available = this.inputResolvers.map((item) => item.name).join(", ");
+        throw new Error(
+          `Unknown input resolver "${resolverName}". Available resolvers: ${available || "none"}`
+        );
+      }
+      if (!(await resolver.canHandle(input))) {
+        throw new Error(
+          `Input resolver "${resolverName}" cannot handle: ${input}`
+        );
+      }
+    } else {
+      for (const candidate of this.inputResolvers) {
+        if (await candidate.canHandle(input)) {
+          resolver = candidate;
+          break;
+        }
+      }
+    }
+
+    if (!resolver) {
+      throw new Error(`No input resolver can handle: ${input}`);
+    }
+
+    const resolvedPath = path.resolve(await resolver.resolvePath(input));
+    if (!fs.existsSync(resolvedPath)) {
+      throw new Error(
+        `Input resolver "${resolver.name}" did not produce a file: ${resolvedPath}`
+      );
+    }
+    return { filePath: resolvedPath, resolver: resolver.name };
+  }
+
+  private initDefaultResolvers(): void {
+    this.registerResolver({
+      name: "fs",
+      canHandle: (input) => fs.existsSync(path.resolve(input)),
+      resolvePath: (input) => path.resolve(input),
+    });
   }
 
   /**
@@ -113,6 +185,7 @@ export class ConversionService {
     this.register({
       name: "whisper",
       cache: true,
+      inputExts: ["mp3", "wav", "m4a", "aac", "flac", "ogg", "opus"],
       inputModality: "audio",
       outputType: "text",
       async convert(input, _ctx): Promise<ConvertResult> {
@@ -128,6 +201,7 @@ export class ConversionService {
     this.register({
       name: "ffmpeg-whisper",
       cache: true,
+      inputExts: ["mp4", "mov", "mkv", "webm", "avi", "m4v", "mpeg", "mpg"],
       inputModality: "video",
       outputType: "text",
       async convert(input, _ctx): Promise<ConvertResult> {
@@ -549,9 +623,6 @@ export class ConversionService {
     targetType: Modality,
     options: ConvertOptions = {}
   ): Promise<ConvertResult> {
-    const ext = path.extname(filePath).replace(/^\./, "").toLowerCase();
-    const inputNode = ext || "text";
-
     const {
       force = false,
       preferredConverters = [],
@@ -565,7 +636,13 @@ export class ConversionService {
       endTime,
       onProgress,
       converterOptions = {},
+      inputResolver,
     } = options;
+
+    const resolvedInput = await this.resolveInput(filePath, inputResolver);
+    filePath = resolvedInput.filePath;
+    const ext = path.extname(filePath).replace(/^\./, "").toLowerCase();
+    const inputNode = ext || "text";
 
     const converterPath =
       via && via.length > 0

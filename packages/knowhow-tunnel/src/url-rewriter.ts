@@ -11,11 +11,13 @@
  *   //localhost:8080/ws         → //WORKERID-p8080.worker.localhost:4000/ws
  */
 
+import { AllowedTunnelPort } from "./types";
+
 export type UrlRewriterCallback = (port: number, metadata?: any) => string;
 
 export interface UrlRewriterConfig {
   /** Allowed ports that can be rewritten */
-  allowedPorts: number[];
+  allowedPorts: AllowedTunnelPort[];
 
   /** Tunnel domain (default: worker.localhost:4000) */
   tunnelDomain?: string;
@@ -85,7 +87,8 @@ export function rewriteUrls(
   } = config;
   const { workerId } = metadata;
 
-  for (const port of allowedPorts) {
+  for (const allowedPort of allowedPorts) {
+    const port = typeof allowedPort === "number" ? allowedPort : allowedPort.port;
     const replacement = config.urlRewriter
       ? config.urlRewriter(port, metadata)
       : `${workerId}\\-p${port}\\.${tunnelDomain}`;
@@ -230,7 +233,7 @@ export function rewriteBuffer(
  */
 export function createRewriterConfig(
   workerId: string,
-  allowedPorts: number[],
+  allowedPorts: AllowedTunnelPort[],
   options: { enabled?: boolean; tunnelDomain?: string; useHttps?: boolean } = {}
 ): UrlRewriterConfig {
   return {

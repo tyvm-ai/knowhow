@@ -415,6 +415,24 @@ describe("TokenCompressor", () => {
     });
   });
 
+  describe("image content compression", () => {
+    it("keeps image URLs intact when expanded", () => {
+      const imageUrl = `data:image/png;base64,${"A".repeat(20_000)}`;
+      const content = JSON.stringify({
+        type: "image_url",
+        image_url: { url: imageUrl, detail: "high" },
+      });
+
+      const compressed = tokenCompressor.compressContent(content);
+      const key = compressed.match(/Key:\s*(\S+)/)?.[1];
+
+      expect(key).toBeDefined();
+      const expanded = tokenCompressor.retrieveFullString(key!);
+      expect(expanded).toBe(content);
+      expect(expanded).not.toContain("[COMPRESSED_JSON_PROPERTY");
+    });
+  });
+
   describe("tool function integration", () => {
     it("should register expandTokens function correctly", () => {
       const toolsServiceCalls = mockToolsService.addFunctions.mock.calls;
@@ -446,7 +464,7 @@ describe("TokenCompressor", () => {
       expect(result).toContain("Available keys:");
     });
 
-    it("should auto-stitch a multi-chunk chain into the full content", () => {
+    it("should auto-stitch and paginate a multi-chunk chain", () => {
       // Force a multi-chunk compression then expand the first key.
       const content = "a".repeat(40000);
       const placeholder = tokenCompressor.compressStringInChunks(content);
@@ -456,9 +474,23 @@ describe("TokenCompressor", () => {
       const functions = toolsServiceCalls[0][0];
       const result = functions.expandTokens(firstKey);
 
-      // Full content is returned in one call with no chunk-linking markers.
-      expect(result).toBe(content);
+      expect(result.length).toBeLessThanOrEqual(20_000);
+      expect(result).toContain("Repeat with characterOffset=");
       expect(result).not.toContain("NEXT_CHUNK_KEY");
+
+      const pages = [result];
+      let offsetMatch = result.match(/characterOffset=(\d+)/);
+      while (offsetMatch) {
+        const page = functions.expandTokens(
+          firstKey,
+          undefined,
+          undefined,
+          Number(offsetMatch[1])
+        );
+        pages.push(page);
+        offsetMatch = page.match(/Repeat with characterOffset=(\d+)/);
+      }
+      expect(pages.reduce((sum, page) => sum + (page.match(/^a+/)?.[0].length || 0), 0)).toBe(content.length);
     });
 
     it("should support a ranged read with real line numbers", () => {

@@ -38,11 +38,14 @@ export interface ExecutionTrace {
 
 // Resource quotas for script execution
 export interface ResourceQuotas {
-  maxToolCalls: number;
-  maxTokens: number;
-  maxExecutionTimeMs: number;
-  maxCostUsd: number;
-  maxMemoryMb: number;
+  /**
+   * Resource limits are opt-in. Omit a limit to leave that resource unlimited.
+   */
+  maxToolCalls?: number;
+  maxTokens?: number;
+  maxExecutionTimeMs?: number;
+  maxCostUsd?: number;
+  maxMemoryMb?: number;
 }
 
 // Security policy configuration
@@ -74,6 +77,8 @@ export interface PolicyViolation {
 // Script execution request
 export interface ExecutionRequest {
   script: string;
+  /** JSON-serializable values exposed to the sandbox as `scriptArgs`. */
+  args?: Record<string, any>;
   context?: Record<string, any>;
   quotas?: Partial<ResourceQuotas>;
   policy?: Partial<SecurityPolicy>;

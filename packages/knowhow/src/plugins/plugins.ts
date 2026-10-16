@@ -52,6 +52,22 @@ export class PluginService {
     return true;
   }
 
+  /** Apply the enabled/disabled state from the current Knowhow config. */
+  async refreshConfiguredState(): Promise<void> {
+    const config = await getConfig();
+    const disabled = new Set(getDisabledPlugins(config.plugins));
+
+    for (const [key, plugin] of this.pluginMap) {
+      if (disabled.has(key)) {
+        plugin.disable();
+      } else {
+        // Configuration is authoritative when services start or reload. This
+        // also re-enables a plugin after it is removed from `disabled`.
+        plugin.enable();
+      }
+    }
+  }
+
   /* -------- existing public API (updated for compatibility) ---------------------- */
 
   listPlugins() {

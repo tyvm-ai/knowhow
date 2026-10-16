@@ -51,6 +51,9 @@ export class GenericFireworksClient extends HttpClient {
       ...options,
       // Strip Anthropic-specific field not accepted by Fireworks
       long_ttl_cache: undefined,
+      // This is translated by the OpenAI/Anthropic clients, but is not part of
+      // Fireworks' OpenAI-compatible chat completion schema.
+      reasoning_summary: undefined,
     };
 
     if (sanitized.tools) {

@@ -7,9 +7,37 @@ Provides the `knowhow script` CLI command and the `executeScript` tool for runni
 ```bash
 knowhow script --input-file ./my-script.js
 knowhow script --input-file ./my-script.js --allow-network
+knowhow script --input-file ./my-script.js --artifact-dir .knowhow/artifacts/my-script
 ```
 
-Scripts run in an isolated-vm sandbox with access to `callTool`, `llm`, `sleep`, `createArtifact`, and `console`.
+Scripts run in an isolated-vm sandbox with access to `callTool`, `llm`, decision primitives, `sleep`, `createArtifact`, and `console`.
+
+### Durable local artifacts
+
+`createArtifact()` always adds the artifact to the in-memory execution result,
+which preserves existing tool/API/web behavior. The local CLI persists those
+artifacts only when `--artifact-dir` is supplied. It creates a unique timestamped
+subdirectory, sanitizes every filename, resolves duplicate sanitized names,
+writes `manifest.json`, and prints each absolute output path and byte size.
+
+For example:
+
+```bash
+knowhow script \
+  --input-file .knowhow/scripts/report.script.js \
+  --artifact-dir .knowhow/artifacts/report
+```
+
+The layout is:
+
+```text
+.knowhow/artifacts/report/<UTC-timestamp>/
+├── <artifact files>
+└── manifest.json
+```
+
+Omitting `--artifact-dir` does not write local files; merely returning artifact
+names from a script does not make their contents durable after process exit.
 
 ---
 
@@ -17,6 +45,12 @@ Scripts run in an isolated-vm sandbox with access to `callTool`, `llm`, `sleep`,
 
 This module depends on [`isolated-vm`](https://www.npmjs.com/package/isolated-vm), a **native (node-gyp) addon**. `isolated-vm` ships prebuilt binaries for common platforms/ABIs, and its `install` script (`node-gyp-build || node-gyp rebuild`) is what selects the correct prebuilt binary (or compiles from source if no prebuild matches your platform).
 
+
+```bash
+npm install --allow-scripts
+```
+
+The equivalent Knowhow module-management commands are:
 > **⚠️ npm 11 and some org/CI policies block package install scripts by default.** If the `install` script doesn't run, `isolated-vm` can be left in a broken/mismatched state that later **aborts the whole process** at require-time (e.g. `Assertion 'key <= detail::IsolateSpecificSize' failed`). Because of this, you should install this module with install scripts **allowed**.
 
 Install (or update) with the `--allow-scripts` flag so the native build/prebuild-selection step runs:
@@ -130,6 +164,56 @@ cp ~/dev/knowhow/packages/knowhow/ts_build/src/services/Mcp.js \
 
 ---
 
+## Runs are stateful: watch, pause, message, resume
+
+Every run (`knowhow script --input-file ...` and the `startScript*` tools) is a
+`StatefulProcess` persisted to `.knowhow/processes/scripts/<runId>/`:
+
+| File | Written by | Holds |
+|---|---|---|
+| `state.json` | the run | status, events, result, `scriptState`, resume count |
+| `control.json` | anyone | `{ "desired": "paused" \| "running" \| "cancelled" }` |
+| `input.txt` | anyone (append) | messages for `waitForMessage` / `onMessage` |
+| `script.js` | the run | the source, used to resume |
+
+```bash
+knowhow scripts                       # active + last hour (-a for all)
+knowhow scripts show <id|#>           # status, scriptState, result, recent events
+knowhow scripts events <id> -f        # follow events until it ends
+knowhow scripts workflow <id> -w      # live /workflow graph
+knowhow scripts pause <id>            # stops at the next safe point
+knowhow scripts resume <id>           # unpause, or restart a dead run (see below)
+knowhow scripts cancel <id>
+knowhow scripts send <id> go '{"n":1}'
+knowhow processes                     # everything: exec'd commands, agents, scripts
+```
+
+Safe points (where a pause takes effect, and a cancel throws) are every tool /
+`llm` / `agent` call, `setState()` and `checkpoint()`.
+
+### Writing a resumable script
+
+Resuming does not replay anything: it starts the **same script fresh**, with the
+same `scriptArgs`, and the last value saved with `setState()` in the read-only
+`scriptState` global. A script is resumable when it reads its progress back from
+`scriptState`:
+
+```ts
+const { done = [] } = scriptState;        // {} on a fresh run
+const finished = [...done];
+for (const item of scriptArgs.items) {
+  if (finished.includes(item)) continue;  // skip work saved by an earlier attempt
+  await processItem(item);
+  finished.push(item);
+  await setState({ done: finished });     // shallow merge; resolves once on disk
+}
+({ finished, resumed: runInfo.resumed })  // runInfo: { runId, resumed, resumeCount }
+```
+
+`knowhow scripts resume <id>` (or the `resumeScript` tool) restarts a failed,
+cancelled or **orphaned** run (its owner process exited, e.g. Ctrl-C or a crash)
+under the same runId. Completed runs need `--force`.
+
 ## Script API
 
 Scripts have access to these globals:
@@ -141,11 +225,39 @@ const result = await callTool('toolName', { param: 'value' });
 // Call an LLM
 const response = await llm([{ role: 'user', content: 'Hello' }]);
 
+// Ask one or more typed decision questions (defaults to jev/jev-latest)
+const decisions = await decide(
+  { message: 'Help! My payouts have failed for 3 days.' },
+  {
+    urgent: { type: 'noul', instructions: 'Is this urgent?' },
+    department: {
+      type: 'choice',
+      instructions: 'Which team should handle this?',
+      criteria: { billing: 'Payments', technical: 'Bugs' }
+    },
+    frustration: {
+      type: 'score',
+      instructions: 'How frustrated is the customer?',
+      criteria: ['Calm', 'Frustrated', 'Very angry']
+    }
+  }
+);
+
+// Convenience forms return the single typed answer directly
+const urgency = await noul('Fix this now!', 'Is this urgent?');
+const team = await choice('My card was charged twice', 'Which team?', {
+  billing: 'Payment issues',
+  technical: 'Product bugs'
+});
+const sentiment = await score('This keeps breaking!', 'Rate frustration', [
+  'Calm', 'Frustrated', 'Very angry'
+]);
+
 // Sleep (max 2000ms)
 await sleep(500);
 
 // Create an artifact (saved to script result)
-createArtifact('output.json', JSON.stringify(data), 'json');
+await createArtifact('output.json', JSON.stringify(data), 'json');
 
 // Get current quota usage
 const usage = getQuotaUsage();
@@ -173,9 +285,12 @@ return { success: true };  // SyntaxError: Unexpected token 'return'
 
 By default scripts:
 - Cannot call `executeScript`, `execCommand`, `writeFileChunk`, `patchFile`
-- Have a 5-minute execution timeout
-- Max 50 tool calls
-- Max 10,000 tokens
-- Max $1.00 cost
+- Have no wall-clock deadline
+- Have no tool-call, token, or cost limit
 - No network access (use `--allow-network` to enable)
+
+Resource limits are opt-in. Only pass `maxExecutionTimeMs` when a known
+completion deadline exists, and only pass `maxToolCalls`, `maxTokens`, or
+`maxCostUsd` when the run is intentionally bounded. This avoids guessing limits
+for multi-agent workflows and training runs whose required usage is unknown.
 

@@ -3,16 +3,19 @@
  * Allows CLI users to push agent tasks to the remote KnowHow web app.
  */
 import { BaseChatModule } from "./BaseChatModule";
+import { TraceAll } from "../../util/Trace";
 import { ChatCommand, ChatContext, ChatService } from "../types";
 import {
   KnowhowSimpleClient,
   KNOWHOW_API_URL,
 } from "../../services/KnowhowClient";
-import { AgentSyncKnowhowWeb } from "../../services/AgentSyncKnowhowWeb";
+import { KnowhowWebChannel, persistRemoteIdentity } from "../../services/stateful";
 import { AgentModule } from "./AgentModule";
 import { TaskInfo } from "../types";
 import { getConfig, updateConfig } from "../../config";
+import { withRetry } from "../../clients/withRetry";
 
+@TraceAll()
 export class RemoteSyncModule extends BaseChatModule {
   name = "remote-sync";
   description = "Remote sync functionality (/sync:remote, /sync:status)";
@@ -39,6 +42,22 @@ export class RemoteSyncModule extends BaseChatModule {
     super();
     this.agentModule = agentModule;
     this.client = new KnowhowSimpleClient(KNOWHOW_API_URL);
+  }
+
+  /**
+   * Start an automatic sync without delaying agent execution. Manual syncs use
+   * syncTask directly so the command still waits for and reports its result.
+   */
+  public syncTaskInBackground(taskId: string): void {
+    void this.syncTask(taskId).catch((error: unknown) => {
+      // syncTask handles expected API failures itself. Keep this final guard so
+      // an unexpected failure can never become an unhandled rejection.
+      console.error(
+        `❌ Unexpected remote sync failure: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    });
   }
 
   /**
@@ -154,11 +173,15 @@ export class RemoteSyncModule extends BaseChatModule {
     }
 
     console.log("📡 Creating remote session for this terminal session...");
-    const result = await this.client.createSessionPlaceholder({
-      title: title.slice(0, 80) || "CLI Session",
-      workerId: this.workerId,
-      metadata: { source: "cli", createdAt: new Date().toISOString() },
-    });
+    const result = await withRetry(
+      () =>
+        this.client.createSessionPlaceholder({
+          title: title.slice(0, 80) || "CLI Session",
+          workerId: this.workerId,
+          metadata: { source: "cli", createdAt: new Date().toISOString() },
+        }),
+      { maxRetries: 3, backoffMs: 500 }
+    );
 
     this.remoteSessionId = result.sessionId;
     console.log(`✅ Remote session created: ${result.sessionId}`);
@@ -174,12 +197,16 @@ export class RemoteSyncModule extends BaseChatModule {
     agentName?: string,
     modelName?: string
   ): Promise<{ messageId: string; taskId: string | undefined }> {
-    const result = await this.client.createMessagePlaceholder(sessionId, {
-      content: prompt,
-      agentName,
-      modelName,
-      metadata: { source: "cli", createdAt: new Date().toISOString() },
-    });
+    const result = await withRetry(
+      () =>
+        this.client.createMessagePlaceholder(sessionId, {
+          content: prompt,
+          agentName,
+          modelName,
+          metadata: { source: "cli", createdAt: new Date().toISOString() },
+        }),
+      { maxRetries: 3, backoffMs: 500 }
+    );
     return { messageId: result.messageId, taskId: result.taskId };
   }
 
@@ -270,7 +297,10 @@ export class RemoteSyncModule extends BaseChatModule {
     try {
       // Step 1: Ensure remote session exists
       console.log("\n🔐 Checking KnowHow API credentials...");
-      const me = await this.client.me();
+      const me = await withRetry(() => this.client.me(), {
+        maxRetries: 3,
+        backoffMs: 500,
+      });
       console.log(`✅ Authenticated as ${me.data?.email || "unknown"}`);
 
       const title =
@@ -303,13 +333,13 @@ export class RemoteSyncModule extends BaseChatModule {
         return;
       }
       console.log(`\n🔗 Using task from message placeholder: ${knowhowTaskId}`);
-      const webSync = new AgentSyncKnowhowWeb(KNOWHOW_API_URL);
       console.log(`✅ Remote task created: ${knowhowTaskId}`);
 
       // Step 4: Update local task info with remote IDs
       taskInfo.knowhowMessageId = messageId;
       taskInfo.knowhowTaskId = knowhowTaskId;
       taskInfo.chatSessionId = sessionId;
+      await persistRemoteIdentity(taskId, knowhowTaskId, messageId);
 
       // Update session manager
       const sessionManager = this.agentModule.getSessionManager();
@@ -318,32 +348,44 @@ export class RemoteSyncModule extends BaseChatModule {
       // Step 5: Wire up live sync
       console.log(`\n🚀 Syncing thread progress to remote...`);
       const agent = taskInfo.agent;
-      if (agent) {
+      const session = this.agentModule.getSession(taskId);
+      if (session) {
+        // The web channel's first publish carries the full state (it has no
+        // persisted cursor yet), which catches the remote up; a finished
+        // session publishes its terminal state.
+        await session.attach(
+          KnowhowWebChannel.existing(knowhowTaskId, { client: this.client })
+        );
         if (taskInfo.status === "completed" || taskInfo.status === "failed") {
-          // Task already done — push final state directly
-          await webSync.setupAgentSync(agent, knowhowTaskId);
-          await webSync.updateChatTask(knowhowTaskId, agent, false, "Synced from CLI");
+          await session.flush();
           console.log(`✅ Sync complete!`);
         } else {
-          // Task still running — attach live sync
-          await webSync.setupAgentSync(agent, knowhowTaskId);
           console.log(
             `✅ Live sync attached! Thread updates will push as the agent runs.`
           );
         }
+      } else if (agent) {
+        // No session (task finished in an earlier process state): push the final state directly.
+        await this.client.updateChatTask(knowhowTaskId, {
+          threads: agent.getThreads(),
+          totalUsdCost: agent.getTotalCostUsd(),
+          inProgress: false,
+          result: "Synced from CLI",
+        });
+        console.log(`✅ Sync complete!`);
       } else {
         console.log("⚠️  Agent not found in task info; skipping live sync.");
       }
 
       this.syncedMessageCount++;
 
-      const baseUrl = KNOWHOW_API_URL.replace("/api", "").replace(
-        "api.",
-        ""
-      );
+      const chatUrl = new URL(KNOWHOW_API_URL);
+      chatUrl.hostname = chatUrl.hostname.replace(/^api\./, "");
+      chatUrl.pathname = chatUrl.pathname.replace(/\/api\/?$/, "");
+      chatUrl.pathname = `${chatUrl.pathname.replace(/\/$/, "")}/chat/${sessionId}`;
       console.log(
         `\n💾 Local session updated with remote IDs.\n` +
-          `🌐 View your task at: ${baseUrl}/chat/${sessionId}`
+          `🌐 View your task at: ${chatUrl.toString()}`
       );
     } catch (error: any) {
       console.error(

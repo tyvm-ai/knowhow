@@ -21,6 +21,15 @@ export class HttpError extends Error {
   }
 }
 
+/**
+ * Optional, non-enumerable hook carried by an authenticated headers object.
+ * The hook may replace an expired credential before one safe 401 retry.
+ */
+export const HTTP_UNAUTHORIZED_HANDLER = Symbol("httpUnauthorizedHandler");
+export type RefreshableHeaders = Record<string, string> & {
+  [HTTP_UNAUTHORIZED_HANDLER]?: () => Promise<void>;
+};
+
 async function parseBody<T>(response: Response, responseType?: string): Promise<T> {
   if (responseType === "arraybuffer") {
     return (await response.arrayBuffer()) as unknown as T;
@@ -41,13 +50,14 @@ async function request<T = any>(
   url: string,
   options: {
     method?: string;
-    headers?: Record<string, string>;
+    headers?: RefreshableHeaders;
     body?: any;
     responseType?: "json" | "arraybuffer" | "stream" | "text";
     params?: Record<string, any>;
     /** Timeout in milliseconds. Default: 30000 (30s). Use 0 to disable. */
     timeout?: number;
-  } = {}
+  } = {},
+  mayRefresh = true
 ): Promise<HttpResponse<T>> {
   const { method = "GET", headers = {}, body, responseType, params, timeout = 30000 } = options;
 
@@ -102,6 +112,12 @@ async function request<T = any>(
   }
 
   if (!response.ok) {
+    const refresh = headers[HTTP_UNAUTHORIZED_HANDLER];
+    if (response.status === 401 && mayRefresh && refresh) {
+      await refresh();
+      return request<T>(url, options, false);
+    }
+
     const text = await response.text().catch(() => "");
     let parsedBody: any;
     try {

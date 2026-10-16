@@ -1147,5 +1147,159 @@
     "durationMs": 3988,
     "usd_cost": 0.000008,
     "testedAt": "2026-07-24T02:06:22.609Z"
+  },
+  "openai::gpt-6.1-sol": {
+    "provider": "openai",
+    "model": "gpt-6.1-sol",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, how are you?",
+    "usage": {
+      "prompt_tokens": 13,
+      "completion_tokens": 28,
+      "total_tokens": 41,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "output_tokens_details": {
+        "reasoning_tokens": 15
+      }
+    },
+    "durationMs": 2678,
+    "usd_cost": 0.00030599999999999996,
+    "testedAt": "2026-10-16T00:48:49.279Z"
+  },
+  "anthropic::claude-haiku-5-5": {
+    "provider": "anthropic",
+    "model": "claude-haiku-5-5",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, friend! How are you?\n\nWait, that's more than five words. Here's one that fits:\n\nHello, friend, good to see you.",
+    "usage": {
+      "input_tokens": 18,
+      "output_tokens": 47,
+      "prompt_tokens": 18,
+      "completion_tokens": 47,
+      "total_tokens": 65,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0,
+      "output_tokens_details": {
+        "thinking_tokens": 0
+      }
+    },
+    "durationMs": 847,
+    "usd_cost": 0.0000253,
+    "testedAt": "2026-10-16T00:48:50.136Z"
+  },
+  "xai::grok-4.7": {
+    "provider": "xai",
+    "model": "grok-4.7",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, nice to meet you.",
+    "usage": {
+      "prompt_tokens": 1249,
+      "completion_tokens": 8,
+      "total_tokens": 1354,
+      "prompt_tokens_details": {
+        "cached_tokens": 1152
+      }
+    },
+    "durationMs": 1900,
+    "usd_cost": 0.000818,
+    "testedAt": "2026-10-16T00:48:56.076Z"
+  },
+  "fireworks::accounts/fireworks/models/qwen3p8-2p4t-a95b": {
+    "provider": "fireworks",
+    "model": "accounts/fireworks/models/qwen3p8-2p4t-a95b",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, how are you?",
+    "usage": {
+      "prompt_tokens": 59,
+      "total_tokens": 184,
+      "completion_tokens": 125,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 115
+      },
+      "output_tokens_details": {
+        "reasoning_tokens": 115
+      }
+    },
+    "durationMs": 1162,
+    "usd_cost": 0.0008680000000000001,
+    "testedAt": "2026-10-16T00:48:57.403Z"
+  },
+  "fireworks::accounts/fireworks/models/nemotron-lightning-3p5-30b-a3b": {
+    "provider": "fireworks",
+    "model": "accounts/fireworks/models/nemotron-lightning-3p5-30b-a3b",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there! How are you?",
+    "usage": {
+      "prompt_tokens": 23,
+      "total_tokens": 780,
+      "completion_tokens": 757,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 747
+      },
+      "output_tokens_details": {
+        "reasoning_tokens": 747
+      }
+    },
+    "durationMs": 2045,
+    "usd_cost": 0.00015255,
+    "testedAt": "2026-10-16T00:48:59.452Z"
+  },
+  "fireworks::accounts/fireworks/models/inkling": {
+    "provider": "fireworks",
+    "model": "accounts/fireworks/models/inkling",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello! Nice to meet you.",
+    "usage": {
+      "prompt_tokens": 21,
+      "total_tokens": 267,
+      "completion_tokens": 246,
+      "prompt_tokens_details": null,
+      "reasoning_tokens": 235
+    },
+    "durationMs": 1347,
+    "usd_cost": 0.0010172999999999998,
+    "testedAt": "2026-10-16T00:49:00.803Z"
+  },
+  "google::gemini-4-argon": {
+    "provider": "google",
+    "model": "gemini-4-argon",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, how are you?",
+    "usage": {
+      "prompt_tokens": 38,
+      "completion_tokens": 11,
+      "total_tokens": 49,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "durationMs": 4395,
+    "usd_cost": 0.00018600000000000002,
+    "testedAt": "2026-10-16T00:50:09.013Z"
+  },
+  "google::gemini-3.8-flash": {
+    "provider": "google",
+    "model": "gemini-3.8-flash",
+    "prompt": "Say hello in 5 words.",
+    "response": "Hello there, how are you?",
+    "usage": {
+      "prompt_tokens": 8,
+      "completion_tokens": 7,
+      "total_tokens": 228,
+      "prompt_tokens_details": {
+        "cached_tokens": 0
+      }
+    },
+    "durationMs": 4375,
+    "usd_cost": 0.000831,
+    "testedAt": "2026-10-16T00:50:13.398Z"
   }
 }

@@ -1,8 +1,14 @@
 import { createHash } from "crypto";
-import http from "../utils/http";
+import { TraceAll } from "../util/Trace";
+import http, { HTTP_UNAUTHORIZED_HANDLER, RefreshableHeaders } from "../utils/http";
 import fs from "fs";
+import { getConfigSync } from "../config";
+import { exchangeAvailablePublicKeyJwt, storeJwt } from "../auth/keyAuth";
+import { keyPairExists } from "../auth/keyManager";
+import { getOrgIdForApi } from "../auth/environmentAuth";
+import { loadJwtFromDisk } from "../auth/jwtStore";
+import { getActiveRemoteSync } from "../remotes";
 import { Message } from "../clients/types";
-import path from "path";
 import {
   CompletionOptions,
   CompletionResponse,
@@ -72,11 +78,42 @@ export interface UpdateOrgTaskResponse {
   inProgress: boolean;
 }
 
+/** Status fields any per-thread write may carry. */
+export interface TaskStatusFields {
+  inProgress?: boolean;
+  totalUsdCost?: number;
+  result?: any;
+  error?: { message: string; code?: string; details?: any };
+}
+
+export interface TaskThreadWriteResponse {
+  id: string;
+  applied: "appended" | "alreadyApplied" | "replaced" | "noop";
+  revision: number;
+  /** Stored length of every thread after the write */
+  lengths: number[];
+  lastHashes?: string[];
+  inProgress: boolean;
+  /** Owner-written status (servers with desiredStatus report the effective status here for old clients) */
+  status: string;
+  /** Requested state written by controllers: "paused" | "running" | "cancelled" | null (new servers only) */
+  desiredStatus?: string | null;
+  /** Bumped on every control write (new servers only) */
+  controlVersion?: number;
+  totalUsdCost: number;
+  updatedAt: string;
+  /** Unprocessed messages queued for the agent */
+  pendingMessages: Array<{ id: string; message: string; role: string; createdAt: string }>;
+}
+
 // Agent task synchronization interfaces
 export interface TaskDetailsResponse {
   taskId: string;
   inProgress: boolean;
   status: "running" | "paused" | "killed" | "completed";
+  /** Requested state written by controllers (new servers only) */
+  desiredStatus?: string | null;
+  controlVersion?: number;
   totalUsdCost: number;
   threads: any[][];
   createdAt: string;
@@ -121,7 +158,7 @@ export interface GitCredentialResponse {
   expiresAt: string | null;
 }
 
-export function loadKnowhowJwt(): string {
+export function loadKnowhowJwt(apiUrl: string = KNOWHOW_API_URL): string {
   // Check env var first — this is how cloud workers/CI runners get auth
   // (injected via KNOWHOW_JWT env var in the runner's .env file by GithubRunnerService).
   // This avoids depending on a potentially stale .knowhow/.jwt file from the snapshot.
@@ -129,34 +166,42 @@ export function loadKnowhowJwt(): string {
     return process.env.KNOWHOW_JWT;
   }
 
-  const jwtFile = path.join(process.cwd(), ".knowhow", ".jwt");
-  if (!fs.existsSync(jwtFile)) {
-    return "";
-  }
-  const jwt = fs.readFileSync(jwtFile, "utf-8").trim();
-
-  return jwt;
+  return loadJwtFromDisk(apiUrl);
 }
 
-export const KNOWHOW_API_URL =
-  process.env.KNOWHOW_API_URL || "https://api.knowhow.tyvm.ai";
+export const KNOWHOW_API_URL = getActiveRemoteSync().apiUrl;
 
+@TraceAll()
 export class KnowhowSimpleClient {
-  headers: Record<string, string> = {};
+  headers: RefreshableHeaders = {};
   jwtValidated = false;
+  private readonly canRefreshJwt: boolean;
+  private refreshPromise?: Promise<void>;
 
   constructor(
     private baseUrl = KNOWHOW_API_URL,
-    private jwt = loadKnowhowJwt()
+    jwt?: string
   ) {
-    this.setJwt(jwt);
+    // Explicit tokens (including KNOWHOW_JWT worker credentials) have no
+    // corresponding local identity and must never trigger interactive renewal.
+    this.canRefreshJwt = jwt === undefined && !process.env.KNOWHOW_JWT;
+    this.jwt = jwt ?? loadKnowhowJwt(this.baseUrl);
+    this.setJwt(this.jwt);
+    if (this.canRefreshJwt) {
+      Object.defineProperty(this.headers, HTTP_UNAUTHORIZED_HANDLER, {
+        enumerable: false,
+        value: () => this.renewJwt(true),
+      });
+    }
   }
+
+  private jwt: string;
 
   /**
    * Reload the JWT from disk (useful after login refreshes the token).
    */
   refreshJwt() {
-    const freshJwt = loadKnowhowJwt();
+    const freshJwt = loadKnowhowJwt(this.baseUrl);
     if (freshJwt) {
       this.setJwt(freshJwt);
       this.jwtValidated = false;
@@ -165,12 +210,52 @@ export class KnowhowSimpleClient {
 
   setJwt(jwt: string) {
     this.jwt = jwt;
-    this.headers = {
-      Authorization: `Bearer ${this.jwt}`,
-    };
+    // Keep this object stable: the HTTP wrapper retries with the same reference.
+    this.headers.Authorization = `Bearer ${this.jwt}`;
+  }
+
+  private jwtExpiresSoon(): boolean {
+    if (!this.jwt) return true;
+    try {
+      const payload = JSON.parse(Buffer.from(this.jwt.split(".")[1], "base64url").toString("utf8"));
+      return typeof payload.exp === "number" && payload.exp * 1000 - Date.now() < 5 * 60 * 1000;
+    } catch {
+      return false;
+    }
+  }
+
+  private async renewJwt(force = false): Promise<void> {
+    if (!this.canRefreshJwt) return;
+    if (!force && !this.jwtExpiresSoon()) return;
+    if (this.refreshPromise) return this.refreshPromise;
+
+    this.refreshPromise = (async () => {
+      const config = getConfigSync();
+      const identityPath = config.cliIdentityPath;
+      const orgId = getOrgIdForApi(config, this.baseUrl);
+      if (!orgId || (!keyPairExists(identityPath) && !keyPairExists())) {
+        throw new Error("JWT expired and the CLI identity is unavailable. Please run `knowhow login` again.");
+      }
+      try {
+        const freshJwt = await exchangeAvailablePublicKeyJwt(orgId, this.baseUrl, identityPath);
+        storeJwt(freshJwt, this.baseUrl);
+        this.setJwt(freshJwt);
+        this.jwtValidated = true;
+      } catch (error) {
+        throw new Error(
+          "Unable to renew the CLI session; the identity may have been revoked. Please run `knowhow login` again.",
+          { cause: error }
+        );
+      }
+    })().finally(() => {
+      this.refreshPromise = undefined;
+    });
+    return this.refreshPromise;
   }
 
   async checkJwt() {
+    await this.renewJwt();
+
     if (!this.jwt) {
       throw new Error("No JWT found. Please login first.");
     }
@@ -186,6 +271,10 @@ export class KnowhowSimpleClient {
           return org.organizationId === orgId;
         });
       } catch (error) {
+        this.jwtValidated = false;
+        if (error instanceof Error && error.message.includes("renew the CLI session")) {
+          throw error;
+        }
         throw new Error("Invalid JWT. Please login again.");
       }
     }
@@ -267,6 +356,37 @@ export class KnowhowSimpleClient {
       {
         headers: this.headers,
       }
+    );
+  }
+
+  /**
+   * Per-thread write: push messages onto thread `index`. `length` is the thread
+   * length AFTER the append. 409 = server length differs (caller re-sends the thread).
+   */
+  async appendTaskThread(
+    taskId: string,
+    index: number,
+    body: TaskStatusFields & { length: number; messages: Message[]; expectedLastHash?: string }
+  ) {
+    await this.checkJwt();
+    return http.post<TaskThreadWriteResponse>(
+      `${this.baseUrl}/api/chat/tasks/${taskId}/threads/${index}/append`,
+      body,
+      { headers: this.headers }
+    );
+  }
+
+  /** Per-thread write: replace (or create, when index == thread count) thread `index`. */
+  async replaceTaskThread(
+    taskId: string,
+    index: number,
+    body: TaskStatusFields & { messages: Message[]; expectedLength?: number; expectedLastHash?: string }
+  ) {
+    await this.checkJwt();
+    return http.put<TaskThreadWriteResponse>(
+      `${this.baseUrl}/api/chat/tasks/${taskId}/threads/${index}`,
+      body,
+      { headers: this.headers }
     );
   }
 
@@ -531,7 +651,7 @@ export class KnowhowSimpleClient {
   async listOrgFiles() {
     await this.checkJwt();
     return http.get<
-      { id: string; fileName: string; folderPath: string; name: string }[]
+      { id: string; fileName: string; folderPath: string; name: string; updatedAt: string }[]
     >(`${this.baseUrl}/api/org-files`, { headers: this.headers });
   }
 
@@ -581,7 +701,7 @@ export class KnowhowSimpleClient {
    */
   async findOrgFileByPath(
     remotePath: string
-  ): Promise<{ id: string; fileName: string; folderPath: string } | null> {
+  ): Promise<{ id: string; fileName: string; folderPath: string; updatedAt: string } | null> {
     const lastSlash = remotePath.lastIndexOf("/");
     const rawFolder =
       lastSlash >= 0 ? remotePath.substring(0, lastSlash + 1) : "/";

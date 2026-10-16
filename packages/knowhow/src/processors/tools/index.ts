@@ -1,6 +1,7 @@
 export {
   jqToolResponseDefinition,
   executeJqQuery,
+  JqOptions,
 } from "./jqToolResponse";
 
 export {
@@ -18,4 +19,5 @@ export {
 export {
   listStoredToolResponsesDefinition,
   executeListStoredToolResponses,
+  ListStoredToolResponsesOptions,
 } from "./listStoredToolResponses";

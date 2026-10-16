@@ -10,4 +10,5 @@ export {
 export { ToolResponseCache } from "./ToolResponseCache";
 export { XmlToolCallProcessor } from "./XmlToolCallProcessor";
 export { HarmonyToolProcessor } from "./HarmonyToolProcessor";
+export { GemmaToolProcessor } from "./GemmaToolProcessor";
 export { MinimalToolsMessageProcessor } from "./MinimalToolsMessageProcessor";

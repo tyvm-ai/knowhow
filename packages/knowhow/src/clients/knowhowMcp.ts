@@ -62,9 +62,9 @@ export class KnowhowMcpClient implements GenericClient {
           ...options,
           max_tokens: options.max_tokens || 3000,
 
-          ...(options.tools && {
+          ...(options.tools?.length && {
             tools: options.tools,
-            tool_choice: "auto",
+            tool_choice: options.tool_choice ?? "auto",
           }),
         },
       }

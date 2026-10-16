@@ -82,7 +82,10 @@ describe("sendAgentMessage", () => {
       path.join(agentsDir, "child-3", "input.txt"),
       "utf8"
     );
-    expect(input).toMatch(/^\/poke \[from:boss\] stop and reconsider/);
+    // input.txt is now one JSON record per message (true O_APPEND write)
+    expect(JSON.parse(input.trim()).text).toMatch(
+      /^\/poke \[from:boss\] stop and reconsider/
+    );
   });
 
   it("appends without clobbering existing pending messages", async () => {
@@ -94,6 +97,11 @@ describe("sendAgentMessage", () => {
       from: "a",
     });
     const input = fs.readFileSync(path.join(dir, "input.txt"), "utf8");
-    expect(input).toBe("existing line\n[from:a] second\n");
+    const lines = input.trim().split("\n");
+    expect(lines[0]).toBe("existing line"); // legacy plain text untouched
+    expect(JSON.parse(lines[1])).toMatchObject({
+      kind: "message",
+      text: "[from:a] second",
+    });
   });
 });

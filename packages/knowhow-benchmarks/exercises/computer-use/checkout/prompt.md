@@ -1,0 +1,2 @@
+# Checkout
+Use only the visible checkout UI. In order: set **Knowhow mug** quantity to `2` and leave the field; remove the named **Field notebook**; enter Full name `Casey Example`, Shipping street address `42 Fixture Lane`, City `Testville`, and choose **Standard (3–5 days)**; enter and apply coupon `SAVE10` and verify total **$24.30**; place the synthetic order. When the receipt appears and the checklist reads `SUCCESS (5/5)`, click **Submit result** once. Do not call benchmark APIs directly.

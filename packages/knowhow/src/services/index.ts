@@ -9,16 +9,18 @@ import { S3Service } from "./S3";
 import { ToolsService } from "./Tools";
 import { CliPluginService, PluginService } from "../plugins/plugins";
 import { DockerService } from "./DockerService";
-import { AgentSyncKnowhowWeb } from "./AgentSyncKnowhowWeb";
-import { AgentSyncFs } from "./AgentSyncFs";
 import { SessionManager } from "./SessionManager";
 import { TaskRegistry } from "./TaskRegistry";
 import { MediaProcessorService } from "./MediaProcessorService";
 import { BehaviorsService } from "./BehaviorsService";
+import { RuntimeReloadService } from "./RuntimeReloadService";
+import { ExtensionsService } from "./ExtensionsService";
 
 import { ConversionService } from "./conversion/ConversionService";
+import { TracingService } from "./TracingService";
 
 export * from "./AgentService";
+export * from "./InteractiveAgentRuntime";
 export * from "./EventService";
 export * from "./flags";
 export * from "./EmbeddingsService";
@@ -30,21 +32,24 @@ export * as MCP from "./Mcp";
 export * from "./EmbeddingService";
 export * from "./DockerService";
 export * from "./MediaProcessorService";
-export * from "./AgentSyncKnowhowWeb";
-export * from "./AgentSyncFs";
 export * from "./SessionManager";
 export * from "./TaskRegistry";
 export * from "./SyncedAgentWatcher";
-export * from "./SyncerService";
 export * from "./watchers";
 export { Clients } from "../clients";
+export * from "../util/Trace";
+export { TracingService } from "./TracingService";
+export type { TracerImpl, SpanHandle } from "./TracingService";
 export * from "./conversion";
+export * from "./RuntimeReloadService";
+export * from "./ExtensionsService";
 export { BehaviorsService } from "./BehaviorsService";
 
 let Singletons = {} as {
   Tools: ToolsService;
   Events: EventService;
   Agents: AgentService;
+  Tracing: typeof TracingService;
   Embeddings: EmbeddingsService;
   Flags: FlagsService;
   Mcp: McpService;
@@ -56,6 +61,8 @@ let Singletons = {} as {
   MediaProcessor: MediaProcessorService;
   Conversion: ConversionService;
   Behaviors: BehaviorsService;
+  RuntimeReload: RuntimeReloadService;
+  Extensions: ExtensionsService;
 };
 
 export const services = (): typeof Singletons => {
@@ -76,6 +83,7 @@ export const services = (): typeof Singletons => {
     Singletons = {
       Agents,
       AwsS3: new S3Service(),
+      Tracing: TracingService,
       Clients,
       Docker: new DockerService(),
       Events,
@@ -88,6 +96,8 @@ export const services = (): typeof Singletons => {
       Tools,
       knowhowApiClient: new KnowhowSimpleClient(),
       Behaviors,
+      RuntimeReload: new RuntimeReloadService(),
+      Extensions: new ExtensionsService(),
     };
 
     Singletons.Tools.setContext({
@@ -96,6 +106,7 @@ export const services = (): typeof Singletons => {
       Plugins,
       Clients,
       Behaviors,
+      Extensions: Singletons.Extensions,
     });
   }
 

@@ -1,12 +1,13 @@
 {
   "name": "@tyvm/knowhow-module-script",
-  "version": "0.22.5",
+  "version": "0.22.7",
   "description": "Script execution module for @tyvm/knowhow — isolated-vm sandbox",
   "main": "ts_build/index.js",
   "types": "ts_build/index.d.ts",
   "scripts": {
     "build": "npm run compile",
     "compile": "npm run clean && tsc",
+    "test": "npm run compile && node --test tests/*.test.mjs",
     "clean": "rm -rf ts_build",
     "prepublishOnly": "npm run compile",
     "version:nightly": "bash ../knowhow/scripts/publish.sh version:nightly",

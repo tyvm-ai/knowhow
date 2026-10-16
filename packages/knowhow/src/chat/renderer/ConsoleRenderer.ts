@@ -13,6 +13,10 @@ import {
   RenderEvent,
 } from "./types";
 import { EventEmitter } from "events";
+import {
+  afterInputPanelOutput,
+  beforeInputPanelOutput,
+} from "../../utils";
 
 export class ConsoleRenderer implements AgentRenderer {
   private activeTaskId: string | undefined;
@@ -78,31 +82,36 @@ export class ConsoleRenderer implements AgentRenderer {
       return;
     }
 
-    switch (event.type) {
-      case "log":
-        this.emitter.emit("log", event);
-        this.renderLog(event);
-        break;
-      case "agentStatus":
-        this.emitter.emit("agentStatus", event);
-        this.renderAgentStatus(event);
-        break;
-      case "toolCall":
-        this.emitter.emit("toolCall", event);
-        this.renderToolCall(event);
-        break;
-      case "toolResult":
-        this.emitter.emit("toolResult", event);
-        this.renderToolResult(event);
-        break;
-      case "agentMessage":
-        this.emitter.emit("agentMessage", event);
-        this.renderAgentMessage(event);
-        break;
-      case "agentDone":
-        this.emitter.emit("agentDone", event);
-        this.renderAgentDone(event);
-        break;
+    const panelWasVisible = beforeInputPanelOutput();
+    try {
+      switch (event.type) {
+        case "log":
+          this.emitter.emit("log", event);
+          this.renderLog(event);
+          break;
+        case "agentStatus":
+          this.emitter.emit("agentStatus", event);
+          this.renderAgentStatus(event);
+          break;
+        case "toolCall":
+          this.emitter.emit("toolCall", event);
+          this.renderToolCall(event);
+          break;
+        case "toolResult":
+          this.emitter.emit("toolResult", event);
+          this.renderToolResult(event);
+          break;
+        case "agentMessage":
+          this.emitter.emit("agentMessage", event);
+          this.renderAgentMessage(event);
+          break;
+        case "agentDone":
+          this.emitter.emit("agentDone", event);
+          this.renderAgentDone(event);
+          break;
+      }
+    } finally {
+      afterInputPanelOutput(panelWasVisible);
     }
   }
 

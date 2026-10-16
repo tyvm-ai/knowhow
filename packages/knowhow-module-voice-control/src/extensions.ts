@@ -1,0 +1,381 @@
+/**
+ * Automation-SDK extensions contributed by knowhow-module-voice-control (Contract 3).
+ *
+ * These are registered on `voiceControlModule.extensions` as type
+ * "computer-use.automation-sdk" and exposed as `sdk.ext.gaze` and
+ * `sdk.ext.voice` inside automations.
+ *
+ * The contract types (`AutomationSdkExtension`, `AutomationExtensionContext`)
+ * are owned by @tyvm/knowhow-module-computer-use. They're imported type-only,
+ * so there is no runtime dependency on that module.
+ */
+
+import type { AutomationExtensionContext, AutomationSdkExtension } from "@tyvm/knowhow-module-computer-use";
+
+/** computer-use's extension type; checked against its contract at compile time. */
+export const AUTOMATION_SDK_EXTENSION: AutomationSdkExtension["type"] = "computer-use.automation-sdk";
+import { createVoiceServices } from "./services";
+import { GazeSample } from "./eyeTracking";
+import {
+  VoiceCommandSpec,
+  VoiceCommandEvent,
+  resolveHubUrl,
+  fetchRegisteredCommands,
+  registerPhrases,
+  subscribeHubEvents,
+  postVoiceCommand,
+} from "./voiceHub";
+import { GazeClient, GAZE_TIMEOUT, GAZE_ERROR_RADIUS } from "./gaze";
+import { randomUUID } from "crypto";
+
+// ─── Gaze extension ──────────────────────────────────────────────────────────
+
+/** The API returned by `sdk.ext.gaze`. */
+export interface GazeExtensionApi {
+  current(opts?: { maxAgeMs?: number }): Promise<GazeSample | null>;
+  at(epochMs: number): Promise<GazeSample | null>;
+  history(sinceMs: number): Promise<GazeSample[]>;
+  errorRadius(): { x: number; y: number };
+  correct(target: { x: number; y: number }): Promise<void>;
+}
+
+function createGazeApi(ctx: AutomationExtensionContext): GazeExtensionApi {
+  const gaze = new GazeClient({ hubUrl: resolveHubUrl() });
+
+  return {
+    current: (opts?: { maxAgeMs?: number }) =>
+      gaze.current({ maxAgeMs: opts?.maxAgeMs ?? 2000, timeoutMs: GAZE_TIMEOUT.normal }),
+    at: (epochMs: number) => gaze.at(epochMs, { timeoutMs: GAZE_TIMEOUT.slow }),
+    history: (sinceMs: number) => gaze.history(sinceMs, { timeoutMs: GAZE_TIMEOUT.slow }),
+    errorRadius: () => gaze.errorRadius(),
+    correct: (target: { x: number; y: number }) => gaze.correct(target, { timeoutMs: GAZE_TIMEOUT.slow }),
+  };
+}
+
+export const gazeExtension: AutomationSdkExtension = {
+  type: AUTOMATION_SDK_EXTENSION,
+  name: "gaze",
+  description:
+    "Provides access to live eye-tracking gaze data via the knowhow eye-tracking hub. " +
+    "Use `sdk.ext.gaze.current()` for the latest sample, `sdk.ext.gaze.at(epochMs)` for a " +
+    "historical sample nearest a given time (e.g. speech onset), and `sdk.ext.gaze.history(sinceMs)` " +
+    "for a window of samples. `errorRadius()` returns the expected pixel error (default 200×260). " +
+    "`correct({x,y})` submits a confirmed target to improve live drift correction.",
+  typings: `
+interface GazeSample {
+  x: number; y: number;
+  normalized: { x: number; y: number };
+  confidence: number; phase: string;
+  monitor: { x: number; y: number; width: number; height: number };
+  timestamp: number;
+}
+interface GazeExtension {
+  current(opts?: { maxAgeMs?: number }): Promise<GazeSample | null>;
+  at(epochMs: number): Promise<GazeSample | null>;
+  history(sinceMs: number): Promise<GazeSample[]>;
+  errorRadius(): { x: number; y: number };
+  correct(target: { x: number; y: number }): Promise<void>;
+}
+`,
+  create(ctx: AutomationExtensionContext): GazeExtensionApi {
+    return createGazeApi(ctx);
+  },
+};
+
+// ─── Voice extension ─────────────────────────────────────────────────────────
+
+/** The API returned by `sdk.ext.voice`. */
+export interface VoiceExtensionApi {
+  onCommand(
+    spec: string | VoiceCommandSpec | Array<string | VoiceCommandSpec>,
+    handler: (e: VoiceCommandEvent) => void | Promise<void>,
+  ): () => void;
+  nextCommand(
+    spec: string | VoiceCommandSpec | Array<string | VoiceCommandSpec>,
+    opts?: { timeoutMs?: number },
+  ): Promise<VoiceCommandEvent | null>;
+}
+
+function normaliseSpecs(spec: string | VoiceCommandSpec | Array<string | VoiceCommandSpec>): VoiceCommandSpec[] {
+  const arr = Array.isArray(spec) ? spec : [spec];
+  return arr.map((s) => (typeof s === "string" ? { phrase: s } : s));
+}
+
+const STALE_MS = 3000;
+
+function eventMatchesSpecs(event: VoiceCommandEvent, specs: VoiceCommandSpec[]): boolean {
+  const phrase = event.phrase.toLowerCase().trim();
+  for (const s of specs) {
+    if (s.phrase.toLowerCase().trim() === phrase) return true;
+    for (const alias of s.aliases ?? []) {
+      if (alias.toLowerCase().trim() === phrase) return true;
+    }
+  }
+  return false;
+}
+
+function createVoiceApi(ctx: AutomationExtensionContext, owner: string): VoiceExtensionApi {
+  const hubUrl = resolveHubUrl();
+  const registrations = new Map<string, { specs: VoiceCommandSpec[]; unregister: () => void }>();
+  const sseListeners: Array<(event: VoiceCommandEvent) => void> = [];
+
+  // Single SSE subscription shared across all onCommand calls.
+  let sseDispose: (() => void) | undefined;
+
+  function ensureSSE(): void {
+    if (sseDispose) return;
+    sseDispose = subscribeHubEvents((hubEvent) => {
+      if (hubEvent.type !== "voice.command") return;
+      const event = hubEvent as VoiceCommandEvent;
+      // Ignore stale events.
+      if (Date.now() - event.recognizedAt > STALE_MS) return;
+      for (const listener of sseListeners.slice()) {
+        try { void listener(event); } catch { /* errors logged, not fatal */ }
+      }
+    }, ctx.signal, hubUrl);
+  }
+
+  ctx.onDispose(() => {
+    sseDispose?.();
+    for (const { unregister } of registrations.values()) unregister();
+    registrations.clear();
+    sseListeners.length = 0;
+  });
+
+  const api: VoiceExtensionApi = {
+    onCommand(spec, handler) {
+      const specs = normaliseSpecs(spec);
+      const regId = randomUUID();
+
+      // Register phrases with hub + heartbeat.
+      const unregister = registerPhrases(specs, `${owner}/${regId}`, hubUrl);
+      registrations.set(regId, { specs, unregister });
+
+      ensureSSE();
+
+      // Serialise handler calls for this subscription.
+      let chain = Promise.resolve();
+      const listener = (event: VoiceCommandEvent) => {
+        if (!eventMatchesSpecs(event, specs)) return;
+        chain = chain.then(() => {
+          try { return Promise.resolve(handler(event)) ?? Promise.resolve(); }
+          catch (err) { ctx.log({ error: "voice onCommand handler threw", err }); return Promise.resolve(); }
+        }).catch((err) => { ctx.log({ error: "voice onCommand handler rejected", err }); });
+      };
+      sseListeners.push(listener);
+
+      return () => {
+        const reg = registrations.get(regId);
+        if (reg) { reg.unregister(); registrations.delete(regId); }
+        const idx = sseListeners.indexOf(listener);
+        if (idx !== -1) sseListeners.splice(idx, 1);
+      };
+    },
+
+    nextCommand(spec, opts?) {
+      const specs = normaliseSpecs(spec);
+      const timeoutMs = opts?.timeoutMs ?? 30_000;
+
+      // Eagerly register so hub knows about the phrase.
+      const regId = randomUUID();
+      const unregister = registerPhrases(specs, `${owner}/${regId}`, hubUrl);
+      registrations.set(regId, { specs, unregister });
+
+      ensureSSE();
+
+      return new Promise<VoiceCommandEvent | null>((resolve) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(null);
+        }, timeoutMs);
+        timer.unref?.();
+
+        const listener = (event: VoiceCommandEvent) => {
+          if (!eventMatchesSpecs(event, specs)) return;
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(event);
+        };
+        sseListeners.push(listener);
+
+        const cleanup = () => {
+          clearTimeout(timer);
+          const idx = sseListeners.indexOf(listener);
+          if (idx !== -1) sseListeners.splice(idx, 1);
+          const reg = registrations.get(regId);
+          if (reg) { reg.unregister(); registrations.delete(regId); }
+        };
+
+        // Also resolve null on abort.
+        ctx.signal.addEventListener("abort", () => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          resolve(null);
+        }, { once: true });
+      });
+    },
+  };
+
+  return api;
+}
+
+export const voiceExtension: AutomationSdkExtension = {
+  type: AUTOMATION_SDK_EXTENSION,
+  name: "voice",
+  description:
+    "Subscribe to spoken voice commands dispatched by the knowhow voice-agent. " +
+    "Use `sdk.ext.voice.onCommand('slice', handler)` to handle a phrase; the extension " +
+    "auto-registers it with the hub so the voice-agent includes it in STT hints. " +
+    "Each VoiceCommandEvent includes `spokenAt` (VAD onset epoch ms) and `gaze` (nearest sample). " +
+    "Use `nextCommand(spec, { timeoutMs })` for a one-shot await.",
+  typings: `
+interface VoiceCommandSpec { phrase: string; aliases?: string[]; description?: string }
+interface VoiceCommandEvent {
+  type: "voice.command"; id: string;
+  phrase: string; text: string;
+  spokenAt: number; recognizedAt: number;
+  gaze?: GazeSample;
+  /** Latency breakdown (epoch ms): onset → speech end → endpoint → STT → dispatch. */
+  timing?: {
+    spokenAt: number; speechEndAt: number; finalizedAt: number;
+    sttStartAt: number; sttEndAt: number; dispatchedAt?: number; hubReceivedAt?: number;
+    audioMs: number; voicedMs: number; silenceMs: number; mode: "command" | "agent";
+    sttBackend?: string; gazeMs?: number;
+  };
+}
+interface VoiceExtension {
+  onCommand(
+    spec: string | VoiceCommandSpec | Array<string | VoiceCommandSpec>,
+    handler: (e: VoiceCommandEvent) => void | Promise<void>
+  ): () => void;
+  nextCommand(
+    spec: string | VoiceCommandSpec | Array<string | VoiceCommandSpec>,
+    opts?: { timeoutMs?: number }
+  ): Promise<VoiceCommandEvent | null>;
+}
+`,
+  create(ctx: AutomationExtensionContext): VoiceExtensionApi {
+    const owner = `voice-ext-${ctx.automationName}-${randomUUID().slice(0, 8)}`;
+    return createVoiceApi(ctx, owner);
+  },
+};
+
+// ─── Hints extension (sdk.ext.gaze.elementsNear / sdk.ext.hints) ─────────────
+
+import { rankCandidates } from "./hints/ranking";
+import { showHintOverlay } from "./hints/overlay";
+import { SelectorState, HintState } from "./hints/selectorState";
+import { resolveHintRef, parseHintRef } from "./hints/refs";
+import { Candidate, AXElement, ComputerUseAdapter } from "./hints/types";
+
+/** Minimal adapter shape needed by hints from the sdk context. */
+interface SdkComputerAdapter {
+  accessibilityElements(opts?: { maxDepth?: number; maxElements?: number; interactiveOnly?: boolean }): Promise<AXElement[]>;
+  performAccessibilityAction(id: string, action: string): Promise<void>;
+  showOverlay(primitives: import("./hints/types").OverlayPrimitive[]): Promise<void>;
+  clearOverlay(): Promise<void>;
+  moveMouse(p: { x: number; y: number }): Promise<void>;
+  click(button?: "left" | "right" | "middle", opts?: { double?: boolean }): Promise<void>;
+  typeText(text: string, opts?: { app?: string }): Promise<void>;
+  hotkey(...keys: string[]): Promise<void>;
+}
+
+/** The API returned by `sdk.ext.gaze` (extended with elementsNear). */
+export interface GazeExtensionApiV2 extends GazeExtensionApi {
+  elementsNear(opts?: {
+    gazeX?: number;
+    gazeY?: number;
+    errorRadius?: { x: number; y: number };
+    query?: string[];
+    wholeWindow?: boolean;
+  }): Promise<Candidate[]>;
+}
+
+/** The API returned by `sdk.ext.hints`. */
+export interface HintsExtensionApi {
+  show(opts?: { wholeWindow?: boolean; query?: string[] }): Promise<Candidate[]>;
+  pick(ref: string): Candidate | undefined;
+  clear(): void;
+  state(): HintState | null;
+}
+
+function createHintsApi(
+  ctx: AutomationExtensionContext,
+  selector: SelectorState,
+  getAdapter: () => SdkComputerAdapter | null,
+  getGaze: () => Promise<GazeSample | null>,
+): HintsExtensionApi {
+  return {
+    async show(opts: { wholeWindow?: boolean; query?: string[]; errorRadius?: { x: number; y: number } } = {}) {
+      const adapter = getAdapter();
+      if (!adapter) return [];
+      const gaze = await getGaze();
+      if (!gaze) return [];
+      const errorRadius = opts.errorRadius ?? { ...GAZE_ERROR_RADIUS };
+      const elements = await adapter.accessibilityElements({ maxDepth: 12, maxElements: 500 });
+      const candidates = rankCandidates({
+        gaze,
+        errorRadius,
+        elements,
+        query: opts.query,
+        wholeWindow: opts.wholeWindow,
+      });
+      selector.setHintState({ candidates, timestamp: selector.clock.now(), selectedIndex: -1, ttlMs: Number.POSITIVE_INFINITY });
+      await showHintOverlay(selector, adapter as unknown as ComputerUseAdapter, candidates);
+      return candidates;
+    },
+    pick(ref: string): Candidate | undefined {
+      const state = selector.getHintState();
+      if (!state) return undefined;
+      return resolveHintRef(parseHintRef(ref), state.candidates);
+    },
+    clear() {
+      selector.clearHintState();
+    },
+    state() {
+      return selector.getHintState();
+    },
+  };
+}
+
+export const hintsExtension: AutomationSdkExtension = {
+  type: AUTOMATION_SDK_EXTENSION,
+  name: "hints",
+  description:
+    "Show gaze-targeted element labels (like Vimium hints) and pick elements by label. " +
+    "Use `sdk.ext.hints.show()` to display overlaid labels near gaze; " +
+    "`sdk.ext.hints.pick('button 1')` to resolve a label to an element ref; " +
+    "`sdk.ext.gaze.elementsNear()` to get ranked AX elements near gaze without showing overlay.",
+  typings: `
+interface Candidate {
+  element: AXElement; score: number;
+  label: string; roleName: string; roleIndex: number; displayName?: string;
+}
+interface HintsExtension {
+  show(opts?: { wholeWindow?: boolean; query?: string[] }): Promise<Candidate[]>;
+  pick(ref: string): Candidate | undefined;
+  clear(): void;
+  state(): { candidates: Candidate[]; timestamp: number; selectedIndex: number; ttlMs: number } | null;
+}
+`,
+  create(ctx: AutomationExtensionContext): HintsExtensionApi {
+    const hubUrl = resolveHubUrl();
+    // Each automation gets its own hint state (and services); disposed with it.
+    const services = createVoiceServices();
+    const selector = new SelectorState(services.clock);
+    ctx.onDispose(() => selector.dispose());
+    const getAdapter = (): SdkComputerAdapter | null => {
+      try {
+        return (services.computer as SdkComputerAdapter | undefined) ?? null;
+      } catch { return null; }
+    };
+    const gazeClient = new GazeClient({ hubUrl });
+    const getGaze = () => gazeClient.current({ maxAgeMs: 2000, timeoutMs: GAZE_TIMEOUT.normal });
+    return createHintsApi(ctx, selector, getAdapter, getGaze);
+  },
+};

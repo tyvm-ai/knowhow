@@ -7,12 +7,16 @@ import { completions, images, videos, ModelCatalogEntry, ModelPricing } from "./
 // ─── Model IDs ────────────────────────────────────────────────────────────────
 
 export const XaiModels = {
+  Grok4_7: "grok-4.7",
+  Grok4_6: "grok-4.6",
+  Grok4_3: "grok-4.3",
   Grok_4_20_Reasoning: "grok-4.20-0309-reasoning",
   Grok_4_20_NonReasoning: "grok-4.20-0309-non-reasoning",
   Grok_4_20_MultiAgent: "grok-4.20-multi-agent-0309",
   Grok4_5: "grok-4.5",
   Grok4_1_Fast_Reasoning: "grok-4-1-fast-reasoning",
   Grok4_1_Fast_NonReasoning: "grok-4-1-fast-non-reasoning",
+  GrokBuild: "grok-build-0.1",
   GrokCodeFast: "grok-code-fast-1",
   Grok4: "grok-4-0709",
   Grok3Beta: "grok-3-beta",
@@ -42,11 +46,12 @@ export const XaiModels = {
 // ─── Modality arrays ──────────────────────────────────────────────────────────
 
 export const XaiTextModels: string[] = [
+  XaiModels.Grok4_7, XaiModels.Grok4_6, XaiModels.Grok4_3,
   XaiModels.Grok_4_20_Reasoning, XaiModels.Grok_4_20_NonReasoning,
   XaiModels.Grok_4_20_MultiAgent,
   XaiModels.Grok4_1_Fast_Reasoning, XaiModels.Grok4_1_Fast_NonReasoning,
   XaiModels.Grok4_5,
-  XaiModels.GrokCodeFast, XaiModels.Grok4,
+  XaiModels.GrokBuild, XaiModels.GrokCodeFast, XaiModels.Grok4,
   XaiModels.Grok3Beta, XaiModels.Grok3MiniBeta, XaiModels.Grok3FastBeta, XaiModels.Grok3MiniFastBeta,
 ];
 
@@ -61,8 +66,11 @@ export const XaiResponsesOnlyModels: string[] = [
 ];
 
 // Models that support the reasoning_effort parameter
-// grok-3-mini variants support reasoning_effort; grok-3-beta, grok-4 etc. do NOT
+// Grok 4.7, Grok 4.6, Grok 4.3, Grok 4.20 multi-agent, and grok-3-mini variants support reasoning_effort
 export const XaiReasoningModels: string[] = [
+  XaiModels.Grok4_7,
+  XaiModels.Grok4_6,
+  XaiModels.Grok4_3,
   XaiModels.Grok_4_20_MultiAgent,
   XaiModels.Grok3MiniBeta,
   XaiModels.Grok3MiniFastBeta,
@@ -84,13 +92,17 @@ export const XaiVideoModels: string[] = [XaiModels.GrokImagineVideo];
 // ─── Pricing (USD per 1M tokens / per-image / per-second) ────────────────────
 
 export const XaiTextPricing: Record<string, ModelPricing> = {
-  [XaiModels.Grok_4_20_Reasoning]:       { input: 2.0, cache_hit: 0.20, output: 6.0, useResponsesApi: true },
-  [XaiModels.Grok_4_20_NonReasoning]:    { input: 2.0, cache_hit: 0.20, output: 6.0, useResponsesApi: true },
-  [XaiModels.Grok_4_20_MultiAgent]:      { input: 2.0, cache_hit: 0.20, output: 6.0, reasoningLevels: ["low", "medium", "high", "xhigh"], useResponsesApi: true },
+  [XaiModels.Grok4_7]:                    { input: 2.0, input_gt_200k: 4.0, cache_hit: 0.50, cache_hit_gt_200k: 1.0, output: 6.0, output_gt_200k: 12.0, reasoningLevels: ["low", "medium", "high", "xhigh"] },
+  [XaiModels.Grok4_6]:                    { input: 2.0, input_gt_200k: 4.0, cache_hit: 0.50, cache_hit_gt_200k: 1.0, output: 6.0, output_gt_200k: 12.0, reasoningLevels: ["low", "medium", "high", "xhigh"] },
+  [XaiModels.Grok4_3]:                    { input: 1.25, input_gt_200k: 2.5, cache_hit: 0.20, cache_hit_gt_200k: 0.40, output: 2.5, output_gt_200k: 5.0, reasoningLevels: ["none", "low", "medium", "high", "xhigh"] },
+  [XaiModels.Grok_4_20_Reasoning]:       { input: 1.25, input_gt_200k: 2.5, cache_hit: 0.20, cache_hit_gt_200k: 0.40, output: 2.5, output_gt_200k: 5.0, useResponsesApi: true },
+  [XaiModels.Grok_4_20_NonReasoning]:    { input: 1.25, input_gt_200k: 2.5, cache_hit: 0.20, cache_hit_gt_200k: 0.40, output: 2.5, output_gt_200k: 5.0, useResponsesApi: true },
+  [XaiModels.Grok_4_20_MultiAgent]:      { input: 1.25, input_gt_200k: 2.5, cache_hit: 0.20, cache_hit_gt_200k: 0.40, output: 2.5, output_gt_200k: 5.0, reasoningLevels: ["low", "medium", "high", "xhigh"], useResponsesApi: true },
   [XaiModels.Grok4_1_Fast_Reasoning]:    { input: 0.2, cache_hit: 0.05, output: 0.5, useResponsesApi: true },
   [XaiModels.Grok4_1_Fast_NonReasoning]: { input: 0.2, cache_hit: 0.05, output: 0.5, useResponsesApi: true },
-  [XaiModels.Grok4_5]:                   { input: 2.0, cache_hit: 0.50, output: 6.0 },
-  [XaiModels.GrokCodeFast]:              { input: 0.2, cache_hit: 0.02, output: 1.5 },
+  [XaiModels.Grok4_5]:                   { input: 2.0, input_gt_200k: 4.0, cache_hit: 0.30, cache_hit_gt_200k: 0.60, output: 6.0, output_gt_200k: 12.0 },
+  [XaiModels.GrokBuild]:                 { input: 1.0, input_gt_200k: 2.0, cache_hit: 0.20, cache_hit_gt_200k: 0.40, output: 2.0, output_gt_200k: 4.0 },
+  [XaiModels.GrokCodeFast]:              { input: 1.0, input_gt_200k: 2.0, cache_hit: 0.20, cache_hit_gt_200k: 0.40, output: 2.0, output_gt_200k: 4.0 },
   [XaiModels.Grok4]:                     { input: 3.0, output: 15.0 },
   [XaiModels.Grok3Beta]:                 { input: 3.0, output: 15.0 },
   [XaiModels.Grok3MiniBeta]:             { input: 0.3, output: 0.5 },

@@ -70,11 +70,32 @@ export type EmbedSource = {
   minLength?: number;
 };
 
+export type KnowhowRemote = {
+  name: string;
+  apiUrl: string;
+  jwtPath: string;
+  orgId?: string;
+};
+
+export type AllowedTunnelPort = number | {
+  port: number;
+  /** HTTP also supports WebSocket upgrades. Use TCP for raw byte streams. */
+  transport?: "http" | "tcp";
+  application?: string;
+};
+
 export type Config = {
   openaiBaseUrl?: string;
   promptsDir: string;
   lintCommands?: { [fileExtension: string]: string };
+  /** Legacy organization field; migrated into the selected remote on login. */
   orgId?: string;
+  /** Legacy environment map retained for reading pre-remote configurations. */
+  orgIds?: Record<string, string>;
+  remotes?: Record<string, KnowhowRemote>;
+  activeRemote?: string;
+  /** Private Ed25519 identity selected with `knowhow login --identity`. */
+  cliIdentityPath?: string;
   syncRemote?: boolean;
   micCommand?: string;
   defaultMic?: string;
@@ -86,6 +107,9 @@ export type Config = {
   chat?: {
     rootModule?: string;
     renderer?: string;
+    defaultAgent?: string;
+    defaultModel?: string;
+    defaultProvider?: string;
     modules?: string[];
   };
   modules: string[];
@@ -122,7 +146,7 @@ export type Config = {
     commandAuth?: { [toolName: string]: "always" | "session" | "never" };
     tunnel?: {
       enabled?: boolean;
-      allowedPorts?: number[];
+      allowedPorts?: AllowedTunnelPort[];
       maxConcurrentStreams?: number;
       portMapping?: { [containerPort: number]: number };
       localHost?: string;

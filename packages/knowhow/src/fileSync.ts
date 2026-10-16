@@ -6,7 +6,7 @@ import { loadJwt } from "./login";
 import { getConfig } from "./config";
 import { services } from "./services";
 import { S3Service } from "./services/S3";
-import { getHashes, saveHashes, hasFileChangedSinceUpload, saveUploadHash, isLocalFileMatchingRemote, isLocalFileMatchingDownloadHash, saveDownloadHash } from "./hashes";
+import { getHashes, saveHashes, hasFileChangedSinceUpload, saveUploadHash, isLocalFileMatchingRemote, isDownloadCurrent, saveDownloadHash } from "./hashes";
 
 export const DEFAULT_BATCH_SIZE = 5;
 
@@ -166,7 +166,8 @@ export async function downloadFile(
   remotePath: string,
   localPath: string,
   dryRun: boolean,
-  hashes?: any
+  hashes?: any,
+  remoteVersion?: string
 ): Promise<void> {
   console.log(`⬇️  Downloading ${remotePath} → ${localPath}`);
 
@@ -176,9 +177,10 @@ export async function downloadFile(
   }
 
   try {
-    // Fast-path: check stored download hash before hitting the API
-    if (hashes && await isLocalFileMatchingDownloadHash(localPath, hashes)) {
-      console.log(`   ✓ Skipping ${localPath} (matches stored download hash)`);
+    // updatedAt is the fallback change signal for legacy S3 objects that do not
+    // have checksum metadata. Always pair it with the local content hash.
+    if (hashes && remoteVersion && await isDownloadCurrent(localPath, remoteVersion, hashes)) {
+      console.log(`   ✓ Skipping ${localPath} (remote version unchanged)`);
       return;
     }
 
@@ -188,8 +190,7 @@ export async function downloadFile(
     // Skip if local file matches remote checksum
     if (isLocalFileMatchingRemote(localPath, checksumSHA256)) {
       console.log(`   ✓ Skipping ${localPath} (matches remote checksum)`);
-      // Store the hash so future syncs can skip without hitting the API
-      await saveDownloadHash(localPath, hashes);
+      await saveDownloadHash(localPath, hashes, remoteVersion);
       return;
     }
 
@@ -203,7 +204,7 @@ export async function downloadFile(
     await s3Service.downloadFromPresignedUrl(downloadUrl, localPath);
 
     // Save download hash so we can skip unchanged files next time
-    await saveDownloadHash(localPath, hashes);
+    await saveDownloadHash(localPath, hashes, remoteVersion);
 
     // Get file size for logging
     const stats = fs.statSync(localPath);
@@ -358,7 +359,8 @@ export async function downloadDirectory(
     // Strip the base remote dir prefix to get relative path
     const relativePath = fullRemotePath.slice(remoteDir.length);
     const localFilePath = localDir + relativePath;
-    await downloadFile(client, s3Service, fullRemotePath, localFilePath, dryRun, hashes);
+    const remoteVersion = f.updatedAt;
+    await downloadFile(client, s3Service, fullRemotePath, localFilePath, dryRun, hashes, remoteVersion);
     return 1;
   });
 

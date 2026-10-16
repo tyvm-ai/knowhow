@@ -3,10 +3,20 @@ import { IAgent } from "../agents/interface";
 import { EventService } from "./EventService";
 import { ToolsService } from "./Tools";
 import { ConfigAgent } from "../agents/configurable/ConfigAgent";
+import { TraceAll } from "../util/Trace";
 import { AgentContext } from "../agents/base/base";
+import { applyDefaultMessageProcessors } from "../processors/defaultProcessors";
+import {
+  BaseInteractiveAgentHandle,
+  InteractiveAgentHandle,
+  StartInteractiveAgentOptions,
+  isInteractiveAgent,
+} from "./InteractiveAgentRuntime";
 
+@TraceAll()
 export class AgentService {
   private agents: Map<string, IAgent> = new Map();
+  private interactiveAgents = new Set<string>();
   private agentContext: AgentContext | null = null;
 
   constructor(private tools: ToolsService, private events: EventService) {
@@ -74,14 +84,14 @@ export class AgentService {
     return this.agentContext ?? { Tools: this.tools, Events: this.events };
   }
 
-  public getAgent(name: string): IAgent {
+  public getAgent<T extends IAgent = IAgent>(name: string): T {
     const agent = this.agents.get(name);
     if (!agent) {
       throw new Error(
         `Agent ${name} not found. Options are: ${this.listAgents()}`
       );
     }
-    return agent;
+    return agent as T;
   }
 
   public listAgents(): string[] {
@@ -101,6 +111,42 @@ export class AgentService {
 
     for (const agent of agents) {
       this.registerAgent(new ConfigAgent(agent, context));
+    }
+  }
+
+  /**
+   * Start a task-scoped interactive view of a registered BaseAgent. This is
+   * the transport primitive used by voice sessions and attached clients.
+   */
+  public async startInteractive(
+    name: string,
+    options: StartInteractiveAgentOptions
+  ): Promise<InteractiveAgentHandle> {
+    const agent = this.getAgent(name);
+    if (!isInteractiveAgent(agent)) {
+      throw new Error(`Agent ${name} does not support interactive tasks`);
+    }
+    if (this.interactiveAgents.has(name)) {
+      throw new Error(
+        `Agent ${name} already has an interactive task. Wait for it to finish before starting another.`
+      );
+    }
+
+    this.interactiveAgents.add(name);
+    try {
+      // Voice/attached sessions run the same agent loop as the CLI, so they
+      // need the same message processors. Without them, tool results carrying
+      // images (computer-use screenshots) are JSON-stringified into a text
+      // tool message — megabytes of base64 that overflow the context window.
+      if ((agent as any).messageProcessor && (agent as any).tools) {
+        applyDefaultMessageProcessors(agent as any);
+      }
+      return new BaseInteractiveAgentHandle(agent, options, () => {
+        this.interactiveAgents.delete(name);
+      });
+    } catch (error) {
+      this.interactiveAgents.delete(name);
+      throw error;
     }
   }
 

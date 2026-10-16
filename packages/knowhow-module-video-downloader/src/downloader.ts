@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import * as path from "path";
 import ytdl from "youtube-dl-exec";
 import { DownloadInfo } from "./types";
 
@@ -19,22 +20,23 @@ async function fileExists(filePath: string): Promise<boolean> {
 export class DownloaderService {
   async download(url: string, outputDir: string): Promise<DownloadInfo> {
     const info = await this.info(url);
-    const exists = await fileExists(`${outputDir}/${info.id}.${info.ext}`);
+    const outputPath = path.join(outputDir, `${info.id}.${info.ext}`);
+    const exists = await fileExists(outputPath);
 
     if (exists) {
-      console.log("File already exists, skipping download");
+      console.error("File already exists, skipping download");
       return info;
     }
 
-    console.log(`Downloading ${url}...`);
-    await ytdl(url, { output: `${outputDir}/%(id)s.%(ext)s` });
-    console.log(`Download complete: ${url}`);
+    await fs.promises.mkdir(outputDir, { recursive: true });
+    console.error(`Downloading ${url}...`);
+    await ytdl(url, { output: path.join(outputDir, "%(id)s.%(ext)s") });
+    console.error(`Download complete: ${url}`);
     return info;
   }
 
   async info(url: string): Promise<DownloadInfo> {
     const info = await ytdl(url, { dumpSingleJson: true, noWarnings: true });
-    console.log(info);
     return info as unknown as DownloadInfo;
   }
 }

@@ -1,4 +1,5 @@
 import { BaseChatModule } from "./BaseChatModule";
+import { TraceAll } from "../../util/Trace";
 import { ChatCommand, ChatContext, CommandResult } from "../types";
 import { execSync } from "child_process";
 
@@ -7,6 +8,7 @@ import { execSync } from "child_process";
  * /! - Execute command and display output in console (interactive if needed)
  * /!! - Execute command and send output to the AI agent
  */
+@TraceAll()
 export class ShellCommandModule extends BaseChatModule {
   name = "shell-command";
   description = "Execute shell commands with /! and /!!";

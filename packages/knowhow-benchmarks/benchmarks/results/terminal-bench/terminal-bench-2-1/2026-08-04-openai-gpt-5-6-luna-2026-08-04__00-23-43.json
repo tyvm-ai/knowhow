@@ -1,0 +1,1463 @@
+{
+  "config": {
+    "dataset": {
+      "name": "terminal-bench/terminal-bench-2-1"
+    },
+    "datasetRef": "sha256:7d7bdc1cbedad549fc1140404bd4dc45e5fd0ea7c4186773687d177ad3a0699a",
+    "submissionId": "local-harbor-terminal-bench-terminal-bench-2-1-2026-08-04__00-23-43",
+    "model": "openai/gpt-5.6-luna",
+    "provider": "openai",
+    "reasoningEffort": "high",
+    "agent": "knowhow",
+    "trialsPerTask": 1,
+    "taskSubset": [
+      "adaptive-rejection-sampler",
+      "bn-fit-modify",
+      "break-filter-js-from-html",
+      "build-cython-ext",
+      "build-pmars",
+      "build-pov-ray",
+      "caffe-cifar-10",
+      "cancel-async-tasks",
+      "chess-best-move",
+      "circuit-fibsqrt",
+      "cobol-modernization",
+      "code-from-image",
+      "compile-compcert",
+      "configure-git-webserver",
+      "constraints-scheduling",
+      "count-dataset-tokens",
+      "crack-7z-hash",
+      "custom-memory-heap-crash",
+      "db-wal-recovery",
+      "distribution-search",
+      "dna-assembly",
+      "dna-insert",
+      "extract-elf",
+      "extract-moves-from-video",
+      "feal-differential-cryptanalysis",
+      "feal-linear-cryptanalysis",
+      "filter-js-from-html",
+      "financial-document-processor",
+      "fix-code-vulnerability",
+      "fix-ocaml-gc",
+      "gcode-to-text",
+      "git-leak-recovery",
+      "git-multibranch",
+      "gpt2-codegolf",
+      "headless-terminal",
+      "hf-model-inference",
+      "install-windows-3.11",
+      "kv-store-grpc",
+      "large-scale-text-editing",
+      "llm-inference-batching-scheduler",
+      "log-summary-date-ranges",
+      "mailman",
+      "make-doom-for-mips",
+      "make-mips-interpreter",
+      "mcmc-sampling-stan",
+      "merge-diff-arc-agi-task",
+      "model-extraction-relu-logits",
+      "modernize-scientific-stack",
+      "mteb-leaderboard",
+      "mteb-retrieve",
+      "multi-source-data-merger",
+      "password-recovery",
+      "path-tracing-reverse",
+      "path-tracing",
+      "polyglot-c-py",
+      "polyglot-rust-c",
+      "portfolio-optimization",
+      "protein-assembly",
+      "prove-plus-comm",
+      "pypi-server",
+      "pytorch-model-cli",
+      "pytorch-model-recovery",
+      "qemu-alpine-ssh",
+      "qemu-startup",
+      "query-optimize",
+      "raman-fitting",
+      "regex-chess",
+      "regex-log",
+      "reshard-c4-data",
+      "rstan-to-pystan",
+      "sam-cell-seg",
+      "sanitize-git-repo",
+      "schemelike-metacircular-eval",
+      "sparql-university",
+      "sqlite-db-truncate",
+      "sqlite-with-gcov",
+      "torch-pipeline-parallelism",
+      "torch-tensor-parallelism",
+      "train-fasttext",
+      "tune-mjcf",
+      "video-processing",
+      "vulnerable-secret",
+      "winning-avg-corewars",
+      "write-compressor"
+    ],
+    "runDate": "2026-08-04",
+    "commitHash": "c01c0ab",
+    "source": "sanitized-local-export"
+  },
+  "tasks": [
+    {
+      "taskName": "adaptive-rejection-sampler",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 896.126,
+          "costUsd": 0.060237280000000025,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 896.126,
+      "avgCostUsd": 0.060237280000000025
+    },
+    {
+      "taskName": "bn-fit-modify",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 251.73,
+          "costUsd": 0.0118663,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 251.73,
+      "avgCostUsd": 0.0118663
+    },
+    {
+      "taskName": "break-filter-js-from-html",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 885.522,
+          "costUsd": 0.051630840000000004,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 885.522,
+      "avgCostUsd": 0.051630840000000004
+    },
+    {
+      "taskName": "build-cython-ext",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 589.996,
+          "costUsd": 0.09810504000000003,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 589.996,
+      "avgCostUsd": 0.09810504000000003
+    },
+    {
+      "taskName": "build-pmars",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 225.586,
+          "costUsd": 0.026096480000000002,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 225.586,
+      "avgCostUsd": 0.026096480000000002
+    },
+    {
+      "taskName": "build-pov-ray",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 327.76,
+          "costUsd": 0.040237840000000004,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 327.76,
+      "avgCostUsd": 0.040237840000000004
+    },
+    {
+      "taskName": "caffe-cifar-10",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 954.078,
+          "costUsd": 0.00302982,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 954.078,
+      "avgCostUsd": 0.00302982
+    },
+    {
+      "taskName": "cancel-async-tasks",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 185.238,
+          "costUsd": 0.011415520000000002,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 185.238,
+      "avgCostUsd": 0.011415520000000002
+    },
+    {
+      "taskName": "chess-best-move",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 264.73,
+          "costUsd": 0.01118182,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 264.73,
+      "avgCostUsd": 0.01118182
+    },
+    {
+      "taskName": "circuit-fibsqrt",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 319.061,
+          "costUsd": 0.03278864,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 319.061,
+      "avgCostUsd": 0.03278864
+    },
+    {
+      "taskName": "cobol-modernization",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 275.149,
+          "costUsd": 0.031763860000000005,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 275.149,
+      "avgCostUsd": 0.031763860000000005
+    },
+    {
+      "taskName": "code-from-image",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 128.472,
+          "costUsd": 0.00235236,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 128.472,
+      "avgCostUsd": 0.00235236
+    },
+    {
+      "taskName": "compile-compcert",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 953.197,
+          "costUsd": 0.07903953999999999,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 953.197,
+      "avgCostUsd": 0.07903953999999999
+    },
+    {
+      "taskName": "configure-git-webserver",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 209.857,
+          "costUsd": 0.00743098,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 209.857,
+      "avgCostUsd": 0.00743098
+    },
+    {
+      "taskName": "constraints-scheduling",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 192.931,
+          "costUsd": 0.00624164,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 192.931,
+      "avgCostUsd": 0.00624164
+    },
+    {
+      "taskName": "count-dataset-tokens",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 210.613,
+          "costUsd": 0.009190579999999999,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 210.613,
+      "avgCostUsd": 0.009190579999999999
+    },
+    {
+      "taskName": "crack-7z-hash",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 991.863,
+          "costUsd": 0.02932146,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 991.863,
+      "avgCostUsd": 0.02932146
+    },
+    {
+      "taskName": "custom-memory-heap-crash",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 494.85,
+          "costUsd": 0.0492046,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 494.85,
+      "avgCostUsd": 0.0492046
+    },
+    {
+      "taskName": "db-wal-recovery",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 352.695,
+          "costUsd": 0.035009900000000004,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 352.695,
+      "avgCostUsd": 0.035009900000000004
+    },
+    {
+      "taskName": "distribution-search",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 163.577,
+          "costUsd": 0.0085932,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 163.577,
+      "avgCostUsd": 0.0085932
+    },
+    {
+      "taskName": "dna-assembly",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 561.373,
+          "costUsd": 0.0821499,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 561.373,
+      "avgCostUsd": 0.0821499
+    },
+    {
+      "taskName": "dna-insert",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 288.213,
+          "costUsd": 0.02923218,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 288.213,
+      "avgCostUsd": 0.02923218
+    },
+    {
+      "taskName": "extract-elf",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 125.932,
+          "costUsd": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "error",
+          "errorMessage": "Trial failed with an infrastructure error"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 125.932,
+      "avgCostUsd": 0
+    },
+    {
+      "taskName": "extract-moves-from-video",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 971.356,
+          "costUsd": 0.01769598,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 971.356,
+      "avgCostUsd": 0.01769598
+    },
+    {
+      "taskName": "feal-differential-cryptanalysis",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 15.991,
+          "costUsd": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "error",
+          "errorMessage": "Trial failed with an infrastructure error"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 15.991,
+      "avgCostUsd": 0
+    },
+    {
+      "taskName": "feal-linear-cryptanalysis",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 701.641,
+          "costUsd": 0.05277960000000001,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 701.641,
+      "avgCostUsd": 0.05277960000000001
+    },
+    {
+      "taskName": "filter-js-from-html",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 1369.691,
+          "costUsd": 0.06382273999999999,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 1369.691,
+      "avgCostUsd": 0.06382273999999999
+    },
+    {
+      "taskName": "financial-document-processor",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 249.435,
+          "costUsd": 0.06475394000000001,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 249.435,
+      "avgCostUsd": 0.06475394000000001
+    },
+    {
+      "taskName": "fix-code-vulnerability",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 128.748,
+          "costUsd": 0.0064617599999999996,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 128.748,
+      "avgCostUsd": 0.0064617599999999996
+    },
+    {
+      "taskName": "fix-ocaml-gc",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 2020.481,
+          "costUsd": 0.04748669999999999,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 2020.481,
+      "avgCostUsd": 0.04748669999999999
+    },
+    {
+      "taskName": "gcode-to-text",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 888.81,
+          "costUsd": 0.14236517999999995,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 888.81,
+      "avgCostUsd": 0.14236517999999995
+    },
+    {
+      "taskName": "git-leak-recovery",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 175.743,
+          "costUsd": 0.0039621199999999995,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 175.743,
+      "avgCostUsd": 0.0039621199999999995
+    },
+    {
+      "taskName": "git-multibranch",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 386.965,
+          "costUsd": 0.02387086,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 386.965,
+      "avgCostUsd": 0.02387086
+    },
+    {
+      "taskName": "gpt2-codegolf",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 1064.095,
+          "costUsd": 0.130634,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 1064.095,
+      "avgCostUsd": 0.130634
+    },
+    {
+      "taskName": "headless-terminal",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 290.722,
+          "costUsd": 0.02001326,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 290.722,
+      "avgCostUsd": 0.02001326
+    },
+    {
+      "taskName": "hf-model-inference",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 121.908,
+          "costUsd": 0.005569319999999999,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 121.908,
+      "avgCostUsd": 0.005569319999999999
+    },
+    {
+      "taskName": "install-windows-3.11",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 1126.409,
+          "costUsd": 0.12117531999999999,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 1126.409,
+      "avgCostUsd": 0.12117531999999999
+    },
+    {
+      "taskName": "kv-store-grpc",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 135.084,
+          "costUsd": 0.00035688,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 135.084,
+      "avgCostUsd": 0.00035688
+    },
+    {
+      "taskName": "large-scale-text-editing",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 613.116,
+          "costUsd": 0.013500260000000002,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 613.116,
+      "avgCostUsd": 0.013500260000000002
+    },
+    {
+      "taskName": "llm-inference-batching-scheduler",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 280.835,
+          "costUsd": 0.01906968,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 280.835,
+      "avgCostUsd": 0.01906968
+    },
+    {
+      "taskName": "log-summary-date-ranges",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 109.049,
+          "costUsd": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 109.049,
+      "avgCostUsd": 0
+    },
+    {
+      "taskName": "mailman",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 766.353,
+          "costUsd": 0.07563362000000003,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 766.353,
+      "avgCostUsd": 0.07563362000000003
+    },
+    {
+      "taskName": "make-doom-for-mips",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 1181.967,
+          "costUsd": 0.26787174,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 1181.967,
+      "avgCostUsd": 0.26787174
+    },
+    {
+      "taskName": "make-mips-interpreter",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 845.512,
+          "costUsd": 0.16602226000000003,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 845.512,
+      "avgCostUsd": 0.16602226000000003
+    },
+    {
+      "taskName": "mcmc-sampling-stan",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 994.462,
+          "costUsd": 0.03601368,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 994.462,
+      "avgCostUsd": 0.03601368
+    },
+    {
+      "taskName": "merge-diff-arc-agi-task",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 214.647,
+          "costUsd": 0.01401964,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 214.647,
+      "avgCostUsd": 0.01401964
+    },
+    {
+      "taskName": "model-extraction-relu-logits",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 372.392,
+          "costUsd": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 372.392,
+      "avgCostUsd": 0
+    },
+    {
+      "taskName": "modernize-scientific-stack",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 147.82,
+          "costUsd": 0.00509082,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 147.82,
+      "avgCostUsd": 0.00509082
+    },
+    {
+      "taskName": "mteb-leaderboard",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 98.072,
+          "costUsd": 0.00996144,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 98.072,
+      "avgCostUsd": 0.00996144
+    },
+    {
+      "taskName": "mteb-retrieve",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 201.267,
+          "costUsd": 0.0061939,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 201.267,
+      "avgCostUsd": 0.0061939
+    },
+    {
+      "taskName": "multi-source-data-merger",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 145.826,
+          "costUsd": 0.00710494,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 145.826,
+      "avgCostUsd": 0.00710494
+    },
+    {
+      "taskName": "password-recovery",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 324.462,
+          "costUsd": 0.04520116,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 324.462,
+      "avgCostUsd": 0.04520116
+    },
+    {
+      "taskName": "path-tracing-reverse",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 897.038,
+          "costUsd": 0.18944747999999997,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 897.038,
+      "avgCostUsd": 0.18944747999999997
+    },
+    {
+      "taskName": "path-tracing",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 753.338,
+          "costUsd": 0.06289424000000002,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 753.338,
+      "avgCostUsd": 0.06289424000000002
+    },
+    {
+      "taskName": "polyglot-c-py",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 210.478,
+          "costUsd": 0.0113189,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 210.478,
+      "avgCostUsd": 0.0113189
+    },
+    {
+      "taskName": "polyglot-rust-c",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 189.487,
+          "costUsd": 0.00876646,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 189.487,
+      "avgCostUsd": 0.00876646
+    },
+    {
+      "taskName": "portfolio-optimization",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 330.367,
+          "costUsd": 0.017176760000000003,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 330.367,
+      "avgCostUsd": 0.017176760000000003
+    },
+    {
+      "taskName": "protein-assembly",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 926.628,
+          "costUsd": 0.0274132,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 926.628,
+      "avgCostUsd": 0.0274132
+    },
+    {
+      "taskName": "prove-plus-comm",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 179.491,
+          "costUsd": 0.0024505599999999996,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 179.491,
+      "avgCostUsd": 0.0024505599999999996
+    },
+    {
+      "taskName": "pypi-server",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 177.183,
+          "costUsd": 0.011736280000000002,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 177.183,
+      "avgCostUsd": 0.011736280000000002
+    },
+    {
+      "taskName": "pytorch-model-cli",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 322.533,
+          "costUsd": 0.0348552,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 322.533,
+      "avgCostUsd": 0.0348552
+    },
+    {
+      "taskName": "pytorch-model-recovery",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 407.88,
+          "costUsd": 0.019533079999999998,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 407.88,
+      "avgCostUsd": 0.019533079999999998
+    },
+    {
+      "taskName": "qemu-alpine-ssh",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 811.07,
+          "costUsd": 0.03673336000000001,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 811.07,
+      "avgCostUsd": 0.03673336000000001
+    },
+    {
+      "taskName": "qemu-startup",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 800.735,
+          "costUsd": 0.030045820000000004,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 800.735,
+      "avgCostUsd": 0.030045820000000004
+    },
+    {
+      "taskName": "query-optimize",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 1254.477,
+          "costUsd": 0.023426159999999998,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 1254.477,
+      "avgCostUsd": 0.023426159999999998
+    },
+    {
+      "taskName": "raman-fitting",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 473.894,
+          "costUsd": 0.04664945999999998,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 473.894,
+      "avgCostUsd": 0.04664945999999998
+    },
+    {
+      "taskName": "regex-chess",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 939.916,
+          "costUsd": 0.00085954,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 939.916,
+      "avgCostUsd": 0.00085954
+    },
+    {
+      "taskName": "regex-log",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 168.647,
+          "costUsd": 0.0073331,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 168.647,
+      "avgCostUsd": 0.0073331
+    },
+    {
+      "taskName": "reshard-c4-data",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 565.063,
+          "costUsd": 0.06496993999999999,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 565.063,
+      "avgCostUsd": 0.06496993999999999
+    },
+    {
+      "taskName": "rstan-to-pystan",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 936.348,
+          "costUsd": 0.06373930000000001,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 936.348,
+      "avgCostUsd": 0.06373930000000001
+    },
+    {
+      "taskName": "sam-cell-seg",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 317.887,
+          "costUsd": 0.024469860000000003,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 317.887,
+      "avgCostUsd": 0.024469860000000003
+    },
+    {
+      "taskName": "sanitize-git-repo",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 277.892,
+          "costUsd": 0.033759220000000006,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 277.892,
+      "avgCostUsd": 0.033759220000000006
+    },
+    {
+      "taskName": "schemelike-metacircular-eval",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 782.88,
+          "costUsd": 0.00033131999999999997,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 782.88,
+      "avgCostUsd": 0.00033131999999999997
+    },
+    {
+      "taskName": "sparql-university",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 193.695,
+          "costUsd": 0.01167474,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 193.695,
+      "avgCostUsd": 0.01167474
+    },
+    {
+      "taskName": "sqlite-db-truncate",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 134.376,
+          "costUsd": 0.0067382,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 134.376,
+      "avgCostUsd": 0.0067382
+    },
+    {
+      "taskName": "sqlite-with-gcov",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 275.449,
+          "costUsd": 0.012696120000000002,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 275.449,
+      "avgCostUsd": 0.012696120000000002
+    },
+    {
+      "taskName": "torch-pipeline-parallelism",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 523.397,
+          "costUsd": 0.052700960000000005,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 523.397,
+      "avgCostUsd": 0.052700960000000005
+    },
+    {
+      "taskName": "torch-tensor-parallelism",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 326.393,
+          "costUsd": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 326.393,
+      "avgCostUsd": 0
+    },
+    {
+      "taskName": "train-fasttext",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 956.705,
+          "costUsd": 0.018101759999999998,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "fail"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 956.705,
+      "avgCostUsd": 0.018101759999999998
+    },
+    {
+      "taskName": "tune-mjcf",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 874.385,
+          "costUsd": 0.046987799999999996,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "error",
+          "errorMessage": "Trial failed with an infrastructure error"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 874.385,
+      "avgCostUsd": 0.046987799999999996
+    },
+    {
+      "taskName": "video-processing",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 462.282,
+          "costUsd": 0.0181312,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 462.282,
+      "avgCostUsd": 0.0181312
+    },
+    {
+      "taskName": "vulnerable-secret",
+      "trials": [
+        {
+          "reward": 0,
+          "durationSec": 524.466,
+          "costUsd": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "error",
+          "errorMessage": "Trial failed with an infrastructure error"
+        }
+      ],
+      "passRate": 0,
+      "avgDurationSec": 524.466,
+      "avgCostUsd": 0
+    },
+    {
+      "taskName": "winning-avg-corewars",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 467.075,
+          "costUsd": 0.04490876,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 467.075,
+      "avgCostUsd": 0.04490876
+    },
+    {
+      "taskName": "write-compressor",
+      "trials": [
+        {
+          "reward": 1,
+          "durationSec": 299.609,
+          "costUsd": 0,
+          "inputTokens": 0,
+          "outputTokens": 0,
+          "status": "pass"
+        }
+      ],
+      "passRate": 1,
+      "avgDurationSec": 299.609,
+      "avgCostUsd": 0
+    }
+  ],
+  "summary": {
+    "totalTasks": 84,
+    "totalTrials": 84,
+    "overallPassRate": 0.6309523809523809,
+    "totalCostUsd": 3.0125993600000007,
+    "avgCostPerTask": 0.0358642780952381,
+    "avgDurationSec": 506.5770476190474,
+    "tasksWon": 53,
+    "successfulTrials": 53
+  }
+}

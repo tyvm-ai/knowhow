@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { Tool } from "../../clients/types";
 import { ToolCallContext } from "../../services/Tools";
+import { appendInput } from "../../services/stateful/channels/inputStream";
 
 /** Resolve the agents dir lazily so tests (and cwd changes) are respected. */
 function agentsDir(): string {
@@ -82,14 +83,9 @@ export async function replyToParent(
   const envelope = `[from:${fromTaskId}] [agent:${fromAgent}] ${message}`;
 
   try {
-    // Append rather than overwrite so we don't clobber other pending messages.
-    const existing = fs.existsSync(parentInputPath)
-      ? fs.readFileSync(parentInputPath, "utf8")
-      : "";
-    const next = existing && !existing.endsWith("\n")
-      ? `${existing}\n${envelope}\n`
-      : `${existing}${envelope}\n`;
-    fs.writeFileSync(parentInputPath, next, "utf8");
+    // True append (one O_APPEND write, one JSON record) so we never clobber
+    // other pending messages.
+    appendInput(parentInputPath, { text: envelope });
   } catch (e: any) {
     return `Failed to write to parent input.txt: ${e?.message ?? String(e)}`;
   }

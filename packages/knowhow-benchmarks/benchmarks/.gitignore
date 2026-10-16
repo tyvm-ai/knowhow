@@ -2,3 +2,6 @@ exercises/*
 .env
 dist/
 src/custom_providers.json
+jobs/
+__pycache__/
+*.pyc

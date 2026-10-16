@@ -5,6 +5,7 @@ import { JsonCompressor } from "./JsonCompressor";
 import {
   jqToolResponseDefinition,
   executeJqQuery,
+  JqOptions,
   grepToolResponseDefinition,
   executeGrep,
   GrepOptions,
@@ -13,6 +14,7 @@ import {
   TailOptions,
   listStoredToolResponsesDefinition,
   executeListStoredToolResponses,
+  ListStoredToolResponsesOptions,
 } from "./tools";
 
 interface ToolResponseStorage {
@@ -196,11 +198,12 @@ export class ToolResponseCache {
    */
   async queryToolResponse(
     toolCallId: string,
-    jqQuery: string
+    jqQuery: string,
+    options?: JqOptions
   ): Promise<string> {
     const data = this.storage[toolCallId];
     const availableIds = Object.keys(this.storage);
-    return executeJqQuery(data, toolCallId, jqQuery, availableIds, this.toolNameMap);
+    return executeJqQuery(data, toolCallId, jqQuery, availableIds, this.toolNameMap, options);
   }
 
   /**
@@ -231,11 +234,14 @@ export class ToolResponseCache {
   /**
    * List all stored tool responses with metadata
    */
-  async listStoredToolResponses(): Promise<string> {
+  async listStoredToolResponses(
+    options?: ListStoredToolResponsesOptions
+  ): Promise<string> {
     return executeListStoredToolResponses(
       this.storage,
       this.metadataStorage,
-      this.toolNameMap
+      this.toolNameMap,
+      options
     );
   }
 
@@ -281,9 +287,10 @@ export class ToolResponseCache {
     toolsService.addFunctions({
       [jqToolResponseDefinition.function.name]: async (
         toolCallId: string,
-        jqQuery: string
+        jqQuery: string,
+        options?: JqOptions
       ) => {
-        return await this.queryToolResponse(toolCallId, jqQuery);
+        return await this.queryToolResponse(toolCallId, jqQuery, options);
       },
       [grepToolResponseDefinition.function.name]: async (
         toolCallId: string,
@@ -298,8 +305,10 @@ export class ToolResponseCache {
       ) => {
         return await this.tailToolResponse(toolCallId, options);
       },
-      [listStoredToolResponsesDefinition.function.name]: async () => {
-        return await this.listStoredToolResponses();
+      [listStoredToolResponsesDefinition.function.name]: async (
+        options?: ListStoredToolResponsesOptions
+      ) => {
+        return await this.listStoredToolResponses(options);
       },
     });
   }

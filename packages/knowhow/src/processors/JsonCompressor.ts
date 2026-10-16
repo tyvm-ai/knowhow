@@ -398,6 +398,20 @@ export class JsonCompressor {
     }
 
 
+    // Image content parts must remain atomic. Compressing a data URL independently
+    // leaves a valid-looking image_url object whose URL is only a placeholder.
+    // The containing response can still be compressed, but expanding it must
+    // restore an image part with its usable URL intact.
+    if (
+      obj &&
+      typeof obj === "object" &&
+      !Array.isArray(obj) &&
+      obj.type === "image_url" &&
+      typeof obj.image_url?.url === "string"
+    ) {
+      return obj;
+    }
+
     // Handle objects - try low-signal detection first, then process properties (depth-first)
     if (obj && typeof obj === "object") {
       // Check if this exact object (by original content) is a duplicate

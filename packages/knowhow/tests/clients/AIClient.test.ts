@@ -187,6 +187,98 @@ describe("AIClient", () => {
       expect(result.model).toBe("unknown-model");
     });
 
+    // ── New tests: explicit provider + slashed model prefix stripping ────────
+
+    it("knowhow provider: resolves 'anthropic/claude-sonnet-4-6' to model stored as 'anthropic/claude-sonnet-4-6'", () => {
+      aiClient.registerClient("knowhow", new FakeClient());
+      aiClient.registerModels("knowhow", [
+        "anthropic/claude-sonnet-4-6",
+        "openai/gpt-4",
+        "google/gemini-pro",
+      ]);
+
+      // Exact match: provider=knowhow, model=anthropic/claude-sonnet-4-6
+      const result = aiClient.detectProviderModel("knowhow", "anthropic/claude-sonnet-4-6");
+      expect(result.provider).toBe("knowhow");
+      expect(result.model).toBe("anthropic/claude-sonnet-4-6");
+    });
+
+    it("knowhow provider: resolves bare 'claude-sonnet-4-6' to 'anthropic/claude-sonnet-4-6' stored on knowhow", () => {
+      aiClient.registerClient("knowhow", new FakeClient());
+      aiClient.registerModels("knowhow", [
+        "anthropic/claude-sonnet-4-6",
+        "openai/gpt-4",
+      ]);
+
+      // Bare model name — should resolve by stripping the provider prefix from
+      // the registered model and matching on the trailing segment
+      const result = aiClient.detectProviderModel("knowhow", "claude-sonnet-4-6");
+      expect(result.provider).toBe("knowhow");
+      expect(result.model).toBe("anthropic/claude-sonnet-4-6");
+    });
+
+    it("fireworks provider: resolves 'kimi-k3' to 'accounts/fireworks/models/kimi-k3'", () => {
+      aiClient.registerClient("fireworks", new FakeClient());
+      aiClient.registerModels("fireworks", [
+        "accounts/fireworks/models/kimi-k3",
+        "accounts/fireworks/models/kimi-k2p7-code",
+        "accounts/fireworks/models/minimax-m3",
+        "accounts/fireworks/models/deepseek-v3-2",
+      ]);
+
+      const result = aiClient.detectProviderModel("fireworks", "kimi-k3");
+      expect(result.provider).toBe("fireworks");
+      expect(result.model).toBe("accounts/fireworks/models/kimi-k3");
+    });
+
+    it("fireworks provider: resolves 'accounts/fireworks/models/kimi-k3' (full path) correctly", () => {
+      aiClient.registerClient("fireworks", new FakeClient());
+      aiClient.registerModels("fireworks", [
+        "accounts/fireworks/models/kimi-k3",
+        "accounts/fireworks/models/deepseek-v4-pro",
+      ]);
+
+      // Full path exact match
+      const result = aiClient.detectProviderModel("fireworks", "accounts/fireworks/models/kimi-k3");
+      expect(result.provider).toBe("fireworks");
+      expect(result.model).toBe("accounts/fireworks/models/kimi-k3");
+    });
+
+    it("explicit provider: does NOT leak to a different provider when stripping slashes", () => {
+      aiClient.registerClient("knowhow", new FakeClient());
+      aiClient.registerModels("knowhow", ["anthropic/claude-sonnet-4-6"]);
+
+      // 'fake' provider doesn't have this model — should not find it on knowhow
+      const result = aiClient.detectProviderModel("fake", "claude-sonnet-4-6");
+      // Falls back: provider=fake, model=claude-sonnet-4-6 (no cross-provider leak)
+      expect(result.provider).toBe("fake");
+      expect(result.model).toBe("claude-sonnet-4-6");
+    });
+
+    it("empty provider: finds 'claude-sonnet-4-6' cross-provider on knowhow (stored as 'anthropic/claude-sonnet-4-6')", () => {
+      aiClient.registerClient("knowhow", new FakeClient());
+      aiClient.registerModels("knowhow", [
+        "anthropic/claude-sonnet-4-6",
+        "openai/gpt-4",
+      ]);
+
+      const result = aiClient.detectProviderModel("", "claude-sonnet-4-6");
+      expect(result.provider).toBe("knowhow");
+      expect(result.model).toBe("anthropic/claude-sonnet-4-6");
+    });
+
+    it("empty provider: finds 'kimi-k3' cross-provider on fireworks (stored as 'accounts/fireworks/models/kimi-k3')", () => {
+      aiClient.registerClient("fireworks", new FakeClient());
+      aiClient.registerModels("fireworks", [
+        "accounts/fireworks/models/kimi-k3",
+        "accounts/fireworks/models/deepseek-v4-pro",
+      ]);
+
+      const result = aiClient.detectProviderModel("", "kimi-k3");
+      expect(result.provider).toBe("fireworks");
+      expect(result.model).toBe("accounts/fireworks/models/kimi-k3");
+    });
+
     it("should detect real provider when model exists", () => {
       // Register an anthropic provider explicitly so we don't rely on env vars
       aiClient.registerClient("anthropic", new FakeClient());
@@ -442,14 +534,14 @@ describe("AIClient", () => {
     });
 
     it("should handle empty provider and model strings", () => {
-      // Empty strings should return default OpenAI client with gpt-5
-      const result = aiClient.getClient("", "");
-      expect(result.provider.length).toBeGreaterThan(0);
-      expect(result.model.length).toBeGreaterThan(0);
+      // Empty provider + empty model: detectProviderModel returns the fallback (empty strings)
+      // getClient("", "") throws because "" is not a registered provider
+      expect(() => aiClient.getClient("", "")).toThrow();
 
       const detection = aiClient.detectProviderModel("", "");
-      expect(detection?.provider?.length).toBeGreaterThan(0);
-      expect(detection?.model?.length).toBeGreaterThan(0);
+      // Falls back to original values — both empty
+      expect(detection?.provider).toBe("");
+      expect(detection?.model).toBe("");
     });
 
     it("should handle malformed model formats", () => {
@@ -469,15 +561,6 @@ describe("AIClient", () => {
         expect(detection).toBeDefined();
         expect(detection?.provider).toBeDefined();
         expect(detection?.model).toBeDefined();
-        // For malformed inputs that can't be parsed, should fallback to defaults
-        if (
-          input === "provider/" ||
-          input === "///" ||
-          input === "provider/model/"
-        ) {
-          expect(detection?.provider?.length).toBeGreaterThan(0);
-          expect(detection?.model?.length).toBeGreaterThan(0);
-        }
       });
     });
 

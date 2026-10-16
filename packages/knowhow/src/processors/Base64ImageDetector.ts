@@ -251,17 +251,56 @@ export class Base64ImageProcessor {
     }
   }
 
+  private isUsableImageUrl(url: unknown): url is string {
+    if (typeof url !== "string") return false;
+
+    // Data URLs are only usable when they contain an image format this processor
+    // recognizes. In particular, reject TokenCompressor placeholders that happen
+    // to be located inside an otherwise valid-looking image_url content part.
+    if (url.startsWith("data:")) {
+      return this.isBase64Image(url).isImage;
+    }
+
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+
   private processToolMessageContent(message: Message): void {
     // Tool messages have string content that might be a JSON string containing image data
     if (typeof message.content === "string" && message.content.trim()) {
       try {
         // Try to parse as JSON
         const parsed = JSON.parse(message.content);
-        
-        // Check if it's an image_url object
-        if (parsed.type === "image_url" && parsed.image_url?.url) {
-          // Convert the tool message content from JSON string to an array with the image
-          message.content = [parsed];
+
+        // Normalize the parsed value into an array of candidate parts so we can
+        // handle BOTH shapes a tool might return:
+        //   1. a single image_url object:  {type:"image_url", image_url:{url}}
+        //   2. an array of parts:          [{type:"image_url", image_url:{url}}, {type:"text", ...}]
+        // (Computer-use screenshot tools and loadWebpage return the array form,
+        //  which the single-object check above previously missed — leaving the
+        //  model to see a raw base64 JSON string instead of an actual image.)
+        const candidates = Array.isArray(parsed) ? parsed : [parsed];
+        const isImagePart = (p: any) =>
+          p &&
+          p.type === "image_url" &&
+          this.isUsableImageUrl(p.image_url?.url);
+        const isTextPart = (p: any) =>
+          p && p.type === "text" && typeof p.text === "string";
+        const hasInvalidImagePart = candidates.some(
+          (p: any) => p?.type === "image_url" && !isImagePart(p)
+        );
+
+        // Only rewrite content containing valid provider-ready images. If an
+        // image URL was compressed or is malformed, preserve the JSON as text so
+        // the agent can inspect/expand it instead of failing the next API call.
+        if (!hasInvalidImagePart && candidates.some(isImagePart)) {
+          message.content = candidates.filter(
+            (p) => isImagePart(p) || isTextPart(p)
+          );
         }
       } catch (e) {
         // Not JSON, check if it's a plain base64 string (only if still a string)
@@ -277,25 +316,26 @@ export class Base64ImageProcessor {
 
   createProcessor(): MessageProcessorFunction {
     return (originalMessages: Message[], modifiedMessages: Message[]) => {
-      // Only process the last (newest) message for hint injection.
-      // Processing all historical messages on every call would re-append hints
-      // to already-processed messages, causing the hint to multiply and busting
-      // Anthropic's prefix cache (which requires byte-identical prior messages).
       const lastIndex = modifiedMessages.length - 1;
       if (lastIndex < 0) return;
 
       const lastMessage = modifiedMessages[lastIndex];
 
-      // Process user messages (images from user input)
-      if (lastMessage.role === "user") {
-        this.processMessageContent(lastMessage);
+      // Every request starts with a fresh clone of the persisted thread. Normalize
+      // all images: parallel calls can place another tool result after an image,
+      // while historical image results remain persisted as JSON strings.
+      for (const message of modifiedMessages) {
+        if (message.role === "user") {
+          this.processMessageContent(message);
+        }
+        if (message.role === "tool") {
+          this.processToolMessageContent(message);
+        }
       }
 
-      // Process tool messages (images from loadImageAsBase64 tool)
-      // Tool responses come back as JSON strings that need to be parsed
-      // and converted to proper image content before the agent sees them
+      // Add path hints only to the newest message. Re-appending hints to history
+      // would multiply them and invalidate the provider's prompt cache.
       if (lastMessage.role === "tool") {
-        this.processToolMessageContent(lastMessage);
         // After processing tool content (which may not convert to image if it's plain text
         // describing a screenshot path), add hints for any image file paths found in the text.
         this.applyImagePathHintsToMessage(lastMessage);
@@ -414,10 +454,34 @@ export class Base64ImageProcessor {
 
       // Read the file as base64
       const imageBuffer = fs.readFileSync(filePath);
+
+      // Detect actual MIME type from magic bytes (overrides extension-based detection)
+      // This handles cases where a file is saved with the wrong extension (e.g. JPEG saved as .png)
+      let detectedMimeType = mimeType;
+      if (imageBuffer.length >= 4) {
+        // JPEG: starts with FF D8 FF
+        if (imageBuffer[0] === 0xff && imageBuffer[1] === 0xd8 && imageBuffer[2] === 0xff) {
+          detectedMimeType = "image/jpeg";
+        }
+        // PNG: starts with 89 50 4E 47 0D 0A 1A 0A
+        else if (imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50 && imageBuffer[2] === 0x4e && imageBuffer[3] === 0x47) {
+          detectedMimeType = "image/png";
+        }
+        // GIF: starts with 47 49 46 38 (GIF8)
+        else if (imageBuffer[0] === 0x47 && imageBuffer[1] === 0x49 && imageBuffer[2] === 0x46 && imageBuffer[3] === 0x38) {
+          detectedMimeType = "image/gif";
+        }
+        // WebP: starts with 52 49 46 46 (RIFF) ... 57 45 42 50 (WEBP) at offset 8
+        else if (imageBuffer.length >= 12 && imageBuffer[0] === 0x52 && imageBuffer[1] === 0x49 && imageBuffer[2] === 0x46 && imageBuffer[3] === 0x46 &&
+                 imageBuffer[8] === 0x57 && imageBuffer[9] === 0x45 && imageBuffer[10] === 0x42 && imageBuffer[11] === 0x50) {
+          detectedMimeType = "image/webp";
+        }
+      }
+
       const base64Data = imageBuffer.toString("base64");
 
-      // Create data URL
-      const dataUrl = `data:${mimeType};base64,${base64Data}`;
+      // Create data URL using the actual detected MIME type
+      const dataUrl = `data:${detectedMimeType};base64,${base64Data}`;
 
       // Return in a format that indicates this is an image
       // The Base64ImageDetector will convert this to proper image content

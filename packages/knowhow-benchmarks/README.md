@@ -196,6 +196,26 @@ npm run build              # Build both packages
 npm test                   # Run benchmark tests
 ```
 
+### Computer-use UI Basics
+
+The dependency-free UI Basics exercise covers browser navigation, accessible form controls,
+sorting, drag-and-drop, and submission. Start its local server in one terminal and open the
+printed URL on either monitor:
+
+```bash
+npm run computer:ui-server             # serves http://localhost:7432
+# in another terminal, optionally run the ComputerUseAgent benchmark:
+npm run computer:ui-basics
+# CI-style run: bounded cost/time and nonzero exit unless every task passes:
+npm run computer:ui-eval
+```
+
+The page can be reset safely with a browser refresh. `GET /health` reports readiness and
+`GET /api/results` returns in-memory submissions for the existing runner. Each automated run
+saves JSON plus a full `.log` transcript. JSON efficiency metrics include total cost, elapsed
+time, tool calls by name, screenshot/coordinate-click counts, and tool errors, making prompt or
+model changes directly comparable.
+
 ## Scripts (from monorepo root)
 
 ```bash

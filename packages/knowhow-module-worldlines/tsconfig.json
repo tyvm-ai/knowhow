@@ -1,0 +1,1 @@
+{"compilerOptions":{"lib":["es2021"],"skipLibCheck":true,"strict":true,"resolveJsonModule":true,"declaration":true,"module":"commonjs","esModuleInterop":true,"moduleResolution":"node","target":"es2021","outDir":"ts_build","sourceMap":true},"include":["./src/**/*.ts"],"exclude":["node_modules"]}

@@ -2,10 +2,12 @@
  * Task Registry Service - Manages active agent tasks
  */
 import { TaskInfo } from "../chat/types";
+import { TraceAll } from "../util/Trace";
 
 /**
  * TaskRegistry manages the in-memory registry of active agent tasks
  */
+@TraceAll()
 export class TaskRegistry {
   private tasks = new Map<string, TaskInfo>();
 

@@ -4,6 +4,7 @@ import * as os from "os";
 import { createHash } from "crypto";
 import * as https from "https";
 import { KnowhowSimpleClient } from "./KnowhowClient";
+import { TraceAll } from "../util/Trace";
 
 // Default local install dir (relative to cwd)
 const LOCAL_SKILLS_DIR = ".knowhow/skills";
@@ -233,6 +234,7 @@ export function parseSkillRef(
   return { owner, repo, skill, sourceUrl };
 }
 
+@TraceAll()
 export class SkillsService {
   private cwd: string;
   private isGlobal: boolean;

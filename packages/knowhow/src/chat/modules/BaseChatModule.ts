@@ -9,7 +9,6 @@ import {
   ChatMode,
   ChatContext,
 } from "../types";
-
 export abstract class BaseChatModule implements ChatModule {
   public abstract name: string;
   public abstract description: string;

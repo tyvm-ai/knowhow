@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Checkout</title>
+    <style>
+      body {
+        font: 16px sans-serif;
+        max-width: 800px;
+        margin: 2rem;
+      }
+
+      button,
+      input,
+      select {
+        padding: 0.45rem;
+        margin: 0.25rem;
+      }
+
+      table {
+        border-collapse: collapse;
+      }
+
+      td,
+      th {
+        padding: 0.5rem;
+        border: 1px solid #aaa;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Checkout</h1>
+
+      <section aria-labelledby="cart">
+        <h2 id="cart">Cart</h2>
+        <table>
+          <tr>
+            <th>Item</th>
+            <th>Price</th>
+            <th>Quantity</th>
+            <th>Action</th>
+          </tr>
+          <tr id="mug">
+            <td>Knowhow mug</td>
+            <td>$12.00</td>
+            <td>
+              <input id="qty" type="number" min="1" value="1" aria-label="Knowhow mug quantity">
+            </td>
+            <td>Keep</td>
+          </tr>
+          <tr id="notebook">
+            <td>Field notebook</td>
+            <td>$8.00</td>
+            <td>1</td>
+            <td>
+              <button id="remove" aria-label="Remove Field notebook">Remove Field notebook</button>
+            </td>
+          </tr>
+        </table>
+        <p id="total">Subtotal: $20.00</p>
+      </section>
+
+      <form id="shipping">
+        <h2>Shipping details</h2>
+
+        <label for="name">Full name</label>
+        <input id="name" required>
+
+        <label for="address">Shipping street address</label>
+        <input id="address" aria-label="Shipping street address" required>
+
+        <label for="city">City</label>
+        <input id="city" required>
+
+        <fieldset>
+          <legend>Shipping method</legend>
+          <label for="standard">
+            <input id="standard" type="radio" name="method" value="standard">
+            Standard (3–5 days) · $0
+          </label>
+          <label for="express">
+            <input id="express" type="radio" name="method" value="express">
+            Express · $10
+          </label>
+        </fieldset>
+
+        <label for="coupon">Coupon</label>
+        <input id="coupon" placeholder="SAVE10">
+        <button type="button" id="apply">Apply coupon</button>
+        <p id="discount">No coupon applied</p>
+        <button type="button" id="order">Place order</button>
+      </form>
+
+      <h2>Checklist</h2>
+      <ol>
+        <li id="a">□ Set mug quantity to 2</li>
+        <li id="b">□ Remove the Field notebook</li>
+        <li id="c">□ Enter shipping details and choose Standard</li>
+        <li id="d">□ Apply coupon SAVE10; total is $24.30</li>
+        <li id="e">□ Place synthetic order</li>
+      </ol>
+
+      <p id="status">Incomplete (0/5)</p>
+      <p id="receipt" aria-live="polite"></p>
+      <button id="submit">Submit result</button>
+    </main>
+
+    <script>
+      const refs = {
+        qty: document.getElementById('qty'),
+        notebook: document.getElementById('notebook'),
+        remove: document.getElementById('remove'),
+        total: document.getElementById('total'),
+        shipping: document.getElementById('shipping'),
+        name: document.getElementById('name'),
+        address: document.getElementById('address'),
+        city: document.getElementById('city'),
+        standard: document.getElementById('standard'),
+        express: document.getElementById('express'),
+        coupon: document.getElementById('coupon'),
+        apply: document.getElementById('apply'),
+        discount: document.getElementById('discount'),
+        order: document.getElementById('order'),
+        receipt: document.getElementById('receipt'),
+        status: document.getElementById('status'),
+        submit: document.getElementById('submit'),
+      };
+
+      const state = {
+        quantity: false,
+        removed: false,
+        shipping: false,
+        coupon: false,
+        order: false,
+      };
+
+      const completed = new Set();
+      const events = [];
+
+      function recordEvent(action, details = {}) {
+        events.push({
+          index: events.length + 1,
+          action,
+          ...details,
+        });
+      }
+
+      function updateStatus() {
+        refs.status.textContent = `${completed.size === 5 ? 'SUCCESS' : 'Incomplete'} (${completed.size}/5)`;
+      }
+
+      function mark(key, elementId, text) {
+        if (completed.has(key)) {
+          return;
+        }
+
+        completed.add(key);
+        document.getElementById(elementId).textContent = `✓ ${text}`;
+        updateStatus();
+      }
+
+      function evaluateQuantity(eventName) {
+        recordEvent(eventName, { quantity: refs.qty.value });
+
+        if (state.quantity || refs.qty.value !== '2') {
+          return;
+        }
+
+        state.quantity = true;
+        refs.total.textContent = 'Subtotal: $32.00';
+        mark('quantity', 'a', 'Set mug quantity to 2');
+      }
+
+      function shippingMatches() {
+        return (
+          refs.name.value === 'Casey Example' &&
+          refs.address.value === '42 Fixture Lane' &&
+          refs.city.value === 'Testville' &&
+          refs.standard.checked
+        );
+      }
+
+      function evaluateShipping(eventName) {
+        recordEvent(eventName, {
+          name: refs.name.value,
+          address: refs.address.value,
+          city: refs.city.value,
+          method: refs.standard.checked ? 'standard' : refs.express.checked ? 'express' : null,
+        });
+
+        if (!state.removed || state.shipping || !shippingMatches()) {
+          return;
+        }
+
+        state.shipping = true;
+        mark('shipping', 'c', 'Enter shipping details and choose Standard');
+      }
+
+      refs.qty.addEventListener('input', () => evaluateQuantity('set-quantity'));
+      refs.qty.addEventListener('change', () => evaluateQuantity('set-quantity'));
+
+      refs.remove.addEventListener('click', () => {
+        recordEvent('remove-item', { item: 'Field notebook' });
+
+        if (!state.quantity || state.removed) {
+          return;
+        }
+
+        state.removed = true;
+        refs.notebook.hidden = true;
+        refs.total.textContent = 'Subtotal: $24.00';
+        mark('removed', 'b', 'Remove the Field notebook');
+      });
+
+      [refs.name, refs.address, refs.city, refs.standard, refs.express].forEach((element) => {
+        element.addEventListener('input', () => evaluateShipping('update-shipping'));
+        element.addEventListener('change', () => evaluateShipping('update-shipping'));
+      });
+
+      refs.apply.addEventListener('click', () => {
+        recordEvent('apply-coupon', { coupon: refs.coupon.value });
+
+        if (!state.shipping || state.coupon || refs.coupon.value !== 'SAVE10') {
+          return;
+        }
+
+        state.coupon = true;
+        refs.discount.textContent = 'Coupon SAVE10 applied · Total: $24.30';
+        mark('coupon', 'd', 'Apply coupon SAVE10; total is $24.30');
+      });
+
+      refs.order.addEventListener('click', () => {
+        recordEvent('place-order');
+
+        if (!state.coupon || state.order) {
+          return;
+        }
+
+        state.order = true;
+        refs.receipt.textContent = 'Synthetic order placed · Order #KH-2048 · Total $24.30';
+        mark('order', 'e', 'Place synthetic order');
+      });
+
+      refs.submit.addEventListener('click', async () => {
+        await fetch('/api/results', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            score: completed.size,
+            complete: completed.size === 5,
+            steps: {
+              quantity: state.quantity ? 1 : 0,
+              removed: state.removed ? 1 : 0,
+              shipping: state.shipping ? 1 : 0,
+              coupon: state.coupon ? 1 : 0,
+              order: state.order ? 1 : 0,
+            },
+            events,
+          }),
+        });
+
+        refs.status.textContent += ' · recorded';
+      });
+
+      updateStatus();
+    </script>
+  </body>
+</html>

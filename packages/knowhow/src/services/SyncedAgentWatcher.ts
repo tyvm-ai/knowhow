@@ -5,6 +5,7 @@
 
 import { Message } from "../clients/types";
 import { EventService } from "./EventService";
+import { TraceAll } from "../util/Trace";
 
 export interface SyncedAgentWatcher {
   /** Start watching for changes, emitting agent events */
@@ -73,6 +74,7 @@ export interface AttachableAgent {
  * - agentEvents and eventTypes are delegated to the watcher
  * - "done" is emitted by the watcher when the remote agent completes
  */
+@TraceAll()
 export class WatcherBackedAgent implements AttachableAgent {
   public name: string;
   public agentEvents: EventService;

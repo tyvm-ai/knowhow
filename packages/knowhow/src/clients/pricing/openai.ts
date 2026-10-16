@@ -16,9 +16,14 @@ import {
 // ─── Model IDs ────────────────────────────────────────────────────────────────
 
 export const OpenAiModels = {
+  GPT_6_Astra: "gpt-6-astra",
+  GPT_61_Sol: "gpt-6.1-sol",
+  GPT_6_Sol: "gpt-6-sol",
+  GPT_6_Luna: "gpt-6-luna",
   GPT_56_Sol: "gpt-5.6-sol",
   GPT_56_Terra: "gpt-5.6-terra",
   GPT_56_Luna: "gpt-5.6-luna",
+  GPT_56_Cyber: "gpt-5.6-cyber",
   GPT_55: "gpt-5.5",
   GPT_55_Pro: "gpt-5.5-pro",
   GPT_54: "gpt-5.4",
@@ -97,6 +102,10 @@ export const OpenAiEmbeddingModels: Record<string, string> = {
 // ─── Modality arrays ──────────────────────────────────────────────────────────
 
 export const OpenAiReasoningModels: string[] = [
+  OpenAiModels.GPT_6_Astra,
+  OpenAiModels.GPT_61_Sol,
+  OpenAiModels.GPT_6_Sol,
+  OpenAiModels.GPT_6_Luna,
   OpenAiModels.GPT_5,
   OpenAiModels.GPT_56_Sol,
   OpenAiModels.GPT_56_Terra,
@@ -125,6 +134,10 @@ export const OpenAiReasoningModels: string[] = [
 ];
 
 export const OpenAiChatModels: string[] = [
+  OpenAiModels.GPT_6_Astra,
+  OpenAiModels.GPT_61_Sol,
+  OpenAiModels.GPT_6_Sol,
+  OpenAiModels.GPT_6_Luna,
   OpenAiModels.GPT_4o,
   OpenAiModels.GPT_4o_Mini,
   OpenAiModels.GPT_4o_2024_11_20,
@@ -155,6 +168,10 @@ export const OpenAiEmbeddingModelsList: string[] = [
 ];
 
 export const OpenAiResponsesOnlyModels: string[] = [
+  OpenAiModels.GPT_6_Astra,
+  OpenAiModels.GPT_61_Sol,
+  OpenAiModels.GPT_6_Sol,
+  OpenAiModels.GPT_6_Luna,
   OpenAiModels.GPT_5,
   OpenAiModels.GPT_5_Mini,
   OpenAiModels.GPT_5_Nano,
@@ -176,6 +193,7 @@ export const OpenAiResponsesOnlyModels: string[] = [
 
 // Models that exist in our catalog but have limited/no public access
 export const OpenAiLimitedAvailabilityModels: string[] = [
+  OpenAiModels.GPT_56_Cyber, // requires approval through the Daybreak program
   OpenAiModels.GPT_53_Codex_Spark, // 404 – not publicly available
   OpenAiModels.o3_Pro, // 404 – not publicly available
 ];
@@ -230,10 +248,65 @@ export const OpenAiSearchModels: string[] = [
 // ─── Pricing (USD per 1M tokens) ──────────────────────────────────────────────
 
 export const OpenAiTextPricing: Record<string, ModelPricing> = {
-  // gpt-5.6 series — short context / long context pricing
-  [OpenAiModels.GPT_56_Sol]:   { input: 5.0, cached_input: 0.5,  cache_write: 6.25,  output: 30.0, input_gt_200k: 10.0, output_gt_200k: 45.0 },
-  [OpenAiModels.GPT_56_Terra]: { input: 2.5, cached_input: 0.25, cache_write: 3.125, output: 15.0, input_gt_200k: 5.0,  output_gt_200k: 22.5 },
-  [OpenAiModels.GPT_56_Luna]:  { input: 1.0, cached_input: 0.10, cache_write: 1.25,  output: 6.0,  input_gt_200k: 2.0,  output_gt_200k: 9.0  },
+  [OpenAiModels.GPT_6_Astra]: {
+    input: 10.0, cached_input: 1.0, cache_write: 12.5, output: 50.0,
+    input_gt_200k: 20.0, cached_input_gt_200k: 2.0,
+    cache_write_gt_200k: 25.0, output_gt_200k: 75.0,
+    long_context_threshold: 272_000,
+    reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+  },
+  [OpenAiModels.GPT_61_Sol]: {
+    input: 2.0, cached_input: 0.1, cache_write: 2.5, output: 10.0,
+    input_gt_200k: 4.0, cached_input_gt_200k: 0.2,
+    cache_write_gt_200k: 5.0, output_gt_200k: 15.0,
+    long_context_threshold: 272_000,
+    reasoningLevels: ["low", "medium", "high", "xhigh", "max"],
+  },
+  [OpenAiModels.GPT_6_Sol]: {
+    input: 2.0, cached_input: 0.2, cache_write: 2.5, output: 10.0,
+    input_gt_200k: 4.0, cached_input_gt_200k: 0.4,
+    cache_write_gt_200k: 5.0, output_gt_200k: 15.0,
+    long_context_threshold: 272_000,
+    reasoningLevels: ["low", "medium", "high", "xhigh"],
+  },
+  [OpenAiModels.GPT_6_Luna]: {
+    input: 0.1, cached_input: 0.01, cache_write: 0.125, output: 0.5,
+    input_gt_200k: 0.2, cached_input_gt_200k: 0.02,
+    cache_write_gt_200k: 0.25, output_gt_200k: 0.75,
+    long_context_threshold: 272_000,
+    reasoningLevels: ["low", "medium", "high"],
+  },
+  // gpt-5.6 series — long-context pricing applies above 272K input tokens
+  [OpenAiModels.GPT_56_Sol]: {
+    input: 4.0,
+    cached_input: 0.40,
+    cache_write: 5.00,
+    output: 20.0,
+    input_gt_200k: 8.0,
+    cached_input_gt_200k: 0.80,
+    cache_write_gt_200k: 10.0,
+    output_gt_200k: 30.0,
+    long_context_threshold: 272_000,
+    changelog: [
+      {
+        date: "2026-07-09",
+        note: "Launch pricing",
+        pricing: { input: 5.0, cached_input: 0.5, cache_write: 6.25, output: 30.0, input_gt_200k: 10.0, cached_input_gt_200k: 1.0, cache_write_gt_200k: 12.5, output_gt_200k: 45.0, long_context_threshold: 272_000 },
+      },
+      {
+        date: "2026-08-21",
+        note: "Promotional price reduction announced for three months (through November 21, 2026)",
+        pricing: { input: 4.0, cached_input: 0.4, cache_write: 5.0, output: 20.0, input_gt_200k: 8.0, cached_input_gt_200k: 0.8, cache_write_gt_200k: 10.0, output_gt_200k: 30.0, long_context_threshold: 272_000 },
+      },
+    ],
+  },
+  [OpenAiModels.GPT_56_Terra]: { input: 2.0, cached_input: 0.20, cache_write: 2.5, output: 12.0, input_gt_200k: 4.0, cached_input_gt_200k: 0.40, cache_write_gt_200k: 5.0, output_gt_200k: 18.0, long_context_threshold: 272_000 },
+  [OpenAiModels.GPT_56_Luna]:  { input: 0.2, cached_input: 0.02, cache_write: 0.25, output: 1.2, input_gt_200k: 0.4, cached_input_gt_200k: 0.04, cache_write_gt_200k: 0.5, output_gt_200k: 1.8, long_context_threshold: 272_000 },
+  [OpenAiModels.GPT_56_Cyber]: {
+    input: 12.5, cached_input: 1.25, cache_write: 15.625, output: 75.0,
+    input_gt_200k: 25.0, cached_input_gt_200k: 2.5, cache_write_gt_200k: 31.25, output_gt_200k: 112.5,
+    long_context_threshold: 272_000, limitedAvailability: true,
+  },
   [OpenAiModels.GPT_55]: { input: 5.0, cached_input: 0.5, output: 30.0 },
   [OpenAiModels.GPT_55_Pro]: { input: 30.0, cached_input: 0, output: 180.0, reasoningLevels: ["medium", "high", "xhigh"] },
   [OpenAiModels.GPT_54]: { input: 2.5, cached_input: 0.25, output: 15.0 },

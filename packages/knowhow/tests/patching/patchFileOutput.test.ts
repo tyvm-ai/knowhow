@@ -1,4 +1,7 @@
-import { patchFile } from "../../src/agents/tools/patch";
+import {
+  autoCorrectionPreservesChanges,
+  patchFile,
+} from "../../src/agents/tools/patch";
 import * as fs from "fs";
 
 const mockToolService = {
@@ -213,5 +216,113 @@ describe("patchFile nested-object + leading-context additions regression", () =>
     const countChar = (s: string, c: string) => s.split(c).length - 1;
     expect(countChar(updated, "{")).toBe(countChar(original, "{"));
     expect(countChar(updated, "}")).toBe(countChar(original, "}"));
+  });
+});
+
+/**
+ * Regression for a real multi-hunk patchFile failure observed while removing
+ * an environment filter from several similar Prisma queries. Auto-correction
+ * reported success, but removed unrelated predicates and moved lines between
+ * query blocks. A safe result is either the exact requested removals or a
+ * rejected patch which leaves the file untouched.
+ */
+describe("patchFile repeated Prisma query regression", () => {
+  const testFile = "/tmp/patch-repeated-prisma-regression.ts";
+  const original = `async function reconcile() {
+  const orphaned = await prisma.githubRunnerJob.findMany({
+    where: {
+      status: "running",
+      updatedAt: { lt: cutoff },
+      ...this.runnerJobEnvironmentFilter(),
+    },
+  });
+
+  const expired = await prisma.githubRunnerJob.findMany({
+    where: {
+      status: { in: ["dispatched", "running"] },
+      leaseExpiresAt: { lt: now },
+      leaseToken: { not: null },
+      ...this.runnerJobEnvironmentFilter(),
+    },
+  });
+
+  const retryable = await prisma.githubRunnerJob.findMany({
+    where: {
+      status: "retry_wait",
+      attemptCount: { lt: MAX_ATTEMPTS },
+      nextRetryAt: { lte: now },
+      ...this.runnerJobEnvironmentFilter(),
+    },
+  });
+
+  const queued = await prisma.githubRunnerJob.findMany({
+    where: {
+      status: "queued",
+      leaseToken: null,
+      sandboxId: null,
+      ...this.runnerJobEnvironmentFilter(),
+    },
+    orderBy: [{ createdAt: "asc" }],
+  });
+}
+`;
+
+  beforeEach(() => fs.writeFileSync(testFile, original));
+
+  it("only removes the requested repeated spread properties or rejects without writing", async () => {
+    // The wildly stale headers exercise patchFile's fuzzy-application or
+    // auto-correction path (depending on diff-library behavior). Each hunk has
+    // short, similar context, matching the shape that crossed query scopes.
+    const patch = `@@ -100,2 +100,1 @@
+       updatedAt: { lt: cutoff },
+-      ...this.runnerJobEnvironmentFilter(),
+@@ -200,2 +200,1 @@
+       leaseToken: { not: null },
+-      ...this.runnerJobEnvironmentFilter(),
+@@ -300,2 +300,1 @@
+       nextRetryAt: { lte: now },
+-      ...this.runnerJobEnvironmentFilter(),
+@@ -400,2 +400,1 @@
+       sandboxId: null,
+-      ...this.runnerJobEnvironmentFilter(),
+`;
+
+    const result = await boundPatch(testFile, patch);
+    const updated = fs.readFileSync(testFile, "utf8");
+
+    if (result.includes("❌ Patch failed")) {
+      expect(updated).toBe(original);
+      return;
+    }
+
+    const expected = original.replace(
+      /^\s*\.\.\.this\.runnerJobEnvironmentFilter\(\),\n/gm,
+      ""
+    );
+    expect(updated).toBe(expected);
+
+    // Explicitly protect the predicates and object boundaries corrupted in the
+    // original incident.
+    expect(updated).toContain('status: "queued",');
+    expect(updated).toContain("leaseToken: null,");
+    expect(updated).toContain("sandboxId: null,");
+    expect(updated).toContain("attemptCount: { lt: MAX_ATTEMPTS },");
+    expect(updated).toContain("orderBy: [{ createdAt: \"asc\" }],");
+  });
+
+  it("detects the unrelated removals from the recorded corruption", () => {
+    const requestedPatch = `@@ -30,2 +30,1 @@
+       sandboxId: null,
+-      ...this.runnerJobEnvironmentFilter(),
+`;
+    const corrupted = original
+      .replace('      status: "queued",\n', "")
+      .replace("      leaseToken: null,\n", "")
+      .replace("      sandboxId: null,\n", "")
+      .replace("      ...this.runnerJobEnvironmentFilter(),\n", "");
+
+    expect(
+      autoCorrectionPreservesChanges(original, corrupted, requestedPatch)
+    ).toBe(false);
   });
 });

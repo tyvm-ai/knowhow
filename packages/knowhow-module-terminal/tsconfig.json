@@ -11,8 +11,9 @@
     "moduleResolution": "node",
     "target": "esnext",
     "outDir": "ts_build",
+    "rootDir": "src",
     "sourceMap": true
   },
-  "include": ["./src/**/*.ts", "./tests/**/*.ts"],
+  "include": ["./src/**/*.ts"],
   "exclude": ["node_modules", "tests/tree-sitter/test-files/**/*.ts", "tests/test-files/**/*.ts"]
 }

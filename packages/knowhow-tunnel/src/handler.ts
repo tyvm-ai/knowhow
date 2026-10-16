@@ -36,6 +36,9 @@ export class TunnelHandler {
 
     // Build the addon context (shared by all addons)
     this.ctx = {
+      get bufferedAmount() {
+        return ws.bufferedAmount;
+      },
       send: (message) => {
         this.sendRaw(JSON.stringify(message));
       },
@@ -177,7 +180,7 @@ export class TunnelHandler {
   cleanup(): void {
     this.proxy.cleanup();
     for (const addon of this.addons) {
-      if (addon.onDisconnect) addon.onDisconnect();
+      if (addon.onDisconnect) addon.onDisconnect(this.ctx);
     }
   }
 }

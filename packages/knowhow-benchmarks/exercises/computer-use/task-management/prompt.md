@@ -1,0 +1,2 @@
+# Task board
+Use only the visible semantic task board. In order: open **Prepare release notes**; set priority **High**; assign **Morgan**; check both visible checklist items (**Draft release summary** and **Verify version numbers**); choose **Review** and click **Move task**. Confirm the card appears under the Review column and the checklist reads `SUCCESS (5/5)`, then click **Submit result** once. Do not call benchmark APIs directly.

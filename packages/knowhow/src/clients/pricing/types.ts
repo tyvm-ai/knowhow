@@ -1,9 +1,23 @@
+/**
+ * A historical record of a model's pricing at a point in time.
+ * Use this to track price changes over time.
+ */
+export interface PricingChangelogEntry {
+  /** ISO date string when this pricing became effective (e.g. "2025-04-01") */
+  date: string;
+  /** Optional human-readable note about the change (e.g. "Promotional pricing announcement") */
+  note?: string;
+  /** The pricing values that were in effect from this date */
+  pricing: Omit<ModelPricing, "deprecated" | "deprecationDate" | "limitedAvailability" | "replacedBy" | "reasoningLevels" | "useResponsesApi" | "changelog">;
+}
+
 export type ModelType =
   | "completion"
   | "embedding"
   | "image"
   | "audio"
   | "video"
+  | "decision"
   | "transaction"
   | "live";
 
@@ -11,12 +25,17 @@ export interface ModelPricing {
   input?: number;
   output?: number;
   cached_input?: number;
+  cached_input_gt_200k?: number;
   cache_write?: number;
+  cache_write_gt_200k?: number;
   cache_hit?: number;
+  cache_hit_gt_200k?: number;
   input_audio?: number;
   output_audio?: number;
   input_gt_200k?: number;
   output_gt_200k?: number;
+  /** Input-token threshold at which the long-context rates apply (defaults to 200K). */
+  long_context_threshold?: number;
   image_generation?: number;
   image_generation_per_1m_tokens?: number;
   video_generation?: number;
@@ -30,6 +49,8 @@ export interface ModelPricing {
   reasoningLevels?: string[];
   /** If true, this model must be called via the Responses API (/v1/responses) instead of /v1/chat/completions */
   useResponsesApi?: boolean;
+  /** Optional changelog of historical pricing entries, ordered from oldest to newest */
+  changelog?: PricingChangelogEntry[];
 }
 
 export interface ModelCatalogEntry {
@@ -88,6 +109,7 @@ export const embeddings   = (ids: string[], provider: string, pricing: Record<st
 export const images       = (ids: string[], provider: string, pricing: Record<string, ModelPricing>, dep?: DeprecationOptions) => makeEntries("image",        ids, provider, pricing, dep);
 export const videos       = (ids: string[], provider: string, pricing: Record<string, ModelPricing>, dep?: DeprecationOptions) => makeEntries("video",        ids, provider, pricing, dep);
 export const audios       = (ids: string[], provider: string, pricing: Record<string, ModelPricing>, dep?: DeprecationOptions) => makeEntries("audio",        ids, provider, pricing, dep);
+export const decisions    = (ids: string[], provider: string, pricing: Record<string, ModelPricing>, dep?: DeprecationOptions) => makeEntries("decision",     ids, provider, pricing, dep);
 export const transactions = (ids: string[], provider: string, pricing: Record<string, ModelPricing>, dep?: DeprecationOptions) => makeEntries("transaction",  ids, provider, pricing, dep);
 export const liveApi      = (ids: string[], provider: string, pricing: Record<string, ModelPricing>, dep?: DeprecationOptions) => makeEntries("live",         ids, provider, pricing, dep);
 

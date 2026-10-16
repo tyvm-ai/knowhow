@@ -1,4 +1,5 @@
 import { services } from "../../services";
+import { TraceAll } from "../../util/Trace";
 import { login } from "../../login";
 import { ask } from "../../utils";
 import { CliChatService } from "../CliChatService";
@@ -6,6 +7,7 @@ import { ChatCommand, ChatMode } from "../types";
 import { AgentModule } from "./AgentModule";
 import { BaseChatModule } from "./BaseChatModule";
 
+@TraceAll()
 export class SetupModule extends BaseChatModule {
   name = "setup";
   description = "Setup commands";

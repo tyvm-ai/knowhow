@@ -1,4 +1,5 @@
 import { Models, EmbeddingModels } from "../types";
+import { FireworksModels } from "./pricing/fireworks";
 
 /**
  * Context window limits (in tokens) for all supported models.
@@ -10,9 +11,14 @@ import { Models, EmbeddingModels } from "../types";
  */
 export const ContextLimits: Record<string, number> = {
   // ─── OpenAI ───────────────────────────────────────────────────────────────
-  [Models.openai.GPT_56_Sol]: 1_000_000,
-  [Models.openai.GPT_56_Terra]: 1_000_000,
-  [Models.openai.GPT_56_Luna]: 1_000_000,
+  [Models.openai.GPT_6_Astra]: 1_050_000,
+  [Models.openai.GPT_61_Sol]: 1_050_000,
+  [Models.openai.GPT_6_Sol]: 1_050_000,
+  [Models.openai.GPT_6_Luna]: 1_050_000,
+  [Models.openai.GPT_56_Sol]: 1_050_000,
+  [Models.openai.GPT_56_Terra]: 1_050_000,
+  [Models.openai.GPT_56_Luna]: 1_050_000,
+  [Models.openai.GPT_56_Cyber]: 400_000,
   [Models.openai.GPT_55]: 1_000_000,
   [Models.openai.GPT_54]: 1_000_000,
   [Models.openai.GPT_54_Mini]: 400_000,
@@ -84,6 +90,11 @@ export const ContextLimits: Record<string, number> = {
   [Models.openai.Sora_2_Pro]: 0,
 
   // ─── Anthropic ────────────────────────────────────────────────────────────
+  [Models.anthropic.Fable5_1]: 1_000_000,
+  [Models.anthropic.Opus5_5]: 1_000_000,
+  [Models.anthropic.Sonnet5_5]: 1_000_000,
+  [Models.anthropic.Haiku5_5]: 1_000_000,
+  [Models.anthropic.Mythos5_1]: 1_000_000,
   [Models.anthropic.Opus4_8Fast]: 1_000_000,
   [Models.anthropic.Opus4_8]: 1_000_000,
   // Claude Opus 5 (launched 2026-06-09, 1M context window)
@@ -122,7 +133,10 @@ export const ContextLimits: Record<string, number> = {
   [Models.anthropic.Sonnet4_0]: 200_000,
 
   // ─── Google ───────────────────────────────────────────────────────────────
-  // Gemini 3.6 / 3.5 (text)
+  // Gemini 3.7 / 3.6 / 3.5 (text)
+  [Models.google.Gemini_4_Argon]: 1_048_576,
+  [Models.google.Gemini_38_Flash]: 1_048_576,
+  [Models.google.Gemini_37_Flash]: 1_048_576,
   [Models.google.Gemini_36_Flash]: 1_000_000,
   [Models.google.Gemini_35_Flash]: 1_000_000,
   [Models.google.Gemini_35_Flash_Lite]: 1_000_000,
@@ -177,12 +191,16 @@ export const ContextLimits: Record<string, number> = {
   [Models.google.Gemini_15_Pro]: 2_000_000,
 
   // ─── xAI ──────────────────────────────────────────────────────────────────
+  [Models.xai.Grok4_7]: 500_000,
+  [Models.xai.Grok4_6]: 500_000,
+  [Models.xai.Grok4_3]: 1_000_000,
   [Models.xai.Grok4_1_Fast_Reasoning]: 2_000_000,
   [Models.xai.Grok4_1_Fast_NonReasoning]: 2_000_000,
-  [Models.xai.Grok_4_20_Reasoning]: 131_072,
-  [Models.xai.Grok_4_20_NonReasoning]: 131_072,
-  [Models.xai.Grok_4_20_MultiAgent]: 2_000_000,
-  [Models.xai.GrokCodeFast]: 2_000_000,
+  [Models.xai.Grok_4_20_Reasoning]: 1_000_000,
+  [Models.xai.Grok_4_20_NonReasoning]: 1_000_000,
+  [Models.xai.Grok_4_20_MultiAgent]: 1_000_000,
+  [Models.xai.GrokBuild]: 256_000,
+  [Models.xai.GrokCodeFast]: 256_000,
   [Models.xai.Grok4]: 131_072,
   [Models.xai.Grok3Beta]: 131_072,
   [Models.xai.Grok3MiniBeta]: 131_072,
@@ -207,6 +225,50 @@ export const ContextLimits: Record<string, number> = {
   [Models.xai.GrokImagineImage]: 0,
   [Models.xai.GrokImagineVideo]: 0,
   [Models.xai.Grok2Image1212]: 0,
+
+  // ─── Fireworks AI ──────────────────────────────────────────────────────────
+  // Moonshot AI (Kimi) — context windows per fireworks.ai/pricing
+  [FireworksModels.KimiK3]:       131_072,
+  [FireworksModels.KimiK2p7Code]: 131_072,
+  [FireworksModels.KimiK2_6]:     131_072,
+  [FireworksModels.KimiK2_5]:     131_072,
+
+  // MiniMax
+  [FireworksModels.MinimaxM3]:    1_000_000,
+  [FireworksModels.MinimaxM2_7]:  1_000_000,
+  [FireworksModels.MinimaxM2_5]:  1_000_000,
+
+  // Qwen
+  [FireworksModels.Qwen3p7Plus]:  131_072,
+  [FireworksModels.Qwen3_6Plus]:  131_072,
+  [FireworksModels.Qwen3p6Plus]:  131_072,
+  [FireworksModels.Qwen3Vl30bA3bThinking]: 32_768,
+  [FireworksModels.Qwen3Vl30bA3bInstruct]: 32_768,
+  [FireworksModels.Qwen3_8b]:     131_072,
+
+  // Z.ai (GLM)
+  [FireworksModels.Glm5p2]: 131_072,
+  [FireworksModels.Glm5p1]: 131_072,
+  [FireworksModels.Glm5]:   131_072,
+  [FireworksModels.Glm4_7]: 131_072,
+
+  // DeepSeek AI
+  [FireworksModels.DeepseekV4Pro]:   163_840,
+  [FireworksModels.DeepseekV4Flash]: 163_840,
+  [FireworksModels.DeepseekV3_2]:    163_840,
+  [FireworksModels.DeepseekV3_1]:    163_840,
+
+  // OpenAI OSS
+  [FireworksModels.GptOss120b]: 131_072,
+
+  // Newer Fireworks models — contextLength from api.fireworks.ai/v1/accounts/fireworks/models/<id>
+  [FireworksModels.Qwen3p8Max]:                 262_144, // Qwen
+  [FireworksModels.NemotronLightning3p530bA3b]: 262_144, // NVIDIA
+  [FireworksModels.Inkling]:                    1_048_576, // Thinking Machines Lab
+
+  // Fireworks embedding/reranker models — 40k context
+  [FireworksModels.Qwen3Embedding8b]: 40_960,
+  [FireworksModels.Qwen3Reranker8b]:  40_960,
 };
 
 /** Default fallback context window limit (tokens) used when a model is not found. */
