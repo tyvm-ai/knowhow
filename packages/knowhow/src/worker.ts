@@ -7,6 +7,7 @@ import { services } from "./services";
 import { PasskeySetupService } from "./workers/auth/PasskeySetup";
 import { WorkerPasskeyAuthService } from "./workers/auth/WorkerPasskeyAuth";
 import { authenticateWithKey, hasKeyPair } from "./auth/keyAuth";
+import { getOrgIdForApi } from "./auth/environmentAuth";
 import {
   makeUnlockTool,
   makeLockTool,
@@ -590,10 +591,15 @@ export async function worker(options?: {
             attemptedRefreshNow = true;
             const freshConfig = await getConfig();
             const identityPath = freshConfig.cliIdentityPath;
-            if (freshConfig.orgId && hasKeyPair(identityPath)) {
+            // orgId lives on the remote (config.remotes[*].orgId) after
+            // `knowhow login`; the legacy top-level config.orgId is deleted, so
+            // resolve it the same way login does. Likewise fall back to the
+            // default identity when the configured one is missing.
+            const orgId = getOrgIdForApi(freshConfig, API_URL);
+            if (orgId && (hasKeyPair(identityPath) || hasKeyPair())) {
               try {
                 const refreshed = await authenticateWithKey(
-                  freshConfig.orgId,
+                  orgId,
                   API_URL,
                   identityPath
                 );
@@ -612,7 +618,9 @@ export async function worker(options?: {
               }
             } else {
               console.error(
-                "❌ No registered CLI identity is available for automatic JWT refresh."
+                orgId
+                  ? "❌ No CLI identity key pair found for automatic JWT refresh."
+                  : "❌ No organization is configured for this API; cannot refresh the JWT automatically."
               );
             }
           }

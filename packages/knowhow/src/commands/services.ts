@@ -5,6 +5,7 @@ import { agents } from "../agents";
 import { ModulesService } from "../services/modules";
 import { getConfig, getConfigSync } from "../config";
 import { authenticateWithKey } from "../auth/keyAuth";
+import { getOrgIdForApi } from "../auth/environmentAuth";
 
 /**
  * Shared service setup used by commands that need full services (chat, agent, worker, etc.)
@@ -73,16 +74,19 @@ export async function setupServices() {
   // sync modules can read the project JWT file.
   try {
     const startupConfig = getConfigSync();
-    if (startupConfig.orgId && !process.env.KNOWHOW_JWT) {
+    const startupApiUrl = process.env.KNOWHOW_API_URL || "https://api.knowhow.tyvm.ai";
+    // orgId is stored per remote after `knowhow login` (top-level orgId is legacy).
+    const startupOrgId = getOrgIdForApi(startupConfig, startupApiUrl);
+    if (startupOrgId && !process.env.KNOWHOW_JWT) {
       const refreshed = await authenticateWithKey(
-        startupConfig.orgId,
-        process.env.KNOWHOW_API_URL || "https://api.knowhow.tyvm.ai",
+        startupOrgId,
+        startupApiUrl,
         startupConfig.cliIdentityPath
       );
       if (!refreshed) {
         console.warn(
           `⚠ Could not renew the Knowhow session: no available CLI identity is registered ` +
-          `for configured organization ${startupConfig.orgId}. Run \`knowhow login\` to select ` +
+          `for configured organization ${startupOrgId}. Run \`knowhow login\` to select ` +
           `an organization and register the global identity.`
         );
       }

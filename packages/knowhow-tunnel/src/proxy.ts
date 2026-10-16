@@ -90,7 +90,10 @@ export class TunnelProxy {
       connectTimeout: config.connectTimeout || 5000,
       idleTimeout: config.idleTimeout || 60000,
       forceIdentityEncoding: config.forceIdentityEncoding ?? true,
-      localHost: config.localHost || "127.0.0.1",
+      // "localhost" (not "127.0.0.1") so Node's autoSelectFamily tries both
+      // ::1 and 127.0.0.1. Dev servers like Vite on macOS often bind only to
+      // [::1], which made IPv4-only dialing fail with ECONNREFUSED.
+      localHost: config.localHost || "localhost",
       logLevel: config.logLevel || "info",
       portMapping: config.portMapping || {},
       workerId: config.workerId,

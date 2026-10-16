@@ -140,7 +140,9 @@ export function resolveTunnelConfig(
         "🐳 Docker detected: tunnel will use host.docker.internal to reach host services"
       );
     } else {
-      tunnelLocalHost = "127.0.0.1";
+      // "localhost" resolves to both ::1 and 127.0.0.1 and Node tries each,
+      // so services bound only to IPv6 loopback (e.g. Vite) are reachable.
+      tunnelLocalHost = "localhost";
     }
   }
 
