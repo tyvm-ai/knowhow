@@ -8,6 +8,7 @@ import {
 
 import { PluginBase, PluginMeta } from "./PluginBase";
 import { spawn } from "child_process";
+import { getKnowhowSpawn } from "../utils/knowhowCommand";
 
 export class EmbeddingPlugin extends PluginBase {
   static readonly meta: PluginMeta = {
@@ -38,14 +39,27 @@ export class EmbeddingPlugin extends PluginBase {
    * @returns Status message about embedding operation
    */
   async handleFilePostEdit(payload: { filePath: string }): Promise<string> {
-    const child = spawn("knowhow", ["embed"], {
-      detached: true,
-      stdio: "ignore",
-      cwd: process.cwd(),
-    });
-    child.unref();
-    this.log(`Started 'knowhow embed' in background (pid: ${child.pid})`);
-    return "Embedding started in background process";
+    try {
+      const { command, args, options } = getKnowhowSpawn(["embed"]);
+      const child = spawn(command, args, {
+        ...options,
+        detached: true,
+        stdio: "ignore",
+        cwd: process.cwd(),
+        windowsHide: true,
+      });
+      // Without an error listener a failed spawn (e.g. ENOENT) is an
+      // unhandled 'error' event and crashes the whole knowhow process.
+      child.on("error", (err) => {
+        this.log(`Failed to start background 'knowhow embed': ${err.message}`);
+      });
+      child.unref();
+      this.log(`Started 'knowhow embed' in background (pid: ${child.pid})`);
+      return "Embedding started in background process";
+    } catch (err) {
+      this.log(`Failed to start background 'knowhow embed': ${err}`);
+      return "Failed to start embedding process";
+    }
   }
 
   async call(userPrompt: string): Promise<string> {

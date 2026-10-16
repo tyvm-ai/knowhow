@@ -2,6 +2,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { spawn, ChildProcess } from "child_process";
+import { getKnowhowSpawn } from "./utils/knowhowCommand";
 
 interface WorkerRegistry {
   workers: string[];
@@ -104,7 +105,9 @@ export async function startAllWorkers(): Promise<void> {
     
     console.log(`Starting worker at: ${workerPath}`);
     
-    const workerProcess = spawn("knowhow", ["worker"], {
+    const knowhowCmd = getKnowhowSpawn(["worker"]);
+    const workerProcess = spawn(knowhowCmd.command, knowhowCmd.args, {
+      ...knowhowCmd.options,
       cwd: workerPath,
       stdio: "inherit",
       detached: false,

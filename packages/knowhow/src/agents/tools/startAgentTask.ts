@@ -2,6 +2,7 @@ import { Tool } from "../../clients/types";
 import * as fs from "fs";
 import * as path from "path";
 import { spawn } from "child_process";
+import { getKnowhowSpawn } from "../../utils/knowhowCommand";
 
 export interface StartAgentTaskParams {
   messageId?: string;
@@ -235,9 +236,12 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<Star
   fs.writeSync(fd, header);
 
   // Spawn with prompt piped via stdin - no shell escaping issues
-  const child = spawn("knowhow", args, {
+  const knowhowCmd = getKnowhowSpawn(args);
+  const child = spawn(knowhowCmd.command, knowhowCmd.args, {
+    ...knowhowCmd.options,
     stdio: ["pipe", fd, fd],
     detached: true,
+    windowsHide: true,
   });
 
   const pid = child.pid!;
