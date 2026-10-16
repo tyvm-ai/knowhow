@@ -8,7 +8,9 @@
     "prepare": "node scripts/install-git-hooks.mjs",
     "scan:secrets": "node scripts/scan-staged-secrets.mjs",
     "check:publish": "node scripts/check-publish-status.mjs",
-    "check:publish:json": "node scripts/check-publish-status.mjs --json"
+    "check:publish:json": "node scripts/check-publish-status.mjs --json",
+    "release:bump": "node scripts/bump-packages.mjs",
+    "release:publish": "node scripts/publish-packages.mjs"
   },
   "keywords": [],
   "author": "Micah Riggan",
