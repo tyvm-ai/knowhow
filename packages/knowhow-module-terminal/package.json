@@ -5,10 +5,10 @@
   "main": "ts_build/index.js",
   "types": "ts_build/index.d.ts",
   "scripts": {
-    "postinstall": "node -e \"const{spawnSync}=require('child_process');const os=require('os');const path=require('path');const dirs=['node_modules/node-pty/prebuilds',path.join(os.homedir(),'.knowhow/node_modules/node-pty/prebuilds')];for(const d of dirs){spawnSync('find',[d,'-name','spawn-helper','-exec','chmod','+x','{}',';'],{stdio:'ignore'});}\" 2>/dev/null || true",
+    "postinstall": "node scripts/fix-spawn-helper-permissions.js",
     "build": "npm run compile",
     "compile": "npm run clean && tsc",
-    "clean": "rm -rf ts_build",
+    "clean": "node -e \"require('fs').rmSync('ts_build', { recursive: true, force: true })\"",
     "prepublishOnly": "npm run compile",
     "version:nightly": "bash ../knowhow/scripts/publish.sh version:nightly",
     "version:dev": "bash ../knowhow/scripts/publish.sh version:dev",

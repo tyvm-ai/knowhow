@@ -12,8 +12,7 @@ import {
   TunnelPtySessionInfo,
 } from "@tyvm/knowhow-tunnel";
 import * as pty from "node-pty";
-import { execSync } from "child_process";
-import * as path from "path";
+import { CommandResolver, createCommandResolver } from "./platform/commandResolver";
 import {
   sessions,
   terminatedSessions,
@@ -22,19 +21,6 @@ import {
   MAX_TERMINATED_IDS,
   PtySession,
 } from "./sessionAccessor";
-
-// Fix spawn-helper permissions at module load time.
-// node-pty's spawn-helper binary must be executable or posix_spawnp fails.
-// npm sometimes strips execute permissions when unpacking tarballs.
-try {
-  const ptyDir = path.dirname(require.resolve("node-pty/package.json"));
-  execSync(
-    `find ${JSON.stringify(path.join(ptyDir, "prebuilds"))} -name spawn-helper -exec chmod +x {} \\;`,
-    { stdio: "ignore" }
-  );
-} catch {
-  // best-effort — don't crash the module if this fails
-}
 
 /**
  * TunnelTerminalAddon
@@ -56,6 +42,8 @@ export class TunnelTerminalAddon implements TunnelAddon {
   // Handle all TUNNEL_PTY_* messages via prefix matching
   handles = ["TUNNEL_PTY_"];
   private context: TunnelAddonContext | null = null;
+
+  constructor(private readonly commandResolver: CommandResolver = createCommandResolver()) {}
 
   onDisconnect(): void {
     // A transport disconnect is only a detach. PTYs intentionally keep running.
@@ -115,7 +103,7 @@ export class TunnelTerminalAddon implements TunnelAddon {
 
     // Resolve short command names (e.g. "sh", "bash") to full absolute paths
     // so that node-pty's posix_spawnp can find them regardless of PATH.
-    const resolvedCommand = resolveCommand(command);
+    const resolvedCommand = this.commandResolver.resolve(command);
     if (!resolvedCommand) {
       console.error(`[terminal] Cannot spawn PTY: command not found: ${command}`);
       ctx.send({
@@ -290,55 +278,4 @@ export class TunnelTerminalAddon implements TunnelAddon {
     }
     return undefined;
   }
-}
-
-/**
- * Resolve a command name to its full absolute path.
- * If the command is already an absolute path and exists, return it directly.
- * Otherwise try `which <command>` first, then check common shell locations as fallbacks.
- * Returns null if the command cannot be found.
- */
-function resolveCommand(command: string): string | null {
-  // Already absolute — check it exists and is executable
-  if (path.isAbsolute(command)) {
-    try {
-      execSync(`test -x ${JSON.stringify(command)}`, { stdio: "ignore" });
-      return command;
-    } catch {
-      return null;
-    }
-  }
-
-  // Try `which` to find it on PATH
-  try {
-    const result = execSync(`which ${JSON.stringify(command)}`, {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    const resolved = result.trim();
-    if (resolved) return resolved;
-  } catch {
-    // which failed — fall through to well-known paths
-  }
-
-  // Last-resort: try common absolute paths for well-known shells
-  const fallbacks: Record<string, string[]> = {
-    sh:   ["/bin/sh", "/usr/bin/sh"],
-    bash: ["/bin/bash", "/usr/bin/bash", "/usr/local/bin/bash"],
-    zsh:  ["/bin/zsh", "/usr/bin/zsh", "/usr/local/bin/zsh"],
-    fish: ["/usr/bin/fish", "/usr/local/bin/fish"],
-    dash: ["/bin/dash", "/usr/bin/dash"],
-  };
-
-  const candidates = fallbacks[command] ?? [];
-  for (const candidate of candidates) {
-    try {
-      execSync(`test -x ${JSON.stringify(candidate)}`, { stdio: "ignore" });
-      return candidate;
-    } catch {
-      // not found at this path
-    }
-  }
-
-  return null;
 }
