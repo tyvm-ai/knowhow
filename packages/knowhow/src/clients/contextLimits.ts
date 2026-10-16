@@ -262,7 +262,6 @@ export const ContextLimits: Record<string, number> = {
   [FireworksModels.GptOss120b]: 131_072,
 
   // Newer Fireworks models — contextLength from api.fireworks.ai/v1/accounts/fireworks/models/<id>
-  [FireworksModels.MuseGlimmer30b]:             131_072, // Meta
   [FireworksModels.Qwen3p8Max]:                 262_144, // Qwen
   [FireworksModels.NemotronLightning3p530bA3b]: 262_144, // NVIDIA
   [FireworksModels.Inkling]:                    1_048_576, // Thinking Machines Lab

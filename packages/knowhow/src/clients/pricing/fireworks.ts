@@ -12,9 +12,6 @@ export const FireworksModels = {
   // Moonshot AI
   KimiK3:      "accounts/fireworks/models/kimi-k3",
 
-  // Meta
-  MuseGlimmer30b: "accounts/fireworks/models/muse-glimmer-30b",
-
   KimiK2p7Code: "accounts/fireworks/models/kimi-k2p7-code",
   KimiK2_6:    "accounts/fireworks/models/kimi-k2-6",
   KimiK2_5:    "accounts/fireworks/models/kimi-k2-5",
@@ -67,9 +64,6 @@ export const FireworksTextPricing: Record<string, ModelPricing> = {
   // Moonshot AI
   [FireworksModels.KimiK3]:       { input: 3.0, cache_hit: 0.30, output: 15.0 },
   [FireworksModels.KimiK2p7Code]: { input: 0.95, cache_hit: 0.19, output: 4.0 },
-
-  // Meta
-  [FireworksModels.MuseGlimmer30b]: { input: 0.35, cache_hit: 0.04, output: 1.50 },
 
   [FireworksModels.KimiK2_6]:     { input: 0.95, cache_hit: 0.16, output: 4.0 },
   [FireworksModels.KimiK2_5]:     { input: 0.60, cache_hit: 0.10, output: 3.0 },
@@ -134,8 +128,6 @@ export const FireworksActiveTextModels: string[] = [
   FireworksModels.KimiK2p7Code,
   FireworksModels.KimiK2_6,
   FireworksModels.KimiK2_5,
-  // Meta
-  FireworksModels.MuseGlimmer30b,
   // MiniMax
   FireworksModels.MinimaxM3,
   FireworksModels.MinimaxM2_7,
