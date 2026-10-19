@@ -22,6 +22,8 @@ export interface WorkerSummary {
   name: string;
   os: WorkerOs;
   root: string;
+  platform?: string;
+  arch?: string;
   connected: boolean;
   status: "online" | "offline";
   shared: boolean;
@@ -136,6 +138,8 @@ export function summarizeWorker(w: RemoteWorker): WorkerSummary {
     id: w.id,
     name: w.name,
     os: w.os,
+    ...(w.platform && { platform: w.platform }),
+    ...(w.arch && { arch: w.arch }),
     root: w.fsRoot,
     connected: !!w.connected,
     status: w.connected ? "online" : "offline",
@@ -718,6 +722,7 @@ export function formatWorkerTable(
   const osLabel = (w: RemoteWorker) => {
     const p = probes[w.id];
     if (p) return p.arch ? `${p.platform}/${p.arch}` : p.platform;
+    if (w.platform) return w.arch ? `${w.platform}/${w.arch}` : w.platform;
     return w.os === "windows" ? "win" : w.os === "posix" ? "posix" : "?";
   };
   const trunc = (s: string, n: number) =>
