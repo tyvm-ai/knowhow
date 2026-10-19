@@ -244,6 +244,42 @@ impl ComputerCore {
         self.backend.hotkey(&parsed)
     }
 
+    /// Is `name` (e.g. "shift", "a", "f13") currently held down? When `physical`
+    /// is true the hardware state is queried; otherwise the logical session
+    /// state (which includes synthetic input).
+    #[napi]
+    pub fn key_state(&self, name: String, physical: Option<bool>) -> Result<bool> {
+        let k = parse_key(&name)?;
+        self.backend.key_state(k, physical.unwrap_or(false))
+    }
+
+    // ── clipboard ──
+
+    /// Clipboard plain text, or null when the clipboard holds no text.
+    #[napi]
+    pub fn clipboard_get_text(&self) -> Result<Option<String>> {
+        self.backend.clipboard_get_text()
+    }
+
+    #[napi]
+    pub fn clipboard_set_text(&self, text: String) -> Result<()> {
+        self.backend.clipboard_set_text(&text)
+    }
+
+    /// Counter that changes whenever the clipboard contents change.
+    #[napi]
+    pub fn clipboard_change_count(&self) -> Result<i64> {
+        self.backend.clipboard_change_count()
+    }
+
+    // ── audio ──
+
+    /// Play a beep (frequency/duration are ignored on macOS).
+    #[napi]
+    pub fn beep(&self, freq: Option<u32>, ms: Option<u32>) -> Result<()> {
+        self.backend.beep(freq.unwrap_or(800), ms.unwrap_or(200))
+    }
+
     // ── Persistent screen stream ─────────────────────────────────────────────
 
     /// Start a persistent ScreenCaptureKit stream (macOS only).
@@ -307,6 +343,29 @@ impl ComputerCore {
             "stopScreenStream is only supported on macOS",
         ))
     }
+}
+
+/// A parsed chord string: leading keys (modifiers) plus the final key.
+#[napi(object)]
+pub struct ParsedChord {
+    pub modifiers: Vec<String>,
+    pub key: String,
+}
+
+/// Parse a chord string like "ctrl+alt+esc" into canonical key names, or null
+/// if it is empty / contains an unknown key.
+#[napi]
+pub fn parse_chord(chord: String) -> Option<ParsedChord> {
+    keys::parse_chord(&chord).map(|(mods, key)| ParsedChord {
+        modifiers: mods.iter().map(|k| k.name()).collect(),
+        key: key.name(),
+    })
+}
+
+/// Canonical names of all named (non-character) keys the core understands.
+#[napi]
+pub fn all_key_names() -> Vec<String> {
+    keys::all_names()
 }
 
 fn parse_key(name: &str) -> Result<Key> {

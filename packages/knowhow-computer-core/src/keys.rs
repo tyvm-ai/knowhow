@@ -22,6 +22,8 @@ pub enum Key {
     Backspace,
     Delete,
     Escape,
+    Insert,
+    CapsLock,
 
     // navigation
     Left,
@@ -33,7 +35,7 @@ pub enum Key {
     PageUp,
     PageDown,
 
-    // function keys F1..F12
+    // function keys F1..F24
     F(u8),
 }
 
@@ -70,6 +72,8 @@ impl Key {
             "backspace" => Key::Backspace,
             "delete" | "del" => Key::Delete,
             "escape" | "esc" => Key::Escape,
+            "insert" | "ins" => Key::Insert,
+            "capslock" | "caps" => Key::CapsLock,
 
             "left" | "arrowleft" => Key::Left,
             "right" | "arrowright" => Key::Right,
@@ -85,6 +89,34 @@ impl Key {
         Some(key)
     }
 
+    /// Canonical JS-facing name for this key (round-trips through `parse`).
+    pub fn name(&self) -> String {
+        match self {
+            Key::Char(c) => c.to_string(),
+            Key::Control => "control".into(),
+            Key::Alt => "alt".into(),
+            Key::Shift => "shift".into(),
+            Key::Meta => "meta".into(),
+            Key::Enter => "enter".into(),
+            Key::Tab => "tab".into(),
+            Key::Space => "space".into(),
+            Key::Backspace => "backspace".into(),
+            Key::Delete => "delete".into(),
+            Key::Escape => "escape".into(),
+            Key::Insert => "insert".into(),
+            Key::CapsLock => "capslock".into(),
+            Key::Left => "left".into(),
+            Key::Right => "right".into(),
+            Key::Up => "up".into(),
+            Key::Down => "down".into(),
+            Key::Home => "home".into(),
+            Key::End => "end".into(),
+            Key::PageUp => "pageup".into(),
+            Key::PageDown => "pagedown".into(),
+            Key::F(n) => format!("f{n}"),
+        }
+    }
+
     /// Parse a list of names, erroring on the first unknown one.
     pub fn parse_many(names: &[String]) -> Result<Vec<Key>, String> {
         let mut out = Vec::with_capacity(names.len());
@@ -95,5 +127,108 @@ impl Key {
             }
         }
         Ok(out)
+    }
+}
+
+/// Canonical names of every named (non-character) key, e.g. for docs/validation.
+pub fn all_names() -> Vec<String> {
+    let mut v: Vec<String> = [
+        Key::Control,
+        Key::Alt,
+        Key::Shift,
+        Key::Meta,
+        Key::Enter,
+        Key::Tab,
+        Key::Space,
+        Key::Backspace,
+        Key::Delete,
+        Key::Escape,
+        Key::Insert,
+        Key::CapsLock,
+        Key::Left,
+        Key::Right,
+        Key::Up,
+        Key::Down,
+        Key::Home,
+        Key::End,
+        Key::PageUp,
+        Key::PageDown,
+    ]
+    .iter()
+    .map(|k| k.name())
+    .collect();
+    v.extend((1..=24).map(|n| format!("f{n}")));
+    v
+}
+
+/// Parse a chord string such as `"ctrl+alt+esc"` or `"cmd+shift+4"` into
+/// `(modifiers/leading keys, final key)`. The last `+`-separated token is the
+/// main key; everything before it is held first. A literal plus key is written
+/// as a trailing `++` (e.g. `"ctrl++"`) or bare `"+"`. Returns `None` when the
+/// string is empty or contains an unknown key name.
+pub fn parse_chord(s: &str) -> Option<(Vec<Key>, Key)> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let (head, last): (&str, &str) = if s == "+" {
+        ("", "+")
+    } else if let Some(h) = s.strip_suffix("++") {
+        (h, "+")
+    } else if let Some(idx) = s.rfind('+') {
+        (&s[..idx], &s[idx + 1..])
+    } else {
+        ("", s)
+    };
+    let last_key = Key::parse(last)?;
+    let mut mods = Vec::new();
+    if !head.is_empty() {
+        for part in head.split('+') {
+            mods.push(Key::parse(part)?);
+        }
+    }
+    Some((mods, last_key))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_simple_chords() {
+        assert_eq!(
+            parse_chord("ctrl+alt+esc"),
+            Some((vec![Key::Control, Key::Alt], Key::Escape))
+        );
+        assert_eq!(parse_chord("F13"), Some((vec![], Key::F(13))));
+        assert_eq!(
+            parse_chord("Cmd+Shift+4"),
+            Some((vec![Key::Meta, Key::Shift], Key::Char('4')))
+        );
+    }
+
+    #[test]
+    fn parses_plus_key() {
+        assert_eq!(parse_chord("ctrl++"), Some((vec![Key::Control], Key::Char('+'))));
+        assert_eq!(parse_chord("+"), Some((vec![], Key::Char('+'))));
+    }
+
+    #[test]
+    fn rejects_bad_chords() {
+        assert_eq!(parse_chord(""), None);
+        assert_eq!(parse_chord("ctrl+bogus"), None);
+        assert_eq!(parse_chord("bogus+a"), None);
+        assert_eq!(parse_chord("ctrl+"), None);
+    }
+
+    #[test]
+    fn names_round_trip() {
+        for n in all_names() {
+            let k = Key::parse(&n).expect(&n);
+            assert_eq!(k.name(), n);
+        }
+        assert_eq!(Key::parse("insert"), Some(Key::Insert));
+        assert_eq!(Key::parse("capslock"), Some(Key::CapsLock));
+        assert_eq!(Key::parse("f24"), Some(Key::F(24)));
     }
 }

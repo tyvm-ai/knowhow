@@ -26,7 +26,35 @@ export {
 } from "./automationExtensions";
 // `sdk` is an editor/type binding for .knowhow/automations/*.ts files; the
 // automation runner replaces its import with the live SDK at execution time.
-export { sdk, AutomationSDK, AutomationControl, WindowMatch } from "./automation";
+export {
+  sdk,
+  AutomationSDK,
+  AutomationControl,
+  AutomationClipboard,
+  AutomationUi,
+  AutomationGui,
+  AutomationHotkeys,
+  WindowMatch,
+  isKillSwitchArmed,
+  setKillSwitchArmed,
+  FakeHotkeyProvider,
+  HotkeyProvider,
+  HotkeyOptions,
+  setHotkeyProvider,
+} from "./automation";
+export { ClipboardService } from "./clipboard";
+export {
+  parseHotkeySpec,
+  getKillSwitch,
+  KILL_SWITCH_DEFAULT,
+  isKillSwitchSpec,
+} from "./hotkeySpec";
+export { normalizeKeyName } from "./keyAliases";
+export { HostClient, hostEndpoint } from "./host/HostClient";
+export { HostHotkeyProvider } from "./host/HostHotkeyProvider";
+export * from "./gui";
+export { ensureHost, probeHost, hostBinaryPath, parseSingleInstance } from "./host/hostLauncher";
+export * as hostOps from "./host/hostOps";
 
 // A single service instance shared across the register + init phases (module
 // object is cached by Node, so this persists between the early CLI phase and

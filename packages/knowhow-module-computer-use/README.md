@@ -225,6 +225,162 @@ return a partial frontier and multiple outcomes return a conflict. Dry-runs can
 still capture images, but never create observed transitions. See
 `@tyvm/knowhow-module-worldlines` for evidence reparsing and graph APIs.
 
+### AHK-style SDK surface (M0)
+
+Automations are one concept: the same `.ts` file, runner and store whether they
+are a three-line macro or a resident helper. New `sdk.*` APIs (all action methods
+obey pause / dry-run and are recorded as `AutomationAction`s):
+
+```ts
+await sdk.click("left");                        // at the current cursor
+await sdk.keyDown("lalt"); await sdk.keyUp("lalt");
+await sdk.withKeysHeld(["lalt"], () => sdk.click()); // try/finally release
+await sdk.keyState("alt", { physical: true });  // false + one warning if unsupported
+await sdk.hotkey(["mod", "c"]);                 // mod = command on macOS, control elsewhere
+
+await sdk.clipboard.readText(); await sdk.clipboard.writeText("x");
+const snap = await sdk.clipboard.snapshot(); await sdk.clipboard.restore(snap);
+await sdk.clipboard.waitForChange({ timeoutMs: 600 });
+const text = await sdk.copySelection({ chord: ["mod", "c"], timeoutMs: 600, restore: true }); // null on timeout
+
+await sdk.window.isActive({ exe: ["PathOfExile.exe"], app: "Path of Exile", titleIncludes: "…" });
+sdk.random(500, 800);                           // integer, inclusive
+const store = sdk.store("presets", { presets: [] }); // ~/.knowhow/automations-data/<name>/presets.json
+await store.update((v) => { v.presets.push("a"); });
+sdk.ui.beep({ freq: 1100, ms: 130 }); sdk.ui.tooltip("KEEP", { ms: 1300 });
+await sdk.ui.alert("hi"); await sdk.ui.confirm("sure?"); await sdk.ui.prompt("name?", { default: "x" });
+// native forms: see "Native GUI forms" below (sdk.gui.form)
+```
+
+* **Keys**: `mod`→`command`/`control`; `lalt/ralt/lctrl/rctrl/lshift/rshift/lwin`
+  map to the base modifier (the native core doesn't distinguish sides yet).
+  Held keys are tracked and released on every exit path (complete, error, stop, duration).
+* **Clipboard** uses the native core when it exposes `clipboardGetText/SetText/ChangeCount`,
+  else `pbpaste/pbcopy`, PowerShell `Get/Set-Clipboard`, or `wl-paste/wl-copy` → `xclip`.
+* **Window matching**: `exe`/`app`/`bundleId` are alternatives (any one identifies the
+  process; `exe` ignores `.exe` and allows `*`), `titleIncludes` is ANDed. `requiredWindow`
+  accepts the same fields.
+* **Lifetime** (AHK "persistent" rule): a run ends when its body has settled and nothing
+  retains it. `sdk.hotkeys.on`, `runEvery` and `watchScreen` retain while active;
+  `sdk.keepAlive()` retains explicitly; `sdk.exit()`, a stop, or the duration ends it;
+  `sdk.onExit(fn)` runs on every exit path (2 s cap each); `await sdk.untilExit()` blocks.
+* **Global hotkeys**: `sdk.hotkeys.on("F6", fn, { anyModifiers, consume, noRepeat, concurrency: "drop"|"queue"|"parallel", when })`.
+  Until the knowhow computer host exists (M1) this throws
+  `global hotkeys require the knowhow computer host (M1)`, unless a `HotkeyProvider`
+  is installed via `setHotkeyProvider()` (tests use `FakeHotkeyProvider`). The
+  kill-switch chord (`ctrl+alt+esc`, configurable via `~/.knowhow/computer.json`
+  `killSwitch`) can never be registered.
+* **Run cap**: runs are clamped to 5 minutes (`MAX_AUTOMATION_DURATION_MS`) until
+  `isKillSwitchArmed()` is true (the host reports it via `setKillSwitchArmed`), after which
+  `maxDurationMs` defaults to unlimited.
+* Macro steps `keyDown`, `keyUp`, `click`, `clipboardSet`, `copySelection`; agent tools
+  `computerUseReadClipboard`, `computerUseWriteClipboard`, `computerUseKeyState`.
+
+### Native GUI forms, dialogs, tooltips (M2)
+
+`sdk.gui.form(spec)` builds a native window (AppKit / Win32 / GTK, no webview) through the
+knowhow computer host (contract: poecraft task `specs/E0-gui-protocol.md`). Without a host
+(`--no-host`, tests) it uses an in-memory **headless** backend that keeps the same state
+mirror and logs operations, so scripts load and their logic stays testable.
+
+```ts
+const form = await sdk.gui.form({
+  title: "PoE Crafting", width: 600, height: 400, alwaysOnTop: true,
+  closeBehavior: "hide",                       // "hide" (default) | "destroy" | "exit"
+  layout: { type: "column", children: [
+    { id: "name", type: "input", label: "Name:" },
+    { id: "kind", type: "dropdown", label: "Kind", options: ["a", "b"], selected: 0 },
+    { id: "log", type: "textarea", readOnly: true, monospace: true, grow: 1 },
+    { type: "row", children: [{ id: "ok", type: "button", text: "OK", default: true }] },
+  ] },
+});
+form.on("ok", "click", async () => { form.set("log", { value: `hi ${form.get("name").value}` }); });
+form.on("name", "change", (ev) => { /* mirror already updated: form.get("name").value === ev.value */ });
+form.on("close", () => sdk.log("closed"));      // also "show" | "hide"
+form.show();                                    // forms are created hidden
+```
+
+* Node types: `row column grid group spacer separator label input textarea number checkbox
+  dropdown listbox button progress`. Specs are validated up front (unique ids, known types,
+  required/unknown props with "did you mean" hints); errors list every problem.
+* `form.get(id)` is synchronous (local mirror: `value text selected checked options items
+  enabled visible`). `form.set(id, props)` updates the mirror immediately and batches all sets
+  of a tick into one `guiPatch`; programmatic sets never raise `change`/`select`.
+  Patchable: `text value options items selected checked enabled visible max`.
+* Events: `form.on(id, "click"|"change"|"select"|"submit", fn)` and window-level
+  `form.on("close"|"show"|"hide", fn)`; both return an unsubscribe function. The mirror is updated
+  **before** handlers run. Handler errors (sync or async) are logged (`guiHandlerError`), never fatal;
+  async handlers are not serialized.
+* Other methods: `show() hide() focus(id?) setTitle(t) destroy() ids()`, `form.visible`.
+* Lifetime: an existing (even hidden) form retains the automation until `form.destroy()`;
+  `closeBehavior: "exit"` stops the run on close, `"destroy"` destroys the form. All forms are
+  destroyed when the run exits (the host also destroys them if the worker dies).
+* `sdk.ui.alert(msg, {title?})`, `sdk.ui.confirm(msg, {title?}) → boolean`,
+  `sdk.ui.prompt(msg, {title?, default?}) → string|null` and `sdk.ui.tooltip(text, {ms?})` use the
+  host's native dialogs/tooltips when attached, and fall back to the osascript/PowerShell dialogs
+  (and the macOS overlay tooltip) when there is no host or the host replies with an error. Dry-run
+  behaviour is unchanged (dialogs only log).
+* Tests / embedding: pass `gui: new HeadlessGuiBackend()` in `RunOptions`, then
+  `backend.injectControl(backend.lastWindowId(), "ok", "click")` / `injectClose(windowId)`.
+  The host worker passes `HostHotkeyProvider.gui()` so one connection serves hotkeys and GUI.
+
+#### Library files and TypeScript in `.knowhow/automations/`
+
+Automation files run as an async function body: **top-level `await`** works, TypeScript syntax
+(types, generics, `as`, interfaces) is stripped before running, and `import { sdk }` is ignored.
+A script can import functions/consts/classes from a sibling file with
+`import { x, y as z } from "./poecraft.logic"` (also `./sub/name`, `.ts` suffix optional). Imports
+are inlined (the exported declaration plus the declarations it references); a library's own
+top-level statements are **not** executed, and type-only imports (`interface`/`type`) are ignored.
+Convention: a file whose base name contains a dot (`poecraft.logic.ts`, `foo.lib.ts`) is a
+library — it is never listed by `computer automations`/`listAutomations` or runnable by name.
+Files in subfolders are not listed either. Note: don't give an import alias the same name as an
+unrelated declaration the library uses internally (e.g. `import { escape as esc }` when the
+library also has a private `esc`).
+
+#### Running an automation from any file (committable scripts)
+
+Automations don't have to live in `.knowhow/automations/` (which is usually gitignored):
+
+```bash
+knowhow computer run-automation ./automations/poecraft.ts     # relative path
+knowhow computer run-automation C:\games\poecraft\automations\poecraft.ts   # absolute / Windows path
+knowhow computer run-automation poecraft                      # by name (see search order below)
+```
+
+* `<nameOrPath>` is treated as a **path** when it contains `/` or `\` or ends in `.ts/.js/.mts/.cts/.khs`
+  (extension optional if the file exists). Otherwise it is a **name**, looked up in
+  `.knowhow/automations/`, then `./automations/`, then the dirs in `automationPaths` (string[] in
+  `.knowhow/knowhow.json`) and `KNOWHOW_AUTOMATION_PATHS` (`path.delimiter`-separated).
+* The automation name is the file basename (`poecraft.ts` -> `poecraft`), so `computer ps`,
+  `stop|pause|resume|restart poecraft` and `singleInstance: replace|ignore|allow` work unchanged.
+  The host stores the absolute script path, so `restart` works from any cwd.
+* Relative imports (`./poecraft.logic`) resolve **next to the script file**. `.knowhow/` state
+  (stores, regions) still lives under the cwd the command was run from.
+* `knowhow` must have this module enabled (`modules` in the project or global `.knowhow/knowhow.json`),
+  otherwise `knowhow computer` is an unknown command.
+
+#### Double-click launchers
+
+```bash
+knowhow computer make-launcher ./automations/poecraft.ts --platform win32,darwin --cwd ..
+#   -> poecraft.cmd, poecraft.command   (also: linux -> .sh, `all`, `--vbs`, `--out <file>`)
+knowhow computer register-filetype [--ext .khs] [--unregister] [--dry-run]   # Windows, HKCU only
+```
+
+Launchers contain no machine paths: they `cd` to `--cwd` (relative to the script), call `knowhow`
+from `PATH` (fallback `npx --yes @tyvm/knowhow`) with `run-automation "<script next to launcher>" --no-attach`.
+`run-automation` starts the resident host if needed (detached, no console), hands the script to it
+and exits, so the console flashes and closes; it stays open only when the launch fails.
+Trade-offs: `.cmd` is the simplest and shows errors; `--vbs` writes a `.vbs` wrapper that runs the `.cmd`
+with no window at all (errors invisible; Windows Script Host may be disabled on locked-down machines).
+macOS `.command` opens a Terminal window (close it via Terminal prefs "Close if the shell exited
+cleanly"); Linux gets a plain `.sh`. Commit them with `*.cmd text eol=crlf` / `*.command text eol=lf`
+in `.gitattributes`. `register-filetype` associates `.khs` with `cmd /c call knowhow computer
+run-automation "%1" --no-attach` (needs `knowhow` on the user `PATH`; the default `.ts` is
+deliberately not hijacked). Both launcher styles rely on the module being enabled in a config
+`knowhow` reads from the working directory or the global `~/.knowhow/knowhow.json`.
+
 ### Accessibility in automations
 
 On macOS, saved TypeScript automations can inspect and operate the focused

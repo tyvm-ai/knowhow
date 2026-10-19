@@ -966,7 +966,7 @@ export const computerToolDefinitions: Tool[] = [
     function: {
       name: "computerUseWriteAutomation",
       description:
-        "Author + persist an AUTOMATION as a readable .ts file. ALWAYS begin the file with a JSDoc header block documenting when to use it — order the tags @description, @window, @useWhen, @startState, @endState (put @window right after @description since the required window is the key safety detail). This header is the automation's discoverable 'skill card' that lets a future agent pick it without reading the code. Import `{ sdk }` from `@tyvm/knowhow-module-computer-use` for autocomplete; the runner strips that editor-only import and injects the live SDK. Registered Knowhow tools are also injected by name (for example `await prologQuery({ program, query })`) and through `await sdk.callTool(toolName, args)`, matching the scripting module. You may reuse helpers from sibling automations with a named import: `import { myHelper, otherFn as alias } from './sibling-name'` (`@automation/sibling-name` is also accepted). The runner inlines exported functions/consts at run time and supports aliases, nested imports, and cycle/missing-export detection. Only `export function`, `export async function`, `export const`, and `export { name }` forms are extractable. All other imports and require/process/fetch/eval remain forbidden. Automations can inspect native controls with `sdk.accessibilityElements()` and use fresh element IDs with `sdk.setAccessibilityValue()` or `sdk.performAccessibilityAction()`; these mutations obey dry-run and focus-gate safety. For reviewable visual evidence, get a frame from `const watcher = await sdk.watchScreen(...)`, perform/log an action, then call `await watcher.logAction('label', { frame })`; this persists that exact streamed frame and returns its path, also included in run artifacts (writes are focus-gated and dry-runs suppress them unless captureInDryRun:true). If setup must activate an app, call `await sdk.focus(match)` before installing `requiredWindow` (it is suppressed in dry-run and while paused). Use `await sdk.runEvery(callback, intervalMs, { requiredWindow })` (intervalMs is a delay in milliseconds, like setInterval; 0 = as fast as possible) to scope repeated work AND gate it on a focused window in one call — this is REQUIRED so focus loss (clicking away) auto-pauses the automation and a human can reclaim the mouse. Note every live run is hard-capped at 5 minutes.",
+        "Author + persist an AUTOMATION as a readable .ts file. ALWAYS begin the file with a JSDoc header block documenting when to use it — order the tags @description, @window, @useWhen, @startState, @endState (put @window right after @description since the required window is the key safety detail). This header is the automation's discoverable 'skill card' that lets a future agent pick it without reading the code. Import `{ sdk }` from `@tyvm/knowhow-module-computer-use` for autocomplete; the runner strips that editor-only import and injects the live SDK. Registered Knowhow tools are also injected by name (for example `await prologQuery({ program, query })`) and through `await sdk.callTool(toolName, args)`, matching the scripting module. You may reuse helpers from sibling automations with a named import: `import { myHelper, otherFn as alias } from './sibling-name'` (`@automation/sibling-name` is also accepted). The runner inlines exported functions/consts at run time and supports aliases, nested imports, and cycle/missing-export detection. Only `export function`, `export async function`, `export const`, and `export { name }` forms are extractable. All other imports and require/process/fetch/eval remain forbidden. Automations can inspect native controls with `sdk.accessibilityElements()` and use fresh element IDs with `sdk.setAccessibilityValue()` or `sdk.performAccessibilityAction()`; these mutations obey dry-run and focus-gate safety. For reviewable visual evidence, get a frame from `const watcher = await sdk.watchScreen(...)`, perform/log an action, then call `await watcher.logAction('label', { frame })`; this persists that exact streamed frame and returns its path, also included in run artifacts (writes are focus-gated and dry-runs suppress them unless captureInDryRun:true). If setup must activate an app, call `await sdk.focus(match)` before installing `requiredWindow` (it is suppressed in dry-run and while paused). Use `await sdk.runEvery(callback, intervalMs, { requiredWindow })` (intervalMs is a delay in milliseconds, like setInterval; 0 = as fast as possible) to scope repeated work AND gate it on a focused window in one call — this is REQUIRED so focus loss (clicking away) auto-pauses the automation and a human can reclaim the mouse. Note every live run is hard-capped at 5 minutes until the global kill switch (Ctrl+Alt+Esc, provided by the computer host) is armed; then the cap is lifted. The SDK also has click/keyDown/keyUp/withKeysHeld/keyState/clipboard/copySelection/random/window.isActive/store/ui/hotkeys and keepAlive/exit/onExit lifetime control.",
       parameters: {
         type: "object",
         positional: true,
@@ -996,7 +996,7 @@ export const computerToolDefinitions: Tool[] = [
     function: {
       name: "computerUseRunAutomation",
       description:
-        "Run a saved automation LIVE (it moves the real mouse/keyboard). It runs in-process to completion (or until maxDurationMs, or until it loses window focus and you call stop). EVERY run is HARD-CAPPED at 5 minutes so a human can always reclaim the mouse — re-launch it if you need more time. The automation should configure a required window (via sdk.requiredWindow or the { requiredWindow } option on sdk.runEvery) so clicking away auto-pauses it; a run that moved the mouse without a window gate returns a ranWithoutWindowGate warning. Returns a summary: how it stopped, elapsed/paused ms, number of clicks, average click interval, persisted ScreenWatcher.logAction artifact paths, and the tail of the telemetry log. Use readFile on an artifact path to inspect action-aligned screenshots after the run. TIP: dry-run first with computerUseTestAutomation to verify targeting before letting it act.",
+        "Run a saved automation LIVE (it moves the real mouse/keyboard). It runs in-process to completion (or until maxDurationMs, or until it loses window focus and you call stop). EVERY run is HARD-CAPPED at 5 minutes (unless the global kill switch is armed) so a human can always reclaim the mouse — re-launch it if you need more time. The automation should configure a required window (via sdk.requiredWindow or the { requiredWindow } option on sdk.runEvery) so clicking away auto-pauses it; a run that moved the mouse without a window gate returns a ranWithoutWindowGate warning. Returns a summary: how it stopped, elapsed/paused ms, number of clicks, average click interval, persisted ScreenWatcher.logAction artifact paths, and the tail of the telemetry log. Use readFile on an artifact path to inspect action-aligned screenshots after the run. TIP: dry-run first with computerUseTestAutomation to verify targeting before letting it act.",
       parameters: {
         type: "object",
         positional: true,
@@ -1004,7 +1004,7 @@ export const computerToolDefinitions: Tool[] = [
           name: { type: "string", description: "Automation name to run." },
           maxDurationMs: {
             type: "number",
-            description: "Requested run time in ms (default 30000). HARD-CAPPED at 300000 regardless of value.",
+            description: "Requested run time in ms (default 30000). HARD-CAPPED at 300000 unless the global kill switch is armed (then unlimited by default).",
           },
           params: {
             type: "object",
@@ -1044,13 +1044,62 @@ export const computerToolDefinitions: Tool[] = [
     function: {
       name: "computerUseStopAutomation",
       description:
-        "Request a running automation to stop (sets sdk.ctl.stopped). The loop exits on its next check.",
+        "Stop a running automation by name, or all=true to stop every one. Routes through the computer host for host-managed automations (those run by `knowhow computer run-automation`), and also stops in-process runs.",
       parameters: {
         type: "object",
         positional: true,
         properties: {
-          name: { type: "string", description: "Automation name to stop." },
+          name: { type: "string", description: "Automation name to stop (omit when all=true)." },
+          all: { type: "boolean", description: "Stop every running automation." },
         },
+        required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseListRunningAutomations",
+      description:
+        "List automations running under the computer host (id, name, status running/paused, pid, hotkeyCount, trayStatus) plus in-process runs.",
+      parameters: { type: "object", positional: true, properties: {}, required: [] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUsePauseAutomation",
+      description: "Pause a host-managed automation (its global hotkeys are suspended too).",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: { name: { type: "string", description: "Automation name." } },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseResumeAutomation",
+      description: "Resume a paused host-managed automation.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: { name: { type: "string", description: "Automation name." } },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseRestartAutomation",
+      description: "Restart a host-managed automation with its original arguments.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: { name: { type: "string", description: "Automation name." } },
         required: ["name"],
       },
     },
@@ -1067,6 +1116,51 @@ export const computerToolDefinitions: Tool[] = [
           name: { type: "string", description: "Automation name to delete." },
         },
         required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseReadClipboard",
+      description:
+        "Read the current plain-text clipboard contents (native, with pbpaste / PowerShell / wl-paste / xclip fallback).",
+      parameters: noArgs,
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseWriteClipboard",
+      description:
+        "Replace the plain-text clipboard contents. This overwrites whatever the user had copied.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          text: { type: "string", description: "Text to place on the clipboard." },
+        },
+        required: ["text"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseKeyState",
+      description:
+        "Report whether a key is currently held down. physical=true queries the hardware state (ignores keys injected by this process). Returns {supported:false} when the native core can't report key state yet. 'mod' means command on macOS and control elsewhere.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          key: { type: "string", description: "Key name, e.g. 'alt', 'shift', 'f6', 'mod'." },
+          physical: {
+            type: "boolean",
+            description: "Query physical hardware state instead of the logical (injected-aware) state. Default false.",
+          },
+        },
+        required: ["key"],
       },
     },
   },

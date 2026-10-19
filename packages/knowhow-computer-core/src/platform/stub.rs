@@ -37,6 +37,8 @@ impl Backend for StubBackend {
             input: false,
             capture: false,
             windows: false,
+            clipboard: Some(false),
+            key_state: Some(false),
             reason: Some(format!(
                 "no native backend for '{}' yet (fall back to CLI adapter)",
                 self.platform

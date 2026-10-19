@@ -10,6 +10,7 @@ import {
   OverlayPrimitive,
   Point,
   Region,
+  WindowInfo,
 } from "./contracts";
 import { ToolsService } from "@tyvm/knowhow/ts_build/src/services/Tools";
 import { worldlines, WorldlineRegistry } from "@tyvm/knowhow-module-worldlines";
@@ -36,6 +37,34 @@ import {
   WatchScreenOptions,
 } from "./tracking";
 import { analyzeGridFrame, GridVisionOptions, GridVisionResult } from "./gridVision";
+import { ClipboardSnapshot, CopySelectionOptions } from "./clipboard";
+import { normalizeKeyName, normalizeKeyNames } from "./keyAliases";
+import { hasWindowSelectors, windowMatches, WindowMatch } from "./windowMatch";
+import { createStore, Store } from "./store";
+import { uiAlert, uiConfirm, uiPrompt } from "./dialogs";
+import { GuiService } from "./gui/GuiService";
+import { HeadlessGuiBackend } from "./gui/backends";
+import type { Form } from "./gui/Form";
+import type { GuiBackend, WindowSpec } from "./gui/types";
+import {
+  getHotkeyProvider,
+  HotkeyOptions,
+  HotkeyProvider,
+  HOTKEYS_UNAVAILABLE_MESSAGE,
+  createHotkeyTrigger,
+} from "./hotkeys";
+import { getKillSwitch, isKillSwitchSpec, parseHotkeySpec } from "./hotkeySpec";
+
+export { WindowMatch } from "./windowMatch";
+export { Store } from "./store";
+export {
+  FakeHotkeyProvider,
+  HotkeyOptions,
+  HotkeyProvider,
+  HotkeyRegistration,
+  setHotkeyProvider,
+  getHotkeyProvider,
+} from "./hotkeys";
 
 /**
  * Automations — a locally-run perception→action loop that the LLM authors once
@@ -56,23 +85,75 @@ import { analyzeGridFrame, GridVisionOptions, GridVisionResult } from "./gridVis
 const STORE_DIR = path.join(".knowhow", "automations");
 
 /**
- * Hard ceiling on how long ANY automation may run before it is force-stopped.
- * Automations take over the real mouse/keyboard, so a human needs to be able to
- * reliably reclaim control quickly. We cap every run at 10s (regardless of what
- * the caller requests) so a runaway automation can never hold the mouse hostage
- * for longer than that. Re-launch the automation if you legitimately need more time.
+ * True when `ref` looks like a file path rather than a saved automation name:
+ * contains a path separator (either flavor, so Windows paths work on any OS)
+ * or ends in .ts/.js/.mts/.cts.
+ */
+export function isAutomationPath(ref: string): boolean {
+  return /[\\/]/.test(ref) || /\.(?:ts|js|mts|cts|khs)$/i.test(ref);
+}
+
+/**
+ * Extra directories searched (after .knowhow/automations) when resolving an
+ * automation by NAME. Always includes ./automations; extend via
+ * KNOWHOW_AUTOMATION_PATHS (path.delimiter-separated) or `automationPaths`
+ * (string[]) in .knowhow/knowhow.json.
+ */
+export function automationSearchDirs(cwd: string = process.cwd()): string[] {
+  const dirs: string[] = [path.resolve(cwd, "automations")];
+  const add = (d: unknown) => {
+    if (typeof d === "string" && d.trim()) dirs.push(path.resolve(cwd, d.trim()));
+  };
+  try {
+    const cfg = JSON.parse(fs.readFileSync(path.join(cwd, ".knowhow", "knowhow.json"), "utf8"));
+    if (Array.isArray(cfg?.automationPaths)) cfg.automationPaths.forEach(add);
+  } catch {
+    /* no config */
+  }
+  (process.env.KNOWHOW_AUTOMATION_PATHS || "")
+    .split(path.delimiter)
+    .forEach(add);
+  return [...new Set(dirs)];
+}
+
+/** Strip a script extension to get the automation name (file basename). */
+function automationNameFromPath(file: string): string {
+  return path.basename(file).replace(/\.(?:ts|js|mts|cts|khs)$/i, "");
+}
+
+/**
+ * Forced ceiling on how long an automation may run while the global kill switch
+ * is NOT armed. Automations take over the real mouse/keyboard, so a human needs a
+ * reliable way to reclaim control. The kill switch (default Ctrl+Alt+Esc, handled
+ * by the knowhow computer host outside the script's control) is that way; until
+ * it is armed (see {@link isKillSwitchArmed}) every run is clamped to this cap
+ * (5 minutes) regardless of what the caller requests. When the kill switch IS
+ * armed the clamp is bypassed: `maxDurationMs` is honored as given and defaults
+ * to unlimited.
  */
 export const MAX_AUTOMATION_DURATION_MS = 300000;
 
+let killSwitchArmedProvider: () => boolean = () => false;
+
+/**
+ * Is the global kill switch armed (host hook running, permissions granted)?
+ * Returns false until the host exists (M1).
+ */
+export function isKillSwitchArmed(): boolean {
+  try {
+    return !!killSwitchArmedProvider();
+  } catch {
+    return false;
+  }
+}
+
+/** Hook for the host (and tests) to report kill-switch availability. */
+export function setKillSwitchArmed(armed: boolean | (() => boolean)): void {
+  killSwitchArmedProvider = typeof armed === "function" ? armed : () => armed;
+}
+
 /** Default run duration when the caller doesn't specify one. */
 export const DEFAULT_AUTOMATION_DURATION_MS = 30000;
-
-export interface WindowMatch {
-  /** Substring (case-insensitive) that must appear in the active window title. */
-  titleIncludes?: string;
-  /** Substring (case-insensitive) that must appear in the active window app. */
-  app?: string;
-}
 
 export interface AutomationSpec {
   name: string;
@@ -82,6 +163,12 @@ export interface AutomationSpec {
   doc?: AutomationDoc;
   /** Absolute path to the saved .ts file (populated by loaders). */
   filePath?: string;
+  /**
+   * Directory that relative imports (`./helper`) resolve against. Defaults to
+   * the store dir (.knowhow/automations); set to the script's directory for
+   * path-based / search-dir automations.
+   */
+  baseDir?: string;
 }
 
 /**
@@ -110,6 +197,11 @@ export interface AutomationAction {
     | "type"
     | "key"
     | "hotkey"
+    | "click"
+    | "keyDown"
+    | "keyUp"
+    | "clipboardWrite"
+    | "copySelection"
     | "focus"
     | "selectAccessibilityOption"
     | "setAccessibilityValue"
@@ -159,6 +251,59 @@ export interface AutomationControl {
   stop(): void;
 }
 
+export interface AutomationClipboard {
+  readText(): Promise<string>;
+  writeText(text: string): Promise<void>;
+  snapshot(): Promise<ClipboardSnapshot>;
+  restore(snapshot: ClipboardSnapshot): Promise<void>;
+  /** Resolves true when the clipboard changed, false on timeout. */
+  waitForChange(opts?: { timeoutMs?: number }): Promise<boolean>;
+}
+
+export interface AutomationUi {
+  beep(opts?: { freq?: number; ms?: number }): Promise<void>;
+  /** Transient text near the cursor (macOS overlay; logged elsewhere). */
+  tooltip(text: string, opts?: { ms?: number }): Promise<void>;
+  /** Native dialog via the host when attached, else an OS fallback. */
+  alert(message: string, opts?: { title?: string }): Promise<void>;
+  confirm(message: string, opts?: { title?: string }): Promise<boolean>;
+  /** `opts` may be a plain string (the default value) for backwards compatibility. */
+  prompt(
+    message: string,
+    opts?: string | { title?: string; default?: string }
+  ): Promise<string | null>;
+}
+
+/** Native forms (`sdk.gui.form(spec)`); see src/gui. */
+export interface AutomationGui {
+  /**
+   * Create a native form (hidden). Call `form.show()` to display it. An
+   * existing form keeps the automation alive until `form.destroy()`.
+   */
+  form(spec: WindowSpec): Promise<Form>;
+}
+
+export interface AutomationTray {
+  /** Short status text shown next to this automation in the tray ("" clears). */
+  setStatus(text: string): void;
+  /** Add a tray menu item for this automation; `fn` runs when clicked. Returns its id. */
+  addMenuItem(label: string, fn: () => void | Promise<void>): string;
+}
+
+/** Host-provided tray hooks for a run (see src/host). */
+export interface TrayBridge {
+  setStatus(text: string): void;
+  addMenuItem(id: string, label: string, fn: () => void | Promise<void>): void;
+}
+
+export interface AutomationHotkeys {
+  /** Register a global hotkey; returns its id. Throws on the kill-switch chord. */
+  on(spec: string, fn: () => void | Promise<void>, opts?: HotkeyOptions): string;
+  off(id: string): void;
+  /** Resolve once `key` is physically released (AHK `KeyWait`). */
+  waitRelease(key: string): Promise<void>;
+}
+
 /**
  * The surface handed to an authored automation script. Perception methods read
  * real rendered pixels; action methods drive the real mouse/keyboard (unless
@@ -168,7 +313,7 @@ export interface AutomationSDK {
   // ── perception (real pixels) ──
   screenSize(): Promise<{ width: number; height: number }>;
   /** Return the currently focused window, if one can be identified. */
-  activeWindow(): Promise<{ title: string; app?: string; bounds?: Region } | null>;
+  activeWindow(): Promise<WindowInfo | null>;
   /**
    * Inspect the focused window's native accessibility tree. Element IDs are
    * short-lived: discover and use an element before requesting another tree.
@@ -282,8 +427,71 @@ export interface AutomationSDK {
   ): Promise<void>;
   type(text: string): Promise<void>;
   key(name: string): Promise<void>;
-  /** Press a key chord, e.g. `["command", "a"]`. */
+  /**
+   * Press a key chord, e.g. `["command", "a"]`. `"mod"` is `command` on macOS and
+   * `control` elsewhere; `lalt/ralt/lctrl/rctrl/lshift/rshift/lwin` map to the
+   * base modifier. Applies to `key`, `hotkey`, `keyDown` and `keyUp`.
+   */
   hotkey(keys: string[]): Promise<void>;
+  /** Click at the CURRENT cursor position (AHK `Click()`). */
+  click(button?: "left" | "right" | "middle"): Promise<void>;
+  /**
+   * Hold a key down. Held keys are tracked by the runner and released on every
+   * exit path (complete, error, stop, duration), so a crash can't leave Alt stuck.
+   */
+  keyDown(key: string): Promise<void>;
+  /** Release a key. Always allowed for a key this run is holding (even while paused). */
+  keyUp(key: string): Promise<void>;
+  /** Hold `keys` while `fn` runs; releases them (try/finally) afterwards. */
+  withKeysHeld<T>(keys: string[], fn: () => T | Promise<T>): Promise<T>;
+  /**
+   * Is `key` down? `physical: true` queries the hardware state (ignores events
+   * this process injected). Returns false (and logs one warning) when the native
+   * core can't report key state.
+   */
+  keyState(key: string, opts?: { physical?: boolean }): Promise<boolean>;
+  /** Text clipboard (native, with a CLI fallback). Writes obey pause/dry-run. */
+  readonly clipboard: AutomationClipboard;
+  /**
+   * Copy the current selection and return its text (null on timeout). Snapshots
+   * the clipboard, clears it, sends the chord, waits for text, and restores the
+   * snapshot (when `restore`, the default).
+   */
+  copySelection(opts?: CopySelectionOptions): Promise<string | null>;
+  /** Random integer in [min, max], inclusive (AHK `Random`). */
+  random(min: number, max: number): number;
+  /** Window helpers. */
+  readonly window: {
+    /** Is the focused window matching `match`? (case-insensitive) */
+    isActive(match: WindowMatch): Promise<boolean>;
+  };
+  /**
+   * Persistent JSON state at
+   * `~/.knowhow/automations-data/<automationName>/<name>.json`.
+   */
+  store<T>(name: string, defaults: T): Store<T>;
+  /** Minimal UI helpers (M0 fallbacks; native host UI arrives in M1/M2). */
+  readonly ui: AutomationUi;
+  /** Native GUI forms (host-backed; headless in-memory without a host). */
+  readonly gui: AutomationGui;
+  /** System-tray integration (no-ops unless a host is attached). */
+  readonly tray: AutomationTray;
+  /**
+   * Global hotkeys. Requires the knowhow computer host (M1) or a pluggable
+   * HotkeyProvider; otherwise `on` throws. Registered hotkeys keep the
+   * automation alive.
+   */
+  readonly hotkeys: AutomationHotkeys;
+
+  // ── lifetime (AHK "persistent" rule) ──
+  /** Stay resident even with no hotkeys/timers/windows (until exit/stop). */
+  keepAlive(): void;
+  /** End the run now (runs onExit handlers, releases held keys). */
+  exit(): void;
+  /** Register cleanup that runs on every exit path (2 s cap per handler). */
+  onExit(fn: () => void | Promise<void>): void;
+  /** Resolves when the run is exiting (exit(), stop, duration, kill switch). */
+  untilExit(): Promise<void>;
   /** Focus an app/window. Call before installing requiredWindow. */
   focus(match: string): Promise<boolean>;
   /** Select a pop-up/combo-box option without keyboard type-ahead. */
@@ -460,6 +668,19 @@ export function loadAutomation(name: string): AutomationSpec {
 
 export function loadAutomationSafe(name: string): AutomationSpec | undefined {
   try {
+    if (isAutomationPath(name)) {
+      let p = path.resolve(name);
+      if (!fs.existsSync(p) && fs.existsSync(p + ".ts")) p += ".ts";
+      if (!fs.existsSync(p) || !fs.statSync(p).isFile()) return undefined;
+      const script = fs.readFileSync(p, "utf8");
+      return {
+        name: automationNameFromPath(p),
+        script,
+        doc: parseAutomationDoc(script),
+        filePath: p,
+        baseDir: path.dirname(p),
+      };
+    }
     const p = automationPath(name);
     if (fs.existsSync(p)) {
       const script = fs.readFileSync(p, "utf8");
@@ -468,14 +689,24 @@ export function loadAutomationSafe(name: string): AutomationSpec | undefined {
     // Read old files during migration, but all new writes use plain .ts files.
     const safe = name.replace(/[^a-zA-Z0-9_-]/g, "_");
     const legacy = path.join(STORE_DIR, `${safe}.automation.json`);
-    if (!fs.existsSync(legacy)) return undefined;
-    const parsed = JSON.parse(fs.readFileSync(legacy, "utf8"));
-    return {
-      name,
-      script: parsed.script,
-      doc: parseAutomationDoc(parsed.script || ""),
-      filePath: legacy,
-    };
+    if (fs.existsSync(legacy)) {
+      const parsed = JSON.parse(fs.readFileSync(legacy, "utf8"));
+      return {
+        name,
+        script: parsed.script,
+        doc: parseAutomationDoc(parsed.script || ""),
+        filePath: legacy,
+      };
+    }
+    // Finally, search extra dirs (./automations, config/env automationPaths).
+    for (const dir of automationSearchDirs()) {
+      const f = path.join(dir, `${safe}.ts`);
+      if (fs.existsSync(f)) {
+        const script = fs.readFileSync(f, "utf8");
+        return { name, script, doc: parseAutomationDoc(script), filePath: path.resolve(f), baseDir: dir };
+      }
+    }
+    return undefined;
   } catch {
     return undefined;
   }
@@ -483,24 +714,37 @@ export function loadAutomationSafe(name: string): AutomationSpec | undefined {
 
 /** Load a constrained relative module used by another automation. */
 function loadAutomationImportSafe(name: string): string | undefined {
-  if (!/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(name)) return undefined;
-  try {
-    const root = path.resolve(STORE_DIR);
-    const candidate = path.resolve(root, `${name}.ts`);
-    if (!candidate.startsWith(root + path.sep) || !fs.existsSync(candidate)) return undefined;
-    return fs.readFileSync(candidate, "utf8");
-  } catch {
-    return undefined;
-  }
+  return makeImportLoader()(name);
+}
+
+/** Import loader rooted at `baseDir` (default: the .knowhow/automations store). */
+export function makeImportLoader(baseDir?: string): (name: string) => string | undefined {
+  return (name: string) => {
+    if (!/^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*(?:\/[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*)*$/.test(name)) return undefined;
+    try {
+      const root = path.resolve(baseDir ?? STORE_DIR);
+      const candidate = path.resolve(root, `${name}.ts`);
+      if (!candidate.startsWith(root + path.sep) || !fs.existsSync(candidate)) return undefined;
+      return fs.readFileSync(candidate, "utf8");
+    } catch {
+      return undefined;
+    }
+  };
 }
 
 export function listAutomations(): AutomationSpec[] {
   try {
-    if (!fs.existsSync(STORE_DIR)) return [];
-    return fs
-      .readdirSync(STORE_DIR)
-      .filter((f) => f.endsWith(".ts"))
-      .map((f) => loadAutomationSafe(f.slice(0, -3)) || null)
+    const names = new Set<string>();
+    for (const dir of [STORE_DIR, ...automationSearchDirs()]) {
+      if (!fs.existsSync(dir)) continue;
+      for (const f of fs.readdirSync(dir)) {
+        // Helper/library files (`name.lib.ts`, `poecraft.logic.ts`: any extra dot
+        // in the base name) are import-only and never listed or runnable.
+        if (f.endsWith(".ts") && !f.slice(0, -3).includes(".")) names.add(f.slice(0, -3));
+      }
+    }
+    return [...names]
+      .map((n) => loadAutomationSafe(n) || null)
       .filter((x): x is AutomationSpec => !!x);
   } catch {
     return [];
@@ -554,7 +798,7 @@ const SDK_IMPORT = /^\s*import\s*\{\s*sdk\s*\}\s*from\s*["']@tyvm\/knowhow-modul
  * Group 2: the sibling automation name (e.g. "my-helper")
  */
 const AUTOMATION_IMPORT =
-  /^\s*import\s*\{([^}]+)\}\s*from\s*["'](?:@automation\/|\.\/)([A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*)(?:\.ts)?["']\s*;?\s*$/gm;
+  /^\s*import\s*(?:type\s*)?\{([^}]+)\}\s*from\s*["'](?:@automation\/|\.\/)([A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*?(?:\/[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*?)*)(?:\.ts)?["']\s*;?\s*$/gm;
 
 /** Strip TypeScript-only syntax while preserving constrained ESM imports. */
 function transpileAutomationSource(script: string): string {
@@ -566,6 +810,26 @@ function transpileAutomationSource(script: string): string {
     },
     reportDiagnostics: false,
   }).outputText;
+}
+
+/**
+ * Strip TypeScript-only syntax from the main script body (type annotations,
+ * generics, interfaces). Top-level `await` is preserved: the body is run as an
+ * async function. `export` keywords are removed (nothing consumes them).
+ */
+export function transpileMainScript(script: string): string {
+  const out = ts.transpileModule(script, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.ESNext,
+      removeComments: false,
+      moduleDetection: ts.ModuleDetectionKind.Force,
+    } as any,
+    reportDiagnostics: false,
+  }).outputText;
+  return out
+    .replace(/^\s*export\s*\{\s*\}\s*;?\s*$/gm, "")
+    .replace(/^export\s+(?=(async\s+function|function|class|const|let|var)\b)/gm, "");
 }
 
 function identifierAppears(code: string, name: string): boolean {
@@ -598,182 +862,49 @@ export function extractAutomationExports(
     .replace(new RegExp(AUTOMATION_IMPORT.source, "gm"), "");
 
   const exports = new Map<string, string>();
-  const lines = stripped.split("\n");
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i];
+  // AST-based (not brace counting) so braces inside strings, regex literals
+  // and template literals cannot confuse the extraction.
+  const sf = ts.createSourceFile("automation.ts", stripped, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
+  const hasMod = (n: ts.Node, kind: ts.SyntaxKind) =>
+    ((n as any).modifiers as ts.NodeArray<ts.ModifierLike> | undefined)?.some((m) => m.kind === kind) ?? false;
+  const textOf = (n: ts.Node) => n.getText(sf).replace(/^export\s+(default\s+)?/, "");
 
-    // export function / export async function
-    const fnMatch = line.match(
-      /^export\s+(async\s+function|function)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/
-    );
-    if (fnMatch) {
-      const exportName = fnMatch[2];
-      // Collect the entire function body by brace counting
-      let body = "";
-      let depth = 0;
-      let started = false;
-      let j = i;
-      while (j < lines.length) {
-        const l = lines[j];
-        for (const ch of l) {
-          if (ch === "{") { depth++; started = true; }
-          else if (ch === "}") { depth--; }
-        }
-        body += (j === i ? "" : "\n") + l;
-        j++;
-        if (started && depth <= 0) break;
+  for (const stmt of sf.statements) {
+    const exported = hasMod(stmt, ts.SyntaxKind.ExportKeyword);
+    if (ts.isFunctionDeclaration(stmt) && stmt.name && stmt.body) {
+      const decl = textOf(stmt);
+      if (exported) exports.set(stmt.name.text, decl);
+      allDeclarations?.set(stmt.name.text, decl);
+    } else if (ts.isClassDeclaration(stmt) && stmt.name) {
+      const decl = textOf(stmt);
+      if (exported) exports.set(stmt.name.text, decl);
+      allDeclarations?.set(stmt.name.text, decl);
+    } else if (ts.isVariableStatement(stmt)) {
+      let decl = textOf(stmt);
+      if (!exported) decl = decl.trimEnd().replace(/;?\s*$/, ";");
+      for (const d of stmt.declarationList.declarations) {
+        if (!ts.isIdentifier(d.name)) continue;
+        if (exported) exports.set(d.name.text, decl);
+        allDeclarations?.set(d.name.text, decl);
       }
-      // Strip the export keyword so it's a plain function declaration
-      const decl = body.replace(/^export\s+/, "");
-      exports.set(exportName, decl);
-      if (allDeclarations) allDeclarations.set(exportName, decl);
-      i = j;
-      continue;
-    }
-
-    // export class / non-exported class
-    const classMatch = line.match(/^(export\s+)?class\s+([A-Za-z_$][A-Za-z0-9_$]*)\b/);
-    if (classMatch && (classMatch[1] || allDeclarations)) {
-      const className = classMatch[2];
-      let body = "";
-      let depth = 0;
-      let started = false;
-      let j = i;
-      while (j < lines.length) {
-        const l = lines[j];
-        for (const ch of l) {
-          if (ch === "{") { depth++; started = true; }
-          else if (ch === "}") { depth--; }
-        }
-        body += (j === i ? "" : "\n") + l;
-        j++;
-        if (started && depth <= 0) break;
-      }
-      const decl = body.replace(/^export\s+/, "");
-      if (classMatch[1]) exports.set(className, decl);
-      if (allDeclarations) allDeclarations.set(className, decl);
-      i = j;
-      continue;
-    }
-
-    // non-exported function (for ref-resolution)
-    if (allDeclarations) {
-      const plainFnMatch = line.match(
-        /^(async\s+function|function)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/
-      );
-      if (plainFnMatch) {
-        const fnName = plainFnMatch[2];
-        let body = "";
-        let depth = 0;
-        let started = false;
-        let j = i;
-        while (j < lines.length) {
-          const l = lines[j];
-          for (const ch of l) {
-            if (ch === "{") { depth++; started = true; }
-            else if (ch === "}") { depth--; }
-          }
-          body += (j === i ? "" : "\n") + l;
-          j++;
-          if (started && depth <= 0) break;
-        }
-        allDeclarations.set(fnName, body);
-        i = j;
-        continue;
-      }
-    }
-
-    // export const / export let / export var
-    const constMatch = line.match(
-      /^export\s+(const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=/
-    );
-    if (constMatch) {
-      const exportName = constMatch[2];
-      // Collect until the statement ends — track brace/bracket/paren depth.
-      let body = "";
-      let depth = 0;
-      let j = i;
-      while (j < lines.length) {
-        const l = lines[j];
-        for (const ch of l) {
-          if (ch === "{" || ch === "[" || ch === "(") depth++;
-          else if (ch === "}" || ch === "]" || ch === ")") depth--;
-        }
-        body += (j === i ? "" : "\n") + l;
-        j++;
-        const trimmed = l.trimEnd();
-        if (depth <= 0 && trimmed.endsWith(";")) break;
-        if (depth <= 0 && j < lines.length &&
-            !trimmed.endsWith(",") &&
-            !trimmed.endsWith("(") &&
-            !trimmed.endsWith("{") &&
-            !trimmed.endsWith("[") &&
-            !trimmed.endsWith("\\")) break;
-      }
-      // Strip the export keyword
-      const decl = body.replace(/^export\s+/, "");
-      exports.set(exportName, decl);
-      if (allDeclarations) allDeclarations.set(exportName, decl);
-      i = j;
-      continue;
-    }
-
-    // export { foo, bar as baz }
-    const listMatch = line.match(/^export\s*\{([^}]+)\}\s*;?\s*$/);
-    if (listMatch) {
-      const specifiers = listMatch[1].split(",").map((s) => s.trim()).filter(Boolean);
-      for (const spec of specifiers) {
-        const parts = spec.split(/\s+as\s+/);
-        const localName = parts[0].trim();
-        const exportedName = parts[1]?.trim() ?? localName;
+    } else if (
+      ts.isExportDeclaration(stmt) &&
+      !stmt.moduleSpecifier &&
+      stmt.exportClause &&
+      ts.isNamedExports(stmt.exportClause)
+    ) {
+      for (const el of stmt.exportClause.elements) {
+        const exportedName = el.name.text;
+        const localName = (el.propertyName ?? el.name).text;
         if (localName !== exportedName) {
           // The consumer needs the exported name; emit a const alias
           exports.set(exportedName, `const ${exportedName} = ${localName};`);
         } else {
-          // Mark as a local-name reference; the caller will look up the
-          // underlying definition from the same export map if needed.
+          // Local-name reference; the caller resolves the definition.
           exports.set(exportedName, `/* ref:${localName} */`);
         }
       }
-      i++;
-      continue;
     }
-
-    // non-exported const/let/var (for ref-resolution)
-    if (allDeclarations) {
-      const plainConstMatch = line.match(
-        /^(const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=/
-      );
-      if (plainConstMatch) {
-        const varName = plainConstMatch[2];
-        let body = "";
-        let depth = 0;
-        let j = i;
-        while (j < lines.length) {
-          const l = lines[j];
-          for (const ch of l) {
-            if (ch === "{" || ch === "[" || ch === "(") depth++;
-            else if (ch === "}" || ch === "]" || ch === ")") depth--;
-          }
-          body += (j === i ? "" : "\n") + l;
-          j++;
-          const trimmed = l.trimEnd();
-          if (depth <= 0 && trimmed.endsWith(";")) break;
-          if (depth <= 0 && j < lines.length &&
-              !trimmed.endsWith(",") &&
-              !trimmed.endsWith("(") &&
-              !trimmed.endsWith("{") &&
-              !trimmed.endsWith("[") &&
-              !trimmed.endsWith("\\")) break;
-        }
-        allDeclarations.set(varName, body.trimEnd().replace(/;?\s*$/, ";"));
-        i = j;
-        continue;
-      }
-    }
-
-    i++;
   }
 
   return exports;
@@ -809,7 +940,8 @@ export function resolveAutomationImports(
   while ((m = re.exec(script)) !== null) {
     const specStr = m[1];
     const sibling = m[2];
-    const specifiers = specStr
+    const typeOnly = /^\s*import\s+type\b/.test(m[0]);
+    const specifiers = (typeOnly ? "" : specStr)
       .split(",")
       .map((s) => s.trim())
       .filter((s) => !s.startsWith("type "))
@@ -875,6 +1007,8 @@ export function resolveAutomationImports(
 
     for (const { local, alias } of specifiers) {
       if (!siblingExports.has(local)) {
+        // Type-only exports (interface/type) vanish at transpile time and need no binding.
+        if (new RegExp(`\\b(?:interface|type)\\s+${local.replace(/[$]/g, "\\$")}\\b`).test(siblingScript)) continue;
         throw new Error(
           `Automation "${name}" tries to import "${local}" from "@automation/${sibling}", ` +
           `but that export does not exist. Available exports: ${[...siblingExports.keys()].join(", ") || "(none)"}.`
@@ -928,10 +1062,12 @@ export function resolveAutomationImports(
 }
 
 /** Remove the one editor-only import supported by automation source files. */
-export function prepareAutomationScript(script: string): string {
+export function prepareAutomationScript(script: string, baseDir?: string): string {
   return resolveAutomationImports(
     script.replace(SDK_IMPORT, ""),
-    "__prepare__"
+    "__prepare__",
+    new Set(),
+    baseDir ? makeImportLoader(baseDir) : loadAutomationImportSafe
   );
 }
 
@@ -988,6 +1124,18 @@ export interface RunOptions {
   toolsService?: ToolsService;
   /** ExtensionsService to resolve automation-sdk extensions from. Gracefully absent. */
   extensions?: ExtensionsService;
+  /** Hotkey provider for this run (defaults to the one set via setHotkeyProvider). */
+  hotkeyProvider?: HotkeyProvider;
+  /** Called (best effort) whenever the set of keys this run holds changes. */
+  onHeldKeysChange?: (keys: string[]) => void;
+  /** Tray bridge supplied by the host worker; absent = sdk.tray is a no-op. */
+  tray?: TrayBridge;
+  /**
+   * GUI backend (forms/dialogs/tooltips). The host worker passes
+   * `HostHotkeyProvider.gui()`; absent = headless in-memory forms and local
+   * dialog fallbacks.
+   */
+  gui?: GuiBackend;
 }
 
 /**
@@ -1018,15 +1166,199 @@ export class AutomationRunner {
   private disposeCallbacks: Array<() => void | Promise<void>> = [];
   private extApis: Map<string, unknown> = new Map();
 
+  // ── lifetime (plan §6.2) ──
+  /** Active lifetime holders (hotkeys, timers, watchers, keepAlive). */
+  private retainers = new Map<symbol, string>();
+  private lifetimeWake: (() => void) | null = null;
+  private exitWaiters: Array<() => void> = [];
+  private exitHandlers: Array<() => void | Promise<void>> = [];
+  private keepAliveToken: symbol | null = null;
+  // ── held keys (released on every exit path) ──
+  private heldKeys = new Set<string>();
+  // ── hotkeys registered by this run ──
+  private hotkeyIds = new Map<string, HotkeyProvider>();
+  private hotkeySeq = 0;
+  private menuSeq = 0;
+  private warnedKeyState = false;
+  private tooltipTimer: NodeJS.Timeout | null = null;
+  private guiService: GuiService | null = null;
+
+  /** The backend `sdk.gui` uses (RunOptions.gui or a per-run headless one). */
+  get guiBackend(): GuiBackend {
+    return this.ensureGui().backend;
+  }
+
+  private ensureGui(): GuiService {
+    if (!this.guiService) {
+      const backend = this.opts.gui ?? new HeadlessGuiBackend((d) => this.emit(d));
+      this.guiService = new GuiService(backend, {
+        log: (d) => this.emit(d),
+        retain: () => this.retain("gui"),
+        release: (t) => this.release(t),
+        exit: () => this.requestStop("completed"),
+      });
+    }
+    return this.guiService;
+  }
+
   readonly ctl: AutomationControl = {
     paused: false,
     stopped: false,
     requiredWindow: undefined,
-    stop: () => {
-      if (!this.ctl.stopped) this.stopReason = this.stopReason ?? "manual";
-      this.ctl.stopped = true;
-    },
+    stop: () => this.requestStop("manual"),
   };
+
+  /** Mark the run stopped (first reason wins), wake lifetime + untilExit waiters. */
+  private requestStop(reason: "duration" | "manual" | "completed"): void {
+    if (!this.ctl.stopped) this.stopReason = this.stopReason ?? reason;
+    this.ctl.stopped = true;
+    this.wakeLifetime();
+    const waiters = this.exitWaiters;
+    this.exitWaiters = [];
+    for (const w of waiters) w();
+  }
+
+  private wakeLifetime(): void {
+    const wake = this.lifetimeWake;
+    this.lifetimeWake = null;
+    if (wake) wake();
+  }
+
+  /** Ref-count tracker: the run stays alive while any token is held. */
+  retain(reason: string): symbol {
+    const token = Symbol(reason);
+    this.retainers.set(token, reason);
+    return token;
+  }
+
+  release(token: symbol): void {
+    if (this.retainers.delete(token)) this.wakeLifetime();
+  }
+
+  /** Number of active lifetime holders (exposed for tests/diagnostics). */
+  get retainCount(): number {
+    return this.retainers.size;
+  }
+
+  /** Keys currently held by this run (exposed for tests/diagnostics). */
+  heldKeyNames(): string[] {
+    return [...this.heldKeys];
+  }
+
+  private notifyHeld(): void {
+    try {
+      this.opts.onHeldKeysChange?.([...this.heldKeys]);
+    } catch {
+      /* host reporting is best effort */
+    }
+  }
+
+  /** External (host) pause/resume; keeps pausedMs accounting consistent. */
+  setPaused(paused: boolean, reason = "host"): void {
+    if (this.ctl.stopped || this.ctl.paused === paused) return;
+    this.ctl.paused = paused;
+    if (paused) {
+      this.pauseStartedAt = this.now();
+      this.emit({ paused: reason });
+    } else {
+      if (this.pauseStartedAt) {
+        this.pausedAccumMs += this.now() - this.pauseStartedAt;
+        this.pauseStartedAt = 0;
+      }
+      this.emit({ resumed: true, reason });
+    }
+  }
+
+  private untilStopped(): Promise<void> {
+    if (this.ctl.stopped) return Promise.resolve();
+    return new Promise<void>((resolve) => this.exitWaiters.push(resolve));
+  }
+
+  /** Wait until the body is done AND nothing retains the run (or it is stopped). */
+  private async waitForLifetimeEnd(): Promise<void> {
+    while (!this.ctl.stopped && this.retainers.size > 0) {
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, 100);
+        if (timer.unref) timer.unref();
+        this.lifetimeWake = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+      });
+    }
+  }
+
+  /** Release every key this run is still holding (best effort, any state). */
+  private async releaseHeldKeys(): Promise<void> {
+    const keys = [...this.heldKeys];
+    this.heldKeys.clear();
+    if (keys.length) this.notifyHeld();
+    for (const key of keys) {
+      try {
+        await this.svc.keyUp(key);
+        this.actions.push({ t: this.elapsed(), kind: "keyUp", text: key, suppressed: false });
+      } catch (e: any) {
+        this.emit({ keyReleaseError: key, error: e?.message ?? String(e) });
+      }
+    }
+  }
+
+  private async runExitHandlers(): Promise<void> {
+    const handlers = this.exitHandlers;
+    this.exitHandlers = [];
+    for (const fn of handlers) {
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        await Promise.race([
+          Promise.resolve().then(() => fn()),
+          new Promise<void>((resolve) => {
+            timer = setTimeout(() => {
+              this.emit({ onExit: "timeout", afterMs: 2000 });
+              resolve();
+            }, 2000);
+          }),
+        ]);
+      } catch (e: any) {
+        this.emit({ onExitError: e?.message ?? String(e) });
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
+  }
+
+  private async unregisterHotkeys(): Promise<void> {
+    const entries = [...this.hotkeyIds.entries()];
+    this.hotkeyIds.clear();
+    for (const [id, provider] of entries) {
+      try {
+        await provider.unregister(id);
+      } catch (e: any) {
+        this.emit({ hotkeyUnregisterError: id, error: e?.message ?? String(e) });
+      }
+    }
+  }
+
+  /** Ask the host for a native dialog; null = unavailable/failed (caller falls back). */
+  private async hostDialog(
+    kind: "alert" | "confirm" | "prompt",
+    message: string,
+    title?: string,
+    def?: string
+  ): Promise<import("./gui/types").DialogResult | null> {
+    const gui = this.opts.gui;
+    if (!gui?.dialog) return null;
+    try {
+      return await gui.dialog({
+        kind,
+        title: title ?? this.spec.name,
+        message: String(message ?? ""),
+        default: def ?? "",
+      });
+    } catch (e: any) {
+      this.emit({ uiFallback: kind, error: e?.message ?? String(e) });
+      return null;
+    }
+  }
 
   constructor(spec: AutomationSpec, svc: ComputerService, opts: RunOptions = {}) {
     this.spec = spec;
@@ -1043,26 +1375,18 @@ export class AutomationRunner {
   }
 
   private matchesWindow(
-    active: { title: string; app?: string } | null,
+    active: { title: string; app?: string; exe?: string; bundleId?: string } | null,
     match?: WindowMatch
   ): boolean {
-    if (!match || (!match.titleIncludes && !match.app)) return true;
-    if (!active) return false;
-    const title = (active.title || "").toLowerCase();
-    const app = (active.app || "").toLowerCase();
-    const titleMatches = !match.titleIncludes ||
-      title.includes(match.titleIncludes.toLowerCase());
-    const appMatches = !match.app || app.includes(match.app.toLowerCase());
-    // When both selectors are supplied they describe one target window, not
-    // alternatives. Requiring both prevents another Chrome tab from opening
-    // the gate merely because its owning application matches.
-    return titleMatches && appMatches;
+    // Identity selectors (app/exe/bundleId) are alternatives; titleIncludes is
+    // ANDed with them. See windowMatch.ts.
+    return windowMatches(active, match);
   }
 
   private async pollGate(): Promise<void> {
     if (this.ctl.stopped) return;
     if (!this.ctl.requiredWindow) return;
-    let active: { title: string; app?: string } | null = null;
+    let active: { title: string; app?: string; exe?: string; bundleId?: string } | null = null;
     try {
       active = (await this.svc.getActiveWindow()) as any;
     } catch {
@@ -1210,14 +1534,14 @@ export class AutomationRunner {
 
   private async configureRequiredWindow(match?: WindowMatch): Promise<void> {
     this.ctl.requiredWindow = match;
-    if (match && (match.titleIncludes || match.app)) {
+    if (match && hasWindowSelectors(match)) {
       this.everGatedWindow = true;
     }
     if (this.gateTimer) {
       clearInterval(this.gateTimer);
       this.gateTimer = null;
     }
-    if (!match || (!match.titleIncludes && !match.app)) {
+    if (!match || !hasWindowSelectors(match)) {
       if (this.ctl.paused) {
         this.ctl.paused = false;
         if (this.pauseStartedAt) {
@@ -1292,6 +1616,8 @@ export class AutomationRunner {
         const deadline = self.startedAt
           ? self.startedAt + self.maxDurationMs
           : Number.POSITIVE_INFINITY;
+        const lifetimeToken = self.retain("runEvery");
+        try {
         while (!self.ctl.stopped) {
           const iterationStarted = self.now();
           // In-loop duration guard. The setTimeout-based durationTimer is a
@@ -1302,8 +1628,7 @@ export class AutomationRunner {
           // timeout nor Ctrl-C could ever fire. Check the deadline directly.
           if (iterationStarted >= deadline) {
             if (!self.ctl.stopped) {
-              self.stopReason = self.stopReason ?? "duration";
-              self.ctl.stopped = true;
+              self.requestStop("duration");
               self.emit({ stopped: "duration", maxDurationMs: self.maxDurationMs });
             }
             break;
@@ -1333,6 +1658,9 @@ export class AutomationRunner {
             // automation is running hot.
             await new Promise((resolve) => setTimeout(resolve, 0));
           }
+        }
+        } finally {
+          self.release(lifetimeToken);
         }
       },
       requiredWindow: (match) => self.configureRequiredWindow(match),
@@ -1489,7 +1817,12 @@ export class AutomationRunner {
           };
         }
         const stop = watcher.stop.bind(watcher);
-        const dispose = () => { stop(); self.streamDisposers.delete(dispose); };
+        const watchToken = self.retain("watchScreen");
+        const dispose = () => {
+          stop();
+          self.streamDisposers.delete(dispose);
+          self.release(watchToken);
+        };
         watcher.stop = dispose;
         self.streamDisposers.add(dispose);
         return watcher;
@@ -1590,7 +1923,7 @@ export class AutomationRunner {
         };
         self.actions.push(act);
         if (!self.canAct()) return;
-        await svc.pressKey(name);
+        await svc.pressKey(normalizeKeyName(name));
       },
 
       hotkey: async (keys) => {
@@ -1602,7 +1935,7 @@ export class AutomationRunner {
         };
         self.actions.push(act);
         if (!self.canAct()) return;
-        await svc.hotkey(...keys);
+        await svc.hotkey(...normalizeKeyNames(keys));
       },
 
       focus: async (match) => {
@@ -1656,6 +1989,309 @@ export class AutomationRunner {
         await svc.performAccessibilityAction(id, action);
       },
 
+      click: async (button = "left") => {
+        const act: AutomationAction = {
+          t: self.elapsed(),
+          kind: "click",
+          button,
+          suppressed: !self.canAct(),
+        };
+        self.actions.push(act);
+        if (!self.canAct()) return;
+        await svc.click(button);
+      },
+
+      keyDown: async (key) => {
+        const k = normalizeKeyName(key);
+        const act: AutomationAction = {
+          t: self.elapsed(),
+          kind: "keyDown",
+          text: k,
+          suppressed: !self.canAct(),
+        };
+        self.actions.push(act);
+        if (!self.canAct()) return;
+        // Track BEFORE injecting: releasing a key that never went down is harmless,
+        // while a missed release would leave it stuck.
+        self.heldKeys.add(k);
+        self.notifyHeld();
+        await svc.keyDown(k);
+      },
+
+      keyUp: async (key) => {
+        const k = normalizeKeyName(key);
+        // Releasing a key this run holds is always allowed (even while paused or
+        // stopped) so a focus-loss pause can never leave a modifier stuck.
+        const allowed = self.canAct() || self.heldKeys.has(k);
+        const act: AutomationAction = {
+          t: self.elapsed(),
+          kind: "keyUp",
+          text: k,
+          suppressed: !allowed,
+        };
+        self.actions.push(act);
+        if (!allowed) return;
+        self.heldKeys.delete(k);
+        await svc.keyUp(k);
+        self.notifyHeld();
+      },
+
+      withKeysHeld: async (keys, fn) => {
+        const pressed: string[] = [];
+        try {
+          for (const key of keys) {
+            await sdk.keyDown(key);
+            pressed.push(key);
+          }
+          return await fn();
+        } finally {
+          for (const key of pressed.reverse()) {
+            try {
+              await sdk.keyUp(key);
+            } catch (e: any) {
+              self.emit({ keyReleaseError: key, error: e?.message ?? String(e) });
+            }
+          }
+        }
+      },
+
+      keyState: async (key, opts = {}) => {
+        const fn = (svc as any).keyState;
+        let state: boolean | null = null;
+        if (typeof fn === "function") {
+          state = await fn.call(svc, normalizeKeyName(key), !!opts.physical);
+        }
+        if (state === null) {
+          if (!self.warnedKeyState) {
+            self.warnedKeyState = true;
+            self.emit({ warning: "sdk.keyState is unsupported by this native core build; returning false" });
+          }
+          return false;
+        }
+        return !!state;
+      },
+
+      clipboard: (() => {
+        const cb = () => {
+          const c = (svc as any).clipboard;
+          if (!c) throw new Error("Clipboard is not available from this computer service.");
+          return c as import("./clipboard").ClipboardService;
+        };
+        const write = async (kind: "clipboardWrite", text: string, fn: () => Promise<void>) => {
+          self.actions.push({
+            t: self.elapsed(),
+            kind,
+            text,
+            suppressed: !self.canAct(),
+          });
+          if (!self.canAct()) return;
+          await fn();
+        };
+        return {
+          readText: () => cb().readText(),
+          writeText: (text: string) => write("clipboardWrite", text, () => cb().writeText(text)),
+          snapshot: () => cb().snapshot(),
+          restore: (snap: ClipboardSnapshot) =>
+            write("clipboardWrite", snap?.text ?? "", () => cb().restore(snap)),
+          waitForChange: (o?: { timeoutMs?: number }) => cb().waitForChange(o),
+        };
+      })(),
+
+      copySelection: async (o = {}) => {
+        const chord = o.chord ?? ["mod", "c"];
+        self.actions.push({
+          t: self.elapsed(),
+          kind: "copySelection",
+          text: chord.join("+"),
+          suppressed: !self.canAct(),
+        });
+        if (!self.canAct()) return null;
+        const c = (svc as any).clipboard as import("./clipboard").ClipboardService | undefined;
+        if (!c) throw new Error("Clipboard is not available from this computer service.");
+        return c.copySelection(o, async (keys) => {
+          if (!self.canAct()) return;
+          await svc.hotkey(...normalizeKeyNames(keys));
+        });
+      },
+
+      random: (min, max) => {
+        if (!Number.isFinite(min) || !Number.isFinite(max)) {
+          throw new Error("sdk.random(min, max) requires finite numbers.");
+        }
+        const lo = Math.ceil(Math.min(min, max));
+        const hi = Math.floor(Math.max(min, max));
+        return lo + Math.floor(Math.random() * (hi - lo + 1));
+      },
+
+      window: {
+        isActive: async (match) => windowMatches(await svc.getActiveWindow(), match),
+      },
+
+      store: <T>(name: string, defaults: T): Store<T> =>
+        createStore<T>(self.spec.name, name, defaults, {
+          persist: () => !self.opts.dryRun,
+        }),
+
+      ui: {
+        beep: async (o = {}) => {
+          if (!self.canAct()) return;
+          const freq = o.freq ?? 1000;
+          const ms = o.ms ?? 150;
+          if (typeof (svc as any).beep === "function") await (svc as any).beep(freq, ms);
+          else self.emit({ ui: "beep", freq, ms });
+        },
+        tooltip: async (text, o = {}) => {
+          if (!self.canAct()) return;
+          const ms = o.ms ?? 1500;
+          const hostGui = self.opts.gui;
+          if (hostGui?.tooltip) {
+            try {
+              await hostGui.tooltip({ text: String(text ?? ""), ms, x: null, y: null });
+              return;
+            } catch (e: any) {
+              self.emit({ uiFallback: "tooltip", error: e?.message ?? String(e) });
+            }
+          }
+          if (process.platform === "darwin" && typeof (svc as any).showOverlay === "function") {
+            try {
+              const pos = await svc.mousePosition();
+              await svc.showOverlay([
+                { kind: "text", x: pos.x + 16, y: pos.y + 20, text, fontSize: 14, color: "#ffffff" },
+              ]);
+              if (self.tooltipTimer) clearTimeout(self.tooltipTimer);
+              self.tooltipTimer = setTimeout(() => {
+                self.tooltipTimer = null;
+                svc.clearOverlay().catch(() => {});
+              }, ms);
+              if (self.tooltipTimer.unref) self.tooltipTimer.unref();
+              return;
+            } catch {
+              /* fall through to logging */
+            }
+          }
+          self.emit({ tooltip: text, ms });
+        },
+        // Native host dialogs when attached; OS shell-out fallback otherwise
+        // (or when the host reports an error, e.g. unsupported platform).
+        alert: async (message, o = {}) => {
+          if (self.opts.dryRun) return self.emit({ ui: "alert", message });
+          const r = await self.hostDialog("alert", message, o.title);
+          if (r) return;
+          await uiAlert(message, { title: o.title });
+        },
+        confirm: async (message, o = {}) => {
+          if (self.opts.dryRun) {
+            self.emit({ ui: "confirm", message });
+            return false;
+          }
+          const r = await self.hostDialog("confirm", message, o.title);
+          if (r) return r.button === "yes" || r.button === "ok";
+          return uiConfirm(message, { title: o.title });
+        },
+        prompt: async (message, o = {}) => {
+          const opts = typeof o === "string" ? { default: o } : o ?? {};
+          if (self.opts.dryRun) {
+            self.emit({ ui: "prompt", message });
+            return null;
+          }
+          const r = await self.hostDialog("prompt", message, opts.title, opts.default);
+          if (r) return r.button === "ok" ? r.value ?? "" : null;
+          return uiPrompt(message, opts.default ?? "", { title: opts.title });
+        },
+      },
+
+      gui: {
+        form: (spec: WindowSpec) => self.ensureGui().form(spec),
+      },
+
+      tray: {
+        setStatus: (text) => {
+          try {
+            self.opts.tray?.setStatus(String(text ?? ""));
+          } catch {
+            /* ignore */
+          }
+        },
+        addMenuItem: (label, fn) => {
+          const id = `${self.spec.name}:menu-${++self.menuSeq}`;
+          try {
+            self.opts.tray?.addMenuItem(id, String(label), fn);
+          } catch {
+            /* ignore */
+          }
+          return id;
+        },
+      },
+
+      hotkeys: (() => {
+        const tokens = new Map<string, symbol>();
+        return {
+          on: (spec, fn, opts = {}) => {
+            if (typeof fn !== "function") {
+              throw new Error("sdk.hotkeys.on(spec, fn, opts) requires a function.");
+            }
+            const parsed = parseHotkeySpec(spec);
+            if (isKillSwitchSpec(parsed)) {
+              throw new Error(
+                `Hotkey "${spec}" is reserved as the global kill switch (${getKillSwitch()}) and cannot be registered by automations.`
+              );
+            }
+            const provider = self.opts.hotkeyProvider ?? getHotkeyProvider();
+            if (!provider) throw new Error(HOTKEYS_UNAVAILABLE_MESSAGE);
+            const options: HotkeyOptions = {
+              anyModifiers: false,
+              consume: true,
+              noRepeat: false,
+              concurrency: "parallel",
+              ...opts,
+            };
+            const id = `${self.spec.name}:hotkey-${++self.hotkeySeq}`;
+            const onTrigger = createHotkeyTrigger(fn, options, {
+              checkWhen: async () => windowMatches(await svc.getActiveWindow(), options.when),
+              canRun: () => !self.ctl.stopped && !self.ctl.paused,
+              onError: (e: any) => self.emit({ hotkeyError: spec, error: e?.message ?? String(e) }),
+            });
+            self.hotkeyIds.set(id, provider);
+            tokens.set(id, self.retain(`hotkey:${spec}`));
+            Promise.resolve(provider.register({ id, spec, parsed, options, onTrigger })).catch(
+              (e: any) => self.emit({ hotkeyRegisterError: spec, error: e?.message ?? String(e) })
+            );
+            return id;
+          },
+          off: (id) => {
+            const provider = self.hotkeyIds.get(id);
+            self.hotkeyIds.delete(id);
+            const token = tokens.get(id);
+            tokens.delete(id);
+            if (provider) {
+              Promise.resolve(provider.unregister(id)).catch(() => {});
+            }
+            if (token) self.release(token);
+          },
+          waitRelease: async (key) => {
+            const provider = self.opts.hotkeyProvider ?? getHotkeyProvider();
+            if (provider?.waitRelease) return provider.waitRelease(key);
+            const fn = (svc as any).keyState;
+            if (typeof fn !== "function") return;
+            while (!self.ctl.stopped) {
+              const down = await fn.call(svc, normalizeKeyName(key), true);
+              if (!down) return;
+              await new Promise((r) => setTimeout(r, 15));
+            }
+          },
+        };
+      })(),
+
+      keepAlive: () => {
+        if (!self.keepAliveToken) self.keepAliveToken = self.retain("keepAlive");
+      },
+      exit: () => self.requestStop("completed"),
+      onExit: (fn) => {
+        if (typeof fn !== "function") throw new Error("sdk.onExit(fn) requires a function.");
+        self.exitHandlers.push(fn);
+      },
+      untilExit: () => self.untilStopped(),
+
       sleep: (ms) =>
         new Promise((resolve) => {
           const capped = Math.max(0, Math.min(60000, ms || 0));
@@ -1676,28 +2312,37 @@ export class AutomationRunner {
   }
 
   async run(): Promise<AutomationRunResult> {
-    const script = prepareAutomationScript(this.spec.script);
+    const script = prepareAutomationScript(this.spec.script, this.spec.baseDir);
     validateScript(script);
     running.set(this.spec.name, this);
     this.startedAt = this.now();
     let stopped: AutomationRunResult["stopped"] = "completed";
     let error: string | undefined;
 
-    const maxDurationMs = (this.maxDurationMs = Math.max(
-      500,
-      Math.min(
-        MAX_AUTOMATION_DURATION_MS,
-        this.opts.maxDurationMs ?? DEFAULT_AUTOMATION_DURATION_MS
-      )
-    ));
-    this.durationTimer = setTimeout(() => {
-      if (!this.ctl.stopped) {
-        this.stopReason = "duration";
-        this.ctl.stopped = true;
-        this.emit({ stopped: "duration", maxDurationMs });
-      }
-    }, maxDurationMs);
-    if (this.durationTimer.unref) this.durationTimer.unref();
+    // Cap policy (plan §6.3): with the kill switch armed there is no forced
+    // ceiling (default unlimited, explicit values honored). Otherwise clamp.
+    const armed = isKillSwitchArmed();
+    const requested = this.opts.maxDurationMs;
+    const maxDurationMs = (this.maxDurationMs = armed
+      ? requested === undefined
+        ? Number.POSITIVE_INFINITY
+        : Math.max(500, requested)
+      : Math.max(
+          500,
+          Math.min(
+            MAX_AUTOMATION_DURATION_MS,
+            requested ?? DEFAULT_AUTOMATION_DURATION_MS
+          )
+        ));
+    if (Number.isFinite(maxDurationMs)) {
+      this.durationTimer = setTimeout(() => {
+        if (!this.ctl.stopped) {
+          this.requestStop("duration");
+          this.emit({ stopped: "duration", maxDurationMs });
+        }
+      }, Math.min(maxDurationMs, 2 ** 31 - 1));
+      if (this.durationTimer.unref) this.durationTimer.unref();
+    }
 
     // Build the extension context (shared across all extensions for this run).
     // Extensions are created before the script starts so the first line can
@@ -1737,10 +2382,13 @@ export class AutomationRunner {
       "sdk",
       "callTool",
       ...toolNames,
-      script
+      transpileMainScript(script)
     );
     try {
       await fn(sdk, callTool, ...toolFunctions);
+      // Body settled. Stay resident while hotkeys/timers/watchers/keepAlive
+      // retain the run (plan §6.2); ends on exit/stop/duration.
+      await this.waitForLifetimeEnd();
       // Script returned. The reason is whatever set ctl.stopped (duration/
       // manual), or a clean completion if nothing forced a stop.
       stopped = this.stopReason ?? "completed";
@@ -1754,6 +2402,20 @@ export class AutomationRunner {
       }
     } finally {
       this.ctl.stopped = true;
+      this.wakeLifetime();
+      // Safety first: release held keys, then stop hotkeys, then user cleanup.
+      await this.releaseHeldKeys();
+      await this.unregisterHotkeys();
+      await this.runExitHandlers();
+      // Destroy native forms (the host also does this when the connection drops).
+      this.guiService?.destroyAll();
+      // Anything still retained is moot now; unblock any untilExit() waiters.
+      this.requestStop("completed");
+      this.retainers.clear();
+      if (this.tooltipTimer) {
+        clearTimeout(this.tooltipTimer);
+        this.tooltipTimer = null;
+      }
       // Abort the extension signal so extensions can tear down async work.
       try { abortController.abort(); } catch { /* best-effort */ }
       // Run extension dispose callbacks (in registration order).

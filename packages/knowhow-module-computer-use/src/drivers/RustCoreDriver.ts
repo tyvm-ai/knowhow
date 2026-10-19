@@ -5,10 +5,12 @@ import {
   DriverCapabilities,
   Display,
   MouseButton,
+  NativeUnsupportedError,
   OverlayPrimitive,
   Point,
   ScreenshotOptions,
   Size,
+  WindowInfo,
 } from "../contracts";
 
 /**
@@ -100,17 +102,9 @@ export class RustCoreDriver implements ComputerDriver {
     };
   }
 
-  async getActiveWindow(): Promise<{
-    id?: number;
-    title: string;
-    app?: string;
-    bounds?: { x: number; y: number; width: number; height: number };
-  } | null> {
-    const core = this.ensureCore();
-    if (typeof core.activeWindow !== "function") return null;
-    const w = core.activeWindow();
-    if (!w) return null;
-    return {
+  /** Map a native window record (pid/exe/bundleId are optional on older cores). */
+  private mapWindow(w: any): WindowInfo {
+    const info: WindowInfo = {
       id: w.id,
       title: w.title || w.app || "",
       app: w.app,
@@ -123,32 +117,60 @@ export class RustCoreDriver implements ComputerDriver {
           }
         : undefined,
     };
+    if (w.pid !== undefined && w.pid !== null) info.pid = w.pid;
+    if (w.exe) info.exe = w.exe;
+    if (w.bundleId) info.bundleId = w.bundleId;
+    return info;
   }
 
-  async listWindows(): Promise<
-    Array<{
-      id?: number;
-      title: string;
-      app?: string;
-      bounds?: { x: number; y: number; width: number; height: number };
-    }>
-  > {
+  async getActiveWindow(): Promise<WindowInfo | null> {
+    const core = this.ensureCore();
+    if (typeof core.activeWindow !== "function") return null;
+    const w = core.activeWindow();
+    if (!w) return null;
+    return this.mapWindow(w);
+  }
+
+  async listWindows(): Promise<WindowInfo[]> {
     const core = this.ensureCore();
     if (typeof core.listWindows !== "function") return [];
     const list = core.listWindows() as Array<any>;
-    return list.map((w) => ({
-      id: w.id,
-      title: w.title || w.app || "",
-      app: w.app,
-      bounds: w.bounds
-        ? {
-            x: w.bounds.x,
-            y: w.bounds.y,
-            width: w.bounds.width,
-            height: w.bounds.height,
-          }
-        : undefined,
-    }));
+    return list.map((w) => this.mapWindow(w));
+  }
+
+  // ── optional native extensions (feature-detected; older cores lack them) ──
+
+  async keyState(key: string, physical: boolean): Promise<boolean> {
+    const core = this.ensureCore();
+    if (typeof core.keyState !== "function") throw new NativeUnsupportedError("keyState");
+    return Boolean(core.keyState(key, physical));
+  }
+
+  async clipboardReadText(): Promise<string> {
+    const core = this.ensureCore();
+    if (typeof core.clipboardGetText !== "function")
+      throw new NativeUnsupportedError("clipboardGetText");
+    return (core.clipboardGetText() ?? "") as string;
+  }
+
+  async clipboardWriteText(text: string): Promise<void> {
+    const core = this.ensureCore();
+    if (typeof core.clipboardSetText !== "function")
+      throw new NativeUnsupportedError("clipboardSetText");
+    core.clipboardSetText(text);
+  }
+
+  async clipboardChangeCount(): Promise<number> {
+    const core = this.ensureCore();
+    if (typeof core.clipboardChangeCount !== "function")
+      throw new NativeUnsupportedError("clipboardChangeCount");
+    return Number(core.clipboardChangeCount());
+  }
+
+  async beep(freq: number, ms: number): Promise<void> {
+    const core = this.ensureCore();
+    if (typeof core.beep !== "function") throw new NativeUnsupportedError("beep");
+    core.beep(freq, ms);
   }
 
   async accessibilityTrusted(): Promise<boolean> {

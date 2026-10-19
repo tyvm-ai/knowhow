@@ -9,6 +9,9 @@ pub mod stub;
 #[cfg(target_os = "macos")]
 pub mod macos;
 
+#[cfg(target_os = "windows")]
+pub mod windows;
+
 #[cfg(target_os = "macos")]
 pub mod macos_accessibility;
 #[cfg(target_os = "macos")]
@@ -25,7 +28,7 @@ pub fn create_backend() -> Box<dyn Backend> {
 
     #[cfg(target_os = "windows")]
     {
-        return Box::new(stub::StubBackend::new("windows"));
+        return Box::new(windows::WinBackend::new());
     }
 
     #[cfg(target_os = "linux")]

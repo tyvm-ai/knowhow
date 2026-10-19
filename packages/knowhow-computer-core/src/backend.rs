@@ -3,10 +3,17 @@
 //! `ComputerDriver` interface one layer down keeps the two seams aligned and
 //! means adding a platform never touches the napi surface.
 
-use napi::Result;
+use napi::{Error, Result, Status};
 
 use crate::keys::Key;
 use crate::types::*;
+
+fn unsupported<T>(what: &str) -> Result<T> {
+    Err(Error::new(
+        Status::GenericFailure,
+        format!("{what} is not supported on this platform/backend"),
+    ))
+}
 
 pub trait Backend: Send {
     fn capabilities(&self) -> Capabilities;
@@ -71,5 +78,35 @@ pub trait Backend: Send {
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
         Ok(())
+    }
+
+    // ── key state ──
+    /// Is `key` currently held down? `physical == true` queries the hardware
+    /// (HID) state; `false` queries the logical/session state (includes synthetic
+    /// input). Default: unsupported.
+    fn key_state(&self, _key: Key, _physical: bool) -> Result<bool> {
+        unsupported("keyState")
+    }
+
+    // ── clipboard (text) ──
+    /// Current clipboard plain text, or `None` when it holds no text.
+    fn clipboard_get_text(&self) -> Result<Option<String>> {
+        unsupported("clipboardGetText")
+    }
+
+    fn clipboard_set_text(&self, _text: &str) -> Result<()> {
+        unsupported("clipboardSetText")
+    }
+
+    /// Monotonic counter that changes whenever the clipboard contents change.
+    fn clipboard_change_count(&self) -> Result<i64> {
+        unsupported("clipboardChangeCount")
+    }
+
+    // ── audio ──
+    /// Play a beep. `freq` (Hz) and `ms` may be ignored by backends that can't
+    /// honour them (macOS plays the system alert sound).
+    fn beep(&self, _freq: u32, _ms: u32) -> Result<()> {
+        unsupported("beep")
     }
 }

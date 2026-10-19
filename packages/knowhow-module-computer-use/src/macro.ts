@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import { ComputerUseService, MouseButton } from "./contracts";
+import { normalizeKeyName, normalizeKeyNames } from "./keyAliases";
 
 export interface AccessibilityTarget {
   /** A fresh ID from an earlier accessibilityElements step in this same run. */
@@ -29,6 +30,10 @@ export type MacroStep =
   | { action: "type"; text: string }
   | { action: "key"; key: string }
   | { action: "hotkey"; keys: string[] }
+  | { action: "keyDown"; key: string }
+  | { action: "keyUp"; key: string }
+  | { action: "clipboardSet"; text: string }
+  | { action: "copySelection"; chord?: string[]; timeoutMs?: number; restore?: boolean }
   | { action: "focus"; match: string }
   | { action: "accessibilityTrusted" }
   | { action: "accessibilityElements"; maxDepth?: number; maxElements?: number; interactiveOnly?: boolean }
@@ -191,13 +196,46 @@ export async function runMacro(
           rec(true, `${step.text.length} chars`);
           break;
         case "key":
-          await svc.pressKey(step.key);
+          await svc.pressKey(normalizeKeyName(step.key));
           rec(true, step.key);
           break;
         case "hotkey":
-          await svc.hotkey(...step.keys);
+          await svc.hotkey(...normalizeKeyNames(step.keys));
           rec(true, step.keys.join("+"));
           break;
+        case "keyDown":
+        case "keyUp": {
+          const fn = step.action === "keyDown" ? anySvc.keyDown : anySvc.keyUp;
+          if (typeof fn !== "function") {
+            rec(false, `${step.action} is not supported by this service`);
+            break;
+          }
+          await fn.call(svc, normalizeKeyName(step.key));
+          rec(true, step.key);
+          break;
+        }
+        case "clipboardSet": {
+          if (!anySvc.clipboard) {
+            rec(false, "clipboard is not supported by this service");
+            break;
+          }
+          await anySvc.clipboard.writeText(step.text);
+          rec(true, `${step.text.length} chars`);
+          break;
+        }
+        case "copySelection": {
+          if (!anySvc.clipboard) {
+            rec(false, "clipboard is not supported by this service");
+            break;
+          }
+          const text = await anySvc.clipboard.copySelection(
+            { chord: step.chord, timeoutMs: step.timeoutMs, restore: step.restore },
+            (chord: string[]) => svc.hotkey(...normalizeKeyNames(chord))
+          );
+          // A timeout (nothing copied) is a soft failure the macro can see.
+          rec(text !== null, text === null ? "timeout: nothing copied" : text);
+          break;
+        }
         case "focus": {
           const ok = await svc.focusWindow(step.match);
           rec(ok, step.match);

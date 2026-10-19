@@ -39,6 +39,40 @@ export interface OverlayPrimitive {
   lineWidth?: number;
 }
 
+/**
+ * A top-level window as reported by a driver. `pid`/`exe`/`bundleId` are
+ * optional: they are populated when the native core can resolve the owning
+ * process (see computer-use AHK-style automations: `window.isActive({ exe })`).
+ */
+export interface WindowInfo {
+  id?: number;
+  title: string;
+  app?: string;
+  bounds?: Region;
+  /** Owning process id. */
+  pid?: number;
+  /** Executable name or path of the owning process (e.g. `PathOfExile.exe`). */
+  exe?: string;
+  /** macOS bundle identifier of the owning application. */
+  bundleId?: string;
+}
+
+/**
+ * Thrown by optional driver methods when the underlying native build doesn't
+ * implement them yet. Callers feature-detect by catching this and falling back.
+ */
+export class NativeUnsupportedError extends Error {
+  readonly unsupported = true;
+  constructor(feature: string) {
+    super(`${feature} is not supported by this native core build`);
+    this.name = "NativeUnsupportedError";
+  }
+}
+
+export function isUnsupportedError(e: unknown): boolean {
+  return !!e && typeof e === "object" && (e as any).unsupported === true;
+}
+
 export interface Display {
   id: number;
   bounds: Region;
@@ -125,9 +159,18 @@ export interface ComputerDriver {
   keyUp(key: string): Promise<void>;
 
   // windows (optional / capability-gated)
-  getActiveWindow?(): Promise<{ id?: number; title: string; app?: string; bounds?: Region } | null>;
-  listWindows?(): Promise<Array<{ id?: number; title: string; app?: string; bounds?: Region }>>;
+  getActiveWindow?(): Promise<WindowInfo | null>;
+  listWindows?(): Promise<WindowInfo[]>;
   focusWindow?(match: string): Promise<boolean>;
+
+  // keyboard state / clipboard / sound (optional; feature-detected natively)
+  /** Is `key` currently down? `physical` queries hardware state, not injected state. */
+  keyState?(key: string, physical: boolean): Promise<boolean>;
+  clipboardReadText?(): Promise<string>;
+  clipboardWriteText?(text: string): Promise<void>;
+  /** Monotonic counter that changes whenever the clipboard contents change. */
+  clipboardChangeCount?(): Promise<number>;
+  beep?(freq: number, ms: number): Promise<void>;
 
   accessibilityTrusted?(): Promise<boolean>;
   accessibilityElements?(options?: AccessibilityOptions): Promise<AccessibilityElement[]>;
@@ -195,15 +238,8 @@ export interface ComputerUseService {
     }
   ): Promise<Buffer>;
 
-  getActiveWindow(): Promise<{
-    id?: number;
-    title: string;
-    app?: string;
-    bounds?: Region;
-  } | null>;
-  listWindows(): Promise<
-    Array<{ id?: number; title: string; app?: string; bounds?: Region }>
-  >;
+  getActiveWindow(): Promise<WindowInfo | null>;
+  listWindows(): Promise<WindowInfo[]>;
   focusWindow(match: string): Promise<boolean>;
 
   accessibilityTrusted(): Promise<boolean>;

@@ -1,0 +1,20 @@
+{
+  "name": "@tyvm/knowhow-computer-host",
+  "version": "0.0.1",
+  "description": "Resident host for knowhow computer-use automations: kill switch, global hotkeys, worker supervisor, IPC and tray.",
+  "license": "MIT",
+  "main": "index.js",
+  "bin": {
+    "knowhow-computer-host": "index.js"
+  },
+  "files": [
+    "index.js",
+    "bin/",
+    "PROTOCOL.md",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "cargo build --release",
+    "test": "cargo test"
+  }
+}

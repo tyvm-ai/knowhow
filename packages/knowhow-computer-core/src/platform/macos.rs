@@ -7,7 +7,7 @@
 
 use core_graphics::display::{CGDisplay, CGPoint};
 use core_graphics::event::{
-    CGEvent, CGEventTapLocation, CGEventType, CGKeyCode, CGMouseButton, ScrollEventUnit,
+    CGEvent, CGEventFlags, CGEventTapLocation, CGEventType, CGKeyCode, CGMouseButton, EventField, ScrollEventUnit,
 };
 use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 use std::process::Command as StdCommand;
@@ -34,6 +34,112 @@ extern "C" {
     /// Copy info about on-screen windows. Returns a CFArray of CFDictionary, in
     /// front-to-back z-order when `kCGWindowListOptionOnScreenOnly` is used.
     fn CGWindowListCopyWindowInfo(option: u32, relative_to_window: u32) -> CFArrayRef;
+}
+
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    /// `stateID`: 0 = CombinedSessionState, 1 = HIDSystemState.
+    fn CGEventSourceKeyState(state_id: i32, key: u16) -> bool;
+    /// Returns the CGEventFlags bitmask for the given source state.
+    fn CGEventSourceFlagsState(state_id: i32) -> u64;
+}
+
+extern "C" {
+    fn proc_pidpath(pid: i32, buffer: *mut std::ffi::c_void, buffersize: u32) -> i32;
+}
+
+// Helpers implemented in macos_native.m (AppKit).
+extern "C" {
+    fn kh_clipboard_get_text() -> *mut std::ffi::c_char;
+    fn kh_clipboard_set_text(text: *const std::ffi::c_char) -> i32;
+    fn kh_clipboard_change_count() -> i64;
+    fn kh_beep();
+    fn kh_bundle_id_for_pid(pid: i32) -> *mut std::ffi::c_char;
+    fn kh_bundle_id_for_exe_path(path: *const std::ffi::c_char) -> *mut std::ffi::c_char;
+    fn kh_free_string(p: *mut std::ffi::c_char);
+}
+
+const STATE_COMBINED_SESSION: i32 = 0;
+const STATE_HID_SYSTEM: i32 = 1;
+const FLAG_CAPS_LOCK: u64 = 0x0001_0000;
+const FLAG_SHIFT: u64 = 0x0002_0000;
+const FLAG_CONTROL: u64 = 0x0004_0000;
+const FLAG_ALT: u64 = 0x0008_0000;
+const FLAG_COMMAND: u64 = 0x0010_0000;
+
+/// Marker written to kCGEventSourceUserData (field 42) on every injected event
+/// ("KNOW"); the host's global hook ignores events carrying it. Mirrors the
+/// Windows backend's `INJECT_TAG` (dwExtraInfo).
+const INJECT_MARKER: i64 = 0x4B4E_4F57;
+
+/// Process-wide modifier state (CGEventFlags bits) maintained by `key()` and
+/// `hotkey()`. Applied explicitly to every injected event, because on macOS 26
+/// the HIDSystemState source no longer propagates synthetic modifier-down
+/// state onto subsequent events.
+static MOD_FLAGS: AtomicU64 = AtomicU64::new(0);
+
+/// CGEventFlags mask for a modifier key (0 for non-modifiers).
+fn modifier_mask(key: Key) -> u64 {
+    match key {
+        Key::Shift => FLAG_SHIFT,
+        Key::Control => FLAG_CONTROL,
+        Key::Alt => FLAG_ALT,
+        Key::Meta => FLAG_COMMAND,
+        _ => 0,
+    }
+}
+
+/// Pure bookkeeping: new modifier state after `key` goes down/up.
+fn apply_modifier(state: u64, key: Key, down: bool) -> u64 {
+    let m = modifier_mask(key);
+    if down { state | m } else { state & !m }
+}
+
+/// Stamp an event with the explicit modifier flags and the injection marker.
+fn stamp_with(evt: &CGEvent, flags: u64) {
+    evt.set_flags(CGEventFlags::from_bits_truncate(flags));
+    evt.set_integer_value_field(EventField::EVENT_SOURCE_USER_DATA, INJECT_MARKER);
+}
+
+fn stamp(evt: &CGEvent) {
+    stamp_with(evt, MOD_FLAGS.load(Ordering::SeqCst));
+}
+
+/// Full executable path for `pid` via proc_pidpath.
+fn exe_path_for_pid(pid: i32) -> Option<String> {
+    let mut buf = vec![0u8; 4096];
+    let n = unsafe { proc_pidpath(pid, buf.as_mut_ptr() as *mut std::ffi::c_void, buf.len() as u32) };
+    if n <= 0 {
+        return None;
+    }
+    buf.truncate(n as usize);
+    Some(String::from_utf8_lossy(&buf).to_string())
+}
+
+/// Basename of an executable path.
+fn exe_basename(path: &str) -> Option<String> {
+    path.rsplit('/').next().map(|s| s.to_string()).filter(|s| !s.is_empty())
+}
+
+fn take_c_string(p: *mut std::ffi::c_char) -> Option<String> {
+    if p.is_null() {
+        return None;
+    }
+    unsafe {
+        let s = std::ffi::CStr::from_ptr(p).to_string_lossy().to_string();
+        kh_free_string(p);
+        Some(s)
+    }
+}
+
+/// Bundle id via NSRunningApplication, falling back to the enclosing .app
+/// bundle of the executable path.
+fn bundle_id_for_pid(pid: i32, exe_path: Option<&str>) -> Option<String> {
+    if let Some(id) = take_c_string(unsafe { kh_bundle_id_for_pid(pid) }) {
+        return Some(id);
+    }
+    let path = std::ffi::CString::new(exe_path?).ok()?;
+    take_c_string(unsafe { kh_bundle_id_for_exe_path(path.as_ptr()) })
 }
 
 // kCGWindowListOptionOnScreenOnly | kCGWindowListExcludeDesktopElements
@@ -84,6 +190,7 @@ impl MacBackend {
         let source = Self::source()?;
         let evt = CGEvent::new_mouse_event(source, kind, point, button)
             .map_err(|_| Error::new(Status::GenericFailure, "Failed to create mouse event"))?;
+        stamp(&evt);
         Self::post(evt);
         Ok(())
     }
@@ -120,6 +227,8 @@ impl Backend for MacBackend {
             input: p.input_ok,
             capture: p.capture_ok,
             windows: true,
+            clipboard: Some(true),
+            key_state: Some(true),
             reason: p.fix.clone(),
         }
     }
@@ -162,6 +271,73 @@ impl Backend for MacBackend {
 
     fn active_window(&self) -> Result<Option<WindowInfo>> {
         Ok(list_windows_cg()?.into_iter().find(|w| w.active))
+    }
+
+    fn key_state(&self, key: Key, physical: bool) -> Result<bool> {
+        let state = if physical {
+            STATE_HID_SYSTEM
+        } else {
+            STATE_COMBINED_SESSION
+        };
+        let flag = match key {
+            Key::Shift => Some(FLAG_SHIFT),
+            Key::Control => Some(FLAG_CONTROL),
+            Key::Alt => Some(FLAG_ALT),
+            Key::Meta => Some(FLAG_COMMAND),
+            Key::CapsLock => Some(FLAG_CAPS_LOCK),
+            _ => None,
+        };
+        if let Some(mask) = flag {
+            // Modifier flags cover both left and right keys; KeyState only
+            // reports the single keycode we map to.
+            let flags = unsafe { CGEventSourceFlagsState(state) };
+            if flags & mask != 0 {
+                return Ok(true);
+            }
+        }
+        let code = keycode(key).ok_or_else(|| {
+            Error::new(
+                Status::InvalidArg,
+                format!("Unsupported key on macOS: {key:?}"),
+            )
+        })?;
+        Ok(unsafe { CGEventSourceKeyState(state, code) })
+    }
+
+    fn clipboard_get_text(&self) -> Result<Option<String>> {
+        unsafe {
+            let p = kh_clipboard_get_text();
+            if p.is_null() {
+                return Ok(None);
+            }
+            let s = std::ffi::CStr::from_ptr(p).to_string_lossy().to_string();
+            kh_free_string(p);
+            Ok(Some(s))
+        }
+    }
+
+    fn clipboard_set_text(&self, text: &str) -> Result<()> {
+        let c = std::ffi::CString::new(text).map_err(|_| {
+            Error::new(Status::InvalidArg, "clipboard text contains a NUL byte")
+        })?;
+        let ok = unsafe { kh_clipboard_set_text(c.as_ptr()) };
+        if ok == 1 {
+            Ok(())
+        } else {
+            Err(Error::new(
+                Status::GenericFailure,
+                "failed to write text to the clipboard",
+            ))
+        }
+    }
+
+    fn clipboard_change_count(&self) -> Result<i64> {
+        Ok(unsafe { kh_clipboard_change_count() })
+    }
+
+    fn beep(&self, _freq: u32, _ms: u32) -> Result<()> {
+        unsafe { kh_beep() };
+        Ok(())
     }
 
     fn get_displays(&self) -> Result<Vec<Display>> {
@@ -359,6 +535,7 @@ impl Backend for MacBackend {
         let evt =
             CGEvent::new_scroll_event(source, ScrollEventUnit::LINE, 2, dy as i32, dx as i32, 0)
                 .map_err(|_| Error::new(Status::GenericFailure, "Failed to create scroll event"))?;
+        stamp(&evt);
         Self::post(evt);
         Ok(())
     }
@@ -371,12 +548,14 @@ impl Backend for MacBackend {
                 .map_err(|_| Error::new(Status::GenericFailure, "keydown event"))?;
             let buf: Vec<u16> = ch.to_string().encode_utf16().collect();
             down.set_string_from_utf16_unchecked(&buf);
+            stamp(&down);
             Self::post_keyboard(down);
 
             let source_up = Self::source()?;
             let up = CGEvent::new_keyboard_event(source_up, 0, false)
                 .map_err(|_| Error::new(Status::GenericFailure, "keyup event"))?;
             up.set_string_from_utf16_unchecked(&buf);
+            stamp(&up);
             Self::post_keyboard(up);
             std::thread::sleep(std::time::Duration::from_millis(2));
         }
@@ -394,6 +573,13 @@ impl Backend for MacBackend {
         let source = Self::source()?;
         let evt = CGEvent::new_keyboard_event(source, code, down)
             .map_err(|_| Error::new(Status::GenericFailure, "keyboard event"))?;
+        // Update the process-wide modifier state first so a modifier event
+        // carries the *new* state (down: includes it; up: excludes it).
+        if modifier_mask(key) != 0 {
+            let old = MOD_FLAGS.load(Ordering::SeqCst);
+            MOD_FLAGS.store(apply_modifier(old, key, down), Ordering::SeqCst);
+        }
+        stamp(&evt);
         Self::post_keyboard(evt);
         Ok(())
     }
@@ -402,6 +588,8 @@ impl Backend for MacBackend {
         // All events in a chord must share one event source so its modifier state
         // is visible to the non-modifier key without leaking into later text.
         let source = Self::source()?;
+        let initial = MOD_FLAGS.load(Ordering::SeqCst);
+        let mut state = initial;
         for key in keys {
             let code = keycode(*key).ok_or_else(|| {
                 Error::new(
@@ -409,18 +597,33 @@ impl Backend for MacBackend {
                     format!("Unsupported key on macOS: {key:?}"),
                 )
             })?;
+            state = apply_modifier(state, *key, true);
+            MOD_FLAGS.store(state, Ordering::SeqCst);
             let evt = CGEvent::new_keyboard_event(source.clone(), code, true)
                 .map_err(|_| Error::new(Status::GenericFailure, "hotkey keydown event"))?;
+            stamp_with(&evt, state);
             Self::post_keyboard(evt);
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
         for key in keys.iter().rev() {
             let code = keycode(*key).expect("key was validated during keydown");
+            let m = modifier_mask(*key);
+            // Releasing a modifier restores its pre-hotkey state (so a modifier
+            // already held via key() stays held).
+            let flags_for_event = if m != 0 {
+                state = (state & !m) | (initial & m);
+                state
+            } else {
+                state
+            };
             let evt = CGEvent::new_keyboard_event(source.clone(), code, false)
                 .map_err(|_| Error::new(Status::GenericFailure, "hotkey keyup event"))?;
+            stamp_with(&evt, flags_for_event);
             Self::post_keyboard(evt);
+            MOD_FLAGS.store(state, Ordering::SeqCst);
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
+        MOD_FLAGS.store(initial, Ordering::SeqCst);
         std::thread::sleep(std::time::Duration::from_millis(20));
         Ok(())
     }
@@ -442,6 +645,9 @@ fn keycode(key: Key) -> Option<CGKeyCode> {
         Backspace => 0x33,
         Delete => 0x75,
         Escape => 0x35,
+        // The Mac "Help" key occupies the Insert position on PC keyboards.
+        Insert => 0x72,
+        CapsLock => 0x39,
 
         Left => 0x7B,
         Right => 0x7C,
@@ -465,6 +671,15 @@ fn keycode(key: Key) -> Option<CGKeyCode> {
             10 => 0x6D,
             11 => 0x67,
             12 => 0x6F,
+            13 => 0x69,
+            14 => 0x6B,
+            15 => 0x71,
+            16 => 0x6A,
+            17 => 0x40,
+            18 => 0x4F,
+            19 => 0x50,
+            20 => 0x5A,
+            // macOS has no virtual keycodes for F21..F24.
             _ => return None,
         },
 
@@ -553,6 +768,9 @@ fn list_windows_cg() -> Result<Vec<WindowInfo>> {
     let array: CFArray<CFType> = unsafe { CFArray::wrap_under_create_rule(array_ref) };
 
     let mut out: Vec<WindowInfo> = Vec::new();
+    // pid -> (exe, bundle id), looked up once per process.
+    let mut proc_cache: std::collections::HashMap<i32, (Option<String>, Option<String>)> =
+        std::collections::HashMap::new();
     for item in array.iter() {
         // Each item is a CFDictionaryRef.
         let dict: CFDictionary<CFString, CFType> =
@@ -580,12 +798,30 @@ fn list_windows_cg() -> Result<Vec<WindowInfo>> {
             continue;
         }
 
+        let pid = dict_i64(&dict, "kCGWindowOwnerPID")
+            .filter(|p| *p > 0)
+            .map(|p| p as i32);
+        let (exe, bundle_id) = match pid {
+            Some(p) => proc_cache
+                .entry(p)
+                .or_insert_with(|| {
+                    let path = exe_path_for_pid(p);
+                    let exe = path.as_deref().and_then(exe_basename);
+                    (exe, bundle_id_for_pid(p, path.as_deref()))
+                })
+                .clone(),
+            None => (None, None),
+        };
+
         out.push(WindowInfo {
             id,
             title,
             app,
             bounds,
             active: false,
+            pid: pid.map(|p| p as u32),
+            exe,
+            bundle_id,
         });
     }
 
@@ -669,4 +905,25 @@ fn ansi_char_keycode(c: char) -> Option<CGKeyCode> {
         _ => return None,
     };
     Some(code)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn modifier_bookkeeping() {
+        let s = apply_modifier(0, Key::Meta, true);
+        assert_eq!(s, FLAG_COMMAND);
+        let s = apply_modifier(s, Key::Alt, true);
+        assert_eq!(s, FLAG_COMMAND | FLAG_ALT);
+        // non-modifier keys never change state
+        assert_eq!(apply_modifier(s, Key::Char('c'), true), s);
+        let s = apply_modifier(s, Key::Meta, false);
+        assert_eq!(s, FLAG_ALT);
+        assert_eq!(modifier_mask(Key::Control), 1 << 18);
+        assert_eq!(modifier_mask(Key::Shift), 1 << 17);
+        assert_eq!(modifier_mask(Key::Alt), 1 << 19);
+        assert_eq!(modifier_mask(Key::Meta), 1 << 20);
+    }
 }

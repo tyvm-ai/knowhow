@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@tyvm/knowhow-computer-core": "*",
+    "@tyvm/knowhow-computer-host": "*",
     "@tyvm/knowhow-module-prolog": "*",
     "@tyvm/knowhow-module-worldlines": "*",
     "sharp": "^0.35.5"

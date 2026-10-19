@@ -26,6 +26,7 @@ import {
   listRunning,
   validateScript,
 } from "../automation";
+import * as hostOps from "../host/hostOps";
 import { AUTOMATION_SDK_EXTENSION, AutomationSdkExtension } from "../automationExtensions";
 
 /**
@@ -432,6 +433,35 @@ export async function computerUseClickColorSequence(
 
 export async function computerUseGetMousePosition(this: ToolsService): Promise<string> {
   return JSON.stringify(await getService(this).mousePosition());
+}
+
+// ── clipboard / key state ───────────────────────────────────────────────────
+
+export async function computerUseReadClipboard(this: ToolsService): Promise<string> {
+  const svc = getService(this) as ComputerService;
+  return JSON.stringify({ text: await svc.clipboard.readText() });
+}
+
+export async function computerUseWriteClipboard(
+  this: ToolsService,
+  text: string
+): Promise<string> {
+  const svc = getService(this) as ComputerService;
+  await svc.clipboard.writeText(text);
+  return `Wrote ${String(text ?? "").length} chars to the clipboard`;
+}
+
+export async function computerUseKeyState(
+  this: ToolsService,
+  key: string,
+  physical?: boolean
+): Promise<string> {
+  const svc = getService(this) as ComputerService;
+  const down = await svc.keyState(key, !!physical);
+  if (down === null) {
+    return JSON.stringify({ key, supported: false, down: false });
+  }
+  return JSON.stringify({ key, supported: true, down, physical: !!physical });
 }
 
 // ── windows ────────────────────────────────────────────────────────────────
@@ -1377,12 +1407,68 @@ export async function computerUseTestAutomation(
 
 export async function computerUseStopAutomation(
   this: ToolsService,
+  name?: string,
+  all?: boolean
+): Promise<string> {
+  const parts: string[] = [];
+  // Host-managed workers (separate processes) are stopped through the host.
+  try {
+    const stopped = await hostOps.stopAutomations(all ? { all: true } : { name });
+    if (stopped.stopped.length) {
+      parts.push(`Stopped ${stopped.stopped.length} host-managed automation(s) (${stopped.stopped.join(", ")}).`);
+    }
+  } catch (e: any) {
+    if (!/no matching running worker|specify name/i.test(String(e?.message))) {
+      parts.push(`Host stop failed: ${e?.message ?? e}`);
+    }
+  }
+  const names = all ? listRunning() : name ? [name] : [];
+  for (const n of names) {
+    const runner = getRunning(n);
+    if (runner) {
+      runner.ctl.stop();
+      parts.push(`Requested stop for in-process automation "${n}".`);
+    }
+  }
+  if (!all && !name) return "Provide an automation name or all=true.";
+  return parts.length ? parts.join(" ") : all ? "No automations are running." : `Automation "${name}" is not running.`;
+}
+
+/** List host-managed running automations (separate worker processes). */
+export async function computerUseListRunningAutomations(this: ToolsService): Promise<string> {
+  const workers = await hostOps.listWorkers();
+  return JSON.stringify({ host: workers, inProcess: listRunning() }, null, 2);
+}
+
+async function hostControl(
+  verb: "pause" | "resume",
   name: string
 ): Promise<string> {
-  const runner = getRunning(name);
-  if (!runner) return `Automation "${name}" is not running.`;
-  runner.ctl.stop();
-  return `Requested stop for automation "${name}".`;
+  try {
+    const r = verb === "pause"
+      ? await hostOps.pauseAutomations({ name })
+      : await hostOps.resumeAutomations({ name });
+    return `${verb === "pause" ? "Paused" : "Resumed"} ${r.workers.length} worker(s)${r.errors.length ? `; errors: ${r.errors.join("; ")}` : ""}.`;
+  } catch (e: any) {
+    return `Could not ${verb} "${name}": ${e?.message ?? e}`;
+  }
+}
+
+export async function computerUsePauseAutomation(this: ToolsService, name: string): Promise<string> {
+  return hostControl("pause", name);
+}
+
+export async function computerUseResumeAutomation(this: ToolsService, name: string): Promise<string> {
+  return hostControl("resume", name);
+}
+
+export async function computerUseRestartAutomation(this: ToolsService, name: string): Promise<string> {
+  try {
+    const r = await hostOps.restartAutomation(name);
+    return `Restarted "${name}" (worker ${r.worker.id}, pid ${r.worker.pid}).`;
+  } catch (e: any) {
+    return `Could not restart "${name}": ${e?.message ?? e}`;
+  }
 }
 
 export async function computerUseDeleteAutomation(

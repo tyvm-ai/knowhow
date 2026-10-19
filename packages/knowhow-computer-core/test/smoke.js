@@ -55,4 +55,59 @@ if (caps.windows) {
   console.log("(skipping window test: windows capability not reported)");
 }
 
+// ── new native APIs (read-only / restoring) ──
+if (caps.keyState) {
+  assert.strictEqual(typeof core.keyState("shift"), "boolean");
+  assert.strictEqual(typeof core.keyState("shift", true), "boolean");
+  assert.strictEqual(typeof core.keyState("a"), "boolean");
+  assert.strictEqual(typeof core.keyState("capslock", true), "boolean");
+  console.log("keyState(shift):", core.keyState("shift"));
+} else {
+  console.log("(skipping keyState: capability not reported)");
+}
+
+if (caps.clipboard) {
+  const saved = core.clipboardGetText();
+  const countBefore = core.clipboardChangeCount();
+  assert.strictEqual(typeof countBefore, "number");
+  const marker = "knowhow-core-smoke-" + Date.now() + " ünï ✓";
+  try {
+    core.clipboardSetText(marker);
+    assert.strictEqual(core.clipboardGetText(), marker, "clipboard roundtrip");
+    assert.ok(core.clipboardChangeCount() !== countBefore, "changeCount advances on write");
+  } finally {
+    if (saved !== null) core.clipboardSetText(saved);
+  }
+  console.log("clipboard roundtrip OK");
+} else {
+  console.log("(skipping clipboard test: capability not reported)");
+}
+
+assert.strictEqual(typeof core.beep, "function");
+
+// parseChord / allKeyNames (pure)
+const native = require("../index.js");
+assert.deepStrictEqual(native.parseChord("ctrl+alt+esc"), {
+  modifiers: ["control", "alt"],
+  key: "escape",
+});
+assert.strictEqual(native.parseChord("ctrl+bogus"), null);
+assert.ok(native.allKeyNames().includes("f13"));
+
+if (caps.windows) {
+  const windows = core.listWindows();
+  const withPid = windows.filter((w) => typeof w.pid === "number");
+  console.log(`windows with pid: ${withPid.length}/${windows.length}`);
+  for (const w of withPid) {
+    assert.ok(w.pid > 0);
+    assert.ok(w.exe === null || w.exe === undefined || typeof w.exe === "string");
+  }
+  if (windows.length) {
+    assert.ok(withPid.length > 0, "listWindows entries carry pid");
+    assert.ok(withPid.some((w) => w.exe), "at least one window has exe");
+    const w0 = withPid.find((w) => w.exe);
+    console.log("sample window:", { app: w0.app, pid: w0.pid, exe: w0.exe, bundleId: w0.bundleId });
+  }
+}
+
 console.log("\nSMOKE OK");

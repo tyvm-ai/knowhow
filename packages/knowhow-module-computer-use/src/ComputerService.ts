@@ -13,6 +13,7 @@ import {
   Region,
   ScreenshotOptions,
   Size,
+  WindowInfo,
 } from "./contracts";
 import { RawScreenshot } from "./drivers/RustCoreDriver";
 import {
@@ -37,6 +38,9 @@ import {
 import { RegionShape, shapeToSvg, shapeBounds } from "./regionShape";
 
 import * as path from "path";
+import { ClipboardService } from "./clipboard";
+import { normalizeKeyName, normalizeKeyNames } from "./keyAliases";
+import { isUnsupportedError } from "./contracts";
 const execFileAsync = promisify(execFile);
 
 /** Case-insensitive app-name match; "Chrome" matches "Google Chrome". */
@@ -186,6 +190,10 @@ export class ComputerService implements ComputerUseService {
   private active: ComputerDriver | null = null;
   private opts: ComputerServiceOptions;
   private cachedSize: Size | null = null;
+  /** Native-or-CLI text clipboard (see clipboard.ts). */
+  readonly clipboard: ClipboardService = new ClipboardService({
+    getDriver: () => this.getDriver(),
+  });
 
   constructor(opts: ComputerServiceOptions = {}) {
     this.opts = {
@@ -1449,19 +1457,62 @@ export class ComputerService implements ComputerUseService {
   }
 
   async pressKey(key: string): Promise<void> {
-    return (await this.getDriver()).pressKey(key);
+    return (await this.getDriver()).pressKey(normalizeKeyName(key));
   }
 
   async hotkey(...keys: string[]): Promise<void> {
-    return (await this.getDriver()).hotkey(...keys);
+    return (await this.getDriver()).hotkey(...normalizeKeyNames(keys));
   }
 
-  async getActiveWindow(): Promise<{
-    id?: number;
-    title: string;
-    app?: string;
-    bounds?: Region;
-  } | null> {
+  async keyDown(key: string): Promise<void> {
+    return (await this.getDriver()).keyDown(normalizeKeyName(key));
+  }
+
+  async keyUp(key: string): Promise<void> {
+    return (await this.getDriver()).keyUp(normalizeKeyName(key));
+  }
+
+  /**
+   * Is `key` currently down? Returns `null` when the active driver/native core
+   * can't report key state (callers treat that as "unsupported").
+   */
+  async keyState(key: string, physical = false): Promise<boolean | null> {
+    const driver = await this.getDriver();
+    if (typeof driver.keyState !== "function") return null;
+    try {
+      return await driver.keyState(normalizeKeyName(key), physical);
+    } catch (e) {
+      if (isUnsupportedError(e)) return null;
+      throw e;
+    }
+  }
+
+  /**
+   * Play a tone: native when available, else a best-effort fallback
+   * (`afplay Tink` on macOS, terminal bell elsewhere).
+   */
+  async beep(freq = 1000, ms = 150): Promise<void> {
+    const driver = await this.getDriver();
+    if (typeof driver.beep === "function") {
+      try {
+        await driver.beep(freq, ms);
+        return;
+      } catch (e) {
+        if (!isUnsupportedError(e)) throw e;
+      }
+    }
+    if (process.platform === "darwin") {
+      try {
+        await execFileAsync("afplay", ["/System/Library/Sounds/Tink.aiff"]);
+        return;
+      } catch {
+        /* fall through to the bell */
+      }
+    }
+    process.stdout.write("\x07");
+  }
+
+  async getActiveWindow(): Promise<WindowInfo | null> {
     const driver = await this.getDriver();
     if (driver.getActiveWindow) return driver.getActiveWindow();
     // The default RustCoreDriver implements getActiveWindow natively (via
@@ -1757,9 +1808,7 @@ export class ComputerService implements ComputerUseService {
     }
   }
 
-  async listWindows(): Promise<
-    Array<{ id?: number; title: string; app?: string; bounds?: Region }>
-  > {
+  async listWindows(): Promise<WindowInfo[]> {
     const driver = await this.getDriver();
     if (driver.listWindows) return driver.listWindows();
     if (process.platform === "darwin") return this.listWindowsMac();

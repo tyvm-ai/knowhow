@@ -64,6 +64,12 @@ pub struct WindowInfo {
     pub bounds: Region,
     /// True for the frontmost window of the frontmost app.
     pub active: bool,
+    /// Owning process id, when known.
+    pub pid: Option<u32>,
+    /// Executable file name (basename of the process image), when known.
+    pub exe: Option<String>,
+    /// macOS bundle identifier of the owning app, when known.
+    pub bundle_id: Option<String>,
 }
 
 /// A focused-window accessibility node with a short-lived structural ID.
@@ -114,6 +120,10 @@ pub struct Capabilities {
     pub input: bool,
     pub capture: bool,
     pub windows: bool,
+    /// Clipboard text get/set/changeCount are implemented.
+    pub clipboard: Option<bool>,
+    /// Async/physical key state queries (`keyState`) are implemented.
+    pub key_state: Option<bool>,
     /// Human-readable explanation when a capability is unavailable
     /// (e.g. "macOS: Accessibility permission not granted").
     pub reason: Option<String>,

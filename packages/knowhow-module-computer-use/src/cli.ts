@@ -15,6 +15,7 @@ import {
   saveAutomation,
   validateScript,
 } from "./automation";
+import { parsePlatforms, registerFiletype, writeLaunchers } from "./launcher";
 import {
   listRegions,
   getRegion,
@@ -22,6 +23,8 @@ import {
   isWindowRelativeRegion,
 } from "./regions";
 import { storedBounds, isRegionShape, toShape } from "./regionShape";
+import * as hostOps from "./host/hostOps";
+import { ensureHost, hostBinaryPath, probeHost } from "./host/hostLauncher";
 import { ExtensionsService } from "@tyvm/knowhow/ts_build/src/services/ExtensionsService";
 
 /**
@@ -115,6 +118,20 @@ export function registerComputerCli(
       } catch (e: any) {
         console.error(`No usable driver: ${e?.message || e}`);
         process.exitCode = 1;
+      }
+
+      // ── host (resident process: kill switch, global hotkeys, workers) ──
+      console.log("\nComputer host:");
+      const bin = hostBinaryPath();
+      console.log(`  binary:  ${bin ?? "NOT FOUND (cargo build --release in packages/knowhow-computer-host, or set KNOWHOW_HOST_BIN)"}`);
+      const st = await probeHost();
+      if (!st) {
+        console.log("  running: no (started automatically by `computer run-automation`, or `computer host start`)");
+      } else {
+        console.log(`  running: yes (pid ${st.pid}, v${st.version}, ${st.platform})`);
+        console.log(`  kill switch: ${st.killSwitch}`);
+        console.log(`  armed:   ${st.killSwitchArmed ? "yes" : "NO"}`);
+        if (st.hookError) console.log(`  hookError: ${st.hookError}`);
       }
     });
 
@@ -721,16 +738,81 @@ export function registerComputerCli(
     }
   };
 
+  // Tail a worker log until the worker exits; Ctrl+C asks the host to stop it.
+  const attachToWorker = async (workerId: string, logPath: string) => {
+    let offset = 0;
+    let stopping = false;
+    const pump = () => {
+      try {
+        const st = fs.statSync(logPath);
+        if (st.size > offset) {
+          const fd = fs.openSync(logPath, "r");
+          const buf = Buffer.alloc(st.size - offset);
+          fs.readSync(fd, buf, 0, buf.length, offset);
+          fs.closeSync(fd);
+          offset = st.size;
+          process.stdout.write(buf.toString("utf8"));
+        }
+      } catch {
+        /* log not created yet */
+      }
+    };
+    const onSigint = () => {
+      if (stopping) process.exit(130);
+      stopping = true;
+      console.log("\nStopping automation via host...");
+      hostOps.stopAutomations({ id: workerId }).catch(() => {});
+    };
+    process.on("SIGINT", onSigint);
+    try {
+      for (;;) {
+        pump();
+        const w = (await hostOps.listWorkers()).find((x) => x.id === workerId);
+        if (!w || w.status === "exited") {
+          pump();
+          if (w && w.exitCode) process.exitCode = w.exitCode;
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    } finally {
+      process.off("SIGINT", onSigint);
+    }
+  };
+
   cmd
-    .command("run-automation <name>")
-    .description("Run a saved automation LIVE (real mouse/keyboard).")
+    .command("run-automation <nameOrPath>")
+    .description(
+      "Run an automation LIVE (real mouse/keyboard). <nameOrPath> is a saved name (.knowhow/automations, ./automations, automationPaths) or a script path (./automations/foo.ts, absolute, Windows paths OK); relative imports resolve next to the script."
+    )
     .option("--driver <name>", "Pin a driver by name")
     .option("--params-json <json>", "JSON object exposed read-only as sdk.params")
     .option(
       "--max-ms <ms>",
-      "Max run duration in ms (default 30000, HARD-CAPPED at 300000 so a human can always reclaim the mouse)"
+      "Max run duration in ms (default 30000, HARD-CAPPED at 300000 until the global kill switch is armed, so a human can always reclaim the mouse)"
     )
-    .action((name, opts) => runAutomationCli(name, opts));
+    .option("--host", "Run under the knowhow computer host (default when a host binary is found)")
+    .option("--no-host", "Run in-process, without the host (no global hotkeys / kill switch)")
+    .option("--attach", "Tail the worker log until it exits (default when stdout is a TTY)")
+    .option("--no-attach", "Return as soon as the host has started the worker")
+    .action(async (name, opts) => {
+      const useHost =
+        opts.host === true ||
+        (opts.host !== false && (!!hostBinaryPath() || !!(await probeHost())));
+      if (!useHost) return runAutomationCli(name, opts);
+      const res = await hostOps.startAutomation(name, {
+        params: opts.paramsJson,
+        maxMs: opts.maxMs,
+      });
+      if (!res.started) {
+        console.log(`"${name}" is already running (worker ${res.worker.id}); singleInstance: ignore.`);
+        return;
+      }
+      console.log(`Started "${name}" under host (worker ${res.worker.id}, pid ${res.worker.pid}).`);
+      console.log(`Log: ${res.worker.logPath}`);
+      const attach = opts.attach ?? !!process.stdout.isTTY;
+      if (attach) await attachToWorker(res.worker.id, res.worker.logPath);
+    });
 
   cmd
     .command("test-automation <name>")
@@ -747,6 +829,143 @@ export function registerComputerCli(
         dryRun: true,
       })
     );
+
+  // ── host-managed automation control ──────────────────────────────────────
+  const fmtAge = (ms: number) => {
+    const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
+    return s < 90 ? `${s}s` : s < 5400 ? `${Math.round(s / 60)}m` : `${Math.round(s / 3600)}h`;
+  };
+  const guard = (fn: (...a: any[]) => Promise<void>) => async (...a: any[]) => {
+    try {
+      await fn(...a);
+    } catch (e: any) {
+      console.error(e?.message ?? String(e));
+      process.exitCode = 1;
+    }
+  };
+  const report = (verb: string, r: { workers?: string[]; stopped?: string[]; errors?: string[] }) => {
+    const ids = r.workers ?? r.stopped ?? [];
+    console.log(`${verb} ${ids.length} worker(s)${ids.length ? `: ${ids.join(", ")}` : ""}`);
+    for (const e of r.errors ?? []) console.error(`  ! ${e}`);
+  };
+
+  cmd
+    .command("ps")
+    .description("List host-managed running automations.")
+    .action(guard(async () => {
+      const ws = await hostOps.listWorkers();
+      if (!ws.length) return console.log("No host-managed automations running.");
+      for (const w of ws) {
+        console.log(
+          `${w.id}  ${w.name.padEnd(20)} ${w.status.padEnd(8)} pid=${w.pid} up=${fmtAge(w.startedAt)} hotkeys=${w.hotkeyCount}${w.hotkeysSuspended ? "(suspended)" : ""}${w.trayStatus ? ` [${w.trayStatus}]` : ""}`
+        );
+      }
+    }));
+
+  cmd
+    .command("stop [name]")
+    .description("Stop a host-managed automation by name (or --all).")
+    .option("--all", "Stop every running automation")
+    .action(guard(async (name, opts) => {
+      if (!name && !opts.all) throw new Error("Specify <name> or --all.");
+      report("Stopped", await hostOps.stopAutomations(opts.all ? { all: true } : { name }));
+    }));
+
+  cmd
+    .command("pause <name>")
+    .description("Pause a host-managed automation (also suspends its hotkeys).")
+    .action(guard(async (name) => report("Paused", await hostOps.pauseAutomations({ name }))));
+
+  cmd
+    .command("resume <name>")
+    .description("Resume a paused host-managed automation.")
+    .action(guard(async (name) => report("Resumed", await hostOps.resumeAutomations({ name }))));
+
+  cmd
+    .command("restart <name>")
+    .description("Restart a host-managed automation with its original arguments.")
+    .action(guard(async (name) => {
+      const r = await hostOps.restartAutomation(name);
+      console.log(`Restarted "${name}" (worker ${r.worker.id}, pid ${r.worker.pid}).`);
+    }));
+
+  cmd
+    .command("make-launcher <script>")
+    .description(
+      "Write a double-click launcher next to <script> (Windows .cmd [+ .vbs], macOS .command, Linux .sh). Committable: no absolute paths."
+    )
+    .option("--out <file>", "Output file (single platform only)")
+    .option("--platform <list>", "win32,darwin,linux or all (comma separated; default: this OS)")
+    .option("--cwd <dir>", "Working dir for the automation, relative to the script's dir (default '.')")
+    .option("--vbs", "Windows: also write <name>.vbs which launches with no console window")
+    .action(guard(async (script, opts) => {
+      const written = writeLaunchers({
+        script,
+        out: opts.out,
+        cwd: opts.cwd,
+        vbs: !!opts.vbs,
+        platforms: parsePlatforms(opts.platform),
+      });
+      for (const w of written) console.log(`Wrote ${w.file} (${w.platform})`);
+    }));
+
+  cmd
+    .command("register-filetype")
+    .description(
+      "Windows: associate an extension (default .khs) with `knowhow computer run-automation` for double-click (HKCU only, no admin)."
+    )
+    .option("--ext <ext>", "Extension to register (default .khs)")
+    .option("--unregister", "Remove the association")
+    .option("--dry-run", "Print the reg.exe commands without running them")
+    .action(guard(async (opts) => {
+      const lines = registerFiletype(opts.ext, { unregister: !!opts.unregister, dryRun: !!opts.dryRun });
+      for (const l of lines) console.log(opts.dryRun ? l : `ran: ${l}`);
+    }));
+
+  const hostCmd = cmd.command("host").description("Manage the resident computer host process.");
+  hostCmd
+    .command("start")
+    .option("--no-tray", "Run without the tray icon")
+    .description("Start the host (detached) if it is not already running.")
+    .action(guard(async (opts) => {
+      const st = await ensureHost({ args: opts.tray === false ? ["--no-tray"] : [] });
+      console.log(`Host running (pid ${st.pid}); kill switch ${st.killSwitch}, armed=${st.killSwitchArmed}`);
+      if (st.hookError) console.log(`hookError: ${st.hookError}`);
+    }));
+  hostCmd
+    .command("stop")
+    .description("Stop all automations and shut the host down.")
+    .action(guard(async () => {
+      if (!(await probeHost())) return console.log("Host is not running.");
+      await hostOps.hostRequest({ type: "shutdown" });
+      console.log("Host shutting down.");
+    }));
+  hostCmd
+    .command("status")
+    .description("Show host status.")
+    .action(guard(async () => {
+      const st = await probeHost();
+      if (!st) return console.log("Host is not running.");
+      console.log(JSON.stringify(st, null, 2));
+    }));
+
+  cmd
+    .command("keys")
+    .description("Print key names as pressed (to author hotkey specs).")
+    .option("--listen", "Start listening (Ctrl+C to quit)")
+    .action(guard(async (opts) => {
+      const bin = hostBinaryPath();
+      if (!bin) throw new Error("knowhow-computer-host binary not found.");
+      if (!opts.listen) return console.log("Use `computer keys --listen`.");
+      await new Promise<void>((resolve) => {
+        const child = spawn(bin, ["--print-keys"], { stdio: "inherit" });
+        child.on("exit", () => resolve());
+        child.on("error", (e) => {
+          console.error(e.message);
+          resolve();
+        });
+      });
+    }));
 
   // ── computer-use agent ─────────────────────────────────────────────────
   // Spawns a knowhow agent primed for computer use, with models pre-selected
