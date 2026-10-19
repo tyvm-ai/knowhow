@@ -7,6 +7,8 @@ import * as language from "./language/definitions";
 import * as mcp from "./mcp/definitions";
 import { googleSearchDefinition } from "./googleSearch";
 import { startAgentTaskDefinition } from "./startAgentTask";
+import { listWorkersDefinition } from "./listWorkers";
+import { workerExecDefinition } from "./workerExec";
 import { replyToParentDefinition } from "./replyToParent";
 import { runGenerateDefinition } from "./runGenerate";
 import { sendAgentMessageDefinition } from "./sendAgentMessage";
@@ -724,6 +726,8 @@ export const includedTools = [
   loadImageAsBase64Definition,
   googleSearchDefinition,
   startAgentTaskDefinition,
+  listWorkersDefinition,
+  workerExecDefinition,
   replyToParentDefinition,
   runGenerateDefinition,
   sendAgentMessageDefinition,

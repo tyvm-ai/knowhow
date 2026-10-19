@@ -62,8 +62,41 @@ export async function sendAgentMessage(
     return "sendAgentMessage: message is required.";
   }
 
-  const targetDir = path.join(agentsDir(), taskId);
+  const remoteMod = await import("../../services/RemoteWorkers");
+  const targetDir = path.join(agentsDir(), remoteMod.stripRemotePrefix(taskId));
   const inputPath = path.join(targetDir, "input.txt");
+
+  const isRemote =
+    /^remote:/i.test(taskId) ||
+    (remoteMod.isRemoteTaskId(taskId) && !fs.existsSync(targetDir));
+
+  if (isRemote) {
+    const fromRemote =
+      from ??
+      _ctx?.taskId ??
+      (_ctx?.caller as any)?.currentTaskId ??
+      "unknown";
+    const fromRemoteAgent = (_ctx?.caller as any)?.name;
+    const remoteLabel = fromRemoteAgent
+      ? `${fromRemote}/${fromRemoteAgent}`
+      : fromRemote;
+    try {
+      const id = remoteMod.stripRemotePrefix(taskId);
+      await remoteMod.sendRemoteTaskMessage(
+        id,
+        poke ? `/poke ${message}` : `[from:${remoteLabel}] ${message}`
+      );
+      return `Message queued for remote task ${id}${
+        poke
+          ? " (poke is delivered as a normal queued message for remote tasks)"
+          : ""
+      }`;
+    } catch (e: any) {
+      return `sendAgentMessage: failed to send to remote task ${taskId}: ${
+        e?.message ?? String(e)
+      }`;
+    }
+  }
 
   if (!fs.existsSync(targetDir)) {
     return `sendAgentMessage: target task directory not found: ${targetDir}`;
@@ -101,7 +134,8 @@ export const sendAgentMessageDefinition: Tool = {
       "Send a message to another running agent (a child you spawned, a peer, or your parent) by " +
       "appending it to that agent's input queue. The recipient picks it up on its next sync cycle " +
       "as a user message. This is the down/lateral communication edge (complement to replyToParent). " +
-      "Set poke:true to interrupt the recipient's current step (delivered as /poke). Your sender " +
+      "Set poke:true to interrupt the recipient's current step (delivered as /poke). Also works for remote " +
+      "tasks (UUID returned by startAgentTask {worker}). Your sender " +
       "identity is attached automatically so the recipient can reply back to you.",
     parameters: {
       type: "object",

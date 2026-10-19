@@ -6,3 +6,4 @@ export { InternalChatModule } from './InternalChatModule';
 export { ShellCommandModule } from './ShellCommandModule';
 export { ToolCommandModule } from './ToolCommandModule';
 export { RendererModule } from './RendererModule';
+export { WorkerModule } from './WorkerModule';

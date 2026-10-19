@@ -628,7 +628,17 @@ async function cmdAttach(
     process.exit(1);
   }
 
-  const resolvedId = resolveTaskId(value);
+  let resolvedId = resolveTaskId(value);
+  if (!resolvedId) {
+    // Remote (backend-synced) task: a UUID with no local dir is passed
+    // straight through to /attach, which attaches via the web.
+    const { isRemoteTaskId, stripRemotePrefix } = await import(
+      "../services/RemoteWorkers"
+    );
+    if (isRemoteTaskId(value.trim())) {
+      resolvedId = stripRemotePrefix(value.trim());
+    }
+  }
   if (!resolvedId) {
     console.error(`Task not found: ${value}`);
     const rows = buildRows(true);

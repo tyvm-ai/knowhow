@@ -31,6 +31,11 @@ export interface StartAgentTaskParams {
    * the spawning agent.
    */
   parentTaskId?: string;
+  /**
+   * Run this agent on a remote connected worker (id, id-prefix, hostname or
+   * `host:folder`) instead of locally. See listWorkers.
+   */
+  worker?: string;
   /** Per-call context injected by ToolsService.callTool (contains caller + taskId). */
   _ctx?: { caller?: any; taskId?: string; [key: string]: any };
 }
@@ -47,6 +52,12 @@ export interface StartAgentTaskResult {
   parentTaskId?: string;
   exitCode?: number | null;
   error?: string;
+  remote?: boolean;
+  workerId?: string;
+  workerName?: string;
+  remoteTaskId?: string;
+  sessionId?: string;
+  finalAnswer?: string;
 }
 
 const PROCESSES_DIR = path.join(process.cwd(), ".knowhow", "processes");
@@ -96,6 +107,7 @@ function subagentCapabilitiesNote(): string {
     "To communicate with running agents: use sendAgentMessage (send a message or /poke to a child/peer/parent),",
     "replyToParent (report back to whoever spawned you), and connectAgent (wire agents together with an ARRAY",
     "of { listener, speaker } connections — enables bidirectional, pipeline, star, and mesh topologies in one call).",
+    "To use other machines: listWorkers, then startAgentTask with worker:<id|name> (runs a full agent on that worker), waitForAgentCompleted/sendAgentMessage work with the returned remote taskId.",
   ];
   lines.push("---", "");
   return lines.join("\n");
@@ -137,6 +149,52 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<Star
   if (!prompt) {
     throw new Error("prompt is required to create a chat task");
   }
+  if (params.worker) {
+    if (forkTaskId) {
+      throw new Error("forkTaskId is not supported together with worker");
+    }
+    const { startRemoteAgentTask, waitForRemoteTask } = await import(
+      "../../services/RemoteWorkers"
+    );
+    // parentTaskId is intentionally not forwarded: the worker cannot resolve
+    // the parent's local task dir, so replyToParent is unavailable remotely.
+    const r = await startRemoteAgentTask({
+      worker: params.worker,
+      prompt,
+      agentName,
+      provider,
+      model,
+      maxTimeLimit,
+      maxSpendLimit,
+      resumeTaskId: resume ? providedTaskId : undefined,
+    });
+    const base: StartAgentTaskResult = {
+      success: true,
+      status: "started",
+      taskId: r.taskId,
+      remote: true,
+      workerId: r.workerId,
+      workerName: r.workerName,
+      remoteTaskId: r.taskId,
+      sessionId: r.sessionId,
+      syncFs: false,
+      syncReady: false,
+      logPath: "",
+    };
+    if (waitForCompletion) {
+      const w = await waitForRemoteTask(r.taskId, {
+        timeoutMs: maxTimeLimit ? maxTimeLimit * 60_000 : undefined,
+      });
+      return {
+        ...base,
+        status: w.status === "completed" ? "completed" : "failed",
+        success: w.status === "completed",
+        error: w.error,
+        finalAnswer: w.finalAnswer,
+      };
+    }
+    return base;
+  }
   if (resume && forkTaskId) {
     throw new Error("resume and forkTaskId are mutually exclusive");
   }
@@ -175,6 +233,10 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<Star
       : ["agent"];
 
   if (forkTaskId) args.push("--task-id", taskId);
+
+  // `agents resume` does not read the prompt from stdin; it only honors
+  // --input (otherwise it sends "Please continue from where you left off.").
+  if (resume) args.push("--input", prompt);
 
   if (messageId) {
     args.push("--message-id", messageId);
@@ -316,7 +378,8 @@ export const startAgentTaskDefinition: Tool = {
       "Create a new chat task in Knowhow based on a message ID and prompt. This allows worker agents to start tasks and update knowhow's backend with all CLI agent options. " +
       "When syncFs is true, the agent creates a directory at .knowhow/processes/agents/{taskId}/ with status.txt, input.txt, and metadata.json. " +
       "You can send follow-up messages to the running agent by writing content to .knowhow/processes/agents/{taskId}/input.txt. " +
-      "The return value includes the taskId and agent directory path when syncFs is used.",
+      "The return value includes the taskId and agent directory path when syncFs is used. " +
+      "Pass `worker` to run the agent on another connected machine (see listWorkers); the result then has remote:true and a remote taskId (UUID) — use waitForAgentCompleted / sendAgentMessage with it (replyToParent is not available to remote children).",
     parameters: {
       type: "object",
       usesContext: true,
@@ -338,6 +401,11 @@ export const startAgentTaskDefinition: Tool = {
             "Push this agent's work to a remote Knowhow task identified by taskId (in addition to fs sync). " +
             "Use this to sync a spawned subagent's progress to an already-created remote task. " +
             "If messageId is given instead, a fresh remote task is created from that message.",
+        },
+        worker: {
+          type: "string",
+          description:
+            "Run this agent on a remote connected worker (id, id-prefix, hostname, or `host:folder`) instead of locally. The agent runs on that machine with its own tools/cwd and syncs to the backend; returns a remote taskId (UUID). Use waitForAgentCompleted / sendAgentMessage with that taskId. See listWorkers.",
         },
         prompt: {
           type: "string",

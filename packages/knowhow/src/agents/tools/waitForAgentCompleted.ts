@@ -25,6 +25,7 @@ interface AgentTaskResult {
   elapsedMs?: number;
   timedOut?: boolean;
   error?: string;
+  remote?: boolean;
 }
 
 function readMeta(taskId: string): any | null {
@@ -60,7 +61,7 @@ function resolveStatus(meta: any | null, statusFile: string | null): string {
 }
 
 /** Extract the last assistant message from a thread as a fallback finalAnswer. */
-function lastAssistantText(threads: any): string | undefined {
+export function lastAssistantText(threads: any): string | undefined {
   if (!threads) return undefined;
   // threads may be an array of message arrays, or a flat message array.
   let messages: any[] = [];
@@ -127,6 +128,8 @@ export interface WaitForAgentCompletedParams {
   timeoutMs?: number;
   /** How often to poll status in milliseconds. Default 2000ms. */
   pollIntervalMs?: number;
+  /** Force polling a remote (backend-synced) task by UUID. */
+  remote?: boolean;
   _ctx?: ToolCallContext;
 }
 
@@ -156,6 +159,40 @@ export async function waitForAgentCompleted(
       costUsd: 0,
       error: "taskId is required for waitForAgentCompleted",
     } as AgentTaskResult);
+  }
+
+  const remoteMod = await import("../../services/RemoteWorkers");
+  const remoteRequested =
+    params.remote === true ||
+    (remoteMod.isRemoteTaskId(taskId) &&
+      !fs.existsSync(
+        path.join(agentsDir(), remoteMod.stripRemotePrefix(taskId))
+      ));
+  if (remoteRequested) {
+    try {
+      const r = await remoteMod.waitForRemoteTask(
+        remoteMod.stripRemotePrefix(taskId),
+        { timeoutMs, pollIntervalMs }
+      );
+      return JSON.stringify({
+        taskId,
+        status: r.status,
+        costUsd: r.costUsd,
+        finalAnswer: r.finalAnswer,
+        elapsedMs: r.elapsedMs,
+        timedOut: r.timedOut,
+        error: r.error,
+        remote: true,
+      } as AgentTaskResult);
+    } catch (e: any) {
+      return JSON.stringify({
+        taskId,
+        status: "error",
+        costUsd: 0,
+        error: `Remote wait failed: ${e?.message ?? String(e)}`,
+        remote: true,
+      } as AgentTaskResult);
+    }
   }
 
   const taskDir = path.join(agentsDir(), taskId);
@@ -242,7 +279,8 @@ export const waitForAgentCompletedDefinition: Tool = {
       "terminal status (completed/failed/killed), then return a structured JSON result with " +
       "{ status, costUsd, finalAnswer, artifacts, elapsedMs }. This is the native way to 'join' a " +
       "subagent — prefer it over shell polling loops with sleep. Returns immediately if the task is " +
-      "already finished, and gives up with timedOut:true after timeoutMs.",
+      "already finished, and gives up with timedOut:true after timeoutMs. Also works for remote tasks " +
+      "started with startAgentTask {worker} (polls the backend by UUID).",
     parameters: {
       type: "object",
       positional: false,
@@ -262,6 +300,11 @@ export const waitForAgentCompletedDefinition: Tool = {
           type: "number",
           description:
             "How often to poll the task status in milliseconds. Default: 2000.",
+        },
+        remote: {
+          type: "boolean",
+          description:
+            "Force polling a remote (backend-synced) task by UUID, e.g. one started with startAgentTask {worker}. Auto-detected for UUID task ids with no local task dir.",
         },
       },
       required: ["taskId"],

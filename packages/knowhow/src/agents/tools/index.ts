@@ -22,6 +22,8 @@ export * from "./aiClient";
 export * from "./googleSearch";
 export * from "./stringReplace";
 export * from "./startAgentTask";
+export * from "./listWorkers";
+export * from "./workerExec";
 export * from "./replyToParent";
 export * from "./runGenerate";
 export * from "./sendAgentMessage";

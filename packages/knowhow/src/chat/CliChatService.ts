@@ -20,6 +20,7 @@ import fs from "fs";
 import path from "path";
 import { services } from "../services";
 import { logger } from "../logger";
+import { workerPromptPrefix } from "./modules/WorkerModule";
 import { ModuleExtension } from "../services/ExtensionsService";
 
 export interface ChatExtension extends ModuleExtension {
@@ -441,9 +442,17 @@ export class CliChatService implements ChatService {
         (this.context.agentMode && this.context.currentAgent
           ? `\nAsk knowhow ${this.context.currentAgent}: `
           : `\nAsk knowhow: `);
+      const workerPrefix =
+        activeModeWithPrompt?.name === "agent:attached"
+          ? ""
+          : workerPromptPrefix(this.context);
       try {
         // Pass command names as autocomplete options
-        const input = await this.getInput(promptText, currentCommandNames, true);
+        const input = await this.getInput(
+          promptText.replace(/^(\n*)/, `$1${workerPrefix}`),
+          currentCommandNames,
+          true
+        );
 
         if (input.trim() === "") {
           continue;

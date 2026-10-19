@@ -14,6 +14,7 @@ import { ToolCommandModule } from "./ToolCommandModule";
 import { RendererModule } from "./RendererModule";
 import { SessionsModule } from "./SessionsModule";
 import { RemoteSyncModule } from "./RemoteSyncModule";
+import { WorkerModule } from "./WorkerModule";
 import { ClipboardImageModule } from "./ClipboardImageModule";
 
 @TraceAll()
@@ -36,6 +37,7 @@ export class InternalChatModule implements ChatModule {
   private toolCommandModule = new ToolCommandModule();
   private rendererModule: RendererModule;
   private remoteSyncModule: RemoteSyncModule;
+  private workerModule: WorkerModule;
 
   constructor() {
     this.rendererModule = new RendererModule(this.agentModule);
@@ -43,6 +45,7 @@ export class InternalChatModule implements ChatModule {
     this.sessionsModule = new SessionsModule(this.agentModule);
     this.remoteSyncModule = new RemoteSyncModule(this.agentModule);
     this.agentModule.setRemoteSyncModule(this.remoteSyncModule);
+    this.workerModule = new WorkerModule(this.agentModule);
   }
 
   async initialize(chatService: CliChatService): Promise<void> {
@@ -62,6 +65,7 @@ export class InternalChatModule implements ChatModule {
     await this.setupModule.initialize(chatService);
     await this.customCommandsModule.initialize(chatService);
     await this.remoteSyncModule.initialize(chatService);
+    await this.workerModule.initialize(chatService);
     await this.shellCommandModule.initialize(chatService);
     await this.toolCommandModule.initialize(chatService);
     await this.clipboardImageModule.initialize(chatService);
@@ -99,6 +103,7 @@ export class InternalChatModule implements ChatModule {
       ...this.toolCommandModule.getCommands(),
       ...this.rendererModule.getCommands(),
       ...this.remoteSyncModule.getCommands(),
+      ...this.workerModule.getCommands(),
       {
         name: "exit",
         description: "Exit the chat",
@@ -189,6 +194,11 @@ export class InternalChatModule implements ChatModule {
         )
     ) {
       return this.checkForFuzzyCommand(input); // Will show suggestion and return true
+    }
+
+    // Delegate to a remote worker when one is selected (/worker)
+    if (await this.workerModule.handleInput(input, context)) {
+      return true;
     }
 
     // Try agent module first (handles agent mode)

@@ -124,6 +124,24 @@ export interface TaskDetailsResponse {
   result?: string;
 }
 
+export interface OrgWorkerInfo {
+  id: string;
+  orgId: string;
+  userId: string;
+  socketId: string;
+  /** "knowhow-worker/<ver>/<hostname>" */
+  userAgent: string;
+  /** worker cwd; "~" or "/home/x/proj" or "C:\\Users\\x\\proj" */
+  fsRoot: string;
+  connected: boolean;
+  lastConnected: string;
+  shared: boolean;
+  cloudWorkerId: string | null;
+  clientKind?: string | null;
+  ephemeral?: boolean;
+  user?: { id: string; email: string; name: string };
+}
+
 export interface PendingMessage {
   id: string;
   message: string;
@@ -535,10 +553,12 @@ export class KnowhowSimpleClient {
   /**
    * Get task details including status, threads, and pending message info
    */
-  async getTaskDetails(taskId: string) {
+  async getTaskDetails(taskId: string, includeThreads = true) {
     await this.checkJwt();
     return http.get<TaskDetailsResponse>(
-      `${this.baseUrl}/api/org-agent-tasks/${taskId}`,
+      `${this.baseUrl}/api/org-agent-tasks/${taskId}${
+        includeThreads === false ? "?includeThreads=false" : ""
+      }`,
       {
         headers: this.headers,
       }
@@ -847,6 +867,44 @@ export class KnowhowSimpleClient {
     return http.get<
       { id: string; name: string; status: string; workerConfigJson?: Record<string, unknown> }[]
     >(`${this.baseUrl}/api/cloud-workers`, { headers: this.headers });
+  }
+
+  /**
+   * List workers (machines running `knowhow worker`) connected to the org.
+   */
+  async listOrgWorkers(opts: { includeClients?: boolean } = {}) {
+    await this.checkJwt();
+    return http.get<OrgWorkerInfo[]>(
+      `${this.baseUrl}/api/org-workers${
+        opts.includeClients ? "?includeClients=true" : ""
+      }`,
+      { headers: this.headers }
+    );
+  }
+
+  /** POST /api/ai/tools/call?workers=<id> — returns the backend envelope. */
+  async callWorkerToolRaw(workerId: string, toolName: string, args: any) {
+    await this.checkJwt();
+    return http.post<any>(
+      `${this.baseUrl}/api/ai/tools/call?workers=${encodeURIComponent(
+        workerId
+      )}`,
+      { toolName, arguments: args ?? {} },
+      { headers: this.headers, timeout: 60000 }
+    );
+  }
+
+  /** GET /api/ai/tools?workers=<id> — tool definitions, names prefixed `worker_0_`. */
+  async listWorkerTools(workerId: string) {
+    await this.checkJwt();
+    return http.get<
+      Array<{
+        type: "function";
+        function: { name: string; description?: string };
+      }>
+    >(`${this.baseUrl}/api/ai/tools?workers=${encodeURIComponent(workerId)}`, {
+      headers: this.headers,
+    });
   }
 
   /**

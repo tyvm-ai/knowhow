@@ -27,6 +27,79 @@ async function setupRenderer(chatService: any, rendererSpecifier: string): Promi
   }
 }
 
+async function runOnRemoteWorker(options: any): Promise<void> {
+  const ignored = [
+    ["behaviorId", "--behavior-id"],
+    ["behaviorFile", "--behavior-file"],
+    ["syncFs", "--sync-fs"],
+    ["messageId", "--message-id"],
+    ["reasoningEffort", "--reasoning-effort"],
+  ].filter(([k]) => options[k] !== undefined && options[k] !== false);
+  if (ignored.length) {
+    console.warn(
+      `⚠ Ignored with --worker: ${ignored.map(([, f]) => f).join(", ")}`
+    );
+  }
+
+  let input: string | undefined = options.input;
+  if (!input && !options.promptFile) {
+    input = await readStdin();
+  }
+  input = readPromptFile(options.promptFile, input);
+  if (!input) {
+    console.error(
+      "Error: No input provided. Use --input flag, pipe input via stdin, or provide --prompt-file."
+    );
+    process.exit(1);
+  }
+
+  const { startRemoteAgentTask, waitForRemoteTask } = await import(
+    "../services/RemoteWorkers"
+  );
+  let config: any = {};
+  try {
+    config = await getConfig();
+  } catch (_) {}
+  const maxTime = parseInt(options.maxTimeLimit, 10);
+  const maxSpend = parseFloat(options.maxSpendLimit);
+  const r = await startRemoteAgentTask({
+    worker: options.worker,
+    prompt: input,
+    agentName: options.agentName ?? config.chat?.defaultAgent ?? "Patcher",
+    provider: options.provider,
+    model: options.model,
+    maxTimeLimit: isNaN(maxTime) ? undefined : maxTime,
+    maxSpendLimit: isNaN(maxSpend) ? undefined : maxSpend,
+  });
+  console.log(
+    `🛰️  Started remote task ${r.taskId} on ${r.workerName} (${r.workerId.slice(0, 8)})`
+  );
+
+  if (options.detach) {
+    console.log(`Follow with: knowhow agents attach ${r.taskId}`);
+    return;
+  }
+
+  if (options.wait) {
+    const w = await waitForRemoteTask(r.taskId, {
+      timeoutMs: isNaN(maxTime) ? undefined : maxTime * 60_000,
+    });
+    if (w.finalAnswer) console.log(w.finalAnswer);
+    if (w.status !== "completed") {
+      console.error(
+        `Remote task ended with status ${w.status}${w.error ? ": " + w.error : ""}${w.timedOut ? " (timed out)" : ""}`
+      );
+      process.exit(1);
+    }
+    return;
+  }
+
+  const { setupServices } = await import("./services");
+  await setupServices();
+  const { startChat } = await import("../chat");
+  await startChat(`/attach ${r.taskId}`);
+}
+
 async function readStdin(): Promise<string> {
   return new Promise((resolve) => {
     let data = "";
@@ -98,8 +171,24 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
       "--renderer <name>",
       "Renderer to use: basic, compact, fancy, or a path/package (default: from config or basic)"
     )
+    .option(
+      "--worker <id|name>",
+      "Run the agent on a remote connected worker instead of locally (see: knowhow workers list)"
+    )
+    .option(
+      "--detach",
+      "With --worker: print the remote task id and exit (do not attach)"
+    )
+    .option(
+      "--wait",
+      "With --worker: block until the remote task finishes, print the final answer, exit non-zero on failure (no interactive attach)"
+    )
     .action(async (options) => {
       try {
+        if (options.worker) {
+          await runOnRemoteWorker(options);
+          return;
+        }
         if (
           options.reasoningEffort !== undefined &&
           !isReasoningEffort(options.reasoningEffort)

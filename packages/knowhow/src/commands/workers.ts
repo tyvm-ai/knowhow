@@ -36,9 +36,11 @@ export function addWorkerCommand(program: Command): void {
 }
 
 export function addWorkersCommand(program: Command): void {
-  program
+  const workersCmd = program
     .command("workers")
-    .description("Manage and start all registered workers")
+    .description(
+      "Manage workers: `workers list|exec|tools` act on connected remote workers; `--list` shows locally registered worker paths; with no args starts all registered workers"
+    )
     .option("--list", "List all registered worker paths")
     .option("--unregister <path>", "Unregister a worker path")
     .option("--clear", "Clear all registered worker paths")
@@ -77,6 +79,184 @@ export function addWorkersCommand(program: Command): void {
       } catch (error) {
         console.error("Error managing workers:", error);
         process.exit(1);
+      }
+    });
+
+  addRemoteWorkerSubcommands(workersCmd);
+}
+
+function fail(error: any): never {
+  console.error("Error: " + (error?.message ?? String(error)));
+  process.exit(1);
+}
+
+export function addRemoteWorkerSubcommands(workersCmd: Command): void {
+  workersCmd
+    .command("list")
+    .description(
+      "List workers connected to your org (remote), with OS, host, status"
+    )
+    .option("--all", "Include offline workers")
+    .option(
+      "--include-clients",
+      "Include browser/extension/desktop client workers"
+    )
+    .option(
+      "--probe",
+      "Probe each online worker for its real OS/arch (runs a tiny command; slower)"
+    )
+    .option("--json", "Output JSON")
+    .action(async (options) => {
+      try {
+        const {
+          listRemoteWorkers,
+          summarizeWorker,
+          probeWorkerOs,
+          formatWorkerTable,
+        } = await import("../services/RemoteWorkers");
+        const { KnowhowSimpleClient } = await import(
+          "../services/KnowhowClient"
+        );
+        const client = new KnowhowSimpleClient();
+        const workers = await listRemoteWorkers(client, {
+          all: options.all,
+          includeClients: options.includeClients,
+        });
+        const probes: Record<string, any> = {};
+        if (options.probe) {
+          await Promise.all(
+            workers
+              .filter((w) => w.connected)
+              .map(async (w) => {
+                probes[w.id] = await probeWorkerOs(client, w);
+              })
+          );
+        }
+        if (options.json) {
+          console.log(
+            JSON.stringify(
+              workers.map((w) => ({
+                ...summarizeWorker(w),
+                ...(probes[w.id] ? { probe: probes[w.id] } : {}),
+              })),
+              null,
+              2
+            )
+          );
+          return;
+        }
+        if (workers.length === 0) {
+          console.log(
+            "No connected workers. Start one with: knowhow worker [--share]  (add --all to see offline workers)"
+          );
+          const local = await listWorkerPaths().catch(() => []);
+          if (local.length) {
+            console.log(
+              `(${local.length} local worker path(s) registered; see: knowhow workers --list)`
+            );
+          }
+          return;
+        }
+        console.log(formatWorkerTable(workers, probes));
+      } catch (error) {
+        fail(error);
+      }
+    });
+
+  workersCmd
+    .command("exec <worker> <command...>")
+    .description(
+      "Run a shell command on a connected worker (uses the worker's execCommand tool; runs via the worker's default shell: sh or cmd.exe). Use `--` before the command if it has flags."
+    )
+    .option(
+      "--timeout <ms>",
+      "Command timeout (default 25000; worker RPC limit ~30s)",
+      "25000"
+    )
+    .option(
+      "--background",
+      "Start in background on the worker (execCommand continueInBackground) and print the log name"
+    )
+    .option("--json", "Output JSON {stdout,stderr,exitCode}")
+    .action(async (workerRef: string, commandParts: string[], options) => {
+      try {
+        const { resolveWorker, execOnWorker } = await import(
+          "../services/RemoteWorkers"
+        );
+        const { KnowhowSimpleClient } = await import(
+          "../services/KnowhowClient"
+        );
+        const client = new KnowhowSimpleClient();
+        const w = await resolveWorker(workerRef, client);
+        const timeoutMs = parseInt(options.timeout, 10) || 25000;
+        if (timeoutMs > 25000 && !options.background) {
+          console.error(
+            "Warning: the worker RPC times out at ~30s; use --background for long commands."
+          );
+        }
+        const extra: any = {};
+        if (options.background) {
+          extra.continueInBackground = true;
+          extra.logFileName = `workers-exec-${Date.now()}`;
+        }
+        const r = await execOnWorker(
+          client,
+          w,
+          commandParts.join(" "),
+          timeoutMs,
+          extra
+        );
+        if (options.json) {
+          console.log(
+            JSON.stringify(
+              { stdout: r.stdout, stderr: r.stderr, exitCode: r.exitCode },
+              null,
+              2
+            )
+          );
+        } else {
+          if (r.stdout) {
+            process.stdout.write(
+              r.stdout.endsWith("\n") ? r.stdout : r.stdout + "\n"
+            );
+          }
+          if (r.stderr) process.stderr.write(r.stderr);
+        }
+        if (typeof r.exitCode === "number" && r.exitCode !== 0) {
+          process.exit(r.exitCode);
+        }
+      } catch (error) {
+        fail(error);
+      }
+    });
+
+  workersCmd
+    .command("tools <worker>")
+    .description("List tools exposed by a worker")
+    .option("--json", "Output JSON")
+    .action(async (workerRef: string, options) => {
+      try {
+        const { resolveWorker } = await import("../services/RemoteWorkers");
+        const { KnowhowSimpleClient } = await import(
+          "../services/KnowhowClient"
+        );
+        const client = new KnowhowSimpleClient();
+        const w = await resolveWorker(workerRef, client);
+        const res = await client.listWorkerTools(w.id);
+        const tools = (Array.isArray(res.data) ? res.data : []).map((t) => ({
+          name: t.function.name.replace(/^worker_0_/, ""),
+          description: t.function.description || "",
+        }));
+        if (options.json) {
+          console.log(JSON.stringify(tools, null, 2));
+          return;
+        }
+        for (const t of tools) {
+          const first = t.description.split("\n")[0];
+          console.log(first ? `${t.name}  — ${first}` : t.name);
+        }
+      } catch (error) {
+        fail(error);
       }
     });
 }
