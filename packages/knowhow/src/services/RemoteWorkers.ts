@@ -7,6 +7,9 @@ export interface RemoteWorker extends OrgWorkerInfo {
   /** hostname parsed from userAgent (fallback: id.slice(0,8)) */
   name: string;
   os: WorkerOs;
+  /** node process.platform reported by the worker's User-Agent, if any */
+  platform?: string;
+  arch?: string;
   /** last path segment of fsRoot ("" for "~") */
   folder: string;
   cliVersion?: string;
@@ -32,22 +35,37 @@ export function parseWorkerUserAgent(ua: string): {
   client: string;
   version?: string;
   hostname?: string;
+  platform?: string;
+  arch?: string;
 } {
-  const parts = (ua || "").split("/");
+  let raw = ua || "";
+  let platform: string | undefined;
+  let arch: string | undefined;
+  // Newer workers append " (platform; arch)" — e.g. "knowhow/1.0/HOST (win32; x64)"
+  const m = raw.match(/\s*\(([^;()]+)(?:;\s*([^;()]+))?\)\s*$/);
+  if (m) {
+    platform = m[1].trim();
+    arch = m[2]?.trim();
+    raw = raw.slice(0, m.index);
+  }
+  const extra = { ...(platform && { platform }), ...(arch && { arch }) };
+  const parts = raw.split("/");
   if (parts.length >= 3) {
     return {
       client: parts[0],
       version: parts[1],
       hostname: parts.slice(2).join("/"),
+      ...extra,
     };
   }
   if (parts.length === 2) {
-    return { client: parts[0], hostname: parts[1] };
+    return { client: parts[0], hostname: parts[1], ...extra };
   }
-  return { client: parts[0] || "" };
+  return { client: parts[0] || "", ...extra };
 }
 
-export function inferWorkerOs(fsRoot: string): WorkerOs {
+export function inferWorkerOs(fsRoot: string, platform?: string): WorkerOs {
+  if (platform) return platform === "win32" ? "windows" : "posix";
   const root = fsRoot || "";
   if (/^[A-Za-z]:[\\/]/.test(root) || root.includes("\\")) return "windows";
   if (root.startsWith("/") || root.startsWith("~")) return "posix";
@@ -69,7 +87,9 @@ export function toRemoteWorkers(infos: OrgWorkerInfo[]): RemoteWorker[] {
     return {
       ...w,
       name,
-      os: inferWorkerOs(w.fsRoot),
+      os: inferWorkerOs(w.fsRoot, ua.platform),
+      platform: ua.platform,
+      arch: ua.arch,
       folder: folderOf(w.fsRoot),
       cliVersion: ua.version,
       label: name,

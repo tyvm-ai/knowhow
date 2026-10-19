@@ -90,6 +90,20 @@ beforeEach(() => {
 });
 
 describe("parseWorkerUserAgent / inferWorkerOs", () => {
+  it("parses the (platform; arch) suffix and prefers it for OS", () => {
+    expect(
+      parseWorkerUserAgent("knowhow-worker/1.2.0/DESKTOP-QRLHKTL (win32; x64)")
+    ).toEqual({
+      client: "knowhow-worker",
+      version: "1.2.0",
+      hostname: "DESKTOP-QRLHKTL",
+      platform: "win32",
+      arch: "x64",
+    });
+    expect(inferWorkerOs("~/dev/x", "win32")).toBe("windows");
+    expect(inferWorkerOs("C:\\dev", "darwin")).toBe("posix");
+  });
+
   it("parses ua", () => {
     expect(parseWorkerUserAgent("knowhow-worker/1.1.1/Micahs-MacBook-Pro.local")).toEqual({
       client: "knowhow-worker",

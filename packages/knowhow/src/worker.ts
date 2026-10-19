@@ -376,7 +376,9 @@ export async function worker(options?: {
 
     const headers: Record<string, string> = {
       Authorization: `Bearer ${jwt}`,
-      "User-Agent": `${clientName}/${clientVersion}/${hostname}`,
+      // Platform suffix lets `knowhow workers list` / the web UI know the
+      // worker's OS without probing: "knowhow/1.2.3/HOST (win32; x64)".
+      "User-Agent": `${clientName}/${clientVersion}/${hostname} (${process.platform}; ${process.arch})`,
       Root: root,
     };
 
