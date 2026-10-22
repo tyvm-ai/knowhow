@@ -131,3 +131,27 @@ describe("launchers", () => {
     expect(() => normalizeExt("a b")).toThrow();
   });
 });
+
+describe("launcher injection hardening", () => {
+  test.each([
+    'x" & calc & ".ts',
+    "x$(touch pwned).ts",
+    "x`id`.ts",
+    "x%PATH%.ts",
+    "a|b.ts",
+    "a\nb.ts",
+  ])("rejects unsafe script filename %j", (name) => {
+    const script = path.join(os.tmpdir(), name);
+    expect(() => buildLaunchers({ script, platforms: ["win32", "darwin", "linux"] })).toThrow(/unsafe/);
+  });
+
+  test.each(['..\\" & calc', "$(id)", "/abs/path", "a;b`c`"])("rejects unsafe --cwd %j", (cwd) => {
+    const script = path.join(os.tmpdir(), "ok-name.ts");
+    expect(() => buildLaunchers({ script, platforms: ["linux"], cwd })).toThrow(/--cwd/);
+  });
+
+  test("allows ordinary names and relative cwd", () => {
+    const script = path.join(os.tmpdir(), "My Auto (v2).ts");
+    expect(() => buildLaunchers({ script, platforms: ["win32", "darwin", "linux"], cwd: "../proj dir", vbs: true })).not.toThrow();
+  });
+});

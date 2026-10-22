@@ -9,6 +9,9 @@ async function startFakeHost(dir) {
   const conns = [];
   // Optional per-type overrides: handlers[type] = (msg) => ({ ok, result } | { ok:false, error })
   const handlers = {};
+  // Tokens the fake host accepts (mirrors the real host): control = host.token contents,
+  // worker = per-worker secret. Set to null to accept anything.
+  const tokens = { control: null, worker: null };
   const status = { version: "0", pid: 1, killSwitch: "ctrl+alt+esc", killSwitchArmed: true, platform: "test" };
   const server = net.createServer((c) => {
     const conn = { c, role: null };
@@ -25,6 +28,12 @@ async function startFakeHost(dir) {
         buf = buf.slice(i + 1);
         received.push(msg);
         if (msg.type === "hello") {
+          const want = msg.role === "worker" ? tokens.worker : tokens.control;
+          if (want !== null && msg.token !== want) {
+            reply(msg.reqId, false, "unauthorized: missing or invalid token");
+            c.end();
+            return;
+          }
           conn.role = msg.role;
           reply(msg.reqId, true, msg.role === "worker" ? { ...status, workerId: msg.workerId } : status);
         } else if (handlers[msg.type]) {
@@ -47,6 +56,7 @@ async function startFakeHost(dir) {
     sock,
     received,
     handlers,
+    tokens,
     status,
     ofType: (t) => received.filter((m) => m.type === t),
     /** Push a host->worker event to every worker connection. */

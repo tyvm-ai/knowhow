@@ -14,6 +14,9 @@ use tokio::sync::{mpsc::UnboundedSender, watch, Notify};
 
 pub const STOP_GRACE_MS: u64 = 250;
 
+pub const HALTED_MSG: &str =
+    "kill switch tripped: starting automations is blocked until the host is re-armed (`computer rearm`)";
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SingleInstance {
     Replace,
@@ -35,10 +38,13 @@ impl SingleInstance {
 #[derive(Clone, Debug)]
 pub struct StartSpec {
     pub name: String,
+    /// Built by the HOST (node + runner + automation path); never client-supplied.
     pub argv: Vec<String>,
     pub cwd: Option<String>,
-    pub env: HashMap<String, String>,
     pub single_instance: SingleInstance,
+    /// The approved automation this worker runs + its run args (for restart).
+    pub automation: Option<String>,
+    pub run_args: Option<crate::proto::RunArgs>,
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq)]
@@ -62,6 +68,8 @@ pub struct WorkerInfo {
 pub struct Proc {
     pub info: Mutex<WorkerInfo>,
     pub spec: StartSpec,
+    /// Per-worker secret (env KNOWHOW_CU_WORKER_TOKEN) the worker must present in its hello.
+    token: String,
     exit_rx: watch::Receiver<bool>,
     kill: Arc<Notify>,
 }
@@ -90,6 +98,14 @@ pub struct Supervisor {
     procs: Mutex<Vec<Arc<Proc>>>,
     conns: Mutex<HashMap<String, UnboundedSender<String>>>,
     counter: AtomicU64,
+    /// In-process (library) tests only: worker ids with no real process.
+    test_tokens: Mutex<HashMap<String, String>>,
+    /// Kill-switch latch, guarded by the SAME lock `start` holds from its final
+    /// halt check through spawning + registering the process. `set_halted`
+    /// takes it too, so halt and spawn are mutually exclusive: once
+    /// `set_halted(true)` returns, no new worker can appear and every worker
+    /// that did spawn is already registered (so `stop_all` sees it).
+    gate: Mutex<bool>,
     on_change: RwLock<Option<Arc<dyn Fn() + Send + Sync>>>,
     on_exit: RwLock<Option<Arc<dyn Fn(&str) + Send + Sync>>>,
 }
@@ -110,6 +126,15 @@ impl Supervisor {
     /// Called with the worker id when its process has exited (stop / crash / kill).
     pub fn set_on_exit(&self, f: Arc<dyn Fn(&str) + Send + Sync>) {
         *self.on_exit.write().unwrap() = Some(f);
+    }
+
+    /// Set/clear the kill-switch latch (see `gate`). Starts fail while set.
+    pub fn set_halted(&self, halted: bool) {
+        *self.gate.lock().unwrap_or_else(|p| p.into_inner()) = halted;
+    }
+
+    pub fn is_halted(&self) -> bool {
+        *self.gate.lock().unwrap_or_else(|p| p.into_inner())
     }
 
     pub fn notify_changed(&self) {
@@ -153,6 +178,24 @@ impl Supervisor {
                 i
             })
             .collect()
+    }
+
+    /// For in-process tests that drive `serve_conn` without spawning a process.
+    /// Not reachable over IPC.
+    #[doc(hidden)]
+    pub fn allow_worker_token_for_tests(&self, id: &str, token: &str) {
+        self.test_tokens.lock().unwrap().insert(id.to_string(), token.to_string());
+    }
+
+    /// Constant-time check of a worker hello token against the live worker `id`.
+    pub fn verify_worker(&self, id: &str, token: &str) -> bool {
+        if let Some(t) = self.test_tokens.lock().unwrap().get(id) {
+            return crate::security::ct_eq(t, token);
+        }
+        match self.procs.lock().unwrap().iter().find(|p| p.id() == id && !p.is_exited()) {
+            Some(p) => crate::security::ct_eq(&p.token, token),
+            None => false,
+        }
     }
 
     pub fn find_by_id(&self, id: &str) -> Option<Arc<Proc>> {
@@ -226,22 +269,34 @@ impl Supervisor {
         let n = self.counter.fetch_add(1, Ordering::SeqCst);
         let id = format!("{:x}{:02x}", now_ms() & 0xffff_ffff, n & 0xff);
         let log_dir = config::logs_dir();
-        std::fs::create_dir_all(&log_dir).map_err(|e| format!("create log dir: {e}"))?;
+        crate::security::ensure_private_dir(&log_dir).map_err(|e| format!("create log dir: {e}"))?;
+        let token = crate::security::random_token().map_err(|e| format!("random token: {e}"))?;
         let safe_name: String = spec
             .name
             .chars()
             .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
             .collect();
         let log_path = log_dir.join(format!("{safe_name}-{id}.log"));
-        let log = std::fs::File::create(&log_path).map_err(|e| format!("create log: {e}"))?;
+        let log = crate::security::create_private_file(&log_path).map_err(|e| format!("create log: {e}"))?;
+
+        // From here to the end of this fn there is no `.await`: the halt latch
+        // cannot change between this check, the spawn and the registration.
+        // (Stopping the previous worker above can take a while, and the kill
+        // switch may have fired meanwhile — that is what this re-check is for.)
+        let gate = self.gate.lock().unwrap_or_else(|p| p.into_inner());
+        if *gate {
+            drop(log);
+            let _ = std::fs::remove_file(&log_path);
+            return Err(HALTED_MSG.into());
+        }
 
         let mut cmd = Command::new(&spec.argv[0]);
         cmd.args(&spec.argv[1..]);
         if let Some(cwd) = &spec.cwd {
             cmd.current_dir(cwd);
         }
-        cmd.envs(&spec.env);
         cmd.env("KNOWHOW_HOST_WORKER_ID", &id);
+        cmd.env("KNOWHOW_CU_WORKER_TOKEN", &token);
         cmd.env("KNOWHOW_HOST_NAME", &spec.name);
         #[cfg(unix)]
         cmd.env("KNOWHOW_HOST_ENDPOINT", config::socket_path());
@@ -291,10 +346,12 @@ impl Supervisor {
         let proc = Arc::new(Proc {
             info: Mutex::new(info.clone()),
             spec,
+            token,
             exit_rx,
             kill: kill.clone(),
         });
         self.procs.lock().unwrap().push(proc.clone());
+        drop(gate);
         self.notify_changed();
 
         let sup = self.clone();

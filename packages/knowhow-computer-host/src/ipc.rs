@@ -5,7 +5,7 @@ use crate::chord::Chord;
 use crate::host::{Host, UiEvent};
 use crate::hotkeys::HotkeyReg;
 use crate::proto::{self, ClientMsg};
-use crate::supervisor::{Proc, SingleInstance, StartSpec};
+use crate::supervisor::{Proc, SingleInstance};
 use serde_json::{json, Value};
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
@@ -59,13 +59,21 @@ where
             continue;
         }
         let reply = match (&role, msg) {
-            (Role::Unknown, ClientMsg::Hello { role: r, worker_id, name }) => {
+            (Role::Unknown, ClientMsg::Hello { role: r, worker_id, name, token }) => {
+                let presented = token.unwrap_or_default();
                 match r.as_str() {
                     "control" => {
-                        role = Role::Control;
-                        Ok(json!(host.status()))
+                        if !host.verify_control_token(&presented) {
+                            Err("unauthorized: missing or invalid control token (read ~/.knowhow/computer-use/host.token)".to_string())
+                        } else {
+                            role = Role::Control;
+                            Ok(json!(host.status()))
+                        }
                     }
                     "worker" => match worker_id {
+                        Some(id) if !id.is_empty() && !host.sup.verify_worker(&id, &presented) => {
+                            Err("unauthorized: missing or invalid worker token (env KNOWHOW_CU_WORKER_TOKEN)".to_string())
+                        }
                         Some(id) if !id.is_empty() => {
                             let _ = name;
                             host.sup.set_conn(&id, tx.clone());
@@ -93,6 +101,10 @@ where
                 Err(e) => proto::response_err(&req_id, e),
             };
             let _ = tx.send(line);
+        }
+        // A failed hello (bad/missing token, unknown role) ends the connection.
+        if matches!(role, Role::Unknown) && reply.is_err() {
+            break;
         }
     }
 
@@ -138,16 +150,39 @@ async fn handle_control(host: &Arc<Host>, msg: ClientMsg) -> Result<Value, Strin
             });
             Ok(json!({ "shuttingDown": true }))
         }
-        ClientMsg::Start { name, argv, cwd, env, single_instance } => {
-            let spec = StartSpec {
-                name,
-                argv,
-                cwd,
-                env: env.unwrap_or_default(),
-                single_instance: SingleInstance::parse(single_instance.as_deref())?,
-            };
-            let (info, started) = host.sup.start(spec).await?;
+        ClientMsg::Start { automation_path, name, args, cwd, single_instance } => {
+            let si = SingleInstance::parse(single_instance.as_deref())?;
+            let (info, started) = host.launch(&automation_path, name, args, cwd, si).await?;
             Ok(json!({ "worker": info, "started": started }))
+        }
+        ClientMsg::Approve { automation_path } => {
+            // Persistent approvals only: "Allow once" is meaningful only for a start.
+            let a = host.approve_path(&automation_path, false).await?;
+            Ok(json!({ "approved": true, "path": a.real_path, "kind": a.kind.as_str() }))
+        }
+        ClientMsg::Approvals => {
+            let list: Vec<Value> = host
+                .approvals()
+                .await
+                .into_iter()
+                .map(|(path, a)| json!({ "path": path, "approvedAt": a.approved_at, "lastRunAt": a.last_run_at }))
+                .collect();
+            Ok(json!({ "approvals": list }))
+        }
+        ClientMsg::Revoke { automation_path, all } => {
+            if automation_path.is_none() && all != Some(true) {
+                return Err("specify automationPath or all".into());
+            }
+            let removed = host.revoke(automation_path.as_deref()).await?;
+            Ok(json!({ "revoked": removed }))
+        }
+        ClientMsg::Audit { limit } => {
+            let limit = limit.unwrap_or(50).clamp(1, 1000);
+            Ok(json!({ "entries": host.audit_tail(limit) }))
+        }
+        ClientMsg::Rearm => {
+            let rearmed = host.rearm().await?;
+            Ok(json!({ "rearmed": rearmed, "halted": !rearmed }))
         }
         ClientMsg::Stop { name, id, all } => {
             let sel = pick(host, &name, &id, &all)?;
@@ -294,31 +329,107 @@ fn handle_worker(host: &Arc<Host>, wid: &str, msg: ClientMsg) -> Result<Value, S
 
 // ---------------------------------------------------------------- listeners
 
-/// Accept loop. Returns an error if the endpoint can't be bound.
+/// Accept loop. Returns an error if the endpoint can't be bound or secured.
+///
+/// Security: the control token is rotated and written (0600, dir 0700) before
+/// the socket exists; the socket is chmod 0600 (hard error) inside a 0700 dir;
+/// and every accepted connection's peer uid must equal ours (tokio's
+/// `peer_cred`, i.e. SO_PEERCRED / getpeereid — no native deps).
 #[cfg(unix)]
 pub async fn listen(host: Arc<Host>) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
+    host.init_control_token()?;
     let path = crate::config::socket_path();
-    std::fs::create_dir_all(path.parent().unwrap())?;
+    crate::security::ensure_private_dir(path.parent().unwrap())?;
     let _ = std::fs::remove_file(&path); // stale socket (caller probed first)
     let listener = tokio::net::UnixListener::bind(&path)?;
-    let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+    let me = unsafe { libc::geteuid() };
     loop {
         let (stream, _) = listener.accept().await?;
+        match stream.peer_cred() {
+            Ok(c) if c.uid() == me => {}
+            Ok(c) => {
+                eprintln!("knowhow-computer-host: rejected connection from uid {} (expected {me})", c.uid());
+                continue;
+            }
+            Err(e) => {
+                eprintln!("knowhow-computer-host: rejected connection (peer credentials unavailable: {e})");
+                continue;
+            }
+        }
         tokio::spawn(serve_conn(host.clone(), stream));
     }
 }
 
+/// Windows: named pipe, local clients only (`reject_remote_clients`), with a
+/// DACL granting access to SYSTEM and the pipe's creator-owner only.
 #[cfg(windows)]
 pub async fn listen(host: Arc<Host>) -> std::io::Result<()> {
     use tokio::net::windows::named_pipe::ServerOptions;
+    host.init_control_token()?;
     let name = crate::config::pipe_name();
-    let mut server = ServerOptions::new().first_pipe_instance(true).create(&name)?;
+    let sa = pipe_security::Sd::owner_only()?;
+    let make = |first: bool| -> std::io::Result<_> {
+        let mut o = ServerOptions::new();
+        o.first_pipe_instance(first).reject_remote_clients(true);
+        unsafe { o.create_with_security_attributes_raw(&name, sa.as_ptr()) }
+    };
+    let mut server = make(true)?;
     loop {
         server.connect().await?;
         let connected = server;
-        server = ServerOptions::new().create(&name)?;
+        server = make(false)?;
         tokio::spawn(serve_conn(host.clone(), connected));
+    }
+}
+
+#[cfg(windows)]
+mod pipe_security {
+    use windows::core::w;
+    use windows::Win32::Foundation::{LocalFree, HLOCAL};
+    use windows::Win32::Security::Authorization::{
+        ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+    };
+    use windows::Win32::Security::{PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES};
+
+    pub struct Sd {
+        sd: PSECURITY_DESCRIPTOR,
+        attrs: Box<SECURITY_ATTRIBUTES>,
+    }
+    unsafe impl Send for Sd {}
+    unsafe impl Sync for Sd {}
+
+    impl Sd {
+        /// `D:P(A;;GA;;;SY)(A;;GA;;;OW)`: protected DACL, SYSTEM + owner only.
+        pub fn owner_only() -> std::io::Result<Sd> {
+            let mut sd = PSECURITY_DESCRIPTOR::default();
+            unsafe {
+                ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    w!("D:P(A;;GA;;;SY)(A;;GA;;;OW)"),
+                    SDDL_REVISION_1,
+                    &mut sd,
+                    None,
+                )
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            }
+            let attrs = Box::new(SECURITY_ATTRIBUTES {
+                nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+                lpSecurityDescriptor: sd.0,
+                bInheritHandle: false.into(),
+            });
+            Ok(Sd { sd, attrs })
+        }
+        pub fn as_ptr(&self) -> *mut core::ffi::c_void {
+            &*self.attrs as *const SECURITY_ATTRIBUTES as *mut core::ffi::c_void
+        }
+    }
+    impl Drop for Sd {
+        fn drop(&mut self) {
+            unsafe {
+                let _ = LocalFree(HLOCAL(self.sd.0));
+            }
+        }
     }
 }
 
@@ -340,13 +451,20 @@ pub async fn probe_existing() -> Option<Value> {
         let stream: tokio::io::DuplexStream = return None;
 
         let (rd, mut wr) = tokio::io::split(stream);
-        wr.write_all(b"{\"type\":\"hello\",\"role\":\"control\",\"reqId\":0}\n").await.ok()?;
+        let token = std::fs::read_to_string(crate::config::token_path()).unwrap_or_default();
+        let hello = json!({"type": "hello", "role": "control", "token": token.trim(), "reqId": 0});
+        wr.write_all(format!("{hello}\n").as_bytes()).await.ok()?;
         wr.write_all(b"{\"type\":\"status\",\"reqId\":1}\n").await.ok()?;
         let mut lines = BufReader::new(rd).lines();
         while let Ok(Some(line)) = lines.next_line().await {
             let v: Value = serde_json::from_str(&line).ok()?;
             if v.get("reqId") == Some(&json!(1)) && v.get("ok") == Some(&json!(true)) {
                 return v.get("result").cloned();
+            }
+            // Something answered the hello but refused us (e.g. token mismatch
+            // mid-restart): a host exists, so don't start a second one.
+            if v.get("reqId") == Some(&json!(0)) && v.get("ok") == Some(&json!(false)) {
+                return Some(json!({ "running": true, "error": v.get("error") }));
             }
         }
         None

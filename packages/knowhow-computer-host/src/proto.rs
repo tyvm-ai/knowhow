@@ -4,7 +4,16 @@ use crate::gui::spec::{Patch, WindowSpec};
 use crate::gui::{DialogKind, DialogRequest, GuiRequest, TooltipRequest};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+
+/// Structured run arguments the host turns into fixed runner flags.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct RunArgs {
+    /// JSON object exposed as `sdk.params`.
+    pub params: Option<Value>,
+    pub max_duration_ms: Option<u64>,
+    pub dry_run: Option<bool>,
+}
 
 /// Every message a client (control or worker) can send. `reqId` is not part
 /// of the enum; it is read separately from the raw JSON object.
@@ -15,19 +24,38 @@ pub enum ClientMsg {
         role: String,
         worker_id: Option<String>,
         name: Option<String>,
+        /// control: contents of host.token; worker: env KNOWHOW_CU_WORKER_TOKEN.
+        token: Option<String>,
     },
 
     // ---- control requests ----
     List,
     Status,
     Shutdown,
+    /// Start an APPROVED automation. The host builds the argv itself.
     Start {
-        name: String,
-        argv: Vec<String>,
+        automation_path: String,
+        name: Option<String>,
+        args: Option<RunArgs>,
         cwd: Option<String>,
-        env: Option<HashMap<String, String>>,
         single_instance: Option<String>,
     },
+    /// Persistently approve (native dialog if the path is new) without starting.
+    Approve {
+        automation_path: String,
+    },
+    /// List approved paths (approvedAt, lastRunAt).
+    Approvals,
+    /// Tail of the append-only audit log.
+    Audit {
+        limit: Option<usize>,
+    },
+    Revoke {
+        automation_path: Option<String>,
+        all: Option<bool>,
+    },
+    /// Clear the kill-switch latch (native confirmation).
+    Rearm,
     Stop {
         name: Option<String>,
         id: Option<String>,
@@ -206,6 +234,9 @@ pub fn response_err(req_id: &Value, error: &str) -> String {
 pub fn parse_line(line: &str) -> Result<(Value, ClientMsg), String> {
     let v: Value = serde_json::from_str(line).map_err(|e| format!("invalid json: {e}"))?;
     let req_id = v.get("reqId").cloned().unwrap_or(Value::Null);
+    if v.get("type").and_then(Value::as_str) == Some("start") && (v.get("argv").is_some() || v.get("env").is_some()) {
+        return Err("start no longer accepts argv/env: use {automationPath, args?}".into());
+    }
     let msg: ClientMsg = serde_json::from_value(v).map_err(|e| format!("bad message: {e}"))?;
     Ok((req_id, msg))
 }
@@ -220,6 +251,10 @@ pub struct StatusInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hook_error: Option<String>,
     pub platform: String,
+    /// Kill switch tripped: new starts are blocked until `rearm`.
+    pub halted: bool,
+    /// True when the host was launched with `--node` and `--runner`.
+    pub runner_configured: bool,
 }
 
 #[cfg(test)]
@@ -233,19 +268,22 @@ mod tests {
         assert_eq!(m, ClientMsg::List);
 
         let (_, m) = parse_line(
-            r#"{"reqId":"a","type":"start","name":"x","argv":["sleep","30"],"singleInstance":"replace","env":{"A":"b"}}"#,
+            r#"{"reqId":"a","type":"start","automationPath":"/a/x.ts","name":"x","args":{"maxDurationMs":5,"dryRun":true},"singleInstance":"replace"}"#,
         )
         .unwrap();
         match m {
-            ClientMsg::Start { name, argv, single_instance, env, cwd } => {
-                assert_eq!(name, "x");
-                assert_eq!(argv, vec!["sleep", "30"]);
+            ClientMsg::Start { automation_path, name, args, single_instance, cwd } => {
+                assert_eq!(automation_path, "/a/x.ts");
+                assert_eq!(name.as_deref(), Some("x"));
+                assert_eq!(args.unwrap().max_duration_ms, Some(5));
                 assert_eq!(single_instance.as_deref(), Some("replace"));
-                assert_eq!(env.unwrap()["A"], "b");
                 assert!(cwd.is_none());
             }
             other => panic!("{other:?}"),
         }
+        // the old arbitrary-command start is refused outright
+        assert!(parse_line(r#"{"type":"start","name":"x","argv":["sh"],"automationPath":"/x"}"#).is_err());
+        assert!(parse_line(r#"{"type":"start","automationPath":"/x","env":{"A":"b"}}"#).is_err());
 
         let (_, m) = parse_line(r#"{"reqId":1,"type":"stop","all":true}"#).unwrap();
         assert_eq!(m, ClientMsg::Stop { name: None, id: None, all: Some(true) });
@@ -261,7 +299,8 @@ mod tests {
             ClientMsg::Hello {
                 role: "worker".into(),
                 worker_id: Some("w1".into()),
-                name: Some("a".into())
+                name: Some("a".into()),
+                token: None
             }
         );
         let (_, m) = parse_line(
@@ -321,6 +360,9 @@ mod tests {
         assert!(parse_line("nope").is_err());
         assert!(parse_line(r#"{"type":"bogus"}"#).is_err());
         assert!(parse_line(r#"{"type":"start"}"#).is_err());
+        assert!(parse_line(r#"{"type":"rearm"}"#).is_ok());
+        assert!(parse_line(r#"{"type":"audit"}"#).is_ok());
+        assert!(parse_line(r#"{"type":"audit","limit":5}"#).is_ok());
     }
 
     #[test]
@@ -344,6 +386,8 @@ mod tests {
             kill_switch_armed: true,
             hook_error: None,
             platform: "macos".into(),
+            halted: false,
+            runner_configured: true,
         };
         let v = serde_json::to_value(&s).unwrap();
         assert_eq!(v["killSwitchArmed"], true);

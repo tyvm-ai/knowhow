@@ -43,6 +43,24 @@ pub fn run_dir() -> PathBuf {
     knowhow_dir().join("run")
 }
 
+/// Host-owned security state: `host.token`, `approvals.json` (dir mode 0700).
+pub fn cu_dir() -> PathBuf {
+    knowhow_dir().join("computer-use")
+}
+
+pub fn token_path() -> PathBuf {
+    cu_dir().join("host.token")
+}
+
+pub fn approvals_path() -> PathBuf {
+    cu_dir().join("approvals.json")
+}
+
+/// Append-only JSONL audit trail (0600 on unix).
+pub fn audit_path() -> PathBuf {
+    cu_dir().join("audit.log")
+}
+
 pub fn logs_dir() -> PathBuf {
     run_dir().join("logs")
 }

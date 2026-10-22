@@ -767,27 +767,6 @@ export function deleteAutomation(name: string): boolean {
   return deleted;
 }
 
-/**
- * Reject scripts that try to escape the automation scope. Automations may use
- * the SDK and registered Knowhow tools, but direct network/shell/filesystem/
- * module access remains forbidden. This is a static guard, not a full sandbox;
- * the script runs with `new Function` and explicitly injected capabilities.
- */
-const FORBIDDEN_TOKENS = [
-  "require",
-  "import",
-  "process",
-  "child_process",
-  "fetch",
-  "eval",
-  "Function",
-  "globalThis",
-  "__dirname",
-  "__filename",
-  "XMLHttpRequest",
-  "WebSocket",
-];
-
 const SDK_IMPORT = /^\s*import\s*\{\s*sdk\s*\}\s*from\s*["']@tyvm\/knowhow-module-computer-use["']\s*;?\s*$/gm;
 
 /**
@@ -1071,29 +1050,38 @@ export function prepareAutomationScript(script: string, baseDir?: string): strin
   );
 }
 
+/**
+ * Automations are TRUSTED code: they exist to drive the whole desktop, and they
+ * run in-process with the same privileges as the CLI. There used to be a
+ * forbidden-token blacklist here (require/process/fetch/eval/...), but a token
+ * blacklist is not a security boundary (e.g. `({}).constructor.constructor`)
+ * and only gave a false sense of safety. Only run automations you trust.
+ *
+ * This now only rejects scripts that don't parse, so authoring errors surface
+ * at save time instead of at run time.
+ */
 export function validateScript(script: string): void {
-  // Strip the SDK import and all recognized sibling imports before checking.
-  // resolveAutomationImports removes those import lines; the inlined code has
-  // already been validated when the sibling was originally saved.
   script = script.replace(SDK_IMPORT, "").replace(new RegExp(AUTOMATION_IMPORT.source, "gm"), "");
-  // Use TypeScript's scanner rather than a regular expression so harmless text
-  // in comments and string literals (for example "require the invariant") does
-  // not reject an automation. Identifier and keyword tokens are still checked,
-  // including dynamic import(), eval(), process, and globalThis references.
-  const forbidden = new Set(FORBIDDEN_TOKENS);
-  const scanner = ts.createScanner(
-    ts.ScriptTarget.ES2022,
-    true,
-    ts.LanguageVariant.Standard,
-    script
-  );
-  for (let kind = scanner.scan(); kind !== ts.SyntaxKind.EndOfFileToken; kind = scanner.scan()) {
-    const token = scanner.getTokenText();
-    if (forbidden.has(token)) {
-      throw new Error(
-        `Automation script rejected: forbidden token "${token}". Automations may use the provided sdk and registered tool functions, but not direct network, shell, filesystem, or module access.`
-      );
-    }
+  // Static imports can't run inside the injected async function body (that's a
+  // grammar check transpileModule doesn't report), so reject them explicitly.
+  const sf = ts.createSourceFile("automation.ts", script, ts.ScriptTarget.ES2022, false, ts.ScriptKind.TS);
+  const staticImport = sf.statements.find((s) => ts.isImportDeclaration(s) || ts.isImportEqualsDeclaration(s));
+  if (staticImport) {
+    throw new Error(
+      `Automation script has a syntax error: static import "${staticImport.getText(sf).slice(0, 80)}" is not supported. ` +
+        `Only the SDK import and sibling automation imports ('./name' or '@automation/name') are allowed.`
+    );
+  }
+  // Wrap as an async function body, matching how the runner executes it.
+  const wrapped = `(async () => {\n${script}\n})();`;
+  const out = ts.transpileModule(wrapped, {
+    reportDiagnostics: true,
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None },
+  });
+  const errors = (out.diagnostics ?? []).filter((d) => d.category === ts.DiagnosticCategory.Error);
+  if (errors.length) {
+    const msg = ts.flattenDiagnosticMessageText(errors[0].messageText, "\n");
+    throw new Error(`Automation script has a syntax error: ${msg}`);
   }
 }
 

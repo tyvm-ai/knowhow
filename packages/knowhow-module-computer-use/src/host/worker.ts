@@ -43,6 +43,8 @@ export async function runWorker(
     workerId,
     name: env.KNOWHOW_HOST_NAME || args.name,
     endpoint: env.KNOWHOW_HOST_ENDPOINT,
+    // Per-worker secret the host put in our env; the host rejects workers without it.
+    token: env.KNOWHOW_CU_WORKER_TOKEN ?? "",
   });
   const provider = new HostHotkeyProvider(client, (m) => console.error(`[host] ${m}`));
   try {

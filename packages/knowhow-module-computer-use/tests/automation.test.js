@@ -105,12 +105,12 @@ function makeFakeService(overrides = {}) {
   return Object.assign(svc, overrides);
 }
 
-describe("automation script sandbox", () => {
-  test("rejects require()", () => {
-    expect(() => validateScript("const x = require('fs');")).toThrow();
+describe("automation script validation (automations are trusted; no blacklist)", () => {
+  test("does not blacklist require()", () => {
+    expect(() => validateScript("const x = require('fs');")).not.toThrow();
   });
-  test("rejects fetch()", () => {
-    expect(() => validateScript("await fetch('http://evil');")).toThrow();
+  test("does not blacklist fetch()", () => {
+    expect(() => validateScript("await fetch('http://example.com');")).not.toThrow();
   });
   test("allows a plain sdk-only script", () => {
     expect(() =>

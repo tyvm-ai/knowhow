@@ -29,6 +29,7 @@ enum Action {
     PauseAll,
     ResumeAll,
     StopAll,
+    Rearm,
     Quit,
 }
 
@@ -143,6 +144,9 @@ fn build_menu(host: &Host) -> (Menu, HashMap<MenuId, Action>) {
         &mut map,
     );
     let _ = menu.append(&PredefinedMenuItem::separator());
+    if host.halted.load(std::sync::atomic::Ordering::SeqCst) {
+        top_item(&menu, "Kill switch tripped — re-arm automations…", true, Some(Action::Rearm), &mut map);
+    }
     top_item(&menu, "Quit knowhow host (stops all)", true, Some(Action::Quit), &mut map);
     (menu, map)
 }
@@ -204,6 +208,11 @@ async fn perform(host: Arc<Host>, action: Action) {
             }
         }
         Action::StopAll => host.sup.stop_all().await,
+        Action::Rearm => {
+            if let Err(e) = host.rearm().await {
+                eprintln!("knowhow-computer-host: re-arm failed: {e}");
+            }
+        }
         Action::Quit => {
             host.sup.stop_all().await;
             host.emit(UiEvent::Quit);
@@ -227,7 +236,7 @@ fn refresh(tray: &TrayIcon, host: &Host, halted: bool, actions: &mut HashMap<Men
     };
     let _ = tray.set_icon(Some(make_icon(color)));
     let tip = if halted {
-        "knowhow: All automations stopped".to_string()
+        "knowhow: kill switch tripped — automations blocked until re-armed".to_string()
     } else {
         format!("knowhow host — {} running", workers.len())
     };

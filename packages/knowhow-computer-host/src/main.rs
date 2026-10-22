@@ -10,12 +10,18 @@ struct Args {
     no_tray: bool,
     print_keys: bool,
     gui_demo: bool,
+    /// Interpreter / runner script the host spawns for approved automations.
+    node: Option<String>,
+    runner: Option<String>,
 }
 
 fn parse_args() -> Args {
-    let mut a = Args { foreground: false, no_tray: false, print_keys: false, gui_demo: false };
-    for arg in std::env::args().skip(1) {
+    let mut a = Args { foreground: false, no_tray: false, print_keys: false, gui_demo: false, node: None, runner: None };
+    let mut it = std::env::args().skip(1);
+    while let Some(arg) = it.next() {
         match arg.as_str() {
+            "--node" => a.node = it.next(),
+            "--runner" => a.runner = it.next(),
             "--foreground" => a.foreground = true,
             "--no-tray" => a.no_tray = true,
             "--print-keys" => a.print_keys = true,
@@ -26,7 +32,9 @@ fn parse_args() -> Args {
                      --foreground  stay attached to this terminal (default: detach)\n\
                      --no-tray     no tray / menu-bar icon\n\
                      --print-keys  print normalized key names as pressed (Ctrl+C to quit)\n\
-                     --gui-demo    show a demo native window (every control kind), print its events"
+                     --gui-demo    show a demo native window (every control kind), print its events\n\
+                     --node <exe>  interpreter used to run approved automations\n\
+                     --runner <js> runner script (worker.js) used to run approved automations"
                 );
                 std::process::exit(0);
             }
@@ -44,8 +52,8 @@ fn detach() -> std::io::Result<u32> {
     let exe = std::env::current_exe()?;
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     args.push("--foreground".into());
-    std::fs::create_dir_all(config::run_dir())?;
-    let log = std::fs::File::create(config::run_dir().join("host.log"))?;
+    knowhow_computer_host::security::ensure_private_dir(&config::run_dir())?;
+    let log = knowhow_computer_host::security::create_private_file(&config::run_dir().join("host.log"))?;
     let mut cmd = std::process::Command::new(exe);
     cmd.args(args)
         .stdin(std::process::Stdio::null())
@@ -117,6 +125,13 @@ fn main() {
     }
 
     let host = Host::new(kill_chord, kill_str);
+    if let (Some(node), Some(script)) = (&args.node, &args.runner) {
+        host.set_runner(knowhow_computer_host::host::Runner { node: node.into(), script: script.into() });
+    }
+    if std::env::var_os("KNOWHOW_CU_NO_UI").is_some() {
+        // Headless / test mode: approvals and re-arm are always denied (stricter, never looser).
+        host.set_prompter(Arc::new(knowhow_computer_host::approval::DenyPrompter));
+    }
     host.start_hook(false);
 
     {

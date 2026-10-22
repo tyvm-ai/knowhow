@@ -131,6 +131,7 @@ export function registerComputerCli(
         console.log(`  running: yes (pid ${st.pid}, v${st.version}, ${st.platform})`);
         console.log(`  kill switch: ${st.killSwitch}`);
         console.log(`  armed:   ${st.killSwitchArmed ? "yes" : "NO"}`);
+        if (st.halted) console.log("  TRIPPED: kill switch stopped everything; starts are blocked until `computer rearm`");
         if (st.hookError) console.log(`  hookError: ${st.hookError}`);
       }
     });
@@ -890,6 +891,59 @@ export function registerComputerCli(
     }));
 
   cmd
+    .command("approve <nameOrPath>")
+    .description(
+      "Always-approve an automation PATH for the host. The HOST shows a native dialog (Allow once / Always allow / Deny); only \"Always allow\" is recorded here. Approval is keyed by the canonical path, so later edits to the file do not need re-approval (starting an unapproved script also prompts, and can run it just once)."
+    )
+    .action(guard(async (nameOrPath) => {
+      const r = await hostOps.approveAutomation(nameOrPath);
+      console.log(`Approved ${r.path} (always)`);
+    }));
+
+  cmd
+    .command("approvals")
+    .description("List approved automation paths (approvedAt, lastRunAt).")
+    .action(guard(async () => {
+      const list = await hostOps.listApprovals();
+      if (!list.length) return console.log("No approved automations.");
+      for (const a of list) {
+        const last = a.lastRunAt ? new Date(a.lastRunAt).toISOString() : "never";
+        console.log(`approved ${new Date(a.approvedAt).toISOString()}  last run ${last}  ${a.path}`);
+      }
+    }));
+
+  cmd
+    .command("audit")
+    .description("Show the host's append-only audit log (approve/deny/revoke/start/exit/kill-switch).")
+    .option("--limit <n>", "How many recent entries", "50")
+    .action(guard(async (opts) => {
+      const entries = await hostOps.auditLog(Math.max(1, parseInt(opts.limit, 10) || 50));
+      if (!entries.length) return console.log("Audit log is empty.");
+      for (const e of entries) console.log(hostOps.formatAuditEntry(e));
+    }));
+
+  cmd
+    .command("revoke [nameOrPath]")
+    .description("Revoke the host's approval of an automation (or --all).")
+    .option("--all", "Revoke every approval")
+    .action(guard(async (nameOrPath, opts) => {
+      if (!nameOrPath && !opts.all) throw new Error("Specify <nameOrPath> or --all.");
+      const r = await hostOps.revokeApproval({ nameOrPath, all: !!opts.all });
+      console.log(r.revoked.length ? `Revoked ${r.revoked.length}:\n  ${r.revoked.join("\n  ")}` : "No matching approval.");
+    }));
+
+  cmd
+    .command("rearm")
+    .description(
+      "Re-arm the host after the kill switch tripped. Until then the host refuses to start automations. The host asks you to confirm in a native dialog."
+    )
+    .action(guard(async () => {
+      const r = await hostOps.rearmKillSwitch();
+      console.log(r.rearmed ? "Re-armed: automations may start again." : "Not re-armed (declined or no UI); starts remain blocked.");
+      if (!r.rearmed) process.exitCode = 1;
+    }));
+
+  cmd
     .command("make-launcher <script>")
     .description(
       "Write a double-click launcher next to <script> (Windows .cmd [+ .vbs], macOS .command, Linux .sh). Committable: no absolute paths."
@@ -929,7 +983,7 @@ export function registerComputerCli(
     .description("Start the host (detached) if it is not already running.")
     .action(guard(async (opts) => {
       const st = await ensureHost({ args: opts.tray === false ? ["--no-tray"] : [] });
-      console.log(`Host running (pid ${st.pid}); kill switch ${st.killSwitch}, armed=${st.killSwitchArmed}`);
+      console.log(`Host running (pid ${st.pid}); kill switch ${st.killSwitch}, armed=${st.killSwitchArmed}${st.halted ? " — TRIPPED: run `computer rearm` to allow starts" : ""}`);
       if (st.hookError) console.log(`hookError: ${st.hookError}`);
     }));
   hostCmd

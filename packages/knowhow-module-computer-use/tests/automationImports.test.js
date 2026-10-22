@@ -12,7 +12,7 @@
  *   export { foo as bar }
  *
  * Safety: cycles, missing exports, and missing siblings are errors.
- * The SDK import and forbidden tokens remain enforced.
+ * The SDK import is stripped; automations are trusted (no token blacklist).
  */
 const {
   extractAutomationExports,
@@ -343,15 +343,19 @@ describe("validateScript with @automation imports", () => {
     ).not.toThrow();
   });
 
-  test("still rejects other import lines", () => {
+  test("rejects other static import lines (they can't run in an automation body)", () => {
     expect(() =>
       validateScript(`import { readFileSync } from "fs";`)
-    ).toThrow(/forbidden token/);
+    ).toThrow(/syntax error/);
+  });
+
+  test("rejects scripts that don't parse", () => {
+    expect(() => validateScript(`await sdk.clickAt(1, 2`)).toThrow(/syntax error/);
   });
 
   test.each(["require('fs')", "process.exit()", "eval('1')", "import('fs')"])(
-    "still rejects executable capability access: %s",
-    (source) => expect(() => validateScript(source)).toThrow(/forbidden token/)
+    "automations are trusted: no token blacklist for %s",
+    (source) => expect(() => validateScript(source)).not.toThrow()
   );
 
   test("prepareAutomationScript inlines exports from a real sibling on disk", () => {

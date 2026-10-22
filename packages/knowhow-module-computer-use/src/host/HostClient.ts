@@ -1,4 +1,5 @@
 import * as net from "net";
+import * as fs from "fs";
 import * as path from "path";
 import { EventEmitter } from "events";
 import type {
@@ -22,8 +23,24 @@ export function hostEndpoint(): string {
   return path.join(homeDir(), ".knowhow", "run", "host.sock");
 }
 
+/** Control token file written (0600) by the host on every start. */
+export function hostTokenPath(): string {
+  return path.join(homeDir(), ".knowhow", "computer-use", "host.token");
+}
+
+/** Read the host control token; "" if the host never wrote one. */
+export function readHostToken(): string {
+  try {
+    return fs.readFileSync(hostTokenPath(), "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
 export interface ConnectOptions {
   workerId?: string;
+  /** control: defaults to the host.token file; worker: defaults to env KNOWHOW_CU_WORKER_TOKEN. */
+  token?: string;
   name?: string;
   endpoint?: string;
   /** Default per-request timeout (ms). */
@@ -58,8 +75,14 @@ export class HostClient extends EventEmitter {
     try {
       client.helloResult = await client.request(
         role === "worker"
-          ? { type: "hello", role, workerId: opts.workerId ?? "", name: opts.name ?? "" }
-          : { type: "hello", role }
+          ? {
+              type: "hello",
+              role,
+              workerId: opts.workerId ?? "",
+              name: opts.name ?? "",
+              token: opts.token ?? process.env.KNOWHOW_CU_WORKER_TOKEN ?? "",
+            }
+          : { type: "hello", role, token: opts.token ?? readHostToken() }
       );
     } catch (e) {
       client.close();

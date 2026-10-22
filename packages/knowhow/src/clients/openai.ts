@@ -901,6 +901,10 @@ export class GenericOpenAiClient implements GenericClient {
             prompt: options.prompt,
             response_format: options.response_format || "verbose_json",
             temperature: options.temperature,
+            ...(options.timestamp_granularities?.length &&
+            (options.response_format || "verbose_json") === "verbose_json"
+              ? { timestamp_granularities: options.timestamp_granularities }
+              : {}),
           },
           { signal: options.signal }
         )
@@ -940,6 +944,7 @@ export class GenericOpenAiClient implements GenericClient {
       language: verboseResponse.language,
       duration: verboseResponse.duration,
       segments: verboseResponse.segments,
+      words: verboseResponse.words,
       usd_cost: usdCost,
     };
   }

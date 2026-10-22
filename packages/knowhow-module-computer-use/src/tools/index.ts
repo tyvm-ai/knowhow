@@ -1271,7 +1271,7 @@ export async function computerUseClearRegion(
  * writes ONCE (after watching the game/UI) and then launches with a single
  * tool call. The `script` is a .ts async body with an injected `sdk` object
  * (perception + mouse/keyboard + control). Its editor-only SDK import is
- * allowed, while all other module access remains forbidden. Repeated work is
+ * stripped. Automations are trusted code (no sandbox/blacklist). Repeated work is
  * scoped explicitly with `await sdk.runEvery(callback, intervalMs)`.
  */
 export async function computerUseWriteAutomation(
@@ -1468,6 +1468,70 @@ export async function computerUseRestartAutomation(this: ToolsService, name: str
     return `Restarted "${name}" (worker ${r.worker.id}, pid ${r.worker.pid}).`;
   } catch (e: any) {
     return `Could not restart "${name}": ${e?.message ?? e}`;
+  }
+}
+
+/**
+ * Always-approve an automation path so the host may start it. The HOST shows a
+ * native dialog (Allow once / Always allow / Deny) that a human must answer;
+ * this tool cannot approve on its own. Keyed by canonical path (no content
+ * hash). Already-approved paths return immediately.
+ */
+export async function computerUseApproveAutomation(this: ToolsService, nameOrPath: string): Promise<string> {
+  try {
+    const r = await hostOps.approveAutomation(nameOrPath);
+    return `Approved ${r.path} (always).`;
+  } catch (e: any) {
+    return `Not approved: ${e?.message ?? e}`;
+  }
+}
+
+/** List the automation paths the host has approved (path, approvedAt, lastRunAt). */
+export async function computerUseListApprovals(this: ToolsService): Promise<string> {
+  const approvals = await hostOps.listApprovals();
+  return JSON.stringify(
+    approvals.map((a) => ({
+      path: a.path,
+      approvedAt: new Date(a.approvedAt).toISOString(),
+      lastRunAt: a.lastRunAt ? new Date(a.lastRunAt).toISOString() : null,
+    })),
+    null,
+    2
+  );
+}
+
+/** Recent entries of the host's append-only audit log. */
+export async function computerUseAuditLog(this: ToolsService, limit?: number): Promise<string> {
+  try {
+    const entries = await hostOps.auditLog(limit ?? 50);
+    return entries.length ? entries.map(hostOps.formatAuditEntry).join("\n") : "Audit log is empty.";
+  } catch (e: any) {
+    return `Could not read audit log: ${e?.message ?? e}`;
+  }
+}
+
+/** Revoke the host's approval for one automation (name or path), or all of them. */
+export async function computerUseRevokeApproval(this: ToolsService, nameOrPath?: string, all?: boolean): Promise<string> {
+  if (!nameOrPath && !all) return "Provide nameOrPath or all=true.";
+  try {
+    const r = await hostOps.revokeApproval({ nameOrPath, all });
+    return r.revoked.length ? `Revoked ${r.revoked.length} approval(s): ${r.revoked.join(", ")}` : "No matching approval.";
+  } catch (e: any) {
+    return `Could not revoke: ${e?.message ?? e}`;
+  }
+}
+
+/**
+ * Re-arm after the kill switch tripped. Until then the host refuses to start
+ * automations. The host asks a human to confirm in a native dialog, so an agent
+ * cannot silently override the kill switch.
+ */
+export async function computerUseRearmKillSwitch(this: ToolsService): Promise<string> {
+  try {
+    const r = await hostOps.rearmKillSwitch();
+    return r.rearmed ? "Kill switch re-armed: automations may start again." : "Re-arm was declined (or no UI): starts remain blocked.";
+  } catch (e: any) {
+    return `Could not re-arm: ${e?.message ?? e}`;
   }
 }
 

@@ -381,6 +381,48 @@ run-automation "%1" --no-attach` (needs `knowhow` on the user `PATH`; the defaul
 deliberately not hijacked). Both launcher styles rely on the module being enabled in a config
 `knowhow` reads from the working directory or the global `~/.knowhow/knowhow.json`.
 
+### Host security: approvals, tokens, kill-switch latch
+
+Host-managed runs (`computer run-automation`, `ps/stop/restart`, tools) go through
+the resident host, which is hardened against other local processes:
+
+- **Only approved automations start.** Approval is **path-based**: the key is the
+  canonical (realpath) absolute path of the entry file. An unknown path makes the
+  *host* show a native dialog — **Allow once** (this single run; not persisted),
+  **Always allow** (persisted in `~/.knowhow/computer-use/approvals.json`, which only
+  the host writes) or **Deny**; no UI / timeout / dismiss = deny. Clients never pass a
+  command line, only `{automationPath, args}`.
+  - There is deliberately **no content hash or import tracking**: a same-user attacker
+    who can rewrite an approved script can equally rewrite `approvals.json` or the CLI,
+    so hashing defended nothing real and only got in the way of iterating. Editing an
+    approved script does not need re-approval (this also makes "file swapped after
+    approval" moot). The entry file's SHA-256 is recorded in the audit log at start,
+    informationally only.
+  - `computer approve <nameOrPath>` (always-approve; still needs the dialog),
+    `computer approvals` (path, approvedAt, lastRunAt), `computer revoke <nameOrPath>|--all`,
+    `computer audit [--limit N]`; tools `computerUseApproveAutomation`,
+    `computerUseListApprovals`, `computerUseRevokeApproval`, `computerUseAuditLog`.
+  - `restart` re-runs the path check (a path that was only allowed once asks again;
+    a revoked path is refused).
+- **Audit log.** Append-only JSONL at `~/.knowhow/computer-use/audit.log` (0600):
+  `approve` (once/always), `deny`, `revoke`, `start` (path, sha256, workerId, pid, kind),
+  `exit` (code), kill-switch `halt` / `rearm`.
+- **Authenticated connections.** Control clients read `~/.knowhow/computer-use/host.token`
+  (0600, rotated on each host start) and present it in their hello; every worker gets
+  its own `KNOWHOW_CU_WORKER_TOKEN`. Unix socket 0600 in a 0700 dir + peer-uid check;
+  Windows pipe is local-only with an owner/SYSTEM DACL.
+- **The kill switch is a latch.** After Ctrl+Alt+Esc (default) the host stops every
+  automation and **refuses to start new ones** until you re-arm it:
+  `computer rearm` / tool `computerUseRearmKillSwitch` / tray item. Re-arming asks for
+  a native confirmation, so an agent can't clear it on its own. `computer host status`
+  shows `TRIPPED`. Halt and spawn are mutually exclusive inside the host (the latch is
+  re-checked under the same lock the kill switch takes, right before a worker is spawned),
+  so a start that was waiting for the previous worker to stop cannot slip through.
+- `sdk.store` data, host logs, worker logs, tokens and approvals are created 0600
+  (dirs 0700). Set `KNOWHOW_CU_NO_UI=1` on the host to deny every dialog (headless).
+
+Protocol/limits: `packages/knowhow-computer-host/PROTOCOL.md` → "Local connection security".
+
 ### Accessibility in automations
 
 On macOS, saved TypeScript automations can inspect and operate the focused

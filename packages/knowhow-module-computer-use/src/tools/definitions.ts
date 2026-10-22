@@ -966,7 +966,7 @@ export const computerToolDefinitions: Tool[] = [
     function: {
       name: "computerUseWriteAutomation",
       description:
-        "Author + persist an AUTOMATION as a readable .ts file. ALWAYS begin the file with a JSDoc header block documenting when to use it — order the tags @description, @window, @useWhen, @startState, @endState (put @window right after @description since the required window is the key safety detail). This header is the automation's discoverable 'skill card' that lets a future agent pick it without reading the code. Import `{ sdk }` from `@tyvm/knowhow-module-computer-use` for autocomplete; the runner strips that editor-only import and injects the live SDK. Registered Knowhow tools are also injected by name (for example `await prologQuery({ program, query })`) and through `await sdk.callTool(toolName, args)`, matching the scripting module. You may reuse helpers from sibling automations with a named import: `import { myHelper, otherFn as alias } from './sibling-name'` (`@automation/sibling-name` is also accepted). The runner inlines exported functions/consts at run time and supports aliases, nested imports, and cycle/missing-export detection. Only `export function`, `export async function`, `export const`, and `export { name }` forms are extractable. All other imports and require/process/fetch/eval remain forbidden. Automations can inspect native controls with `sdk.accessibilityElements()` and use fresh element IDs with `sdk.setAccessibilityValue()` or `sdk.performAccessibilityAction()`; these mutations obey dry-run and focus-gate safety. For reviewable visual evidence, get a frame from `const watcher = await sdk.watchScreen(...)`, perform/log an action, then call `await watcher.logAction('label', { frame })`; this persists that exact streamed frame and returns its path, also included in run artifacts (writes are focus-gated and dry-runs suppress them unless captureInDryRun:true). If setup must activate an app, call `await sdk.focus(match)` before installing `requiredWindow` (it is suppressed in dry-run and while paused). Use `await sdk.runEvery(callback, intervalMs, { requiredWindow })` (intervalMs is a delay in milliseconds, like setInterval; 0 = as fast as possible) to scope repeated work AND gate it on a focused window in one call — this is REQUIRED so focus loss (clicking away) auto-pauses the automation and a human can reclaim the mouse. Note every live run is hard-capped at 5 minutes until the global kill switch (Ctrl+Alt+Esc, provided by the computer host) is armed; then the cap is lifted. The SDK also has click/keyDown/keyUp/withKeysHeld/keyState/clipboard/copySelection/random/window.isActive/store/ui/hotkeys and keepAlive/exit/onExit lifetime control.",
+        "Author + persist an AUTOMATION as a readable .ts file. ALWAYS begin the file with a JSDoc header block documenting when to use it — order the tags @description, @window, @useWhen, @startState, @endState (put @window right after @description since the required window is the key safety detail). This header is the automation's discoverable 'skill card' that lets a future agent pick it without reading the code. Import `{ sdk }` from `@tyvm/knowhow-module-computer-use` for autocomplete; the runner strips that editor-only import and injects the live SDK. Registered Knowhow tools are also injected by name (for example `await prologQuery({ program, query })`) and through `await sdk.callTool(toolName, args)`, matching the scripting module. You may reuse helpers from sibling automations with a named import: `import { myHelper, otherFn as alias } from './sibling-name'` (`@automation/sibling-name` is also accepted). The runner inlines exported functions/consts at run time and supports aliases, nested imports, and cycle/missing-export detection. Only `export function`, `export async function`, `export const`, and `export { name }` forms are extractable. Other static imports are not supported (the body runs as an async function). Automations are trusted code that runs with the CLI's full privileges, so prefer the SDK and registered tools over raw Node APIs for portability and safety gating. Automations can inspect native controls with `sdk.accessibilityElements()` and use fresh element IDs with `sdk.setAccessibilityValue()` or `sdk.performAccessibilityAction()`; these mutations obey dry-run and focus-gate safety. For reviewable visual evidence, get a frame from `const watcher = await sdk.watchScreen(...)`, perform/log an action, then call `await watcher.logAction('label', { frame })`; this persists that exact streamed frame and returns its path, also included in run artifacts (writes are focus-gated and dry-runs suppress them unless captureInDryRun:true). If setup must activate an app, call `await sdk.focus(match)` before installing `requiredWindow` (it is suppressed in dry-run and while paused). Use `await sdk.runEvery(callback, intervalMs, { requiredWindow })` (intervalMs is a delay in milliseconds, like setInterval; 0 = as fast as possible) to scope repeated work AND gate it on a focused window in one call — this is REQUIRED so focus loss (clicking away) auto-pauses the automation and a human can reclaim the mouse. Note every live run is hard-capped at 5 minutes until the global kill switch (Ctrl+Alt+Esc, provided by the computer host) is armed; then the cap is lifted. The SDK also has click/keyDown/keyUp/withKeysHeld/keyState/clipboard/copySelection/random/window.isActive/store/ui/hotkeys and keepAlive/exit/onExit lifetime control.",
       parameters: {
         type: "object",
         positional: true,
@@ -1102,6 +1102,65 @@ export const computerToolDefinitions: Tool[] = [
         properties: { name: { type: "string", description: "Automation name." } },
         required: ["name"],
       },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseApproveAutomation",
+      description:
+        "Ask the host to ALWAYS-approve an automation (saved name or script path) so it may be started. The host shows a native dialog (Allow once / Always allow / Deny) that the HUMAN must answer; only \"Always allow\" is recorded. Approval is keyed by the file's canonical path (not its content), so later edits do not need re-approval. Starting an unapproved automation prompts the same way and may be allowed just once.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: { nameOrPath: { type: "string", description: "Saved automation name or script path." } },
+        required: ["nameOrPath"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseListApprovals",
+      description: "List the automation paths the host has approved (path, approvedAt, lastRunAt).",
+      parameters: noArgs,
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseAuditLog",
+      description:
+        "Recent entries of the host's append-only audit log (approve once/always, deny, revoke, start with SHA-256 + worker/pid, exit code, kill-switch halt/rearm).",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: { limit: { type: "number", description: "How many recent entries (default 50, max 1000)." } },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseRevokeApproval",
+      description: "Revoke the host's approval of one automation (name or path) or of all automations.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          nameOrPath: { type: "string", description: "Saved automation name or script path." },
+          all: { type: "boolean", description: "Revoke every approval." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "computerUseRearmKillSwitch",
+      description:
+        "Re-arm the host after the kill switch (default Ctrl+Alt+Esc) stopped everything. Until re-armed the host refuses to start automations (the block no longer clears itself). The host asks the human to confirm in a native dialog.",
+      parameters: noArgs,
     },
   },
   {

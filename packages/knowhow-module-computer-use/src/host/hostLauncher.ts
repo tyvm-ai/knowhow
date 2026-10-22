@@ -35,6 +35,11 @@ function isFile(p: string): boolean {
   }
 }
 
+/** Fixed runner flags: the host spawns `node worker.js --name <approved path>` itself. */
+export function runnerArgs(): string[] {
+  return ["--node", process.execPath, "--runner", path.join(__dirname, "worker.js")];
+}
+
 /** Status of the running host, or null if none is reachable. */
 export async function probeHost(timeoutMs = 1000): Promise<HostStatus | null> {
   let c: HostClient | null = null;
@@ -65,7 +70,7 @@ export async function ensureHost(opts: EnsureHostOptions = {}): Promise<HostStat
       "knowhow-computer-host binary not found. Build it (cargo build --release in packages/knowhow-computer-host) or set KNOWHOW_HOST_BIN."
     );
   }
-  const child = spawn(bin, opts.args ?? [], {
+  const child = spawn(bin, [...runnerArgs(), ...(opts.args ?? [])], {
     detached: true,
     stdio: "ignore",
     windowsHide: true,

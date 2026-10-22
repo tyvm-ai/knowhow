@@ -64,7 +64,7 @@ function persist(): void {
   if (!cache) return;
   try {
     fs.mkdirSync(STORE_DIR, { recursive: true });
-    fs.writeFileSync(STORE_FILE, JSON.stringify(cache, null, 2));
+    fs.writeFileSync(STORE_FILE, JSON.stringify(cache, null, 2), { mode: 0o600 });
   } catch {
     // Best-effort; the in-memory registry still works for this process.
   }

@@ -14,6 +14,40 @@ export interface HostStatus {
   killSwitchArmed: boolean;
   hookError?: string;
   platform: string;
+  /** Kill switch tripped: new starts are blocked until `rearm`. */
+  halted: boolean;
+  /** Host was launched with --node/--runner (needed to start automations). */
+  runnerConfigured: boolean;
+}
+
+/** Structured run arguments; the HOST turns them into fixed runner flags. */
+export interface RunArgs {
+  /** Exposed read-only to the automation as sdk.params. */
+  params?: Record<string, unknown>;
+  maxDurationMs?: number;
+  dryRun?: boolean;
+}
+
+/** Approvals are path-based (canonical realpath); there is no content hash. */
+export interface ApprovalInfo {
+  path: string;
+  approvedAt: number;
+  lastRunAt?: number | null;
+}
+
+/** One line of the host's append-only audit log (`~/.knowhow/computer-use/audit.log`). */
+export interface AuditEntry {
+  ts: number;
+  event: "approve" | "deny" | "revoke" | "start" | "exit" | "halt" | "rearm" | string;
+  path?: string;
+  /** start only; informational (never enforced). */
+  sha256?: string;
+  workerId?: string;
+  pid?: number;
+  /** approve / start: "once" | "always". */
+  kind?: "once" | "always";
+  code?: number;
+  detail?: string;
 }
 
 export interface WorkerInfo {
@@ -41,14 +75,25 @@ export interface Selector {
 export type ControlRequest =
   | { type: "status" }
   | { type: "list" }
+  /**
+   * Start an APPROVED automation. There is no way to pass an argv/env: the host
+   * resolves + hashes the file, checks its approval store (native dialog when
+   * new/changed) and spawns node + its configured runner itself.
+   */
   | {
       type: "start";
-      name: string;
-      argv: string[];
+      automationPath: string;
+      name?: string;
+      args?: RunArgs;
       cwd?: string;
-      env?: Record<string, string>;
       singleInstance?: SingleInstance;
     }
+  | { type: "approve"; automationPath: string }
+  | { type: "approvals" }
+  | { type: "audit"; limit?: number }
+  | { type: "revoke"; automationPath?: string; all?: boolean }
+  /** Clear the kill-switch latch (host shows a native confirmation). */
+  | { type: "rearm" }
   | ({ type: "stop" } & Selector)
   | ({ type: "pause" } & Selector)
   | ({ type: "resume" } & Selector)
@@ -61,6 +106,11 @@ export interface ControlResults {
   status: HostStatus;
   list: { workers: WorkerInfo[] };
   start: { worker: WorkerInfo; started: boolean };
+  approve: { approved: boolean; path: string; kind: "once" | "always" };
+  approvals: { approvals: ApprovalInfo[] };
+  audit: { entries: AuditEntry[] };
+  revoke: { revoked: string[] };
+  rearm: { rearmed: boolean; halted: boolean };
   stop: { stopped: string[] };
   pause: { workers: string[]; errors: string[] };
   resume: { workers: string[]; errors: string[] };
@@ -74,12 +124,16 @@ export interface ControlResults {
 export interface HelloControl {
   type: "hello";
   role: "control";
+  /** Contents of ~/.knowhow/computer-use/host.token (rotated each host start). */
+  token?: string;
 }
 export interface HelloWorker {
   type: "hello";
   role: "worker";
   workerId: string;
   name: string;
+  /** Per-worker secret from env KNOWHOW_CU_WORKER_TOKEN. */
+  token?: string;
 }
 export type HelloMessage = HelloControl | HelloWorker;
 

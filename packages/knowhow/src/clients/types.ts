@@ -335,12 +335,16 @@ export interface AudioTranscriptionOptions extends RetryOptions {
   temperature?: number;
   /** Optional file name hint used when constructing multipart form data */
   fileName?: string;
+  /** Timestamp detail for verbose_json (OpenAI whisper-1). Include "word" for word-level timings. */
+  timestamp_granularities?: ("word" | "segment")[];
 }
 
 export interface AudioTranscriptionResponse {
   text: string;
   language?: string;
   duration?: number;
+  /** Word-level timings, present when timestamp_granularities includes "word". */
+  words?: { word: string; start: number; end: number }[];
   segments?: {
     id: number;
     seek: number;

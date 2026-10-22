@@ -68,10 +68,22 @@ export function createStore<T>(
   const write = (snapshot: string): Promise<void> => {
     const task = queue.then(() => {
       if (opts.persist && !opts.persist()) return;
-      fs.mkdirSync(dir, { recursive: true });
+      // Owner-only: the data dir is 0700 and the file 0600 from creation
+      // (mode on write + explicit chmod, so umask/pre-existing files can't loosen it).
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      try {
+        fs.chmodSync(dir, 0o700);
+      } catch {
+        /* best effort on filesystems without POSIX modes (Windows) */
+      }
       const tmp = `${file}.${process.pid}.${Date.now()}.${seq++}.tmp`;
       try {
-        fs.writeFileSync(tmp, snapshot, "utf8");
+        fs.writeFileSync(tmp, snapshot, { encoding: "utf8", mode: 0o600 });
+        try {
+          fs.chmodSync(tmp, 0o600);
+        } catch {
+          /* best effort on Windows */
+        }
         fs.renameSync(tmp, file);
       } catch (e) {
         try {

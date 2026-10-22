@@ -44,11 +44,12 @@ fn host() -> Arc<Host> {
 }
 
 async fn worker(host: &Arc<Host>, id: &str) -> Conn {
+    host.sup.allow_worker_token_for_tests(id, "test-token");
     let (client, server) = tokio::io::duplex(64 * 1024);
     tokio::spawn(ipc::serve_conn(host.clone(), server));
     let (rd, wr) = tokio::io::split(client);
     let mut c = Conn { r: BufReader::new(rd).lines(), w: wr };
-    c.send(json!({"type": "hello", "role": "worker", "workerId": id, "reqId": 1})).await;
+    c.send(json!({"type": "hello", "role": "worker", "workerId": id, "token": "test-token", "reqId": 1})).await;
     let r = c.reply(1).await;
     assert_eq!(r["ok"], true, "{r}");
     c

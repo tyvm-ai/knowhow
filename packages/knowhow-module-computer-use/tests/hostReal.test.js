@@ -3,7 +3,8 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
-const { hostBinaryPath } = require("../ts_build/host/hostLauncher");
+const crypto = require("crypto");
+const { hostBinaryPath, runnerArgs } = require("../ts_build/host/hostLauncher");
 const hostOps = require("../ts_build/host/hostOps");
 const { probeHost } = require("../ts_build/host/hostLauncher");
 
@@ -35,7 +36,11 @@ d("real host binary", () => {
     process.env.USERPROFILE = home;
     delete process.env.KNOWHOW_HOST_ENDPOINT;
     process.chdir(proj);
-    child = spawn(bin, ["--no-tray", "--foreground"], { env: { ...process.env, HOME: home }, stdio: "ignore" });
+    // KNOWHOW_CU_NO_UI: the host's native approval dialog is replaced by "deny" (tests never pop UI).
+    child = spawn(bin, [...runnerArgs(), "--no-tray", "--foreground"], {
+      env: { ...process.env, HOME: home, KNOWHOW_CU_NO_UI: "1" },
+      stdio: "ignore",
+    });
     expect(await until(() => probeHost())).toBe(true);
   });
 
@@ -49,7 +54,24 @@ d("real host binary", () => {
     fs.rmSync(proj, { recursive: true, force: true });
   });
 
+  // Stand-in for the user clicking "Approve": write the host-owned approval store.
+  const approve = (file) => {
+    const real = fs.realpathSync(file);
+    const store = path.join(home, ".knowhow", "computer-use", "approvals.json");
+    fs.mkdirSync(path.dirname(store), { recursive: true });
+    fs.writeFileSync(store, JSON.stringify({ approvals: { [real]: { approvedAt: Date.now() } } }), { mode: 0o600 });
+  };
+
+  test("an unapproved automation is refused (no UI => denied)", async () => {
+    await expect(hostOps.startAutomation("keepalive", { maxMs: 60000 })).rejects.toThrow(/not approved/);
+    expect(await hostOps.listWorkers()).toEqual([]);
+    const probe = await hostOps.hostRequest({ type: "status" });
+    expect(probe.runnerConfigured).toBe(true);
+    expect(probe.halted).toBe(false);
+  }, 30000);
+
   test("start a worker via the real worker.js, see it in ps, stop --all", async () => {
+    approve(path.join(proj, ".knowhow", "automations", "keepalive.ts"));
     const res = await hostOps.startAutomation("keepalive", { maxMs: 60000 });
     expect(res.started).toBe(true);
     expect(await until(async () => (await hostOps.listWorkers()).some((w) => w.name === "keepalive" && w.connected))).toBe(true);
