@@ -33,40 +33,91 @@ enum Action {
     Quit,
 }
 
-const SIZE: u32 = 32;
+// 44px = 22pt menu-bar height at 2x; the OS downsamples elsewhere (Windows/Linux trays).
+const SIZE: u32 = 44;
 
-/// Tiny generated icon: filled circle with a white "K".
-fn make_icon(rgb: [u8; 3]) -> Icon {
-    let mut px = vec![0u8; (SIZE * SIZE * 4) as usize];
-    let c = (SIZE as f32 - 1.0) / 2.0;
-    let r = SIZE as f32 / 2.0 - 1.0;
-    let seg = |x: f32, y: f32, ax: f32, ay: f32, bx: f32, by: f32| -> f32 {
+/// Knowhow "KH" outline badge (same geometry as knowhow-web `brand/knowhow-icon.svg`, 64x64 grid):
+/// white rounded tile, dark ring, dark KH strokes, plus an optional status dot (bottom-right).
+/// Rendered with 4x4 supersampling so it stays crisp on both light and dark menu bars.
+fn make_icon(dot: Option<[u8; 3]>) -> Icon {
+    const INK: [f32; 3] = [15.0, 23.0, 42.0]; // #0f172a
+    const PAPER: [f32; 3] = [255.0, 255.0, 255.0];
+    // KH strokes (64-grid): K stem, K upper arm, K lower arm, H left, H right, H bar.
+    const KH: [(f32, f32, f32, f32); 6] = [
+        (15.0, 18.0, 15.0, 46.0),
+        (29.0, 18.0, 16.5, 32.0),
+        (16.5, 32.0, 29.0, 46.0),
+        (35.0, 18.0, 35.0, 46.0),
+        (49.0, 18.0, 49.0, 46.0),
+        (35.0, 32.0, 49.0, 32.0),
+    ];
+    const RING_HALF: f32 = 2.5; // ring stroke 5 units (thicker than the web 3 for tray legibility)
+    const GLYPH_HALF: f32 = 3.25; // glyph stroke 6.5 units
+    const DOT: (f32, f32, f32) = (52.0, 52.0, 10.0); // cx, cy, r
+    const DOT_BORDER: f32 = 3.5;
+
+    fn seg(x: f32, y: f32, (ax, ay, bx, by): (f32, f32, f32, f32)) -> f32 {
         let (dx, dy) = (bx - ax, by - ay);
         let t = (((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)).clamp(0.0, 1.0);
         ((x - (ax + t * dx)).powi(2) + (y - (ay + t * dy)).powi(2)).sqrt()
-    };
+    }
+    /// Signed distance to the rounded square x,y in [2.75, 61.25], radius 14.
+    fn rrect(x: f32, y: f32) -> f32 {
+        let (c, half, r) = (32.0, 29.25, 14.0);
+        let qx = (x - c).abs() - (half - r);
+        let qy = (y - c).abs() - (half - r);
+        (qx.max(0.0).powi(2) + qy.max(0.0).powi(2)).sqrt() + qx.max(qy).min(0.0) - r
+    }
+
+    const SS: u32 = 4;
+    let scale = 64.0 / SIZE as f32;
+    let mut px = vec![0u8; (SIZE * SIZE * 4) as usize];
     for y in 0..SIZE {
         for x in 0..SIZE {
-            let (fx, fy) = (x as f32, y as f32);
-            let d = ((fx - c).powi(2) + (fy - c).powi(2)).sqrt();
-            if d > r {
-                continue;
+            let (mut acc, mut alpha) = ([0.0f32; 3], 0.0f32);
+            for sy in 0..SS {
+                for sx in 0..SS {
+                    let gx = (x as f32 + (sx as f32 + 0.5) / SS as f32) * scale;
+                    let gy = (y as f32 + (sy as f32 + 0.5) / SS as f32) * scale;
+                    let d = rrect(gx, gy);
+                    let mut col: Option<[f32; 3]> = None;
+                    if d <= RING_HALF {
+                        col = Some(if d.abs() <= RING_HALF || KH.iter().any(|&s| seg(gx, gy, s) <= GLYPH_HALF) {
+                            INK
+                        } else {
+                            PAPER
+                        });
+                    }
+                    if let Some(rgb) = dot {
+                        let dd = ((gx - DOT.0).powi(2) + (gy - DOT.1).powi(2)).sqrt();
+                        if dd <= DOT.2 {
+                            col = Some([rgb[0] as f32, rgb[1] as f32, rgb[2] as f32]);
+                        } else if dd <= DOT.2 + DOT_BORDER {
+                            col = Some(PAPER);
+                        }
+                    }
+                    if let Some(c) = col {
+                        for k in 0..3 {
+                            acc[k] += c[k];
+                        }
+                        alpha += 1.0;
+                    }
+                }
             }
-            let i = ((y * SIZE + x) * 4) as usize;
-            let on_k = seg(fx, fy, 11.0, 8.0, 11.0, 24.0) < 1.8
-                || seg(fx, fy, 11.0, 16.0, 22.0, 8.0) < 1.8
-                || seg(fx, fy, 14.0, 14.0, 22.0, 24.0) < 1.8;
-            let col = if on_k { [255, 255, 255] } else { rgb };
-            px[i..i + 3].copy_from_slice(&col);
-            px[i + 3] = 255;
+            if alpha > 0.0 {
+                let i = ((y * SIZE + x) * 4) as usize;
+                for k in 0..3 {
+                    px[i + k] = (acc[k] / alpha).round() as u8;
+                }
+                px[i + 3] = (alpha / (SS * SS) as f32 * 255.0).round() as u8;
+            }
         }
     }
     Icon::from_rgba(px, SIZE, SIZE).expect("valid icon buffer")
 }
 
-const COLOR_OK: [u8; 3] = [0x1f, 0x8a, 0x70];
-const COLOR_PAUSED: [u8; 3] = [0xd9, 0x9a, 0x1c];
-const COLOR_HALTED: [u8; 3] = [0xc0, 0x39, 0x2b];
+const COLOR_PAUSED: [u8; 3] = [0xf5, 0x9e, 0x0b];
+const COLOR_HALTED: [u8; 3] = [0xef, 0x44, 0x44];
 
 fn item(menu: &Submenu, text: &str, enabled: bool, action: Option<Action>, map: &mut HashMap<MenuId, Action>) {
     let it = MenuItem::new(text, enabled, None);
@@ -227,14 +278,15 @@ fn refresh(tray: &TrayIcon, host: &Host, halted: bool, actions: &mut HashMap<Men
     tray.set_menu(Some(Box::new(menu)));
     let workers: Vec<_> = host.list().into_iter().filter(|w| w.status != "exited").collect();
     let any_paused = workers.iter().any(|w| w.status == "paused");
-    let color = if halted {
-        COLOR_HALTED
+    // Same KH badge in every state; a status dot signals paused (amber) / halted (red).
+    let dot = if halted {
+        Some(COLOR_HALTED)
     } else if any_paused {
-        COLOR_PAUSED
+        Some(COLOR_PAUSED)
     } else {
-        COLOR_OK
+        None
     };
-    let _ = tray.set_icon(Some(make_icon(color)));
+    let _ = tray.set_icon(Some(make_icon(dot)));
     let tip = if halted {
         "knowhow: kill switch tripped — automations blocked until re-armed".to_string()
     } else {
@@ -293,7 +345,7 @@ pub fn run(host: Arc<Host>, rt: tokio::runtime::Handle, with_tray: bool) -> ! {
                 match TrayIconBuilder::new()
                     .with_menu(Box::new(menu))
                     .with_tooltip("knowhow host")
-                    .with_icon(make_icon(COLOR_OK))
+                    .with_icon(make_icon(None))
                     .build()
                 {
                     Ok(t) => {
