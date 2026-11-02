@@ -123,6 +123,15 @@ export type Config = {
     logLevel?: "debug" | "info" | "warning" | "error";
     completionTimeout?: number;
   };
+  gitPlugin?: {
+    /** Files larger than this many MB are never tracked/transported (default 25). */
+    maxFileMb?: number;
+  };
+  retention?: {
+    /** How long finished agent task dirs are kept, e.g. "3d", "12h" (default "3d"). */
+    tasks?: string;
+    taskBranches?: { keep?: number };
+  };
   files?: {
     remotePath: string;
     localPath: string;

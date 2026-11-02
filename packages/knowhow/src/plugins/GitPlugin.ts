@@ -2,9 +2,32 @@ import { PluginBase, PluginMeta } from "./PluginBase";
 import { PluginContext } from "./types";
 import { MinimalEmbedding } from "../types";
 import { EventService } from "../services/EventService";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { getConfigSync } from "../config";
+import { getRealRepoInfo } from "../services/RealRepo";
+import { recordTaskRepoInfo } from "../services/TaskTransport";
+
+/** Paths that must never be tracked in the internal repo (secrets, deps, our own state). */
+export const INTERNAL_EXCLUDES = [
+  ".knowhow/",
+  "node_modules/",
+  ".env",
+  ".env.*",
+  "*.pem",
+  "*.key",
+];
+export const DEFAULT_MAX_FILE_MB = 25;
+export const DEFAULT_KEEP_TASK_BRANCHES = 20;
+
+/** Escape a literal path for use as an anchored gitignore pattern. */
+export function escapeExcludePattern(rel: string): string {
+  let out = rel.replace(/[\\*?[\]]/g, (c) => "\\" + c);
+  if (/^[#!]/.test(out)) out = "\\" + out;
+  out = out.replace(/ +$/, (m) => m.replace(/ /g, "\\ "));
+  return "/" + out;
+}
 
 export class GitPlugin extends PluginBase {
   readonly meta: PluginMeta = {
@@ -21,6 +44,8 @@ export class GitPlugin extends PluginBase {
   private currentTask: string | null = null;
   // Track commit hash at time lint started, keyed by extension
   private lintStartCommits: Map<string, string> = new Map();
+  // Repo dirs whose internal exclude/untrack setup already ran in this process
+  private static excludesReady = new Set<string>();
   static isListening = false;
 
   constructor(context: PluginContext = {}) {
@@ -60,7 +85,7 @@ Your modifications are automatically tracked separately and won't affect the use
   private getProjectGitStatus(): string {
     try {
       // Get project git status
-      const status = execSync("git status --porcelain", {
+      const status = execFileSync("git", ["status", "--porcelain"], {
         cwd: this.projectRoot,
         stdio: "pipe",
       })
@@ -90,7 +115,7 @@ Your modifications are automatically tracked separately and won't affect the use
 
       // Initialize git repo in .knowhow if not already initialized
       if (!fs.existsSync(this.knowhowGitPath)) {
-        execSync("git init", { cwd: this.knowhowDir, stdio: "pipe" });
+        execFileSync("git", ["init"], { cwd: this.knowhowDir, stdio: "pipe" });
 
         // Create initial .gitignore file in the .knowhow directory (not tracked by the repo)
         const gitignorePath = path.join(this.knowhowDir, ".gitignore");
@@ -99,42 +124,65 @@ Your modifications are automatically tracked separately and won't affect the use
           "# Knowhow agent tracking repository\n"
         );
 
+        // Never track secrets / deps / .knowhow itself, even in the first commit
+        this.ensureInternalExcludes();
+
         // For initial commit, we need to add files and commit directly
         // since HEAD doesn't exist yet
         try {
-          this.gitCommand("add -A");
-          this.gitCommand('commit -m "Initial commit for agent tracking"');
+          this.excludeOversizedFiles();
+          this.gitCommand(["add", "-A"]);
+          this.gitCommand(["commit", "-m", "Initial commit for agent tracking"]);
         } catch (error) {
           // If there's nothing to commit, create an empty commit
-          this.gitCommand(
-            'commit --allow-empty -m "Initial commit for agent tracking"'
-          );
+          this.gitCommand([
+            "commit",
+            "--allow-empty",
+            "-m",
+            "Initial commit for agent tracking",
+          ]);
         }
       }
 
+      this.ensureInternalExcludes();
       await this.setBranch("main");
     } catch (error) {
       this.log(`Failed to initialize .knowhow git repository: ${error}`, "error");
     }
   }
 
+  /**
+   * Run git against the internal repo (.knowhow/.git with the project root as
+   * work tree). Arguments are passed as an array — never through a shell.
+   */
   private gitCommand(
-    command: string,
-    options: { stdio?: any } = { stdio: "pipe" }
+    args: string[],
+    options: { stdio?: any; input?: string } = { stdio: "pipe" }
   ): string {
     try {
-      const fullCommand = `git --git-dir="${this.knowhowGitPath}" --work-tree="${this.projectRoot}" ${command}`;
-      return execSync(fullCommand, {
-        cwd: this.projectRoot,
-        ...options,
-      }).toString();
+      return execFileSync(
+        "git",
+        [
+          "--git-dir",
+          this.knowhowGitPath,
+          "--work-tree",
+          this.projectRoot,
+          ...args,
+        ],
+        {
+          cwd: this.projectRoot,
+          stdio: options.stdio ?? "pipe",
+          input: options.input,
+          maxBuffer: 256 * 1024 * 1024,
+        }
+      ).toString();
     } catch (error: any) {
       // Re-throw with more context
       const errorMessage = error.stderr
         ? error.stderr.toString()
         : error.message;
       const newError = new Error(
-        `Git command failed: ${command}\nError: ${errorMessage}`
+        `Git command failed: ${args.join(" ")}\nError: ${errorMessage}`
       );
       newError.stack = error.stack;
       throw newError;
@@ -142,16 +190,190 @@ Your modifications are automatically tracked separately and won't affect the use
   }
 
   private safeGitCommand(
-    command: string,
+    args: string[],
     options: { stdio?: any } = { stdio: "pipe" }
   ): string | null {
     try {
-      return this.gitCommand(command, options);
+      return this.gitCommand(args, options);
     } catch (error) {
-      this.log(`Safe git command failed: ${command} - ${error}`, "warn");
+      this.log(`Safe git command failed: ${args.join(" ")} - ${error}`, "warn");
       return null;
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Hygiene: excludes, untracking, oversized files, branch retention
+  // ---------------------------------------------------------------------------
+
+  private get excludeFilePath() {
+    return path.join(this.knowhowGitPath, "info", "exclude");
+  }
+
+  private readExcludeLines(): string[] {
+    try {
+      return fs.readFileSync(this.excludeFilePath, "utf8").split("\n");
+    } catch {
+      return [];
+    }
+  }
+
+  private appendExcludes(patterns: string[]) {
+    if (!patterns.length) return;
+    const existing = new Set(this.readExcludeLines().map((l) => l.trim()));
+    const missing = patterns.filter((p) => !existing.has(p));
+    if (!missing.length) return;
+    fs.mkdirSync(path.dirname(this.excludeFilePath), { recursive: true });
+    let prefix = "";
+    try {
+      const cur = fs.readFileSync(this.excludeFilePath, "utf8");
+      if (cur.length && !cur.endsWith("\n")) prefix = "\n";
+    } catch {
+      /* new file */
+    }
+    fs.appendFileSync(this.excludeFilePath, prefix + missing.join("\n") + "\n");
+  }
+
+  /**
+   * Once per process: make sure secrets/deps/.knowhow are excluded from the
+   * internal repo and untrack anything that is now ignored.
+   */
+  ensureInternalExcludes(): void {
+    if (!fs.existsSync(this.knowhowGitPath)) return;
+    if (GitPlugin.excludesReady.has(this.knowhowGitPath)) return;
+    GitPlugin.excludesReady.add(this.knowhowGitPath);
+    try {
+      this.appendExcludes(INTERNAL_EXCLUDES);
+      this.untrackIgnoredFiles();
+    } catch (error) {
+      this.log(`Failed to set up internal excludes: ${error}`, "warn");
+    }
+  }
+
+  /** `git rm --cached` everything tracked that is now ignored, then commit it. */
+  private untrackIgnoredFiles(): void {
+    let listed: string[];
+    try {
+      listed = this.gitCommand(["ls-files", "-ci", "--exclude-standard", "-z"])
+        .split("\0")
+        .filter(Boolean);
+    } catch {
+      return; // no commits/index yet
+    }
+    if (!listed.length) return;
+    const BATCH = 500;
+    for (let i = 0; i < listed.length; i += BATCH) {
+      this.gitCommand([
+        "rm",
+        "--cached",
+        "-r",
+        "-q",
+        "--ignore-unmatch",
+        "--",
+        ...listed.slice(i, i + BATCH),
+      ]);
+    }
+    this.ensureValidHead();
+    this.gitCommand(["commit", "--allow-empty", "-m", "untrack ignored files"]);
+    this.log(`Untracked ${listed.length} ignored files from the internal repo`);
+  }
+
+  private getMaxFileBytes(): number {
+    const mb = getConfigSync()?.gitPlugin?.maxFileMb;
+    return (typeof mb === "number" && mb > 0 ? mb : DEFAULT_MAX_FILE_MB) * 1024 * 1024;
+  }
+
+  /**
+   * Before `add -A`: append files larger than gitPlugin.maxFileMb (untracked or
+   * modified) to info/exclude, and untrack the already-tracked ones.
+   */
+  excludeOversizedFiles(): void {
+    if (!fs.existsSync(this.knowhowGitPath)) return;
+    const maxBytes = this.getMaxFileBytes();
+    const oversized: string[] = [];
+    const trackedOversized: string[] = [];
+    const check = (rels: string[], tracked: boolean) => {
+      for (const rel of rels) {
+        try {
+          const st = fs.lstatSync(path.join(this.projectRoot, rel));
+          if (st.isFile() && st.size > maxBytes) {
+            oversized.push(rel);
+            if (tracked) trackedOversized.push(rel);
+          }
+        } catch {
+          /* deleted */
+        }
+      }
+    };
+    try {
+      check(
+        this.gitCommand(["ls-files", "-z", "--others", "--exclude-standard"])
+          .split("\0")
+          .filter(Boolean),
+        false
+      );
+      check(
+        this.gitCommand(["ls-files", "-z", "-m"]).split("\0").filter(Boolean),
+        true
+      );
+    } catch (error) {
+      this.log(`Failed to scan for oversized files: ${error}`, "warn");
+      return;
+    }
+    if (!oversized.length) return;
+    this.appendExcludes(oversized.map(escapeExcludePattern));
+    if (trackedOversized.length) {
+      try {
+        this.gitCommand([
+          "rm",
+          "--cached",
+          "-q",
+          "--ignore-unmatch",
+          "--",
+          ...trackedOversized,
+        ]);
+      } catch (error) {
+        this.log(`Failed to untrack oversized files: ${error}`, "warn");
+      }
+    }
+    this.log(
+      `Skipping ${oversized.length} file(s) over ${Math.round(
+        maxBytes / 1024 / 1024
+      )} MB in internal tracking`,
+      "warn"
+    );
+  }
+
+  /** Keep only the newest `retention.taskBranches.keep` task/* branches, then gc. */
+  pruneTaskBranches(): void {
+    try {
+      const configured = getConfigSync()?.retention?.taskBranches?.keep;
+      const keep =
+        typeof configured === "number" && configured >= 0
+          ? configured
+          : DEFAULT_KEEP_TASK_BRANCHES;
+      const branches = this.gitCommand([
+        "for-each-ref",
+        "--sort=-committerdate",
+        "--format=%(refname:short)",
+        "refs/heads/task/",
+      ])
+        .split("\n")
+        .map((b) => b.trim())
+        .filter(Boolean);
+      const current = this.getCurrentBranch();
+      const stale = branches.slice(keep).filter((b) => b !== current);
+      for (const b of stale) {
+        this.safeGitCommand(["branch", "-D", b]);
+      }
+      if (stale.length) {
+        this.log(`Pruned ${stale.length} old task branches (keeping ${keep})`);
+      }
+      this.safeGitCommand(["gc", "--auto", "--quiet"]);
+    } catch (error) {
+      this.log(`Failed to prune task branches: ${error}`, "warn");
+    }
+  }
+
 
   private setupEventListeners(): void {
     // Listen for file:post-edit events to auto-commit
@@ -165,6 +387,7 @@ Your modifications are automatically tracked separately and won't affect the use
       // Listen for agent newTask events to create new branches
       this.eventService.on("agent:newTask", async (data: any) => {
         if (this.isEnabled()) {
+          this.recordRealRepoInfo(data?.taskId);
           await this.ensureCleanState(data);
           await this.handleNewTask(data);
         }
@@ -181,7 +404,8 @@ Your modifications are automatically tracked separately and won't affect the use
       this.eventService.on("linter:started", (data: any) => {
         if (this.isEnabled()) {
           const { extension } = data;
-          const currentCommit = this.safeGitCommand("rev-parse --short HEAD")?.trim() || null;
+          const currentCommit =
+            this.safeGitCommand(["rev-parse", "--short", "HEAD"])?.trim() || null;
           if (currentCommit) {
             this.lintStartCommits.set(extension, currentCommit);
           }
@@ -199,11 +423,25 @@ Your modifications are automatically tracked separately and won't affect the use
   }
 
   /**
+   * Record the real repo's {gitRoot, projectSubdir, headSha, branch, remoteUrl}
+   * in the task metadata so the task can later be transported elsewhere.
+   */
+  private recordRealRepoInfo(taskId?: string): void {
+    if (!taskId) return;
+    try {
+      const info = getRealRepoInfo(this.projectRoot);
+      if (info) recordTaskRepoInfo(taskId, info);
+    } catch (error) {
+      this.log(`Failed to record real repo info: ${error}`, "warn");
+    }
+  }
+
+  /**
    * Gets the current branch name from the git repository
    */
   private getCurrentBranch(): string {
     try {
-      return this.gitCommand("branch --show-current").trim() || "main";
+      return this.gitCommand(["branch", "--show-current"]).trim() || "main";
     } catch {
       return "main";
     }
@@ -212,7 +450,7 @@ Your modifications are automatically tracked separately and won't affect the use
   private getRepoHash(): string | null {
     let actualRepoHash: string | null = null;
     try {
-      actualRepoHash = execSync("git rev-parse --short HEAD", {
+      actualRepoHash = execFileSync("git", ["rev-parse", "--short", "HEAD"], {
         cwd: this.projectRoot,
         stdio: "pipe",
       })
@@ -236,6 +474,9 @@ Your modifications are automatically tracked separately and won't affect the use
         await this.initializeKnowhowRepo();
         return;
       }
+
+      // Secrets/deps/.knowhow must never be tracked (once per process)
+      this.ensureInternalExcludes();
 
       // Get the current HEAD commit hash from the actual repo (if it exists)
       const actualRepoHash = this.getRepoHash();
@@ -271,7 +512,7 @@ Your modifications are automatically tracked separately and won't affect the use
     // Check if there are uncommitted changes in the .knowhow repo
     let hasChanges = false;
     try {
-      this.gitCommand("diff-index --quiet HEAD --");
+      this.gitCommand(["diff-index", "--quiet", "HEAD", "--"]);
     } catch {
       hasChanges = true;
     }
@@ -284,12 +525,12 @@ Your modifications are automatically tracked separately and won't affect the use
     try {
       // Check if branch exists
       try {
-        this.gitCommand(`rev-parse --verify ${branchName}`);
+        this.gitCommand(["rev-parse", "--verify", branchName]);
         // Branch exists, switch to it
-        this.gitCommand(`checkout ${branchName}`);
+        this.gitCommand(["checkout", branchName]);
       } catch {
         // Branch doesn't exist, create and switch to it
-        this.gitCommand(`checkout -b ${branchName}`);
+        this.gitCommand(["checkout", "-b", branchName]);
       }
     } catch (error) {
       this.log(`Failed to set branch ${branchName}`, "error");
@@ -300,7 +541,7 @@ Your modifications are automatically tracked separately and won't affect the use
     if (!this.isEnabled()) return;
 
     try {
-      this.gitCommand(`checkout -b ${branchName}`);
+      this.gitCommand(["checkout", "-b", branchName]);
     } catch (error) {
       this.log(`Failed to create branch ${branchName}`, "error");
     }
@@ -319,33 +560,35 @@ Your modifications are automatically tracked separately and won't affect the use
     if (files && files.length > 0) {
       for (const file of files) {
         try {
-          this.gitCommand(`add "${file}"`);
+          this.gitCommand(["add", "--", file]);
         } catch (error) {
           this.log(`Failed to add file ${file}: ${error}`, "warn");
         }
       }
     } else {
-      this.gitCommand("add -A");
+      this.excludeOversizedFiles();
+      this.gitCommand(["add", "-A"]);
     }
 
     // Ensure we have a valid HEAD before committing
     this.ensureValidHead();
 
     // Commit the changes
-    const escapedMessage = message.replace(/\n/g, "\\n");
-    this.gitCommand(`commit --allow-empty -m "${escapedMessage}"`);
+    this.gitCommand(["commit", "--allow-empty", "-m", message]);
   }
 
   async commitAll(message: string): Promise<void> {
     if (!this.isEnabled()) return;
 
     try {
-      this.gitCommand("add -A");
+      this.excludeOversizedFiles();
+      this.gitCommand(["add", "-A"]);
       await this.commitWithEvents(message);
     } catch (error) {
       this.log(`Failed to commit all changes: ${error}`, "error");
     }
   }
+
 
   async commitWithEvents(message: string, files?: string[]): Promise<void> {
     try {
@@ -400,11 +643,11 @@ Your modifications are automatically tracked separately and won't affect the use
   private ensureValidHead(): void {
     try {
       // Check if HEAD exists
-      this.gitCommand("rev-parse HEAD");
+      this.gitCommand(["rev-parse", "HEAD"]);
     } catch {
       // No HEAD exists, need to create initial commit
       try {
-        this.gitCommand('commit --allow-empty -m "Initial empty commit"');
+        this.gitCommand(["commit", "--allow-empty", "-m", "Initial empty commit"]);
       } catch (error) {
         this.log(`Could not create initial commit: ${error}`, "warn");
       }
@@ -526,7 +769,7 @@ Your modifications are automatically tracked separately and won't affect the use
     // Add a git note to the commit marking it as stable
     try {
       const noteMessage = `[Build Stable] No linting issues found on branch: ${this.getCurrentBranch()}`;
-      this.gitCommand(`notes add -f -m "${noteMessage}" ${commitHash}`);
+      this.gitCommand(["notes", "add", "-f", "-m", noteMessage, commitHash]);
       this.log(`Marked commit ${commitHash} as build stable`);
     } catch (error) {
       this.log(`Failed to add git note for commit ${commitHash}: ${error}`, "warn");
@@ -537,7 +780,7 @@ Your modifications are automatically tracked separately and won't affect the use
     if (!this.isEnabled()) return "Git plugin not enabled";
 
     try {
-      return this.gitCommand("status --porcelain");
+      return this.gitCommand(["status", "--porcelain"]);
     } catch (error) {
       return `Error getting git status: ${error}`;
     }
@@ -547,7 +790,7 @@ Your modifications are automatically tracked separately and won't affect the use
     if (!this.isEnabled()) return "Git plugin not enabled";
 
     try {
-      return this.gitCommand(`log --oneline -${count}`);
+      return this.gitCommand(["log", "--oneline", `-${Math.floor(Number(count)) || 10}`]);
     } catch (error) {
       return `Error getting git log: ${error}`;
     }
@@ -557,7 +800,7 @@ Your modifications are automatically tracked separately and won't affect the use
     if (!this.isEnabled()) return [];
 
     try {
-      const output = this.gitCommand("branch");
+      const output = this.gitCommand(["branch"]);
       return output
         .split("\n")
         .map((line) => line.replace(/^\*?\s*/, "").trim())
@@ -585,15 +828,18 @@ Your modifications are automatically tracked separately and won't affect the use
     if (!this.isEnabled()) return;
 
     try {
-      const mergeCommand = squash
-        ? `merge --squash ${branchName}`
-        : `merge ${branchName}`;
-      this.gitCommand(mergeCommand);
+      this.gitCommand(
+        squash ? ["merge", "--squash", branchName] : ["merge", branchName]
+      );
 
       if (squash) {
         // Need to create commit after squash merge
         message = message || `Squash merge ${branchName}`;
-        this.commitAll(message);
+        await this.commitAll(message);
+      }
+
+      if (branchName.startsWith("task/")) {
+        this.pruneTaskBranches();
       }
     } catch (error) {
       this.log(`Failed to merge ${branchName}: ${error}`, "error");

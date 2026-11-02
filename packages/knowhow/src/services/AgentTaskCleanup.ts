@@ -5,9 +5,41 @@
  */
 import { promises as fs } from "fs";
 import * as path from "path";
+import { getConfigSync } from "../config";
 
 const AGENTS_PATH = ".knowhow/processes/agents";
 const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+
+/**
+ * Parse a duration like "3d", "12h", "90m", "30s", "2w" (a bare number is
+ * milliseconds). Returns undefined when unparseable.
+ */
+export function parseDuration(value: unknown): number | undefined {
+  if (typeof value === "number") return value >= 0 ? value : undefined;
+  if (typeof value !== "string") return undefined;
+  const m = value.trim().match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w)?$/i);
+  if (!m) return undefined;
+  const n = parseFloat(m[1]);
+  const unit = (m[2] || "ms").toLowerCase();
+  const mult: Record<string, number> = {
+    ms: 1,
+    s: 1000,
+    m: 60 * 1000,
+    h: 60 * 60 * 1000,
+    d: 24 * 60 * 60 * 1000,
+    w: 7 * 24 * 60 * 60 * 1000,
+  };
+  return n * mult[unit];
+}
+
+/** Task retention from knowhow.json `retention.tasks` (default 3 days). */
+export function getTaskRetentionMs(): number {
+  try {
+    return parseDuration(getConfigSync()?.retention?.tasks) ?? THREE_DAYS_MS;
+  } catch {
+    return THREE_DAYS_MS;
+  }
+}
 
 let interval: NodeJS.Timeout | null = null;
 let started = false;
@@ -74,8 +106,9 @@ export async function cleanupOldProcessLogs(maxAgeMs: number): Promise<void> {
   }
 }
 
-/** Remove agent task directories older than 3 days, then the other process leftovers. */
+/** Remove agent task directories older than `retention.tasks` (default 3 days), then the other process leftovers. */
 export async function cleanupOldTasks(): Promise<void> {
+  const maxAgeMs = getTaskRetentionMs();
   try {
     try {
       await fs.access(AGENTS_PATH);
@@ -89,7 +122,7 @@ export async function cleanupOldTasks(): Promise<void> {
       const taskPath = path.join(AGENTS_PATH, entry.name);
       try {
         const stats = await fs.stat(taskPath);
-        if (now - stats.mtimeMs > THREE_DAYS_MS) {
+        if (now - stats.mtimeMs > maxAgeMs) {
           console.log(`🧹 Cleaning up old task directory: ${entry.name}`);
           await fs.rm(taskPath, { recursive: true, force: true });
         }
@@ -97,8 +130,8 @@ export async function cleanupOldTasks(): Promise<void> {
         console.error(`❌ Error cleaning up ${entry.name}:`, error);
       }
     }
-    await cleanupOldProcessLogs(THREE_DAYS_MS);
-    await cleanupOldManagedProcessDirs(THREE_DAYS_MS);
+    await cleanupOldProcessLogs(maxAgeMs);
+    await cleanupOldManagedProcessDirs(maxAgeMs);
   } catch (error) {
     console.error(`❌ Error during cleanup:`, error);
   }
