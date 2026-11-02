@@ -333,7 +333,7 @@ export function addAskCommand(program: Command, getChatService: () => any, getCo
         const askModule = new AskModule();
         await askModule.initialize(chatService);
         await askModule.processAIQuery(input, {
-          plugins: config.plugins.enabled,
+          plugins: config?.plugins?.enabled ?? [],
           currentModel: options.model,
           currentProvider: options.provider,
           chatHistory: [],

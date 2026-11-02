@@ -9,6 +9,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
 import { globSync } from "glob";
+import { minimatch } from "minimatch";
 
 import { GenerationSource } from "./types";
 import { readFile, writeFile } from "./utils";
@@ -102,10 +103,13 @@ function sourceMatchesFilter(
 /**
  * Detects whether sourceB's input references sourceA's output directory or file.
  *
- * Heuristic: if sourceA produces an output path and sourceB reads from that
- * same path (or a sub-path of it) then B depends on A.
+ * B depends on A only if one of B's input patterns can actually match A's
+ * output: the output file itself, or (for directory outputs) something inside
+ * that directory. Sharing a parent folder is not a dependency — e.g. a source
+ * writing `docs/x/index.mdx` and another reading `docs/x/index.mdx` to write
+ * `docs/x/llmFeedback.json` are ordered one way, not a cycle.
  */
-function ioOverlaps(sourceA: GenerationSource, sourceB: GenerationSource): boolean {
+export function ioOverlaps(sourceA: GenerationSource, sourceB: GenerationSource): boolean {
   const aOut = sourceA.output;
   if (!aOut) return false;
 
@@ -116,14 +120,22 @@ function ioOverlaps(sourceA: GenerationSource, sourceB: GenerationSource): boole
     ? bInputPattern.slice(1, -1).split(",").map((p) => p.trim())
     : [bInputPattern];
 
+  const clean = (p: string) => p.replace(/^\.\//, "");
+  const out = clean(aOut);
+  const outIsDir = aOut.endsWith("/");
+  const outDir = out.replace(/\/$/, "");
+
   for (const bPath of bPaths) {
-    // If aOut is a directory (ends with /) check if bPath starts with it
-    if (aOut.endsWith("/") && bPath.startsWith(aOut)) return true;
-    // If aOut is a file, check if bPath starts with aOut's directory
-    const aDir = aOut.endsWith("/") ? aOut : path.dirname(aOut) + "/";
-    if (bPath.startsWith(aDir)) return true;
-    // Direct prefix/glob match: e.g. aOut = "autodoc/" bPath = "autodoc/**/*.md"
-    if (bPath.startsWith(aOut.replace(/\/$/, ""))) return true;
+    if (!bPath) continue;
+    const pat = clean(bPath);
+    if (!outIsDir) {
+      if (pat === out || minimatch(out, pat, { dot: true })) return true;
+      continue;
+    }
+    // Directory output: B reads inside it (pattern rooted in the dir), or the
+    // pattern would match files placed in it.
+    if (pat === outDir || pat.startsWith(outDir + "/")) return true;
+    if (minimatch(`${outDir}/__knowhow_probe__.md`, pat, { dot: true })) return true;
   }
   return false;
 }

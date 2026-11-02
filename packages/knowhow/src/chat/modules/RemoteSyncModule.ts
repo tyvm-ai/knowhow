@@ -318,7 +318,10 @@ export class RemoteSyncModule extends BaseChatModule {
       const modelName = taskInfo.agent?.getModel();
       const { messageId, taskId: placeholderTaskId } = await this.createRemoteMessagePlaceholder(
         sessionId,
-        taskInfo.formattedPrompt || taskInfo.initialInput,
+        // Send the raw user input, not the plugin-expanded prompt: the expanded
+        // prompt (PreviousChats + plugin context) can be hundreds of KB and is
+        // already stored as the first message of the synced task thread.
+        taskInfo.initialInput || taskInfo.formattedPrompt,
         agentName,
         modelName
       );
