@@ -4,6 +4,15 @@ import * as fs from "fs";
 import * as path from "path";
 import { KnowhowSimpleClient, KNOWHOW_API_URL } from "../services/KnowhowClient";
 import { ToolCall } from "../clients/types";
+import { callWorkerTool, unwrapToolResponse } from "../services/RemoteWorkers";
+import {
+  extractWorkersFromThreads,
+  isMetaTool,
+  parseWorkerToolName,
+  parseWorkersOption,
+  resolveWorkers,
+  ResolvedWorker,
+} from "./replayWorkers";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -205,14 +214,20 @@ async function runReplay(options: {
   dryRun: boolean;
   replacePaths: Array<[string, string]>;
   exportFile?: string;
+  workers?: string;
+  onBackend: boolean;
+  includeMeta: boolean;
 }) {
-  // 1. Setup services + tools
-  console.log("🔧 Setting up services...");
-  const { setupServices } = await import("./services");
-  const { Tools } = await setupServices();
-
-  // 2. Fetch the threads from the remote API
+  // 1. Fetch the threads from the remote API
   const client = new KnowhowSimpleClient(KNOWHOW_API_URL);
+  {
+    const { getConfig } = await import("../config");
+    const { getActiveRemote, getRemoteOverrideWarning } = await import("../remotes");
+    const config = await getConfig();
+    const overrideWarning = getRemoteOverrideWarning(config);
+    if (overrideWarning) console.warn(overrideWarning);
+    console.log(`🌐 Remote: ${getActiveRemote(config).name} (${KNOWHOW_API_URL})`);
+  }
 
   let threads: any[][] = [];
 
@@ -250,6 +265,16 @@ async function runReplay(options: {
   // 4. Apply filters
   let filtered = allToolCalls;
 
+  if (!options.includeMeta) {
+    const before = filtered.length;
+    filtered = filtered.filter(({ toolCall }) => !isMetaTool(toolCall.function.name));
+    if (filtered.length !== before) {
+      console.log(
+        `   Skipping ${before - filtered.length} agent-housekeeping call(s) (listAvailableTools/enableTools/disableTools/finalAnswer); use --include-meta to keep them`
+      );
+    }
+  }
+
   if (options.fromStep != null) {
     filtered = filtered.slice(options.fromStep - 1);
   }
@@ -279,6 +304,37 @@ async function runReplay(options: {
     console.log("⚠️  No tool calls remain after filtering. Nothing to replay.");
     return;
   }
+
+  // 4b. Work out which worker each `worker_<i>_*` call routes to
+  const recordedWorkers = extractWorkersFromThreads(threads);
+  const workerOverrides = parseWorkersOption(options.workers);
+  const needsWorkers = filtered.some(({ toolCall }) =>
+    parseWorkerToolName(toolCall.function.name)
+  );
+  let resolvedWorkers: ResolvedWorker[] = [];
+  if (needsWorkers || workerOverrides.size > 0) {
+    let connected = null;
+    try {
+      const res = await client.listOrgWorkers({ includeClients: true });
+      connected = Array.isArray(res?.data) ? res.data : null;
+    } catch (e: any) {
+      console.log(`   ⚠ Could not list connected workers: ${e?.message || e}`);
+    }
+    resolvedWorkers = resolveWorkers(recordedWorkers, workerOverrides, connected);
+    console.log("\n🖥  Workers:");
+    if (resolvedWorkers.length === 0) {
+      console.log(
+        "   ⚠ This task called worker tools but no worker was recorded. Pass --workers <id>[,<id>…] (or 0=<id>,1=<id>)."
+      );
+    }
+    for (const w of resolvedWorkers) {
+      const rec = recordedWorkers.find((r) => r.index === w.index);
+      const kind = rec?.clientKind ? ` (${rec.clientKind})` : "";
+      console.log(`   worker_${w.index} → ${w.id}${kind} — ${w.note}`);
+    }
+  }
+  const workerIdFor = (index: number) =>
+    resolvedWorkers.find((w) => w.index === index)?.id;
 
   // 5. Print summary table
   console.log("\n┌─────────────────────────────────────────────────────────────┐");
@@ -331,6 +387,13 @@ async function runReplay(options: {
       }
 
       lines.push(`// Step ${i + 1}: ${originalName}`);
+      const wt = parseWorkerToolName(originalName);
+      if (wt) {
+        lines.push(
+          `// ⚠ worker tool: originally ran on worker ${workerIdFor(wt.index) ?? "(unknown)"}; ` +
+            `\`knowhow script\` runs tools locally, so use \`knowhow replay --workers …\` for these steps`
+        );
+      }
       lines.push(`await callTool(${JSON.stringify(toolName)}, ${prettyArgs});`);
       lines.push("");
     }
@@ -350,6 +413,27 @@ async function runReplay(options: {
     console.log("🏃 Dry-run mode: no tools will be executed.");
     return;
   }
+
+  // 5c. Local tools only get set up when something will actually run locally
+  const needsLocalTools =
+    !options.onBackend &&
+    filtered.some(({ toolCall }) => !parseWorkerToolName(toolCall.function.name));
+  let Tools: Awaited<ReturnType<typeof import("./services")["setupServices"]>>["Tools"] | undefined;
+  if (needsLocalTools) {
+    console.log("🔧 Setting up local services...");
+    const { setupServices } = await import("./services");
+    Tools = (await setupServices()).Tools;
+  } else if (options.onBackend) {
+    console.log("☁️  Running tool calls on the Knowhow backend");
+  }
+
+  const parseArgs = (s: string) => {
+    try {
+      return JSON.parse(s || "{}");
+    } catch {
+      return s;
+    }
+  };
 
   // 6. Execute tool calls
   const results: ReplayResult[] = [];
@@ -393,7 +477,43 @@ async function runReplay(options: {
 
     process.stdout.write(`[${stepNum}/${filtered.length}] Running ${originalToolName}... `);
     try {
-      const { functionResp } = await Tools.callTool(patchedToolCall, Tools.getToolNames());
+      let functionResp: unknown;
+      const workerTool = parseWorkerToolName(originalToolName);
+      if (workerTool) {
+        const workerId = workerIdFor(workerTool.index);
+        if (!workerId) {
+          throw new Error(
+            `No worker for worker_${workerTool.index}. Pass --workers ${workerTool.index}=<workerId>`
+          );
+        }
+        functionResp = await callWorkerTool(
+          client,
+          workerId,
+          workerTool.tool,
+          parseArgs(patchedArgsStr)
+        );
+        // The backend reports a missing tool as a normal string result.
+        if (
+          typeof functionResp === "string" &&
+          /^Function \S+ not enabled/.test(functionResp)
+        ) {
+          throw new Error(
+            `worker ${workerId} doesn't expose ${workerTool.tool} right now. ` +
+              `Client tools only exist while their page/view is open (e.g. canvas_* needs a canvas in Preview).`
+          );
+        }
+      } else if (options.onBackend) {
+        // The backend resolves MCP tools by its own connection order, so
+        // send the original (un-normalized) name.
+        const res = await client.callBackendToolRaw(
+          originalToolName,
+          parseArgs(patchedArgsStr)
+        );
+        functionResp = unwrapToolResponse(res?.data);
+      } else {
+        const resp = await Tools!.callTool(patchedToolCall, Tools!.getToolNames());
+        functionResp = resp.functionResp;
+      }
       const output = typeof functionResp === "string" ? functionResp : JSON.stringify(functionResp);
       const preview = output.length > 120 ? output.slice(0, 120) + "…" : output;
       console.log(`✅`);
@@ -479,6 +599,19 @@ export function addReplayCommand(program: Command): void {
       "Export tool calls as a knowhow script file instead of executing them. " +
       "Edit the exported file to fix stale IDs/paths, then run with: knowhow script <file>"
     )
+    .option(
+      "--workers <ids>",
+      "Worker ids for worker_<i>_* tool calls: positional (idA,idB → worker_0, worker_1) or explicit (0=idA,1=idB). " +
+      "Defaults to the workers recorded in the task; a disconnected client/extension worker falls back to your connected one of the same kind."
+    )
+    .option(
+      "--on-backend",
+      "Run non-worker tool calls on the Knowhow backend (as the original cloud agent did) instead of locally"
+    )
+    .option(
+      "--include-meta",
+      "Also replay agent-housekeeping calls (listAvailableTools, enableTools, disableTools, finalAnswer)"
+    )
     .action(async (options) => {
       try {
         const replacePaths = parseReplacePaths(options.replacePath || []);
@@ -494,6 +627,9 @@ export function addReplayCommand(program: Command): void {
           dryRun: options.dryRun || false,
           replacePaths,
           exportFile: options.export,
+          workers: options.workers,
+          onBackend: options.onBackend || false,
+          includeMeta: options.includeMeta || false,
         });
       } catch (err: any) {
         console.error(`\n❌ Replay failed: ${err?.message || err}`);

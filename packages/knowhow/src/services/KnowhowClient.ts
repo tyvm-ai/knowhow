@@ -189,6 +189,26 @@ export function loadKnowhowJwt(apiUrl: string = KNOWHOW_API_URL): string {
 
 export const KNOWHOW_API_URL = getActiveRemoteSync().apiUrl;
 
+/**
+ * Normalize an org-file folder path to "/a/b/" form. "" and "/" both become "/".
+ * The backend stores folder paths with a leading slash, but config/user input
+ * may omit it.
+ */
+export function normalizeOrgFolderPath(folderPath: string | null | undefined): string {
+  let p = (folderPath ?? "").trim();
+  if (!p.startsWith("/")) p = "/" + p;
+  if (!p.endsWith("/")) p = p + "/";
+  return p.replace(/\/{2,}/g, "/");
+}
+
+/** Normalize a full org-file path (folder + file name) to "/a/b/file" form. */
+export function normalizeOrgFilePath(filePath: string): string {
+  const lastSlash = filePath.lastIndexOf("/");
+  const folder = lastSlash >= 0 ? filePath.substring(0, lastSlash + 1) : "/";
+  const fileName = lastSlash >= 0 ? filePath.substring(lastSlash + 1) : filePath;
+  return normalizeOrgFolderPath(folder) + fileName;
+}
+
 @TraceAll()
 export class KnowhowSimpleClient {
   headers: RefreshableHeaders = {};
@@ -725,21 +745,19 @@ export class KnowhowSimpleClient {
     const lastSlash = remotePath.lastIndexOf("/");
     const rawFolder =
       lastSlash >= 0 ? remotePath.substring(0, lastSlash + 1) : "/";
-    // Normalize: "/" and "" both mean root
-    const folderPath = rawFolder === "/" ? rawFolder : rawFolder;
+    // Normalize so "knowhow-web/vision/", "/knowhow-web/vision" and
+    // "/knowhow-web/vision/" all compare equal ("" and "/" both mean root).
+    const folderPath = normalizeOrgFolderPath(rawFolder);
     const fileName =
       lastSlash >= 0 ? remotePath.substring(lastSlash + 1) : remotePath;
 
     const response = await this.listOrgFiles();
     const files = response.data;
-    // DB may store root as "" or "/" - match both
-    const isRoot = folderPath === "/" || folderPath === "";
     return (
       files.find(
         (f) =>
           f.fileName === fileName &&
-          (f.folderPath === folderPath ||
-            (isRoot && (f.folderPath === "/" || f.folderPath === "")))
+          normalizeOrgFolderPath(f.folderPath) === folderPath
       ) || null
     );
   }
@@ -748,9 +766,12 @@ export class KnowhowSimpleClient {
    * Find or create an org file by path, returns the file record
    */
   async findOrCreateOrgFileByPath(
-    remotePath: string
+    remotePath: string,
+    /** Pass a record already found (e.g. from one folder listing) to skip the lookup. */
+    knownFile?: { id: string; fileName: string; folderPath: string } | null
   ): Promise<{ id: string; fileName: string; folderPath: string }> {
-    const existing = await this.findOrgFileByPath(remotePath);
+    const existing =
+      knownFile !== undefined ? knownFile : await this.findOrgFileByPath(remotePath);
     if (existing) return existing;
 
     const lastSlash = remotePath.lastIndexOf("/");
@@ -793,16 +814,22 @@ export class KnowhowSimpleClient {
   /**
    * Notify the backend that a file upload is complete, updating its updatedAt timestamp.
    */
-  async markOrgFileUploadComplete(filePath: string): Promise<void> {
+  async markOrgFileUploadComplete(filePath: string, fileId?: string): Promise<void> {
     await this.checkJwt();
 
-    const file = await this.findOrgFileByPath(filePath);
-    if (!file) {
-      throw new Error(`File not found: ${filePath}`);
+    // Callers that already know the id (see getOrgFileUploadTarget) skip the
+    // full org-files listing this lookup costs.
+    let id = fileId;
+    if (!id) {
+      const file = await this.findOrgFileByPath(filePath);
+      if (!file) {
+        throw new Error(`File not found: ${filePath}`);
+      }
+      id = file.id;
     }
 
     await http.post(
-      `${this.baseUrl}/api/org-files/upload/${file.id}/complete`,
+      `${this.baseUrl}/api/org-files/upload/${id}/complete`,
       {},
       { headers: this.headers }
     );
@@ -815,10 +842,24 @@ export class KnowhowSimpleClient {
    * so any client can determine if they already have this version without downloading.
    */
   async getOrgFilePresignedUploadUrl(filePath: string, localFilePath?: string): Promise<string> {
+    return (await this.getOrgFileUploadTarget(filePath, localFilePath)).uploadUrl;
+  }
+
+  /**
+   * Like getOrgFilePresignedUploadUrl, but also returns the file id so the
+   * caller can mark the upload complete without another listing. Pass
+   * `knownFile` (the record, or null if it doesn't exist) when the caller
+   * already listed the folder, to skip the lookup entirely.
+   */
+  async getOrgFileUploadTarget(
+    filePath: string,
+    localFilePath?: string,
+    knownFile?: { id: string; fileName: string; folderPath: string } | null
+  ): Promise<{ fileId: string; uploadUrl: string }> {
     await this.checkJwt();
 
     // Find or create the file by path
-    const file = await this.findOrCreateOrgFileByPath(filePath);
+    const file = await this.findOrCreateOrgFileByPath(filePath, knownFile);
 
     // Extract just the filename from the path
     const lastSlash = filePath.lastIndexOf("/");
@@ -838,7 +879,7 @@ export class KnowhowSimpleClient {
       { fileName, sha256Hash },
       { headers: this.headers }
     );
-    return response.data.uploadUrl;
+    return { fileId: file.id, uploadUrl: response.data.uploadUrl };
   }
 
   /**
@@ -891,6 +932,23 @@ export class KnowhowSimpleClient {
       )}`,
       { toolName, arguments: args ?? {} },
       { headers: this.headers, timeout: 60000 }
+    );
+  }
+
+  /**
+   * POST /api/ai/tools/call — run a tool on the Knowhow backend (its own
+   * tools + the org/user MCP servers), optionally with workers attached as
+   * worker_0.._N. Returns the backend envelope.
+   */
+  async callBackendToolRaw(toolName: string, args: any, workerIds: string[] = []) {
+    await this.checkJwt();
+    const qs = workerIds.length
+      ? `?workers=${encodeURIComponent(workerIds.join(","))}`
+      : "";
+    return http.post<any>(
+      `${this.baseUrl}/api/ai/tools/call${qs}`,
+      { toolName, arguments: args ?? {} },
+      { headers: this.headers, timeout: 120000 }
     );
   }
 
