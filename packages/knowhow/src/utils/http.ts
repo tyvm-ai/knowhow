@@ -46,6 +46,83 @@ async function parseBody<T>(response: Response, responseType?: string): Promise<
   }
 }
 
+/**
+ * Rate-limit awareness.
+ *
+ * The Knowhow API sends `RateLimit-Limit` / `RateLimit-Remaining` /
+ * `RateLimit-Reset` (seconds until the window resets) on every response and
+ * `Retry-After` on 429s. We use them two ways:
+ *  1. Pacing: when an origin's remaining budget is nearly exhausted, new
+ *     requests to it wait until the window resets instead of hitting a 429.
+ *  2. Retry: a 429 (or 503 with Retry-After) is retried after the server's
+ *     delay, up to MAX_RATE_LIMIT_RETRIES times, when the body is replayable.
+ */
+export const MAX_RATE_LIMIT_RETRIES = 5;
+const MAX_RATE_LIMIT_WAIT_MS = 120_000;
+/** Keep this many requests in reserve so concurrent callers don't overshoot. */
+const RATE_LIMIT_RESERVE = 5;
+
+interface RateLimitState {
+  remaining: number;
+  resetAt: number; // epoch ms
+}
+const rateLimitState = new Map<string, RateLimitState>();
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function originOf(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return url;
+  }
+}
+
+/** Parse a seconds-or-HTTP-date header value into milliseconds. */
+export function parseRetryDelayMs(value: string | null | undefined): number | undefined {
+  if (!value) return undefined;
+  const secs = Number(value);
+  if (Number.isFinite(secs)) return Math.max(0, secs * 1000);
+  const at = Date.parse(value);
+  if (Number.isFinite(at)) return Math.max(0, at - Date.now());
+  return undefined;
+}
+
+function recordRateLimit(url: string, headers: Headers | undefined) {
+  if (!headers || typeof headers.get !== "function") return;
+  const remaining = Number(headers.get("ratelimit-remaining"));
+  const resetMs = parseRetryDelayMs(headers.get("ratelimit-reset"));
+  if (!Number.isFinite(remaining) || resetMs === undefined) return;
+  rateLimitState.set(originOf(url), { remaining, resetAt: Date.now() + resetMs });
+}
+
+/** Wait (if needed) before sending so we stay under the server's budget. */
+async function paceForRateLimit(url: string) {
+  const origin = originOf(url);
+  const state = rateLimitState.get(origin);
+  if (!state) return;
+  const now = Date.now();
+  if (state.resetAt <= now) {
+    rateLimitState.delete(origin);
+    return;
+  }
+  if (state.remaining > RATE_LIMIT_RESERVE) {
+    state.remaining--; // optimistic local accounting between responses
+    return;
+  }
+  const wait = Math.min(state.resetAt - now + 250, MAX_RATE_LIMIT_WAIT_MS);
+  await sleep(wait);
+}
+
+/** Exposed for tests. */
+export function _resetRateLimitState() {
+  rateLimitState.clear();
+}
+
+function isReplayableBody(body: any): boolean {
+  return !(body && typeof body.pipe === "function");
+}
+
 async function request<T = any>(
   url: string,
   options: {
@@ -57,7 +134,8 @@ async function request<T = any>(
     /** Timeout in milliseconds. Default: 30000 (30s). Use 0 to disable. */
     timeout?: number;
   } = {},
-  mayRefresh = true
+  mayRefresh = true,
+  rateLimitAttempt = 0
 ): Promise<HttpResponse<T>> {
   const { method = "GET", headers = {}, body, responseType, params, timeout = 30000 } = options;
 
@@ -99,6 +177,8 @@ async function request<T = any>(
     }, timeout);
   }
 
+  await paceForRateLimit(fullUrl);
+
   let response: Response;
   try {
     response = await fetch(fullUrl, fetchOptions);
@@ -111,11 +191,35 @@ async function request<T = any>(
     if (timeoutId !== undefined) clearTimeout(timeoutId);
   }
 
+  recordRateLimit(fullUrl, response.headers);
+
   if (!response.ok) {
     const refresh = headers[HTTP_UNAUTHORIZED_HANDLER];
     if (response.status === 401 && mayRefresh && refresh) {
       await refresh();
-      return request<T>(url, options, false);
+      return request<T>(url, options, false, rateLimitAttempt);
+    }
+
+    const retryAfterMs = parseRetryDelayMs(response.headers?.get?.("retry-after"));
+    const retryable =
+      response.status === 429 || (response.status === 503 && retryAfterMs !== undefined);
+    if (retryable && rateLimitAttempt < MAX_RATE_LIMIT_RETRIES && isReplayableBody(body)) {
+      // Prefer the server's hint; otherwise back off exponentially (1s, 2s, 4s…).
+      const base =
+        retryAfterMs ??
+        parseRetryDelayMs(response.headers?.get?.("ratelimit-reset")) ??
+        1000 * 2 ** rateLimitAttempt;
+      const wait = Math.min(base + Math.floor(Math.random() * 500), MAX_RATE_LIMIT_WAIT_MS);
+      await response.text().catch(() => "");
+      if (process.env.KNOWHOW_DEBUG_HTTP || wait >= 5000) {
+        console.warn(
+          `⏳ Rate limited by ${originOf(fullUrl)} (HTTP ${response.status}); retrying in ${Math.ceil(
+            wait / 1000
+          )}s (attempt ${rateLimitAttempt + 1}/${MAX_RATE_LIMIT_RETRIES})`
+        );
+      }
+      await sleep(wait);
+      return request<T>(url, options, mayRefresh, rateLimitAttempt + 1);
     }
 
     const text = await response.text().catch(() => "");

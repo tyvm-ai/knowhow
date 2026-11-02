@@ -6,6 +6,7 @@ import {
   DEFAULT_REMOTE_NAME,
   getConfiguredRemotes,
   getRemoteByName,
+  getRemoteOverrideWarning,
   registerRemote,
   resolveJwtPath,
 } from "../remotes";
@@ -47,6 +48,8 @@ export function addRemoteCommand(program: Command): void {
       config.activeRemote = name;
       await updateConfig(config);
       console.log(`Using remote '${name}' (${remote.apiUrl}).`);
+      const warning = getRemoteOverrideWarning(config);
+      if (warning) console.warn(warning);
     });
 
   command
@@ -63,6 +66,8 @@ export function addRemoteCommand(program: Command): void {
         const marker = (config.activeRemote ?? DEFAULT_REMOTE_NAME) === name ? "*" : " ";
         console.log(`${marker} ${name}\t${remote.apiUrl}\t${remote.jwtPath}${remote.orgId ? `\t${remote.orgId}` : ""}`);
       }
+      const warning = getRemoteOverrideWarning(config);
+      if (warning) console.warn(warning);
     });
 
   command

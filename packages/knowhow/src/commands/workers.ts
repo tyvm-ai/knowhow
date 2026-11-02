@@ -303,15 +303,28 @@ export function addFilesCommand(program: Command): void {
   program
     .command("files")
     .description(
-      "Sync files between local filesystem and Knowhow FS (uses fileMounts config)"
+      "Sync files between local filesystem and Knowhow FS (uses the `files` config). " +
+        "Pass one or more local or remote paths to only sync those entries, e.g. `knowhow files vision/ --upload`."
     )
-    .option("--upload", "Force upload direction for all mounts")
-    .option("--download", "Force download direction for all mounts")
+    .argument(
+      "[paths...]",
+      "Only sync `files` entries whose localPath or remotePath matches (default: all)"
+    )
+    .option("--upload", "Force upload direction for the selected mounts")
+    .option("--download", "Force download direction for the selected mounts")
+    .option(
+      "--only <path>",
+      "Only sync the entry with this localPath or remotePath (repeatable)",
+      (value: string, previous: string[] = []) => [...previous, value]
+    )
     .option("--config <path>", "Path to knowhow.json", "./knowhow.json")
     .option("--dry-run", "Print what would be synced without doing it")
-    .action(async (options) => {
+    .action(async (paths: string[], options) => {
       try {
-        await fileSync(options);
+        await fileSync({
+          ...options,
+          paths: [...(paths ?? []), ...(options.only ?? [])],
+        });
       } catch (error) {
         console.error("Error syncing files:", error);
         process.exit(1);

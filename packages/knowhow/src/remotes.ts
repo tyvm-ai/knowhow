@@ -96,6 +96,31 @@ export function getActiveRemote(config: Config): KnowhowRemote {
   return getRemoteByName(config, name) ?? createRemote(DEFAULT_REMOTE_NAME, DEFAULT_API_URL);
 }
 
+/**
+ * Returns a warning message when the KNOWHOW_API_URL environment variable
+ * overrides the remote selected in config (activeRemote), otherwise undefined.
+ */
+export function getRemoteOverrideWarning(config: Config): string | undefined {
+  const envUrl = process.env.KNOWHOW_API_URL;
+  if (!envUrl) return undefined;
+  const selectedName = config.activeRemote ?? DEFAULT_REMOTE_NAME;
+  const selected = getRemoteByName(config, selectedName);
+  let envNormalized: string;
+  try {
+    envNormalized = normalizeApiUrl(envUrl);
+  } catch {
+    return `⚠️  KNOWHOW_API_URL is set to an invalid URL (${envUrl}).`;
+  }
+  if (selected && normalizeApiUrl(selected.apiUrl) === envNormalized) return undefined;
+  const envRemote = findRemoteForApi(config, envNormalized);
+  return (
+    `⚠️  KNOWHOW_API_URL=${envUrl} is set in your environment and overrides the selected remote ` +
+    `'${selectedName}'${selected ? ` (${selected.apiUrl})` : ""}. ` +
+    `Commands will use ${envRemote ? `remote '${envRemote.name}'` : envNormalized}. ` +
+    `Run 'unset KNOWHOW_API_URL' to use '${selectedName}'.`
+  );
+}
+
 export function getActiveRemoteSync(): KnowhowRemote {
   try {
     const config = JSON.parse(

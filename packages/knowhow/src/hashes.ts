@@ -93,21 +93,33 @@ export async function saveAllFileHashes(files: string[], promptHash: string) {
 
 const UPLOAD_KEY = "upload";
 
+/** Per-target upload hashes: hashes[localPath].uploads[target] = md5 */
+const UPLOADS_KEY = "uploads";
+
 const DOWNLOAD_KEY = "download";
 
 const DOWNLOAD_REMOTE_VERSION_KEY = "downloadRemoteVersion";
 
 /**
  * Returns true if the file has changed since the last successful upload
- * (or if it has never been uploaded before)
+ * (or if it has never been uploaded before).
+ *
+ * `target` identifies where the file is uploaded to (e.g. `${apiUrl}::${remotePath}`).
+ * Upload hashes are tracked per target, so uploading the same local file to a
+ * different remote (or remote path) is never skipped because of another
+ * target's history. Without a target, the legacy single upload hash is used.
  */
 export async function hasFileChangedSinceUpload(
   localPath: string,
-  hashes: any
+  hashes: any,
+  target?: string
 ): Promise<boolean> {
   if (!fs.existsSync(localPath)) return true;
   const content = fs.readFileSync(localPath);
   const currentHash = crypto.createHash("md5").update(content).digest("hex");
+  if (target) {
+    return hashes[localPath]?.[UPLOADS_KEY]?.[target] !== currentHash;
+  }
   return hashes[localPath]?.[UPLOAD_KEY] !== currentHash;
 }
 
@@ -115,7 +127,7 @@ export async function hasFileChangedSinceUpload(
  * Mutates the provided hashes object with the upload hash for localPath.
  * If no hashes object is provided, loads, mutates, and saves independently.
  */
-export async function saveUploadHash(localPath: string, hashes?: any) {
+export async function saveUploadHash(localPath: string, hashes?: any, target?: string) {
   const standalone = !hashes;
   if (standalone) hashes = await getHashes();
   const content = fs.readFileSync(localPath);
@@ -123,7 +135,14 @@ export async function saveUploadHash(localPath: string, hashes?: any) {
   if (!hashes[localPath]) {
     hashes[localPath] = { fileHash: currentHash, promptHash: "" };
   }
-  hashes[localPath][UPLOAD_KEY] = currentHash;
+  if (target) {
+    hashes[localPath][UPLOADS_KEY] = {
+      ...(hashes[localPath][UPLOADS_KEY] ?? {}),
+      [target]: currentHash,
+    };
+  } else {
+    hashes[localPath][UPLOAD_KEY] = currentHash;
+  }
   if (standalone) await saveHashes(hashes);
 }
 
