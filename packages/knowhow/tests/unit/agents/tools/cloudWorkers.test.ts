@@ -5,6 +5,9 @@ import {
   forkCloudWorker,
   stopCloudWorker,
   destroyForkedSandbox,
+  checkoutCloudWorker,
+  forkCloudWorkerDefinition,
+  checkoutCloudWorkerDefinition,
   startCloudWorkerDefinition,
 } from "../../../../src/agents/tools/cloudWorkers";
 import { includedTools } from "../../../../src/agents/tools/list";
@@ -16,6 +19,8 @@ jest.mock("../../../../src/services/WorkerLauncher", () => ({
   forkFromSnapshot: jest.fn(),
   stopCloudWorker: jest.fn(),
   destroyForkedSandbox: jest.fn(),
+  checkoutResolved: jest.fn(),
+  sandboxIdForCloudWorker: jest.fn(),
 }));
 
 const m = launcher as jest.Mocked<typeof launcher>;
@@ -92,5 +97,77 @@ describe("cloudWorkers tools", () => {
     m.destroyForkedSandbox.mockRejectedValue(new Error("boom"));
     expect(JSON.parse(await destroyForkedSandbox({ sandboxId: "sb" }))).toEqual({ error: "boom" });
     expect(JSON.parse(await destroyForkedSandbox({ sandboxId: "" })).error).toMatch(/required/);
+  });
+
+  it("forkCloudWorker maps cpuCount/memoryMb/diskGb/checkout through", async () => {
+    m.forkFromSnapshot.mockResolvedValue({ sandboxId: "sb", name: "f", checkout: { cwd: "/w" } } as any);
+    const r = JSON.parse(
+      await forkCloudWorker({
+        snapshotId: "s",
+        cpuCount: 2,
+        memoryMb: 4096,
+        diskGb: 20,
+        checkout: { taskId: "current" },
+      })
+    );
+    expect(r.checkout.cwd).toBe("/w");
+    expect(m.forkFromSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        snapshotId: "s",
+        cpuCount: 2,
+        memoryMb: 4096,
+        diskGb: 20,
+        checkout: { taskId: "current" },
+      })
+    );
+  });
+
+  it("startCloudWorker forwards checkout", async () => {
+    m.startCloudWorker.mockResolvedValue({ cloudWorkerId: "c", name: "n" } as any);
+    await startCloudWorker({ cloudWorker: "kw", checkout: { branch: "main" } });
+    expect(m.startCloudWorker).toHaveBeenCalledWith(
+      "kw",
+      expect.objectContaining({ checkout: { branch: "main" } })
+    );
+  });
+
+  it("descriptions: resize only for disk checkpoints; checkout tool registered", () => {
+    const d = forkCloudWorkerDefinition.function.description;
+    expect(d).toMatch(/ONLY works when forking a DISK checkpoint/);
+    const props = (forkCloudWorkerDefinition.function.parameters as any).properties;
+    expect(Object.keys(props)).toEqual(
+      expect.arrayContaining(["cpuCount", "memoryMb", "diskGb", "checkout"])
+    );
+    expect(props.memoryMb.description).toMatch(/disk checkpoints/);
+    expect(includedTools.map((t: any) => t.function.name)).toContain("checkoutCloudWorker");
+    expect(checkoutCloudWorkerDefinition.function.name).toBe("checkoutCloudWorker");
+  });
+
+  it("checkoutCloudWorker resolves a cloud worker to its sandbox, or uses sandboxId directly", async () => {
+    m.sandboxIdForCloudWorker.mockResolvedValue("sbFromCw");
+    m.checkoutResolved.mockResolvedValue({ checkoutId: "c", sandboxId: "sbFromCw", cwd: "/w" } as any);
+    const r = JSON.parse(
+      await checkoutCloudWorker({ cloudWorker: "kw", branch: "main", timeoutMs: 5 })
+    );
+    expect(r.cwd).toBe("/w");
+    expect(m.checkoutResolved).toHaveBeenCalledWith("sbFromCw", { branch: "main" }, { timeoutMs: 5 });
+
+    await checkoutCloudWorker({ sandboxId: "sb2", taskId: "current", pushSnapshot: true });
+    expect(m.checkoutResolved).toHaveBeenLastCalledWith(
+      "sb2",
+      { taskId: "current", pushSnapshot: true },
+      { timeoutMs: undefined }
+    );
+  });
+
+  it("checkoutCloudWorker validates the target and returns errors as {error}", async () => {
+    expect(JSON.parse(await checkoutCloudWorker({ branch: "x" })).error).toMatch(/cloudWorker.*sandboxId/);
+    expect(
+      JSON.parse(await checkoutCloudWorker({ sandboxId: "a", cloudWorker: "b", branch: "x" })).error
+    ).toMatch(/not both/);
+    m.checkoutResolved.mockRejectedValue(new Error("Checkout failed: boom"));
+    expect(JSON.parse(await checkoutCloudWorker({ sandboxId: "a", branch: "x" }))).toEqual({
+      error: "Checkout failed: boom",
+    });
   });
 });

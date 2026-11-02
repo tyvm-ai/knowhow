@@ -312,7 +312,7 @@ describe("API-backed launcher functions", () => {
     });
     mockClient.listOrgWorkers.mockResolvedValue({ data: [ow({ id: "w9", cloudWorkerId: "cw1" })] });
     const r = await startCloudWorker("W", {});
-    expect(r).toEqual({ cloudWorkerId: "cw1", workerId: "w9", name: "W" });
+    expect(r).toEqual({ cloudWorkerId: "cw1", workerId: "w9", name: "W", sandboxId: "sb1" });
     expect(mockClient.startCloudWorkerRaw).not.toHaveBeenCalled();
   });
 

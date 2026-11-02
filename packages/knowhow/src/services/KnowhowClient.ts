@@ -165,7 +165,57 @@ export interface SandboxRecord {
   status: string;
   lastSnapshotId?: string | null;
   baseSnapshotId?: string | null;
+  cpuCount?: number;
+  memoryMb?: number;
+  diskGb?: number;
   [key: string]: unknown;
+}
+
+/** Body of POST /api/sandboxes/fork. Resizing only works for disk (`disk_only`) checkpoints. */
+export interface ForkSandboxBody {
+  snapshotId: string;
+  name?: string;
+  onResumeScript?: string;
+  /** integer >= 1 */
+  cpuCount?: number;
+  /** integer >= 256 */
+  memoryMb?: number;
+  /** integer >= 1; can only grow vs the snapshot's disk */
+  diskGb?: number;
+}
+
+/**
+ * Body of POST /api/sandboxes/{id}/checkouts. Exactly one of `taskId` (mode A:
+ * task workspace incl. WIP) or `repositoryId` (mode B: plain commit/branch).
+ */
+export interface CreateSandboxCheckoutBody {
+  taskId?: string;
+  workspaceSnapshotId?: string;
+  repositoryId?: string;
+  commitSha?: string;
+  branch?: string;
+  newBranch?: string;
+  installDeps?: boolean;
+  registerTask?: boolean;
+}
+
+export interface SandboxCheckoutCreated {
+  id: string;
+  sandboxId: string;
+  status: "running";
+}
+
+export interface SandboxCheckoutRecord {
+  id: string;
+  sandboxId: string;
+  status: "running" | "succeeded" | "failed";
+  repoDir?: string;
+  cwd?: string;
+  commitSha?: string;
+  branch?: string;
+  verified?: boolean | null;
+  error?: string;
+  logTail?: string;
 }
 
 export interface SandboxSnapshotRecord {
@@ -531,16 +581,32 @@ export class KnowhowSimpleClient {
   }
 
   /** POST /api/sandboxes/fork — new sandbox from a ready snapshot, started. */
-  async forkSandboxFromSnapshot(body: {
-    snapshotId: string;
-    name?: string;
-    onResumeScript?: string;
-  }) {
+  async forkSandboxFromSnapshot(body: ForkSandboxBody) {
     await this.checkJwt();
-    return http.post<any>(`${this.baseUrl}/api/sandboxes/fork`, body, {
+    // The response IS the sandbox record (top level, not `{ sandbox }`).
+    return http.post<SandboxRecord>(`${this.baseUrl}/api/sandboxes/fork`, body, {
       headers: this.headers,
       timeout: 120000,
     });
+  }
+
+  /** POST /api/sandboxes/{id}/checkouts — start materializing a git tree inside a running sandbox. */
+  async createSandboxCheckout(sandboxId: string, body: CreateSandboxCheckoutBody) {
+    await this.checkJwt();
+    return http.post<SandboxCheckoutCreated>(
+      `${this.baseUrl}/api/sandboxes/${sandboxId}/checkouts`,
+      body,
+      { headers: this.headers, timeout: 120000 }
+    );
+  }
+
+  /** GET /api/sandboxes/{id}/checkouts/{checkoutId} */
+  async getSandboxCheckout(sandboxId: string, checkoutId: string) {
+    await this.checkJwt();
+    return http.get<SandboxCheckoutRecord>(
+      `${this.baseUrl}/api/sandboxes/${sandboxId}/checkouts/${checkoutId}`,
+      { headers: this.headers }
+    );
   }
 
   /** DELETE /api/sandboxes/{id} — destroys the sandbox. */

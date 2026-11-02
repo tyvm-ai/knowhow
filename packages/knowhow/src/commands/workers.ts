@@ -230,6 +230,123 @@ export function addRemoteWorkerSubcommands(workersCmd: Command): void {
       }
     });
 
+  const addCheckoutOptions = (cmd: Command) =>
+    cmd
+      .option(
+        "--checkout-task <id|current>",
+        "After the worker connects, check out this task's workspace (incl. WIP); 'current' = most recent local task"
+      )
+      .option("--push", "With --checkout-task: push a fresh workspace snapshot of the cwd first")
+      .option("--commit <sha>", "Check out this full commit sha (repository resolved from the cwd git repo)")
+      .option("--branch <name>", "Check out this branch (repository resolved from the cwd git repo)")
+      .option("--new-branch <name>", "Local branch name to create in the sandbox")
+      .option("--install-deps", "Run a background npm ci after the checkout");
+
+  const checkoutInputFromOptions = (options: any) => {
+    if (!options.checkoutTask && !options.commit && !options.branch) return undefined;
+    return {
+      taskId: options.checkoutTask,
+      pushSnapshot: options.push ? true : undefined,
+      commitSha: options.commit,
+      branch: options.branch,
+      newBranch: options.newBranch,
+      installDeps: options.installDeps ? true : undefined,
+    };
+  };
+
+  const toInt = (v: string | undefined, name: string) => {
+    if (v === undefined) return undefined;
+    const n = Number(v);
+    if (!Number.isInteger(n)) throw new Error(`${name} must be an integer`);
+    return n;
+  };
+
+  addCheckoutOptions(
+    workersCmd
+      .command("fork <snapshotId>")
+      .description(
+        "COST: fork a NEW sandbox from a snapshot and wait for its worker. --cpu/--memory-mb/--disk-gb resize it, but resizing only works for disk checkpoints, not memory snapshots. Destroy it when done: knowhow workers destroy <sandboxId>."
+      )
+      .option("--name <name>", "Name for the new sandbox")
+      .option("--cpu <n>", "vCPUs (integer >= 1)")
+      .option("--memory-mb <n>", "RAM in MB (integer >= 256)")
+      .option("--disk-gb <n>", "Disk size in GB (can only grow)")
+      .option("--no-wait", "Do not wait for the worker to connect (incompatible with checkout)")
+      .option("--json", "Output JSON")
+  ).action(async (snapshotId: string, options) => {
+    try {
+      const { forkFromSnapshot } = await import("../services/WorkerLauncher");
+      const r = await forkFromSnapshot({
+        snapshotId,
+        name: options.name,
+        cpuCount: toInt(options.cpu, "--cpu"),
+        memoryMb: toInt(options.memoryMb, "--memory-mb"),
+        diskGb: toInt(options.diskGb, "--disk-gb"),
+        waitForConnect: options.wait === false ? false : true,
+        checkout: checkoutInputFromOptions(options),
+        onProgress: (m) => console.error(m),
+      });
+      if (options.json) {
+        console.log(JSON.stringify(r, null, 2));
+        return;
+      }
+      console.log(`Forked sandbox ${r.sandboxId} (${r.name}) worker=${r.workerId ?? "-"}`);
+      if (r.checkout) {
+        console.log(
+          `Checked out ${r.checkout.commitSha?.slice(0, 8) ?? "?"} on ${r.checkout.branch ?? "?"} in ${r.checkout.cwd ?? r.checkout.repoDir}`
+        );
+      }
+      console.log(`Destroy when done: knowhow workers destroy ${r.sandboxId}`);
+    } catch (error) {
+      fail(error);
+    }
+  });
+
+  addCheckoutOptions(
+    workersCmd
+      .command("checkout <target>")
+      .description(
+        "Materialize a task workspace / commit / branch inside a RUNNING sandbox. <target> = sandbox id (--sandbox) or cloud worker id/name."
+      )
+      .option("--sandbox", "Treat <target> as a sandbox id instead of a cloud worker id/name")
+      .option("--timeout <ms>", "Max wait in ms (default 10 minutes)")
+      .option("--json", "Output JSON")
+  ).action(async (target: string, options) => {
+    try {
+      const input = checkoutInputFromOptions(options);
+      if (!input) {
+        throw new Error("Provide --checkout-task <id|current>, --commit <sha> or --branch <name>");
+      }
+      const { checkoutResolved, sandboxIdForCloudWorker } = await import("../services/WorkerLauncher");
+      const sandboxId = options.sandbox ? target : await sandboxIdForCloudWorker(target);
+      const r = await checkoutResolved(sandboxId, input, {
+        timeoutMs: toInt(options.timeout, "--timeout"),
+        onProgress: (m) => console.error(m),
+      });
+      if (options.json) console.log(JSON.stringify(r, null, 2));
+      else {
+        console.log(
+          `Checked out ${r.commitSha?.slice(0, 8) ?? "?"} on ${r.branch ?? "?"} in ${r.cwd ?? r.repoDir} (verified: ${r.verified ?? "n/a"})`
+        );
+      }
+    } catch (error) {
+      fail(error);
+    }
+  });
+
+  workersCmd
+    .command("destroy <sandboxId>")
+    .description("Destroy a forked sandbox so it stops costing money")
+    .action(async (sandboxId: string) => {
+      try {
+        const { destroyForkedSandbox } = await import("../services/WorkerLauncher");
+        await destroyForkedSandbox(sandboxId);
+        console.log(`Destroyed sandbox ${sandboxId}`);
+      } catch (error) {
+        fail(error);
+      }
+    });
+
   workersCmd
     .command("attach [worker]")
     .description(

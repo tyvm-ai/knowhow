@@ -13,6 +13,7 @@ import {
   listCloudWorkerSnapshotsDefinition,
   startCloudWorkerDefinition,
   forkCloudWorkerDefinition,
+  checkoutCloudWorkerDefinition,
   stopCloudWorkerDefinition,
   destroyForkedSandboxDefinition,
 } from "./cloudWorkers";
@@ -738,6 +739,7 @@ export const includedTools = [
   listCloudWorkerSnapshotsDefinition,
   startCloudWorkerDefinition,
   forkCloudWorkerDefinition,
+  checkoutCloudWorkerDefinition,
   stopCloudWorkerDefinition,
   destroyForkedSandboxDefinition,
   replyToParentDefinition,
