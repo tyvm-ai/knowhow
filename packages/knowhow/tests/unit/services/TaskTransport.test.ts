@@ -49,7 +49,7 @@ function makeWip(root: string) {
   write(root, "sub/deep/d.txt", "delta\n");
   write(root, ".env.example", "KEY=SUPERSECRET-LOCAL\n"); // tracked but excluded
   write(root, ".env", "TOKEN=SUPERSECRET\n");
-  write(root, "secret.pem", "-----BEGIN " + "PRIVATE KEY-----\n" // fake fixture, split to avoid the secret scanner);
+  write(root, "secret.pem", "-----BEGIN " + "PRIVATE KEY-----\n"); // fake fixture, split to avoid the secret scanner
   write(root, "ignored.log", "log\n");
   write(root, "node_modules/x/index.js", "module.exports=1\n");
   write(root, "big.bin", "x".repeat(5000));
