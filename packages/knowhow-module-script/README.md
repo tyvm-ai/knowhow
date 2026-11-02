@@ -276,7 +276,7 @@ typed convenience helpers built on `callTool`. Errors (`{ error }` tool results)
 const snaps = await workers.snapshots('Knowhow-web');            // newest first, isDefault = resume target
 const fork = await workers.fork(snaps[0].id, { name: 'demo' });  // COST: new sandbox from a snapshot, waits for its worker
 try {
-  const r = await workers.exec(fork.workerId, 'pwd && wc -l README.md'); // { stdout, stderr, exitCode }
+  const r = await workers.exec(fork.workerId, 'pwd && wc -l README.md'); // { worker, stdout, stderr?, exitCode? }
   const { taskId, finalAnswer } = await remoteAgent({           // full agent ON the worker
     worker: fork.workerId,
     prompt: 'Summarize README.md in 5 bullets',
@@ -287,16 +287,61 @@ try {
 }
 ```
 
+### Resized fork + checkout of the current work
+
+Fork a **disk checkpoint** with more resources (4 GB RAM / 2 vCPU), check out the current
+task's work-in-progress (or a branch) inside it, run an agent there and always destroy the fork:
+
+```js
+const snaps = await workers.snapshots('Knowhow-web');
+const diskSnap = snaps.find((s) => s.name?.includes('checkpoint')) ?? snaps[0];
+
+// Resizing (cpuCount / memoryMb / diskGb) only works for disk checkpoints, NOT memory snapshots.
+const fork = await workers.fork(diskSnap.id, { name: 'big-build', memoryMb: 4096, cpuCount: 2 });
+try {
+  // Check out this task's WIP. pushSnapshot uploads a fresh workspace snapshot of the local cwd first.
+  const co = await workers.checkout(fork, { taskId: 'current', pushSnapshot: true, installDeps: true });
+  //   -> { checkoutId, sandboxId, repoDir, cwd, commitSha, branch, verified }
+  // or a plain branch/commit of the local repo (repository resolved from the local git cwd):
+  //   await workers.checkout(fork, { branch: 'main' });   // { commitSha: '<full sha>' } also works
+
+  const { finalAnswer, status } = await remoteAgent({
+    worker: fork.workerId,
+    cwd: co.cwd,                       // the agent is told to work in the checkout
+    prompt: 'Run the test suite and fix failures',
+  });
+  emit('done', { status, finalAnswer, branch: co.branch });
+} finally {
+  await workers.destroy(fork.sandboxId);
+}
+
+// One-call variant: fork/startCloud accept `checkout` and return { ...worker, checkout }
+// const fork = await workers.fork(diskSnap.id, { memoryMb: 4096, checkout: { taskId: 'current' } });
+// fork.checkout.cwd
+```
+
+`startAgentTask` has no working-directory parameter, so `remoteAgent({ cwd })` prepends an
+instruction to the prompt ("work in `<cwd>`"). A worker ref of `host:folder` only matches the
+folder the worker was registered with, not a checkout directory.
+
+Return shapes (also in the script type definitions): `fork` -> `{ sandboxId, cloudWorkerId?,
+workerId?, name, cpuCount?, memoryMb?, diskGb?, checkout? }`; `startCloud` -> `{ cloudWorkerId,
+workerId?, name, sandboxId?, checkout? }`; `stopCloud` -> `{ stopped, cloudWorker }`; `destroy` ->
+`{ destroyed, sandboxId }`; `remoteAgent` -> `{ taskId, status: 'started'|'completed'|'failed',
+success?, finalAnswer?, workerName?, error? }` (a failed agent resolves with `status: 'failed'`
+rather than throwing; tool `{ error }` results from the other helpers throw).
+
 | helper | wraps tool | notes |
 |---|---|---|
-| `workers.list(opts?)` | `listWorkers` | connected workers |
+| `workers.list(opts?)` | `listWorkers` | connected workers (`WorkerSummary[]`) |
 | `workers.exec(worker, cmd, timeoutMs?)` | `workerExec` | short commands (~25s) |
 | `workers.snapshots(cloudWorker)` | `listCloudWorkerSnapshots` | read-only |
-| `workers.startCloud(cloudWorker, { snapshotId?, fresh?, waitForConnect? })` | `startCloudWorker` | **costs money** |
-| `workers.fork(snapshotId, { name?, waitForConnect? })` | `forkCloudWorker` | **costs money**; returns `{ sandboxId, workerId }` |
+| `workers.startCloud(cloudWorker, { snapshotId?, fresh?, waitForConnect?, checkout? })` | `startCloudWorker` | **costs money** |
+| `workers.fork(snapshotId, { name?, cpuCount?, memoryMb?, diskGb?, waitForConnect?, checkout? })` | `forkCloudWorker` | **costs money**; resize only for disk checkpoints |
+| `workers.checkout(target, { taskId \| repositoryId \| commitSha \| branch, newBranch?, installDeps?, registerTask?, pushSnapshot?, workspaceSnapshotId? })` | `checkoutCloudWorker` | target = fork/startCloud result, `{ sandboxId }`, `{ cloudWorker }` or a cloud worker id/name |
 | `workers.stopCloud(cloudWorker, { snapshot? })` | `stopCloudWorker` | |
 | `workers.destroy(sandboxId)` | `destroyForkedSandbox` | |
-| `remoteAgent({ worker, prompt, agentName?, model?, ... })` | `startAgentTask {worker, waitForCompletion}` | resolves `{ taskId, status, finalAnswer }` |
+| `remoteAgent({ worker, prompt, cwd?, agentName?, model?, ... })` | `startAgentTask {worker, waitForCompletion}` | resolves `{ taskId, status, finalAnswer }` |
 
 The same tools are also callable via `callTool('forkCloudWorker', {...})` or as top-level
 functions (`forkCloudWorker({...})`). No allowlist change is required (the default policy only
