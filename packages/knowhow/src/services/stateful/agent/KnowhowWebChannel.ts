@@ -18,6 +18,8 @@ export interface KnowhowWebChannelOptions {
   messageId?: string;
   /** ...or attach to an existing remote task. */
   remoteTaskId?: string;
+  /** Recorded as the `remoteMessageId` link when attaching to an existing task. */
+  remoteMessageId?: string;
   client?: KnowhowSimpleClient;
   /** idle poll for pending messages / pause / kill (default 3000ms) */
   pollMs?: number;
@@ -105,6 +107,9 @@ export class KnowhowWebChannel extends DuplexChannel<AgentState, AgentControl, A
       }
     }
     this.ctx.setLink("remoteTaskId", this.remoteTaskId!);
+    if (this.opts.remoteMessageId && !this.opts.messageId) {
+      this.ctx.setLink("remoteMessageId", this.opts.remoteMessageId);
+    }
     this.timer = setInterval(() => void this.idlePoll(), this.opts.pollMs ?? 3000);
     (this.timer as any).unref?.();
   }

@@ -17,6 +17,8 @@ export interface AgentChannelsOptions {
   messageId?: string;
   /** Existing remote task UUID. Never inferred from the local taskId. */
   remoteTaskId?: string;
+  /** Remote message id recorded as a link when attaching to `remoteTaskId`. */
+  remoteMessageId?: string;
   /** Force fs-only even if messageId is provided. */
   syncFs?: boolean;
   /** Push to the existing `remoteTaskId` (UUID) instead of creating one. */
@@ -39,7 +41,10 @@ export function agentChannels(o: AgentChannelsOptions): AgentChannel[] {
   if (o.messageId && !o.syncFs) {
     channels.push(KnowhowWebChannel.create({ messageId: o.messageId, client: o.client }));
   } else if (o.syncRemote && !o.messageId && isUuid(o.remoteTaskId)) {
-    channels.push(KnowhowWebChannel.existing(o.remoteTaskId, { client: o.client }));
+    channels.push(KnowhowWebChannel.existing(o.remoteTaskId, {
+        client: o.client,
+        remoteMessageId: o.remoteMessageId,
+      }));
   }
   return channels;
 }

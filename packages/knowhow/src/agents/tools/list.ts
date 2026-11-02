@@ -20,6 +20,7 @@ import {
 import { replyToParentDefinition } from "./replyToParent";
 import { runGenerateDefinition } from "./runGenerate";
 import { sendAgentMessageDefinition } from "./sendAgentMessage";
+import { syncAgentRemoteDefinition } from "./syncAgentRemote";
 import {
   connectAgentDefinition,
   stopConnectionsDefinition,
@@ -745,6 +746,7 @@ export const includedTools = [
   replyToParentDefinition,
   runGenerateDefinition,
   sendAgentMessageDefinition,
+  syncAgentRemoteDefinition,
   connectAgentDefinition,
   stopConnectionsDefinition,
   waitForAgentCompletedDefinition,

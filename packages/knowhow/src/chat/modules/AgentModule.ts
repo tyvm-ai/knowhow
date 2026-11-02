@@ -964,9 +964,31 @@ export class AgentModule extends BaseChatModule {
     const taskId = options.taskId || this.sessionManager.generateTaskId(input);
     // Backwards compatibility for callers that historically supplied a remote
     // UUID as taskId with syncRemote. Timestamped local slugs never qualify.
-    const remoteTaskId =
+    let remoteTaskId =
       asRemoteTaskId(options.remoteTaskId) ||
       (options.syncRemote ? asRemoteTaskId(taskId) : undefined);
+    let createdRemoteMessageId: string | undefined;
+    if (options.syncRemote && !remoteTaskId && !options.messageId) {
+      // syncRemote with a local (non-UUID) taskId: create the remote task now
+      // so any agent can be synced to the backend. Failing to reach the
+      // backend must not stop the agent (the sync is optional).
+      try {
+        const { createRemoteTaskForAgent } = await import(
+          "../../services/RemoteTaskLink"
+        );
+        const link = await createRemoteTaskForAgent({
+          prompt: input,
+          agentName,
+          model: options.model,
+        });
+        remoteTaskId = link.taskId;
+        createdRemoteMessageId = link.messageId;
+      } catch (e: any) {
+        console.error(
+          `⚠️  Could not create a remote task for --sync-remote: ${e?.message ?? e}`
+        );
+      }
+    }
     let done = false;
     let output = "Done";
 
@@ -1024,6 +1046,7 @@ export class AgentModule extends BaseChatModule {
           taskId,
           messageId: options.messageId,
           remoteTaskId,
+          remoteMessageId: createdRemoteMessageId ?? options.remoteMessageId,
           syncFs: options.syncFs,
           syncRemote: options.syncRemote,
         }),
@@ -1034,7 +1057,8 @@ export class AgentModule extends BaseChatModule {
       // Create task info object
       let taskInfo: TaskInfo = {
         taskId,
-        knowhowMessageId: options.remoteMessageId || options.messageId,
+        knowhowMessageId:
+          options.remoteMessageId || createdRemoteMessageId || options.messageId,
         knowhowTaskId: webTaskId,
         chatSessionId: options.chatSessionId,
         agentName,

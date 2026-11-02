@@ -28,6 +28,7 @@ export * from "./cloudWorkers";
 export * from "./replyToParent";
 export * from "./runGenerate";
 export * from "./sendAgentMessage";
+export * from "./syncAgentRemote";
 export * from "./connectAgent";
 export * from "./waitForAgentCompleted";
 export * from "./observe";

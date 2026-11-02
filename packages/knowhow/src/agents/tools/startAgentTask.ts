@@ -82,6 +82,33 @@ function generateTaskId(prompt: string): string {
 }
 
 /**
+ * Resolve the remote task id (`remote:<uuid>`) of a parent so a child running
+ * on another machine can reply to it. Uses an existing link when there is one,
+ * otherwise asks the parent to sync itself to the backend (/sync:remote).
+ * Returns undefined when the parent can't be linked (the child then runs
+ * without a parent).
+ */
+export async function resolveRemoteParent(
+  parentTaskId?: string
+): Promise<string | undefined> {
+  if (!parentTaskId) return undefined;
+  const remote = await import("../../services/RemoteWorkers");
+  if (remote.isRemoteTaskId(parentTaskId)) {
+    return `remote:${remote.stripRemotePrefix(parentTaskId)}`;
+  }
+  const { readLocalRemoteTaskId } = await import("../../services/RemoteTaskLink");
+  const linked = readLocalRemoteTaskId(parentTaskId);
+  if (linked) return `remote:${linked}`;
+  try {
+    const { syncLocalAgentRemote } = await import("./syncAgentRemote");
+    const res = await syncLocalAgentRemote(parentTaskId);
+    return res.success && res.remoteTaskId ? `remote:${res.remoteTaskId}` : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * A short capabilities note appended to a spawned subagent's prompt so it knows
  * it can use the `knowhow agents` and related CLI commands (via its execCommand
  * tool) to coordinate, inspect, and orchestrate other agents — things it may
@@ -107,7 +134,8 @@ function subagentCapabilitiesNote(): string {
     "To communicate with running agents: use sendAgentMessage (send a message or /poke to a child/peer/parent),",
     "replyToParent (report back to whoever spawned you), and connectAgent (wire agents together with an ARRAY",
     "of { listener, speaker } connections — enables bidirectional, pipeline, star, and mesh topologies in one call).",
-    "To use other machines: listWorkers, then startAgentTask with worker:<id|name> (runs a full agent on that worker), waitForAgentCompleted/sendAgentMessage work with the returned remote taskId.",
+    "To use other machines: listWorkers, then startAgentTask with worker:<id|name> (runs a full agent on that worker), waitForAgentCompleted/sendAgentMessage work with the returned remote taskId;",
+    "remote children can replyToParent too (your task is auto-synced to the backend). syncAgentRemote syncs any agent (default: yourself) to the web UI at any point.",
   ];
   lines.push("---", "");
   return lines.join("\n");
@@ -156,8 +184,12 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<Star
     const { startRemoteAgentTask, waitForRemoteTask } = await import(
       "../../services/RemoteWorkers"
     );
-    // parentTaskId is intentionally not forwarded: the worker cannot resolve
-    // the parent's local task dir, so replyToParent is unavailable remotely.
+    // Forward the parent as `remote:<uuid>` so the remote child can
+    // replyToParent across machines. The parent needs a remote task (its
+    // KnowhowWebChannel polls pending messages), so auto-link it if needed.
+    const remoteParent = await resolveRemoteParent(
+      explicitParentTaskId ?? _ctx?.taskId ?? (_ctx?.caller as any)?.currentTaskId
+    );
     const r = await startRemoteAgentTask({
       worker: params.worker,
       prompt,
@@ -166,12 +198,14 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<Star
       model,
       maxTimeLimit,
       maxSpendLimit,
+      parentTaskId: remoteParent,
       resumeTaskId: resume ? providedTaskId : undefined,
     });
     const base: StartAgentTaskResult = {
       success: true,
       status: "started",
       taskId: r.taskId,
+      parentTaskId: remoteParent,
       remote: true,
       workerId: r.workerId,
       workerName: r.workerName,
@@ -382,7 +416,7 @@ export const startAgentTaskDefinition: Tool = {
       "When syncFs is true, the agent creates a directory at .knowhow/processes/agents/{taskId}/ with status.txt, input.txt, and metadata.json. " +
       "You can send follow-up messages to the running agent by writing content to .knowhow/processes/agents/{taskId}/input.txt. " +
       "The return value includes the taskId and agent directory path when syncFs is used. " +
-      "Pass `worker` to run the agent on another connected machine (see listWorkers); the result then has remote:true and a remote taskId (UUID) — use waitForAgentCompleted / sendAgentMessage with it (replyToParent is not available to remote children).",
+      "Pass `worker` to run the agent on another connected machine (see listWorkers); the result then has remote:true and a remote taskId (UUID) — use waitForAgentCompleted / sendAgentMessage with it. Your parentTaskId is forwarded (your task is auto-synced to the backend first), so the remote child can replyToParent and the message arrives in your input.",
     parameters: {
       type: "object",
       usesContext: true,

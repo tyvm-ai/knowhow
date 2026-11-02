@@ -3,6 +3,7 @@ import * as path from "path";
 import { Tool } from "../../clients/types";
 import { ToolCallContext } from "../../services/Tools";
 import { appendInput } from "../../services/stateful/channels/inputStream";
+import { readLocalRemoteTaskId } from "../../services/RemoteTaskLink";
 
 /** Resolve the agents dir lazily so tests (and cwd changes) are respected. */
 function agentsDir(): string {
@@ -68,16 +69,43 @@ export async function replyToParent(
     );
   }
 
-  const parentDir = path.join(agentsDir(), parentTaskId);
+  const remoteMod = await import("../../services/RemoteWorkers");
+  const fromTaskId =
+    _ctx?.taskId ?? (_ctx?.caller as any)?.currentTaskId ?? "unknown";
+  const fromAgent = (_ctx?.caller as any)?.name ?? "child";
+
+  // Cross-machine: `remote:<uuid>`, or a bare UUID with no local task dir.
+  const parentDir = path.join(
+    agentsDir(),
+    remoteMod.stripRemotePrefix(parentTaskId)
+  );
   const parentInputPath = path.join(parentDir, "input.txt");
+  let remoteParentId: string | undefined;
+  if (/^remote:/i.test(parentTaskId)) {
+    remoteParentId = remoteMod.stripRemotePrefix(parentTaskId);
+  } else if (remoteMod.isRemoteTaskId(parentTaskId) && !fs.existsSync(parentDir)) {
+    remoteParentId = parentTaskId;
+  } else if (!fs.existsSync(parentDir)) {
+    // local parent dir is missing: fall back to a remote link in its metadata
+    remoteParentId = readLocalRemoteTaskId(parentTaskId);
+  }
+  if (remoteParentId) {
+    try {
+      await remoteMod.sendRemoteTaskMessage(
+        remoteParentId,
+        `[from:${fromTaskId}/${fromAgent}] ${message}`
+      );
+      return `Sent message to remote parent task ${remoteParentId}.`;
+    } catch (e: any) {
+      return `Failed to send to remote parent task ${remoteParentId}: ${
+        e?.message ?? String(e)
+      }`;
+    }
+  }
 
   if (!fs.existsSync(parentDir)) {
     return `Parent task directory not found: ${parentDir}`;
   }
-
-  const fromTaskId =
-    _ctx?.taskId ?? (_ctx?.caller as any)?.currentTaskId ?? "unknown";
-  const fromAgent = (_ctx?.caller as any)?.name ?? "child";
 
   // Envelope with sender identity so the parent knows who is replying.
   const envelope = `[from:${fromTaskId}] [agent:${fromAgent}] ${message}`;
@@ -101,8 +129,8 @@ export const replyToParentDefinition: Tool = {
       "Send a message back to the parent agent that spawned this task. Use this " +
       "to report progress, ask a question, or alert the parent to something. The " +
       "message is delivered to the parent's input queue and picked up on its next " +
-      "sync cycle. Only works when this agent was spawned by another agent (i.e. " +
-      "it has a parent taskId).",
+      "sync cycle. Works across machines too (parent on another machine / remote parent). " +
+      "Only works when this agent was spawned by another agent (i.e. it has a parent taskId).",
     parameters: {
       type: "object",
       positional: true,

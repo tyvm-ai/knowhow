@@ -255,6 +255,24 @@ export class RemoteSyncModule extends BaseChatModule {
     }
 
     const taskIdArg = argRaw;
+
+    // A task that lives in another process (not in this chat's registry): ask
+    // that agent to attach its remote channel via its input stream.
+    if (taskIdArg && !this.agentModule.getTaskRegistry().get(taskIdArg)) {
+      const { syncLocalAgentRemote } = await import(
+        "../../agents/tools/syncAgentRemote"
+      );
+      const res = await syncLocalAgentRemote(taskIdArg);
+      if (res.success) {
+        console.log(
+          `${res.alreadyLinked ? "ℹ️  Already synced" : "✅ Synced"}: ${taskIdArg} -> remote task ${res.remoteTaskId}`
+        );
+      } else {
+        console.log(`⚠️  Task "${taskIdArg}" not synced: ${res.error}`);
+      }
+      return;
+    }
+
     const taskEntry = this.getActiveTask(taskIdArg);
 
     if (!taskEntry) {

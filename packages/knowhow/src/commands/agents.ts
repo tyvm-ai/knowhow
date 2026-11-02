@@ -625,6 +625,38 @@ async function followTask(
   await new Promise<void>(() => {});
 }
 
+async function cmdSyncRemote(
+  taskIdOrIndex: string | undefined,
+  opts: { index?: string; worker?: string; remoteTaskId?: string }
+): Promise<void> {
+  const value = opts.index ?? taskIdOrIndex;
+  if (!value) {
+    console.error("Provide a task ID or use -i <number> to select by index.");
+    process.exit(1);
+  }
+  // On a worker the task id is the worker's local id, so don't resolve locally.
+  const resolvedId = opts.worker ? value : resolveTaskId(value);
+  if (!resolvedId) {
+    console.error(`Task not found: ${value}`);
+    process.exit(1);
+    return;
+  }
+  const { syncAgentRemote } = await import("../agents/tools/syncAgentRemote");
+  const res = await syncAgentRemote({
+    taskId: resolvedId,
+    remoteTaskId: opts.remoteTaskId,
+    worker: opts.worker,
+  });
+  if (!res.success) {
+    console.error(`Remote sync failed: ${res.error ?? "unknown error"}`);
+    process.exit(1);
+    return;
+  }
+  console.log(
+    `${res.alreadyLinked ? "Already synced" : "Synced"}: ${res.taskId} -> remote task ${res.remoteTaskId}`
+  );
+}
+
 async function cmdAttach(
   taskIdOrIndex: string | undefined,
   opts: { index?: string }
@@ -977,6 +1009,27 @@ export function addAgentsCommand(
     .action(async (taskId: string | undefined, opts: { index?: string }) => {
       await cmdAttach(taskId, opts);
     });
+
+  agents
+    .command("sync-remote [taskId]")
+    .description(
+      "Sync a running agent to the knowhow backend at any point (creates a remote task, pushes the full history and keeps syncing). " +
+        "Accepts a full task ID, partial substring, or -i <number> for row index from 'agents list'."
+    )
+    .option(
+      "-i, --index <number>",
+      "Select task by row number from 'agents list'"
+    )
+    .option("--worker <idOrName>", "Run the sync on a remote worker (taskId is the worker's local task id)")
+    .option("--remote-task-id <uuid>", "Attach to this existing remote task instead of creating one")
+    .action(
+      async (
+        taskId: string | undefined,
+        opts: { index?: string; worker?: string; remoteTaskId?: string }
+      ) => {
+        await cmdSyncRemote(taskId, opts);
+      }
+    );
 
   agents
     .command("answer [taskId]")

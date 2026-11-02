@@ -95,9 +95,62 @@ describe("startAgentTask {worker}", () => {
     expect(mockClient.callWorkerToolRaw.mock.calls[0][1]).toBe("worker_0_startAgentTask");
   });
 
-  it("does not forward parentTaskId to the worker", async () => {
+  const PARENT_UUID = "11111111-2222-4333-8444-555555555555";
+  const agentsDir = () => path.join(tmpCwd, ".knowhow", "processes", "agents");
+  const forwardedArgs = () => mockClient.callWorkerToolRaw.mock.calls[0][2];
+  const makeParent = (id: string, meta: Record<string, any> = {}) => {
+    const dir = path.join(agentsDir(), id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "input.txt"), "");
+    fs.writeFileSync(path.join(dir, "metadata.json"), JSON.stringify({ taskId: id, ...meta }));
+    return dir;
+  };
+
+  it("does not forward a parentTaskId it cannot link to a remote task", async () => {
     await startAgentTask({ prompt: "hi", worker: WIN, parentTaskId: "parent-1" });
-    expect(mockClient.callWorkerToolRaw.mock.calls[0][2]).not.toHaveProperty("parentTaskId");
+    expect(forwardedArgs()).not.toHaveProperty("parentTaskId");
+  });
+
+  it("forwards an already-linked parent as remote:<uuid> (explicit parentTaskId)", async () => {
+    makeParent("parent-linked", { remoteTaskId: PARENT_UUID });
+    const r: any = await startAgentTask({ prompt: "hi", worker: WIN, parentTaskId: "parent-linked" });
+    expect(forwardedArgs().parentTaskId).toBe(`remote:${PARENT_UUID}`);
+    expect(r.parentTaskId).toBe(`remote:${PARENT_UUID}`);
+  });
+
+  it("uses the caller's own task (_ctx) as the parent", async () => {
+    makeParent("caller-1", { knowhowTaskId: PARENT_UUID });
+    await startAgentTask({ prompt: "hi", worker: WIN, _ctx: { taskId: "caller-1" } });
+    expect(forwardedArgs().parentTaskId).toBe(`remote:${PARENT_UUID}`);
+  });
+
+  it("passes remote:<uuid> / bare UUID parents through", async () => {
+    await startAgentTask({ prompt: "hi", worker: WIN, parentTaskId: `remote:${PARENT_UUID}` });
+    expect(forwardedArgs().parentTaskId).toBe(`remote:${PARENT_UUID}`);
+    mockClient.callWorkerToolRaw.mockClear();
+    await startAgentTask({ prompt: "hi", worker: WIN, parentTaskId: PARENT_UUID });
+    expect(forwardedArgs().parentTaskId).toBe(`remote:${PARENT_UUID}`);
+  });
+
+  it("auto-links an unlinked local parent via /sync:remote, then forwards it", async () => {
+    const dir = makeParent("parent-unlinked");
+    // stand-in for the running parent's AgentSession: reacts to /sync:remote
+    const timer = setInterval(() => {
+      const input = fs.readFileSync(path.join(dir, "input.txt"), "utf8");
+      if (input.includes("/sync:remote")) {
+        fs.writeFileSync(
+          path.join(dir, "metadata.json"),
+          JSON.stringify({ taskId: "parent-unlinked", remoteTaskId: PARENT_UUID })
+        );
+      }
+    }, 20);
+    try {
+      await startAgentTask({ prompt: "hi", worker: WIN, parentTaskId: "parent-unlinked" });
+    } finally {
+      clearInterval(timer);
+    }
+    expect(fs.readFileSync(path.join(dir, "input.txt"), "utf8")).toContain("/sync:remote");
+    expect(forwardedArgs().parentTaskId).toBe(`remote:${PARENT_UUID}`);
   });
 
   it("waitForCompletion waits on the backend and returns the final answer", async () => {

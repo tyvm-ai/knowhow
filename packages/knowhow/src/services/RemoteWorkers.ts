@@ -1,4 +1,5 @@
 import { KnowhowSimpleClient, OrgWorkerInfo } from "./KnowhowClient";
+import { createRemoteTaskForAgent } from "./RemoteTaskLink";
 import { lastAssistantText } from "../agents/tools/waitForAgentCompleted";
 
 export type WorkerOs = "windows" | "posix" | "unknown";
@@ -415,25 +416,18 @@ export async function startRemoteAgentTask(
   if (params.resumeTaskId) {
     taskId = stripRemotePrefix(params.resumeTaskId);
   } else {
-    const session = await client.createSessionPlaceholder({
-      title: (params.title ?? params.prompt).slice(0, 80),
-      workerId: w.id,
-      metadata: { source: "cli-remote-worker" },
-    } as any);
-    sessionId = session.sessionId;
-    const msg = await client.createMessagePlaceholder(sessionId, {
-      content: params.prompt,
+    const link = await createRemoteTaskForAgent({
+      prompt: params.prompt,
+      title: params.title,
       agentName: params.agentName,
-      modelName: params.model,
-      metadata: { source: "cli-remote-worker", worker: w.id },
-    } as any);
-    messageId = msg.messageId;
-    taskId = msg.taskId;
-    if (!taskId) {
-      throw new Error(
-        "Backend did not return a taskId for the remote message placeholder"
-      );
-    }
+      model: params.model,
+      workerId: w.id,
+      source: "cli-remote-worker",
+      client,
+    });
+    sessionId = link.sessionId;
+    messageId = link.messageId;
+    taskId = link.taskId;
   }
 
   const startArgs: any = {
@@ -441,6 +435,7 @@ export async function startRemoteAgentTask(
     taskId,
     syncRemote: true,
     syncFs: true,
+    parentTaskId: params.parentTaskId,
     agentName: params.agentName,
     provider: params.provider,
     model: params.model,

@@ -3,6 +3,14 @@ import * as os from "os";
 import * as path from "path";
 import { replyToParent } from "../../../src/agents/tools/replyToParent";
 
+const mockSendRemote = jest.fn();
+jest.mock("../../../src/services/RemoteWorkers", () => ({
+  ...jest.requireActual("../../../src/services/RemoteWorkers"),
+  sendRemoteTaskMessage: (...a: any[]) => mockSendRemote(...a),
+}));
+
+const PARENT_UUID = "11111111-2222-4333-8444-555555555555";
+
 /**
  * These tests exercise the `_ctx`-based self-referential mechanism:
  * replyToParent discovers who is calling (and which parent spawned them)
@@ -121,5 +129,53 @@ describe("replyToParent (_ctx self-referential tool)", () => {
   it("returns error for empty message", async () => {
     const result = await replyToParent("   ", { taskId: "whatever" });
     expect(result).toMatch(/No message provided/);
+  });
+
+  describe("cross-machine (remote parent)", () => {
+    beforeEach(() => mockSendRemote.mockReset().mockResolvedValue({}));
+
+    it("delivers to a remote:<uuid> parent through the backend", async () => {
+      const result = await replyToParent("hello remote", {
+        taskId: "child-r1",
+        parentTaskId: `remote:${PARENT_UUID}`,
+        caller: { name: "Patcher" },
+      } as any);
+      expect(result).toMatch(new RegExp(`remote parent task ${PARENT_UUID}`));
+      expect(mockSendRemote).toHaveBeenCalledWith(
+        PARENT_UUID,
+        "[from:child-r1/Patcher] hello remote"
+      );
+    });
+
+    it("treats a bare UUID with no local dir as remote", async () => {
+      await replyToParent("x", { taskId: "c", parentTaskId: PARENT_UUID });
+      expect(mockSendRemote).toHaveBeenCalledWith(PARENT_UUID, expect.stringContaining("x"));
+    });
+
+    it("resolves remote:<uuid> from the child's metadata.json parentTaskId", async () => {
+      makeTask("child-r2", { parentTaskId: `remote:${PARENT_UUID}` });
+      await replyToParent("from meta", { taskId: "child-r2" });
+      expect(mockSendRemote).toHaveBeenCalledWith(PARENT_UUID, expect.stringContaining("from meta"));
+    });
+
+    it("prefers the local dir when a UUID parent exists locally", async () => {
+      const parentDir = makeTask(PARENT_UUID);
+      const result = await replyToParent("local", { taskId: "c", parentTaskId: PARENT_UUID });
+      expect(result).toMatch(/Sent message to parent task/);
+      expect(mockSendRemote).not.toHaveBeenCalled();
+      expect(fs.readFileSync(path.join(parentDir, "input.txt"), "utf8")).toContain("local");
+    });
+
+    it("reports (not throws) a backend failure", async () => {
+      mockSendRemote.mockRejectedValue(new Error("boom"));
+      const result = await replyToParent("x", { taskId: "c", parentTaskId: `remote:${PARENT_UUID}` });
+      expect(result).toMatch(/Failed to send to remote parent task .*boom/);
+    });
+
+    it("local behavior is unchanged when the parent dir is missing and unlinked", async () => {
+      const result = await replyToParent("x", { taskId: "c", parentTaskId: "ghost" });
+      expect(result).toMatch(/Parent task directory not found/);
+      expect(mockSendRemote).not.toHaveBeenCalled();
+    });
   });
 });

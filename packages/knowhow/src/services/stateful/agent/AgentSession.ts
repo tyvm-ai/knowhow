@@ -13,6 +13,9 @@ import {
   isTerminalStatus,
 } from "../types";
 import type { AgentControl, AgentEvent, AgentPrompt, AgentState } from "./types";
+import { KnowhowWebChannel } from "./KnowhowWebChannel";
+import { isUuid } from "./agentChannels";
+import type { KnowhowSimpleClient } from "../../KnowhowClient";
 
 export type AgentChannel = Channel<AgentState, AgentControl, AgentEvent>;
 
@@ -45,6 +48,8 @@ export interface AgentSessionOptions {
   };
   limits?: { maxRunTimeMs?: number; maxSpendUsd?: number; maxTurns?: number };
   channels?: AgentChannel[];
+  /** Client used by the runtime `/sync:remote` attach (default: a new KnowhowSimpleClient). */
+  webClient?: KnowhowSimpleClient;
   /** State carried over from a previous run (input cursors, unprocessed messages). */
   restore?: Partial<Pick<AgentState, "inputCursors" | "pendingUserMessages">>;
 }
@@ -330,6 +335,12 @@ export class AgentSession extends ResumableProcess<AgentState, AgentControl, Age
         } else if (command === "/compact") {
           this.agent.requestCompact();
           this.agent.interrupt();
+        } else if (command === "/sync:remote" || command === "/sync:remote:off") {
+          // runtime attach/detach of the remote (web) channel; async, never throws
+          const off = command === "/sync:remote:off";
+          void this.syncRemoteFromInput(off ? undefined : message, off).catch((e: any) =>
+            this.log.error(`${command} failed: ${e?.message ?? e}`)
+          );
         } else {
           queue({ role: "user", content: text.trim() });
         }
@@ -344,6 +355,47 @@ export class AgentSession extends ResumableProcess<AgentState, AgentControl, Age
     this.consume(items, cursor, (draft) => {
       draft.pendingUserMessages.push(...queued);
     });
+  }
+
+  /**
+   * `/sync:remote [remoteTaskUuid]` / `/sync:remote:off` from the input stream.
+   * Linked already -> no-op. Otherwise attach a KnowhowWebChannel to the given
+   * remote task, or create a remote task (session + message placeholder) first.
+   * The web channel's first publish carries the full thread history.
+   */
+  async syncRemoteFromInput(arg?: string, off = false): Promise<string | undefined> {
+    if (off) {
+      await this.detach("web");
+      this.log.info("remote sync detached");
+      return undefined;
+    }
+    const uuid = (arg ?? "").trim().split(/\s+/)[0].replace(/^remote:/i, "");
+    const attached = this.channels().some((c) => c.id === "web");
+    const linked = (this.meta.links as Record<string, string> | undefined)?.remoteTaskId;
+    if (attached) {
+      this.log.info(`already synced to remote task ${linked ?? ""}`.trim());
+      return linked;
+    }
+    const client = this.opts.webClient;
+    let remoteTaskId = isUuid(uuid) ? uuid : linked;
+    let remoteMessageId: string | undefined;
+    if (!remoteTaskId) {
+      const { createRemoteTaskForAgent } = await import("../../RemoteTaskLink");
+      const state = this.getState() as AgentState;
+      const link = await createRemoteTaskForAgent({
+        prompt: state.prompt,
+        agentName: state.agentName,
+        model: state.model,
+        client,
+      });
+      remoteTaskId = link.taskId;
+      remoteMessageId = link.messageId;
+    }
+    await this.attach(
+      KnowhowWebChannel.existing(remoteTaskId, { client, remoteMessageId })
+    );
+    this.log.info(`synced to remote task ${remoteTaskId}`);
+    return remoteTaskId;
   }
 
   private interruptWith(message: string | undefined, queued: Message[]) {
