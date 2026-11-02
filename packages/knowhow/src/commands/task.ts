@@ -3,6 +3,7 @@ import * as readline from "readline/promises";
 import { KnowhowSimpleClient, KNOWHOW_API_URL } from "../services/KnowhowClient";
 import { getConfig } from "../config";
 import { getRealRepoInfo } from "../services/RealRepo";
+import { ensureCloudWorkerStarted } from "../services/WorkerPicker";
 import {
   CloudWorkerSummary,
   describeCloudWorker,
@@ -94,12 +95,24 @@ export function addTaskCommand(program: Command): void {
     .option("--id <taskId>", "Local or remote task id (default: most recent local task)")
     .option("--worker <idOrName>", "Cloud worker id or name")
     .option("--prompt <text>", "Prompt to resume the task with on the worker")
-    .action(async (opts: { id?: string; worker?: string; prompt?: string }) => {
+    .option("--snapshot <id>", "If the cloud worker is stopped, start it from this snapshot")
+    .option("--fresh", "If the cloud worker is stopped, start it with a clean cold start")
+    .action(async (opts: { id?: string; worker?: string; prompt?: string; snapshot?: string; fresh?: boolean }) => {
       const client = new KnowhowSimpleClient(KNOWHOW_API_URL);
       const t = resolveLocalTask(opts.id);
       const remoteId = requireRemoteId(t);
       const worker = await chooseCloudWorker(client, opts.worker, readlineAsk);
       if (!worker) return;
+      if (
+        !(await ensureCloudWorkerStarted(
+          worker,
+          { snapshot: opts.snapshot, fresh: opts.fresh },
+          async (p) => readlineAsk(p)
+        ))
+      ) {
+        console.log("Offload cancelled.");
+        return;
+      }
       const config = await getConfig();
       await offload(client, remoteId, worker.id, {
         prompt: opts.prompt,

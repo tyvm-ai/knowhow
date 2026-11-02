@@ -17,6 +17,11 @@ export class InputQueueManager {
   private static instance: InputQueueManager | null = null;
   private static rl: readline.Interface | null = null;
   private static keypressListenerSetup = false;
+  /**
+   * Optional Ctrl+C interceptor. Return true to consume the keypress (the CLI
+   * stays alive); e.g. the remote-worker attach mode uses it to detach.
+   */
+  public static ctrlCInterceptor: (() => boolean) | undefined;
 
   // Tab completion state
   private lastKeypressWasTab = false;
@@ -117,6 +122,8 @@ export class InputQueueManager {
 
     // Handle Ctrl+C (readline SIGINT)
     InputQueueManager.rl.on("SIGINT", () => {
+      // A registered interceptor (e.g. remote-worker attach → detach) may consume Ctrl+C
+      if (InputQueueManager.ctrlCInterceptor?.()) return;
       // If there's an active question, cancel it (like Esc)
       if (this.stack.length > 0) {
         const cancelled = this.stack.pop();
@@ -146,6 +153,7 @@ export class InputQueueManager {
         if (!instance) return;
 
         if (key?.ctrl && key?.name === "c") {
+          if (InputQueueManager.ctrlCInterceptor?.()) return;
           if (instance.stack.length > 0) {
             const cancelled = instance.stack.pop();
             cancelled?.resolve("");

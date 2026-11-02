@@ -9,6 +9,13 @@ import { googleSearchDefinition } from "./googleSearch";
 import { startAgentTaskDefinition } from "./startAgentTask";
 import { listWorkersDefinition } from "./listWorkers";
 import { workerExecDefinition } from "./workerExec";
+import {
+  listCloudWorkerSnapshotsDefinition,
+  startCloudWorkerDefinition,
+  forkCloudWorkerDefinition,
+  stopCloudWorkerDefinition,
+  destroyForkedSandboxDefinition,
+} from "./cloudWorkers";
 import { replyToParentDefinition } from "./replyToParent";
 import { runGenerateDefinition } from "./runGenerate";
 import { sendAgentMessageDefinition } from "./sendAgentMessage";
@@ -728,6 +735,11 @@ export const includedTools = [
   startAgentTaskDefinition,
   listWorkersDefinition,
   workerExecDefinition,
+  listCloudWorkerSnapshotsDefinition,
+  startCloudWorkerDefinition,
+  forkCloudWorkerDefinition,
+  stopCloudWorkerDefinition,
+  destroyForkedSandboxDefinition,
   replyToParentDefinition,
   runGenerateDefinition,
   sendAgentMessageDefinition,

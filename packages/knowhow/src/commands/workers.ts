@@ -231,6 +231,49 @@ export function addRemoteWorkerSubcommands(workersCmd: Command): void {
     });
 
   workersCmd
+    .command("attach [worker]")
+    .description(
+      "Attach a chat to a remote agent on a worker (the CLI version of dashboard/workers/chat). A stopped cloud worker is started first — choose a snapshot interactively or pass --snapshot/--fresh/--fork."
+    )
+    .option("--snapshot <id>", "Start a stopped cloud worker from this snapshot")
+    .option("--fresh", "Start a stopped cloud worker with a clean cold start")
+    .option(
+      "--fork <snapshotId>",
+      "Fork a NEW sandbox from this snapshot instead of resuming the cloud worker (destroyed when you /worker off)"
+    )
+    .option("--task <remoteTaskId>", "Re-attach to an existing remote task")
+    .option("--prompt <text>", "Start a remote agent with this prompt right away")
+    .action(
+      async (
+        workerRef: string | undefined,
+        options: {
+          snapshot?: string;
+          fresh?: boolean;
+          fork?: string;
+          task?: string;
+          prompt?: string;
+        }
+      ) => {
+        try {
+          const { setupServices } = await import("./services");
+          await setupServices();
+          const { startChat } = await import("../chat");
+          const parts: string[] = ["/workers"];
+          if (workerRef) parts.push(workerRef);
+          if (options.snapshot) parts.push("--snapshot", options.snapshot);
+          if (options.fresh) parts.push("--fresh");
+          if (options.fork) parts.push("--fork", options.fork);
+          if (options.task) parts.push("--task", options.task);
+          // --prompt consumes the rest of the line, keep it last
+          if (options.prompt) parts.push("--prompt", options.prompt);
+          await startChat(parts.join(" "));
+        } catch (error) {
+          fail(error);
+        }
+      }
+    );
+
+  workersCmd
     .command("tools <worker>")
     .description("List tools exposed by a worker")
     .option("--json", "Output JSON")

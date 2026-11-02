@@ -46,6 +46,11 @@ export class AgentModule extends BaseChatModule {
   /** Currently attached agent (for agent:attached mode commands) */
   private attachedAgent: AttachableAgent | undefined;
 
+  /** Listeners notified when the user explicitly runs /detach, /done or /kill on an attached agent. */
+  private userDetachListeners: Array<
+    (agent: AttachableAgent, reason: "detach" | "done" | "kill") => void
+  > = [];
+
   // Service instances for task management, session management, and synchronization
   private taskRegistry: TaskRegistry;
   private sessionManager: SessionManager;
@@ -137,9 +142,11 @@ export class AgentModule extends BaseChatModule {
         modes: ["agent:attached"],
         handler: async (_args: string[]): Promise<void> => {
           if (this.attachedAgent) {
-            await this.attachedAgent.kill();
+            const killed = this.attachedAgent;
+            await killed.kill();
             console.log("Agent terminated.");
             this.detachFromAgent();
+            this.notifyUserDetach(killed, "kill");
           }
         },
       },
@@ -257,6 +264,7 @@ export class AgentModule extends BaseChatModule {
           // new agent's rendering and reset the mode.
           if (agent && this.attachedAgent === agent) {
             this.detachFromAgent();
+            this.notifyUserDetach(agent, "detach");
           }
         },
       },
@@ -265,11 +273,35 @@ export class AgentModule extends BaseChatModule {
         description: "Exit the current agent interaction",
         modes: ["agent:attached"],
         handler: async (_args: string[]): Promise<void> => {
+          const agent = this.attachedAgent;
           this.detachFromAgent();
+          if (agent) this.notifyUserDetach(agent, "done");
         },
       },
     ];
   }
+  /** Register a listener for explicit user detaches (/detach, /done, /kill). */
+  public onUserDetach(
+    fn: (agent: AttachableAgent, reason: "detach" | "done" | "kill") => void
+  ): void {
+    this.userDetachListeners.push(fn);
+  }
+
+  private notifyUserDetach(agent: AttachableAgent, reason: "detach" | "done" | "kill") {
+    for (const fn of this.userDetachListeners) {
+      try {
+        fn(agent, reason);
+      } catch {
+        /* listeners must not break detach */
+      }
+    }
+  }
+
+  /** The agent currently attached via attachedAgentChatLoop (if any). */
+  public getAttachedAgent(): AttachableAgent | undefined {
+    return this.attachedAgent;
+  }
+
 
   /**
    * Clean up attached agent state and restore default mode/prompt.
@@ -819,6 +851,15 @@ export class AgentModule extends BaseChatModule {
   }
 
   async handleInput(input: string, context: ChatContext): Promise<boolean> {
+    // Remote/watcher-backed agents (e.g. a worker mirror) are attached without
+    // a selectedAgent, so forward input whenever something is attached.
+    if (this.attachedAgent && !context.selectedAgent) {
+      this.attachedAgent.addPendingUserMessage({
+        role: "user",
+        content: input,
+      });
+      return true;
+    }
     // If in agent mode, start agent with the input as initial task (like original chat.ts)
     if (context.agentMode && context.selectedAgent) {
       // If we're attached to a running agent, forward input to it

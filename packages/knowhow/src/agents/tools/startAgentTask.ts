@@ -184,6 +184,9 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<Star
     if (waitForCompletion) {
       const w = await waitForRemoteTask(r.taskId, {
         timeoutMs: maxTimeLimit ? maxTimeLimit * 60_000 : undefined,
+        // A freshly booted sandbox (1 CPU) can take well over the default 90s to boot the
+        // agent process and report its first message.
+        startupTimeoutMs: 5 * 60_000,
       });
       return {
         ...base,

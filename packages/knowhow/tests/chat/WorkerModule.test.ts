@@ -7,6 +7,21 @@ jest.mock("../../src/services/RemoteWorkers", () => ({
   listRemoteWorkers: jest.fn().mockResolvedValue([]),
   formatWorkerTable: jest.fn().mockReturnValue(""),
 }));
+const mockStartWatching = jest.fn().mockResolvedValue(undefined);
+jest.mock("../../src/services/RemoteTaskWatcher", () => ({
+  RemoteTaskWatcher: class {
+    isRemoteWorkerWatcher = true;
+    constructor(public opts: any) {}
+    startWatching = (...a: any[]) => mockStartWatching(this.opts, ...a);
+    flushReplay = jest.fn();
+    stopWatching = jest.fn();
+  },
+}));
+jest.mock("../../src/services/SyncedAgentWatcher", () => ({
+  WatcherBackedAgent: class {
+    constructor(public watcher: any) {}
+  },
+}));
 jest.mock("../../src/config", () => ({
   getConfig: jest.fn().mockResolvedValue({ chat: { defaultAgent: "Patcher" } }),
 }));
@@ -23,9 +38,16 @@ function setup() {
     registerCommand: jest.fn(),
     processInput: jest.fn().mockResolvedValue(true),
   };
-  const mod = new WorkerModule();
+  const agentModule: any = {
+    getActiveSyncedWatcher: jest.fn(),
+    setActiveSyncedWatcher: jest.fn(),
+    attachedAgentChatLoop: jest.fn().mockResolvedValue(undefined),
+    getAttachedAgent: jest.fn().mockReturnValue(undefined),
+    onUserDetach: jest.fn(),
+  };
+  const mod = new WorkerModule(agentModule);
   (mod as any).chatService = chatService;
-  return { mod, context, chatService };
+  return { mod, context, chatService, agentModule };
 }
 
 beforeEach(() => {
@@ -38,7 +60,7 @@ beforeEach(() => {
 
 describe("WorkerModule", () => {
   it("registers /worker", () => {
-    expect(setup().mod.getCommands().map((c) => c.name)).toEqual(["worker"]);
+    expect(setup().mod.getCommands().map((c) => c.name)).toEqual(["worker", "workers", "status"]);
   });
 
   it("handleInput returns false without an active worker", async () => {
@@ -64,8 +86,8 @@ describe("WorkerModule", () => {
     expect(context.activeWorker).toBeUndefined();
   });
 
-  it("delegates a turn: starts a remote task then /attach, and resumes on the next turn", async () => {
-    const { mod, context, chatService } = setup();
+  it("delegates a turn: starts a remote task then mirrors it, and resumes on the next turn", async () => {
+    const { mod, context, agentModule } = setup();
     await mod.handleWorkerCommand(["WIN"]);
     mockStart.mockResolvedValueOnce({ taskId: TASK1 });
     expect(await mod.handleInput("first", context)).toBe(true);
@@ -74,7 +96,8 @@ describe("WorkerModule", () => {
       prompt: "first",
       agentName: "Developer",
     });
-    expect(chatService.processInput).toHaveBeenLastCalledWith(`/attach ${TASK1}`);
+    expect(agentModule.attachedAgentChatLoop).toHaveBeenLastCalledWith(TASK1, expect.anything());
+    expect(mockStartWatching).toHaveBeenLastCalledWith(expect.objectContaining({ workerId: "wid-1234567", sentTexts: ["first"] }), TASK1);
     expect(context.activeWorker.taskId).toBe(TASK1);
     expect(context.chatHistory[0]).toMatchObject({ input: "first", taskId: TASK1 });
 
@@ -89,7 +112,7 @@ describe("WorkerModule", () => {
   });
 
   it("falls back to a new task when resume fails", async () => {
-    const { mod, context, chatService } = setup();
+    const { mod, context, agentModule } = setup();
     await mod.handleWorkerCommand(["WIN"]);
     context.activeWorker.taskId = TASK1;
     mockStart.mockRejectedValueOnce(new Error("cannot resume")).mockResolvedValueOnce({ taskId: TASK2 });
@@ -97,7 +120,24 @@ describe("WorkerModule", () => {
     expect(mockStart).toHaveBeenCalledTimes(2);
     expect(mockStart.mock.calls[1][0]).not.toHaveProperty("resumeTaskId");
     expect(context.activeWorker.taskId).toBe(TASK2);
-    expect(chatService.processInput).toHaveBeenLastCalledWith(`/attach ${TASK2}`);
+    expect(agentModule.attachedAgentChatLoop).toHaveBeenLastCalledWith(TASK2, expect.anything());
+  });
+
+  it("does not start a new task while a remote task is already mirrored (AgentModule forwards the message)", async () => {
+    const { mod, context, agentModule } = setup();
+    await mod.handleWorkerCommand(["WIN"]);
+    agentModule.getAttachedAgent.mockReturnValue({ watcher: { isRemoteWorkerWatcher: true } });
+    expect(await mod.handleInput("follow-up", context)).toBe(false);
+    expect(mockStart).not.toHaveBeenCalled();
+  });
+
+  it("passes provider knowhow for cloud workers", async () => {
+    const { mod, context } = setup();
+    await mod.handleWorkerCommand(["WIN"]);
+    context.activeWorker.cloudWorkerId = "cw-1";
+    mockStart.mockResolvedValueOnce({ taskId: TASK1 });
+    await mod.handleInput("go", context);
+    expect(mockStart).toHaveBeenLastCalledWith(expect.objectContaining({ provider: "knowhow" }));
   });
 
   it("/worker new clears the task id; errors don't forward to the local agent", async () => {

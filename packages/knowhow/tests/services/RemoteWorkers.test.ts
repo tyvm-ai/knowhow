@@ -379,6 +379,18 @@ describe("waitForRemoteTask", () => {
     expect(mockClient.getTaskDetails).toHaveBeenNthCalledWith(3, UUID, true);
   }, 15000);
 
+  it("does not treat a freshly created pending task (inProgress:false) as completed", async () => {
+    mockClient.getTaskDetails
+      .mockResolvedValueOnce(det({ status: "pending", inProgress: false }))
+      .mockResolvedValueOnce(det({ status: "pending", inProgress: false }))
+      .mockResolvedValueOnce(det({}))
+      .mockResolvedValueOnce(det({ status: "completed", inProgress: false }))
+      .mockResolvedValueOnce(det({ status: "completed", inProgress: false, result: "LATE" }));
+    const r = await waitForRemoteTask(UUID, { client: mockClient, pollIntervalMs: 1 });
+    expect(r).toMatchObject({ status: "completed", finalAnswer: "LATE" });
+    expect(mockClient.getTaskDetails.mock.calls.length).toBeGreaterThanOrEqual(5);
+  }, 15000);
+
   it("returns killed status", async () => {
     mockClient.getTaskDetails.mockResolvedValue(det({ status: "killed", inProgress: false }));
     const r = await waitForRemoteTask(UUID, { client: mockClient });

@@ -147,6 +147,38 @@ export interface TaskOffloadResponse {
   resumedTaskId?: string | null;
   [key: string]: unknown;
 }
+export interface CloudWorkerRecord {
+  id: string;
+  name: string;
+  status: string;
+  workerType?: string;
+  sandboxId?: string | null;
+  isEphemeral?: boolean | null;
+  repoUrl?: string | null;
+  workerConfigJson?: Record<string, unknown>;
+  [key: string]: unknown;
+}
+
+export interface SandboxRecord {
+  id: string;
+  name?: string | null;
+  status: string;
+  lastSnapshotId?: string | null;
+  baseSnapshotId?: string | null;
+  [key: string]: unknown;
+}
+
+export interface SandboxSnapshotRecord {
+  id: string;
+  sandboxId: string;
+  label?: string | null;
+  status: string;
+  snapshotContent?: string;
+  sizeBytes?: number | null;
+  createdAt: string;
+  [key: string]: unknown;
+}
+
 
 export interface OrgWorkerInfo {
   id: string;
@@ -419,6 +451,105 @@ export class KnowhowSimpleClient {
         headers: this.headers,
       }
     );
+  }
+
+  /**
+   * Start a (sandbox) cloud worker.
+   * snapshotId: string = resume from that snapshot, false = clean cold start,
+   * omitted = auto-resume from the sandbox's lastSnapshotId.
+   */
+  async startCloudWorkerRaw(id: string, body?: { snapshotId?: string | false }) {
+    await this.checkJwt();
+    return http.post<CloudWorkerRecord>(
+      `${this.baseUrl}/api/cloud-workers/${id}/start`,
+      body ?? {},
+      { headers: this.headers, timeout: 120000 }
+    );
+  }
+
+  /** Stop a (sandbox) cloud worker, optionally snapshotting first. */
+  async stopCloudWorkerRaw(id: string, body?: { snapshot?: boolean }) {
+    await this.checkJwt();
+    return http.post<CloudWorkerRecord>(
+      `${this.baseUrl}/api/cloud-workers/${id}/stop`,
+      body ?? {},
+      { headers: this.headers, timeout: 180000 }
+    );
+  }
+
+  /** DELETE /api/cloud-workers/{id} (also destroys its sandbox if still alive). */
+  async deleteCloudWorkerRaw(id: string) {
+    await this.checkJwt();
+    return http.delete<any>(`${this.baseUrl}/api/cloud-workers/${id}`, {
+      headers: this.headers,
+      timeout: 120000,
+    });
+  }
+
+  /** GET /api/cloud-workers/{id} with the full record (sandboxId etc). */
+  async getCloudWorkerRecord(id: string) {
+    await this.checkJwt();
+    return http.get<CloudWorkerRecord>(
+      `${this.baseUrl}/api/cloud-workers/${id}`,
+      { headers: this.headers }
+    );
+  }
+
+  /** GET /api/sandboxes/{id} */
+  async getSandbox(sandboxId: string) {
+    await this.checkJwt();
+    return http.get<SandboxRecord>(
+      `${this.baseUrl}/api/sandboxes/${sandboxId}`,
+      { headers: this.headers }
+    );
+  }
+
+  /** GET /api/sandboxes (includes destroyed sandboxes) */
+  async listSandboxes() {
+    await this.checkJwt();
+    return http.get<SandboxRecord[]>(`${this.baseUrl}/api/sandboxes`, {
+      headers: this.headers,
+    });
+  }
+
+  /** GET /api/sandboxes/{id}/snapshots */
+  async listSandboxSnapshots(sandboxId: string) {
+    await this.checkJwt();
+    return http.get<SandboxSnapshotRecord[]>(
+      `${this.baseUrl}/api/sandboxes/${sandboxId}/snapshots`,
+      { headers: this.headers }
+    );
+  }
+
+  /** GET /api/org-snapshots */
+  async listOrgSnapshots() {
+    await this.checkJwt();
+    return http.get<SandboxSnapshotRecord[]>(
+      `${this.baseUrl}/api/org-snapshots`,
+      { headers: this.headers }
+    );
+  }
+
+  /** POST /api/sandboxes/fork — new sandbox from a ready snapshot, started. */
+  async forkSandboxFromSnapshot(body: {
+    snapshotId: string;
+    name?: string;
+    onResumeScript?: string;
+  }) {
+    await this.checkJwt();
+    return http.post<any>(`${this.baseUrl}/api/sandboxes/fork`, body, {
+      headers: this.headers,
+      timeout: 120000,
+    });
+  }
+
+  /** DELETE /api/sandboxes/{id} — destroys the sandbox. */
+  async destroySandbox(sandboxId: string) {
+    await this.checkJwt();
+    return http.delete<any>(`${this.baseUrl}/api/sandboxes/${sandboxId}`, {
+      headers: this.headers,
+      timeout: 120000,
+    });
   }
 
   /**

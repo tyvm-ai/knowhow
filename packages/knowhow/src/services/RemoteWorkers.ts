@@ -634,7 +634,14 @@ export async function waitForRemoteTask(
       cost = d.totalUsdCost ?? cost;
       opts.onPoll?.(d);
       const status: string = d.status;
-      if ((status && TERMINAL.has(status)) || d.inProgress === false) {
+      // A freshly created remote task is {status:"pending", inProgress:false} until the
+      // worker picks it up - that is NOT completion (the startup check below handles a
+      // task that never starts).
+      const notStarted = status === "pending" || status === "queued";
+      if (
+        (status && TERMINAL.has(status)) ||
+        (d.inProgress === false && !notStarted)
+      ) {
         return finish(status && TERMINAL.has(status) ? status : "completed");
       }
     }

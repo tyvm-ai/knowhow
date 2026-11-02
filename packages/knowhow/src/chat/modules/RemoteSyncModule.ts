@@ -16,6 +16,7 @@ import { getConfig, updateConfig } from "../../config";
 import { withRetry } from "../../clients/withRetry";
 import { chooseCloudWorker, printTaskHint } from "../../commands/task";
 import { offload, readLocalTaskMetadata } from "../../services/TaskTransport";
+import { ensureCloudWorkerStarted } from "../../services/WorkerPicker";
 
 @TraceAll()
 export class RemoteSyncModule extends BaseChatModule {
@@ -104,7 +105,7 @@ export class RemoteSyncModule extends BaseChatModule {
       {
         name: "task:offload",
         description:
-          "Offload the current task (incl. uncommitted changes) to a cloud worker sandbox: /task:offload [taskId] [--worker <idOrName>] [--prompt <text>]",
+          "Offload the current task (incl. uncommitted changes) to a cloud worker sandbox: /task:offload [taskId] [--worker <idOrName>] [--snapshot <id>|--fresh] [--prompt <text>]",
         handler: this.handleTaskOffload.bind(this),
       },
       {
@@ -421,8 +422,12 @@ export class RemoteSyncModule extends BaseChatModule {
     let taskIdArg: string | undefined;
     let workerSpec: string | undefined;
     let prompt: string | undefined;
+    let snapshotFlag: string | undefined;
+    let freshFlag = false;
     for (let i = 0; i < args.length; i++) {
       if (args[i] === "--worker") workerSpec = args[++i];
+      else if (args[i] === "--snapshot") snapshotFlag = args[++i];
+      else if (args[i] === "--fresh") freshFlag = true;
       else if (args[i] === "--prompt") prompt = args.slice(++i).join(" ");
       else if (!taskIdArg && !args[i].startsWith("--")) taskIdArg = args[i];
       if (prompt !== undefined) break;
@@ -457,6 +462,18 @@ export class RemoteSyncModule extends BaseChatModule {
       const ask = async (p: string) => this.chatService?.getInput(p);
       const worker = await chooseCloudWorker(this.client, workerSpec, ask);
       if (!worker) {
+        console.log("Offload cancelled.");
+        return;
+      }
+
+      // Stopped sandbox cloud worker: choose the snapshot to start from first.
+      if (
+        !(await ensureCloudWorkerStarted(
+          worker,
+          { snapshot: snapshotFlag, fresh: freshFlag },
+          ask
+        ))
+      ) {
         console.log("Offload cancelled.");
         return;
       }

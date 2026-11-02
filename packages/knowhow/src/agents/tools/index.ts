@@ -24,6 +24,7 @@ export * from "./stringReplace";
 export * from "./startAgentTask";
 export * from "./listWorkers";
 export * from "./workerExec";
+export * from "./cloudWorkers";
 export * from "./replyToParent";
 export * from "./runGenerate";
 export * from "./sendAgentMessage";
