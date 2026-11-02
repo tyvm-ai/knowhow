@@ -14,6 +14,8 @@ import { AgentModule } from "./AgentModule";
 import { TaskInfo } from "../types";
 import { getConfig, updateConfig } from "../../config";
 import { withRetry } from "../../clients/withRetry";
+import { chooseCloudWorker, printTaskHint } from "../../commands/task";
+import { offload, readLocalTaskMetadata } from "../../services/TaskTransport";
 
 @TraceAll()
 export class RemoteSyncModule extends BaseChatModule {
@@ -98,6 +100,17 @@ export class RemoteSyncModule extends BaseChatModule {
         name: "sync:remote:off",
         description: "Disable auto remote sync for future tasks",
         handler: this.handleSyncRemoteOff.bind(this),
+      },
+      {
+        name: "task:offload",
+        description:
+          "Offload the current task (incl. uncommitted changes) to a cloud worker sandbox: /task:offload [taskId] [--worker <idOrName>] [--prompt <text>]",
+        handler: this.handleTaskOffload.bind(this),
+      },
+      {
+        name: "offload",
+        description: "Alias for /task:offload",
+        handler: this.handleTaskOffload.bind(this),
       },
       {
         name: "sync:status",
@@ -395,6 +408,78 @@ export class RemoteSyncModule extends BaseChatModule {
         `❌ Remote sync failed: ${error?.message || error}\n` +
           `   Local state is unaffected. You can retry with /sync:remote.`
       );
+    }
+  }
+
+  /**
+   * Handle /task:offload [taskId] [--worker <idOrName>] [--prompt <text>]
+   * Syncs the task remotely if needed, lets the user pick a cloud worker,
+   * then pushes the working tree snapshot and resumes the task there. The
+   * local session stays usable.
+   */
+  private async handleTaskOffload(args: string[]): Promise<void> {
+    let taskIdArg: string | undefined;
+    let workerSpec: string | undefined;
+    let prompt: string | undefined;
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === "--worker") workerSpec = args[++i];
+      else if (args[i] === "--prompt") prompt = args.slice(++i).join(" ");
+      else if (!taskIdArg && !args[i].startsWith("--")) taskIdArg = args[i];
+      if (prompt !== undefined) break;
+    }
+
+    const entry = this.getActiveTask(taskIdArg);
+    if (!entry) {
+      console.log("⚠️  No task to offload. Start a task first.");
+      return;
+    }
+    const { taskId, taskInfo } = entry;
+    this.client.refreshJwt();
+
+    try {
+      if (!taskInfo.knowhowTaskId) {
+        console.log("📡 Task is not synced yet — syncing to the remote first...");
+        await this.syncTask(taskId);
+      }
+      const remoteTaskId = taskInfo.knowhowTaskId;
+      if (!remoteTaskId) {
+        console.log("❌ Could not sync the task remotely; cannot offload.");
+        return;
+      }
+      if (taskInfo.status === "running") {
+        console.log(
+          "ℹ️  The task is still running locally. The snapshot reflects the files right now; " +
+            "the remote copy resumes from the last synced thread."
+        );
+      }
+      await this.agentModule.getSession(taskId)?.flush?.();
+
+      const ask = async (p: string) => this.chatService?.getInput(p);
+      const worker = await chooseCloudWorker(this.client, workerSpec, ask);
+      if (!worker) {
+        console.log("Offload cancelled.");
+        return;
+      }
+
+      const config = await getConfig();
+      const metadata = {
+        ...(readLocalTaskMetadata(taskId) ?? {}),
+        agentName: taskInfo.agentName,
+        model: taskInfo.model ?? taskInfo.agent?.getModel?.(),
+        provider: taskInfo.provider,
+        reasoningEffort: taskInfo.reasoningEffort,
+      };
+      console.log(`\n📤 Offloading task to ${worker.name}...`);
+      await offload(this.client, remoteTaskId, worker.id, {
+        prompt,
+        metadata,
+        maxFileMb: config.gitPlugin?.maxFileMb,
+        configFiles: config.files,
+      });
+      printTaskHint(remoteTaskId);
+      console.log("   Your local session is unchanged and still usable.");
+    } catch (error: any) {
+      console.error(`❌ Offload failed: ${error?.message || error}`);
     }
   }
 

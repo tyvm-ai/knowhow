@@ -307,7 +307,14 @@ function resolveTaskId(value: string, includeAll = false): string | null {
 
   const all = agentTaskIds();
   if (all.includes(value)) return value;
-  return all.find((id) => id.includes(value)) ?? null;
+  const partial = all.find((id) => id.includes(value));
+  if (partial) return partial;
+  // A full backend task id (UUID) with no local dir: e.g. a task offloaded to this
+  // machine. runFromHistory loads its threads from the backend.
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim())) {
+    return value.trim();
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

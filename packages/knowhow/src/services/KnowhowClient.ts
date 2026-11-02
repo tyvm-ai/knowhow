@@ -124,6 +124,30 @@ export interface TaskDetailsResponse {
   result?: string;
 }
 
+export interface GitRepositoryResponse {
+  id: string;
+  name: string;
+  originUrl: string;
+  defaultBranch?: string | null;
+  bundles?: {
+    id: string;
+    kind?: string;
+    tipSha: string;
+    refs?: { name: string; sha: string }[];
+    prerequisiteShas?: string[];
+    status: string;
+  }[];
+}
+
+export interface TaskOffloadResponse {
+  id: string;
+  state: string;
+  log?: { at?: string; step?: string; message?: string }[];
+  error?: string | null;
+  resumedTaskId?: string | null;
+  [key: string]: unknown;
+}
+
 export interface OrgWorkerInfo {
   id: string;
   orgId: string;
@@ -906,7 +930,15 @@ export class KnowhowSimpleClient {
   async listCloudWorkers() {
     await this.checkJwt();
     return http.get<
-      { id: string; name: string; status: string; workerConfigJson?: Record<string, unknown> }[]
+      {
+        id: string;
+        name: string;
+        status: string;
+        repoUrl?: string | null;
+        repoBranch?: string | null;
+        isEphemeral?: boolean | null;
+        workerConfigJson?: Record<string, unknown>;
+      }[]
     >(`${this.baseUrl}/api/cloud-workers`, { headers: this.headers });
   }
 
@@ -1004,6 +1036,134 @@ export class KnowhowSimpleClient {
       data,
       { headers: this.headers }
     );
+  }
+
+  // ============================================
+  // Git repositories / task workspaces (task offload & transport)
+  // ============================================
+
+  async resolveGitRepository(req: {
+    originUrl: string;
+    name?: string;
+    defaultBranch?: string;
+  }) {
+    await this.checkJwt();
+    const res = await http.post<GitRepositoryResponse>(
+      `${this.baseUrl}/api/git-repositories/resolve`,
+      req,
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async createGitRepositoryBundle(
+    repoId: string,
+    req: {
+      kind: "base" | "incremental" | "transport" | "history";
+      tipSha: string;
+      refs: { name: string; sha: string }[];
+      prerequisiteShas: string[];
+      sizeBytes: number;
+      sha256: string;
+    }
+  ) {
+    await this.checkJwt();
+    const res = await http.post<{ bundleId: string; uploadUrl: string }>(
+      `${this.baseUrl}/api/git-repositories/${repoId}/bundles`,
+      req,
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async completeGitRepositoryBundle(repoId: string, bundleId: string) {
+    await this.checkJwt();
+    const res = await http.post<unknown>(
+      `${this.baseUrl}/api/git-repositories/${repoId}/bundles/${bundleId}/complete`,
+      {},
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async getGitBundleDownloadUrl(repoId: string, bundleId: string) {
+    await this.checkJwt();
+    const res = await http.post<{ url: string }>(
+      `${this.baseUrl}/api/git-repositories/${repoId}/bundles/${bundleId}/download-url`,
+      {},
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async upsertTaskWorkspace(
+    taskId: string,
+    req: {
+      repositoryId?: string;
+      baseSha: string;
+      baseBranch?: string;
+      projectSubdir?: string;
+      sourcePlatform?: string;
+      sourceRoot?: string;
+      runSettings?: Record<string, unknown>;
+    }
+  ) {
+    await this.checkJwt();
+    const res = await http.put<unknown>(
+      `${this.baseUrl}/api/task-workspaces/${taskId}`,
+      req,
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async getTaskWorkspace(taskId: string) {
+    await this.checkJwt();
+    const res = await http.get<Record<string, any>>(
+      `${this.baseUrl}/api/task-workspaces/${taskId}`,
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async createTaskWorkspaceSnapshot(
+    taskId: string,
+    req: {
+      bundleId: string;
+      commitSha: string;
+      baseSha: string;
+      manifest: object;
+    }
+  ) {
+    await this.checkJwt();
+    const res = await http.post<{ id?: string; seq?: number } & Record<string, unknown>>(
+      `${this.baseUrl}/api/task-workspaces/${taskId}/snapshots`,
+      req,
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async createTaskOffload(
+    taskId: string,
+    req: { cloudWorkerId: string; prompt?: string }
+  ) {
+    await this.checkJwt();
+    const res = await http.post<TaskOffloadResponse>(
+      `${this.baseUrl}/api/task-workspaces/${taskId}/offloads`,
+      req,
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async getTaskOffload(taskId: string, offloadId: string) {
+    await this.checkJwt();
+    const res = await http.get<TaskOffloadResponse>(
+      `${this.baseUrl}/api/task-workspaces/${taskId}/offloads/${offloadId}`,
+      { headers: this.headers }
+    );
+    return res.data;
   }
 
   // ============================================
