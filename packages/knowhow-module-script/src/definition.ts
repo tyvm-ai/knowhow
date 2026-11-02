@@ -23,6 +23,7 @@ export const executeScriptDefinition: Tool = {
   - getQuotaUsage(): Check resource usage
   - sleep(ms): Pause execution for a specified time, max 2000ms
   - Generic tool functions: any available tool can also be called directly by its name as a top-level function, e.g. \`textSearch({ searchTerm: 'x' })\` is shorthand for \`callTool('textSearch', { searchTerm: 'x' })\`. Reserved globals (callTool, llm, agent, sleep, console, etc.) are never shadowed.
+  - workers.list/exec/snapshots/startCloud/fork/stopCloud/destroy and remoteAgent({ worker, prompt }): remote-worker + cloud-sandbox helpers (see README). startCloud/fork/stopCloud/destroy cost money; clean up in a finally.
   - Multi-agent orchestration tools (via callTool or as generic functions): startAgentTask (spawn a subagent, returns a taskId), waitForAgentCompleted (join a subagent -> { status, costUsd, finalAnswer }), sendAgentMessage (send a message/poke to a running agent), connectAgent (wire agents together with an ARRAY of { listener, speaker } connections for bidirectional/pipeline/star/mesh topologies), stopConnections, replyToParent, observe/stopObserving.
 
   The script cannot:

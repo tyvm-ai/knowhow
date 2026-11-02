@@ -1,3 +1,4 @@
+import { WORKER_HELPERS_TYPEDEFS } from "./workerHelpers";
 import { Tool } from "@tyvm/knowhow/ts_build/src/clients";
 
 /**
@@ -106,6 +107,8 @@ const RESERVED_GLOBALS = new Set([
   "runInfo",
   "setState",
   "checkpoint",
+  "workers",
+  "remoteAgent",
 ]);
 
 /**
@@ -296,6 +299,10 @@ export function generateScriptTypeDefs(tools: Tool[]): string {
   lines.push("declare function setState(patch: Record<string, any>, options?: { replace?: boolean }): Promise<Record<string, any>>;");
   lines.push("/** Safe point: resolves immediately when running, waits while the run is paused, throws if it was cancelled. */");
   lines.push("declare function checkpoint(): Promise<void>;");
+  lines.push("");
+
+  // Remote worker helpers
+  lines.push(...WORKER_HELPERS_TYPEDEFS);
   lines.push("");
 
   return lines.join("\n");

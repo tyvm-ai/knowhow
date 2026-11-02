@@ -84,6 +84,7 @@ function formatIsolatedVmLoadError(err: unknown): string {
 import { ToolsService } from "@tyvm/knowhow/ts_build/src/services/Tools";
 import { AIClient } from "@tyvm/knowhow/ts_build/src/clients";
 import { SandboxContext } from "./SandboxContext";
+import { WORKER_HELPERS_JS } from "./workerHelpers";
 import { ScriptTracer } from "./ScriptTracer";
 import { fork } from "child_process";
 import { createHostBridge } from "./hostBridge";
@@ -433,6 +434,8 @@ export class ScriptExecutor {
       "console",
       "globalThis",
       "executeScript",
+      "workers",
+      "remoteAgent",
     ]);
     let toolNames: string[] = [];
     try {
@@ -461,6 +464,9 @@ export class ScriptExecutor {
       `);
       tracer.emitEvent("tool_globals_registered", { count: toolNames.length });
     }
+
+    // workers.* / remoteAgent() convenience helpers (built on callTool)
+    await vmContext.eval(WORKER_HELPERS_JS);
 
     for (const level of ["log", "info", "warn", "error"] as const) {
       await globalRef.set(

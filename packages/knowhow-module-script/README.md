@@ -267,6 +267,42 @@ console.log('Hello');
 console.error('Error');
 ```
 
+## Remote workers & cloud sandboxes
+
+Scripts can drive other machines (connected `knowhow worker`s and cloud sandboxes) through
+typed convenience helpers built on `callTool`. Errors (`{ error }` tool results) are thrown.
+
+```js
+const snaps = await workers.snapshots('Knowhow-web');            // newest first, isDefault = resume target
+const fork = await workers.fork(snaps[0].id, { name: 'demo' });  // COST: new sandbox from a snapshot, waits for its worker
+try {
+  const r = await workers.exec(fork.workerId, 'pwd && wc -l README.md'); // { stdout, stderr, exitCode }
+  const { taskId, finalAnswer } = await remoteAgent({           // full agent ON the worker
+    worker: fork.workerId,
+    prompt: 'Summarize README.md in 5 bullets',
+  });
+  const reply = await agent('coder', `Given this summary: ${finalAnswer} ...`); // LOCAL agent
+} finally {
+  await workers.destroy(fork.sandboxId);                         // always clean up
+}
+```
+
+| helper | wraps tool | notes |
+|---|---|---|
+| `workers.list(opts?)` | `listWorkers` | connected workers |
+| `workers.exec(worker, cmd, timeoutMs?)` | `workerExec` | short commands (~25s) |
+| `workers.snapshots(cloudWorker)` | `listCloudWorkerSnapshots` | read-only |
+| `workers.startCloud(cloudWorker, { snapshotId?, fresh?, waitForConnect? })` | `startCloudWorker` | **costs money** |
+| `workers.fork(snapshotId, { name?, waitForConnect? })` | `forkCloudWorker` | **costs money**; returns `{ sandboxId, workerId }` |
+| `workers.stopCloud(cloudWorker, { snapshot? })` | `stopCloudWorker` | |
+| `workers.destroy(sandboxId)` | `destroyForkedSandbox` | |
+| `remoteAgent({ worker, prompt, agentName?, model?, ... })` | `startAgentTask {worker, waitForCompletion}` | resolves `{ taskId, status, finalAnswer }` |
+
+The same tools are also callable via `callTool('forkCloudWorker', {...})` or as top-level
+functions (`forkCloudWorker({...})`). No allowlist change is required (the default policy only
+denies `executeScript`, `execCommand`, `writeFileChunk`, `patchFile`).
+See `scripts/demos/remote-worker-demo.script.js` in knowhow-web for a full example.
+
 ## Return Value
 
 The last expression in the script is returned as `result.result`. Avoid using bare `return` statements or object literals as the last expression (use a variable instead):
