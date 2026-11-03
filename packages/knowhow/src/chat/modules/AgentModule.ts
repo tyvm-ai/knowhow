@@ -962,6 +962,26 @@ export class AgentModule extends BaseChatModule {
         : this.reasoningEffort;
 
     const taskId = options.taskId || this.sessionManager.generateTaskId(input);
+    // Inherit remote sync from a synced parent when the config has
+    // syncRemote: true (/sync:remote:on), unless the caller opted out.
+    if (
+      options.syncRemote === undefined &&
+      options.parentTaskId &&
+      !options.messageId &&
+      !options.remoteTaskId
+    ) {
+      const { shouldInheritRemoteSync, readConfigSyncRemote } = await import(
+        "../../services/RemoteTaskLink"
+      );
+      if (
+        shouldInheritRemoteSync({
+          parentTaskId: options.parentTaskId,
+          configSyncRemote: readConfigSyncRemote(),
+        })
+      ) {
+        options = { ...options, syncRemote: true };
+      }
+    }
     // Backwards compatibility for callers that historically supplied a remote
     // UUID as taskId with syncRemote. Timestamped local slugs never qualify.
     let remoteTaskId =

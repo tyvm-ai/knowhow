@@ -150,6 +150,10 @@ export function addAgentCommand(program: Command, getChatService: () => any): vo
       "Push this agent's work to a remote Knowhow task identified by --task-id (creates one if --message-id is given)"
     )
     .option(
+      "--no-sync-remote",
+      "Never sync to the backend (overrides inheriting remote sync from a synced parent when config syncRemote is on)"
+    )
+    .option(
       "--behavior-id <id>",
       "Force a specific behavior by its ID (skips trigger matching)"
     )

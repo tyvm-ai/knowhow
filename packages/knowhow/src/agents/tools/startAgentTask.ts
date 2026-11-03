@@ -283,9 +283,26 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<Star
   }
   // When syncRemote is requested, pass it through so the spawned agent pushes
   // its work to the remote task identified by --task-id rather than staying
-  // local-only.
-  if (syncRemote && !isHistoryRun) {
+  // local-only. With syncRemote: true in the config, children of a parent that
+  // is synced to a remote task are synced automatically (unless syncRemote:false).
+  let effectiveSyncRemote = syncRemote;
+  if (effectiveSyncRemote === undefined && !messageId && !isHistoryRun) {
+    const { shouldInheritRemoteSync, readConfigSyncRemote } = await import(
+      "../../services/RemoteTaskLink"
+    );
+    if (
+      shouldInheritRemoteSync({
+        parentTaskId,
+        configSyncRemote: readConfigSyncRemote(),
+      })
+    ) {
+      effectiveSyncRemote = true;
+    }
+  }
+  if (effectiveSyncRemote && !isHistoryRun) {
     args.push("--sync-remote");
+  } else if (effectiveSyncRemote === false && !isHistoryRun) {
+    args.push("--no-sync-remote");
   }
 
   if (!isHistoryRun && (useSyncFs || providedTaskId)) {
@@ -437,7 +454,9 @@ export const startAgentTaskDefinition: Tool = {
           description:
             "Push this agent's work to a remote Knowhow task identified by taskId (in addition to fs sync). " +
             "Use this to sync a spawned subagent's progress to an already-created remote task. " +
-            "If messageId is given instead, a fresh remote task is created from that message.",
+            "If messageId is given instead, a fresh remote task is created from that message. " +
+            "When omitted and the config has syncRemote: true, the child is synced automatically if its parent is synced " +
+            "to a remote task. Pass false to opt out.",
         },
         worker: {
           type: "string",
