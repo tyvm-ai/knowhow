@@ -67,6 +67,11 @@ test("a locked companion throws code=locked with an unlock hint", async () => {
   });
 });
 
+test("a locked phone SCREEN throws code=device_locked with an unlock hint", async () => {
+  const { ctx } = makeCtx(() => wrap({ error: "device_locked", message: "The phone screen is locked." }));
+  await assert.rejects(run(ctx, `phone.activeWindow()`), (e) => e.code === "device_locked" && /unlock the phone/i.test(e.message));
+});
+
 test("approval-pending markers throw code=approval_pending", async () => {
   const { ctx } = makeCtx(() => "[[KNOWHOW_WAIT:abc]]");
   await assert.rejects(run(ctx, `phone.launch("com.x")`), (e) => e.code === "approval_pending");

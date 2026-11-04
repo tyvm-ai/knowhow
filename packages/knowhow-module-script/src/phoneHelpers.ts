@@ -84,6 +84,7 @@ export const PHONE_HELPERS_JS = String.raw`
       var code = data.error;
       var msg = typeof data.message === "string" ? data.message : data.error;
       if (code === "locked") msg = "phone is locked: ask the user to unlock phone control on the phone (Knowhow Companion tile/notification), then retry. " + msg;
+      if (code === "device_locked") msg = "the phone screen is locked: ask the user to unlock the phone, then retry. " + msg;
       throw makeError(code, "phone." + tool + ": " + msg);
     }
     return { data: data, text: text, images: images };
