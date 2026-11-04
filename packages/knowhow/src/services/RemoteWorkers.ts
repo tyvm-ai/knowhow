@@ -527,6 +527,9 @@ export interface RemoteWaitResult {
   costUsd: number;
   finalAnswer?: string;
   timedOut?: boolean;
+  /** Set when `interruptCheck` ended the wait early; the task is NOT finished. */
+  interrupted?: boolean;
+  interruptReason?: string;
   elapsedMs: number;
   error?: string;
 }
@@ -577,6 +580,11 @@ export async function waitForRemoteTask(
     pollIntervalMs?: number;
     startupTimeoutMs?: number;
     onPoll?: (d: any) => void;
+    /**
+     * Checked every poll and every <=250ms while sleeping. Return a (truthy)
+     * reason to stop waiting early; the result then has interrupted:true.
+     */
+    interruptCheck?: () => string | undefined | void | Promise<string | undefined | void>;
     client?: KnowhowSimpleClient;
   } = {}
 ): Promise<RemoteWaitResult> {
@@ -671,7 +679,28 @@ export async function waitForRemoteTask(
       });
       return r;
     }
-    await sleep(Math.min(interval, Math.max(0, timeoutMs - elapsed)));
+    // Sleep in short slices so an interruptCheck (e.g. a pending caller
+    // message) is noticed quickly rather than once per (slow) poll.
+    const sleepFor = Math.min(interval, Math.max(0, timeoutMs - elapsed));
+    const sleepUntil = Date.now() + sleepFor;
+    while (true) {
+      if (opts.interruptCheck) {
+        const reason = await opts.interruptCheck();
+        if (reason) {
+          return {
+            taskId: id,
+            status: d?.status ?? "running",
+            costUsd: cost,
+            elapsedMs: Date.now() - started,
+            interrupted: true,
+            interruptReason: String(reason),
+          };
+        }
+      }
+      const remaining = sleepUntil - Date.now();
+      if (remaining <= 0) break;
+      await sleep(opts.interruptCheck ? Math.min(250, remaining) : remaining);
+    }
   }
 }
 

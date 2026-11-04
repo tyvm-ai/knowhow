@@ -144,4 +144,224 @@ describe("waitForAgentCompleted", () => {
     expect(res.status).toBe("failed");
     expect(res.error).toMatch(/exited without writing a terminal status/);
   });
+
+  describe("interruptible wait", () => {
+    const fastOpts = { timeoutMs: 5000, pollIntervalMs: 250 };
+
+    it("tags a normal completion with reason 'completed'", async () => {
+      makeTask("c-1", { status: "completed", result: "x" });
+      const res = JSON.parse(await waitForAgentCompleted({ taskId: "c-1" }));
+      expect(res.reason).toBe("completed");
+      expect(res.interrupted).toBeUndefined();
+    });
+
+    it("tags a timeout with reason 'timeout'", async () => {
+      makeTask("t-1", { status: "running" });
+      const res = JSON.parse(
+        await waitForAgentCompleted({
+          taskId: "t-1",
+          timeoutMs: 300,
+          pollIntervalMs: 250,
+        })
+      );
+      expect(res.timedOut).toBe(true);
+      expect(res.reason).toBe("timeout");
+    });
+
+    it("returns pending_message early when the caller agent has a pending message (not consumed)", async () => {
+      makeTask("child-1", { status: "running", totalCostUsd: 0.4 });
+      let pending = false;
+      const caller = { hasPendingMessages: jest.fn(() => pending) };
+      setTimeout(() => (pending = true), 300);
+
+      const started = Date.now();
+      const res = JSON.parse(
+        await waitForAgentCompleted({
+          taskId: "child-1",
+          ...fastOpts,
+          pollIntervalMs: 2000, // slow status poll: message must still be noticed fast
+          _ctx: { caller },
+        })
+      );
+      expect(Date.now() - started).toBeLessThan(2000);
+      expect(res.interrupted).toBe(true);
+      expect(res.reason).toBe("pending_message");
+      expect(res.status).toBe("running");
+      expect(res.taskId).toBe("child-1");
+      expect(res.hint).toMatch(/again/);
+      // peeking only: the flag is untouched
+      expect(pending).toBe(true);
+    });
+
+    it("returns pending_message immediately when a message is already pending", async () => {
+      makeTask("child-2", { status: "running" });
+      const res = JSON.parse(
+        await waitForAgentCompleted({
+          taskId: "child-2",
+          ...fastOpts,
+          _ctx: { caller: { hasPendingMessages: () => true } },
+        })
+      );
+      expect(res.reason).toBe("pending_message");
+    });
+
+    it("ignores pending messages when interruptOnMessages is false", async () => {
+      makeTask("child-3", { status: "running" });
+      const res = JSON.parse(
+        await waitForAgentCompleted({
+          taskId: "child-3",
+          timeoutMs: 400,
+          pollIntervalMs: 250,
+          interruptOnMessages: false,
+          _ctx: { caller: { hasPendingMessages: () => true } },
+        })
+      );
+      expect(res.timedOut).toBe(true);
+      expect(res.interrupted).toBeUndefined();
+    });
+
+    it("completion wins over a pending message when both are true", async () => {
+      makeTask("child-4", { status: "completed", result: "done" });
+      const res = JSON.parse(
+        await waitForAgentCompleted({
+          taskId: "child-4",
+          _ctx: { caller: { hasPendingMessages: () => true } },
+        })
+      );
+      expect(res.reason).toBe("completed");
+      expect(res.finalAnswer).toBe("done");
+    });
+
+    it("falls back to the caller's input.txt when there is no live caller", async () => {
+      makeTask("child-5", { status: "running" });
+      const callerDir = makeTask("caller-5", { status: "running" });
+      const inputPath = path.join(callerDir, "input.txt");
+      fs.writeFileSync(inputPath, "");
+      setTimeout(
+        () =>
+          fs.appendFileSync(
+            inputPath,
+            JSON.stringify({ kind: "message", text: "hi parent", from: "child-5" }) + "\n"
+          ),
+        200
+      );
+      const res = JSON.parse(
+        await waitForAgentCompleted({
+          taskId: "child-5",
+          ...fastOpts,
+          _ctx: { taskId: "caller-5" },
+        })
+      );
+      expect(res.reason).toBe("pending_message");
+      // not consumed
+      expect(fs.readFileSync(inputPath, "utf8")).toContain("hi parent");
+    });
+
+    it("does not interrupt for an empty caller input.txt", async () => {
+      makeTask("child-6", { status: "running" });
+      const callerDir = makeTask("caller-6", { status: "running" });
+      fs.writeFileSync(path.join(callerDir, "input.txt"), "");
+      const res = JSON.parse(
+        await waitForAgentCompleted({
+          taskId: "child-6",
+          timeoutMs: 400,
+          pollIntervalMs: 250,
+          _ctx: { taskId: "caller-6" },
+        })
+      );
+      expect(res.timedOut).toBe(true);
+    });
+
+    it("returns child_status when a child transitions to waiting", async () => {
+      const dir = makeTask("child-7", { status: "running" });
+      setTimeout(
+        () =>
+          fs.writeFileSync(
+            path.join(dir, "metadata.json"),
+            JSON.stringify({ taskId: "child-7", status: "waiting" })
+          ),
+        200
+      );
+      const res = JSON.parse(
+        await waitForAgentCompleted({ taskId: "child-7", ...fastOpts })
+      );
+      expect(res.interrupted).toBe(true);
+      expect(res.reason).toBe("child_status");
+      expect(res.status).toBe("waiting");
+    });
+
+    it("can wait through a waiting child with interruptOnChildStatus:false", async () => {
+      makeTask("child-8", { status: "paused" });
+      const res = JSON.parse(
+        await waitForAgentCompleted({
+          taskId: "child-8",
+          timeoutMs: 400,
+          pollIntervalMs: 250,
+          interruptOnChildStatus: false,
+        })
+      );
+      expect(res.timedOut).toBe(true);
+    });
+
+    it("taskIds returns the first child that completes", async () => {
+      makeTask("m-a", { status: "running" });
+      const b = makeTask("m-b", { status: "running" });
+      makeTask("m-c", { status: "running" });
+      setTimeout(
+        () =>
+          fs.writeFileSync(
+            path.join(b, "metadata.json"),
+            JSON.stringify({ taskId: "m-b", status: "completed", result: "b done" })
+          ),
+        200
+      );
+      const res = JSON.parse(
+        await waitForAgentCompleted({
+          taskIds: ["m-a", "m-b", "m-c"],
+          ...fastOpts,
+        })
+      );
+      expect(res.reason).toBe("completed");
+      expect(res.taskId).toBe("m-b");
+      expect(res.finalAnswer).toBe("b done");
+      expect(res.taskIds).toEqual(["m-a", "m-b", "m-c"]);
+    });
+
+    it("taskIds errors when one directory is missing", async () => {
+      makeTask("m-x", { status: "running" });
+      const res = JSON.parse(
+        await waitForAgentCompleted({ taskIds: ["m-x", "ghost"] })
+      );
+      expect(res.status).toBe("error");
+      expect(res.error).toMatch(/ghost/);
+    });
+
+    it("returns user_interrupt cleanly when the call's abort signal fires", async () => {
+      makeTask("child-9", { status: "running" });
+      const ac = new AbortController();
+      setTimeout(() => ac.abort(), 200);
+      const started = Date.now();
+      const res = JSON.parse(
+        await waitForAgentCompleted({
+          taskId: "child-9",
+          timeoutMs: 10000,
+          pollIntervalMs: 2000,
+          _ctx: { signal: ac.signal },
+        })
+      );
+      expect(Date.now() - started).toBeLessThan(1500);
+      expect(res.interrupted).toBe(true);
+      expect(res.reason).toBe("user_interrupt");
+    });
+
+    it("description tells agents to call it again after handling the message", () => {
+      const {
+        waitForAgentCompletedDefinition,
+      } = require("../../../src/agents/tools/waitForAgentCompleted");
+      const d = waitForAgentCompletedDefinition.function.description;
+      expect(d).toMatch(/CALL waitForAgentCompleted AGAIN/);
+      expect(waitForAgentCompletedDefinition.function.parameters.properties).toHaveProperty("taskIds");
+      expect(waitForAgentCompletedDefinition.function.parameters.properties).toHaveProperty("interruptOnMessages");
+    });
+  });
 });

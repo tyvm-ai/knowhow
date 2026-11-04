@@ -155,6 +155,8 @@ export abstract class BaseAgent implements IAgent {
 
   // Internal messages
   protected pendingMessages = [] as Message[];
+  /** Abort controllers of in-flight tool calls; aborted by interrupt(). */
+  private _toolAborts = new Set<AbortController>();
 
   // Active observations (subscriptions) owned by this agent instance. Kept
   // per-agent (not module scope) so stopObserving() on one agent can't clobber
@@ -725,7 +727,11 @@ export abstract class BaseAgent implements IAgent {
   async processToolMessages(toolCall: ToolCall) {
     this.agentEvents.emit(this.eventTypes.toolCall, { toolCall });
 
-    const interruptMsg = `User interrupted this tool call (${toolCall.function?.name})`;
+    const interruptMsg =
+      `User interrupted this tool call (${toolCall.function?.name})` +
+      (toolCall.function?.name === "waitForAgentCompleted"
+        ? " — the wait was cancelled; the child may still be running. Handle the user's message, then call waitForAgentCompleted again if you still need the child's result."
+        : "");
     const interruptResult: Awaited<ReturnType<typeof this.tools.callTool>> = {
       functionResp: interruptMsg,
       toolCallId: toolCall.id,
@@ -741,18 +747,31 @@ export abstract class BaseAgent implements IAgent {
       ],
     };
 
-    const { functionResp, toolMessages } = await this.makeInterruptible(
-      // Pass this agent in as the per-call context (`_ctx`) so tools can be
-      // self-referential: they can read `_ctx.caller` (this agent) and
-      // `_ctx.taskId` to, e.g., look up the current task, send pending
-      // messages, or subscribe to the caller's events.
-      this.tools.callTool(toolCall, this.getEnabledToolNames(), {
-        caller: this,
-        taskId: this.currentTaskId,
-        parentTaskId: this.parentTaskId ?? undefined,
-      }),
-      interruptResult
-    );
+    // Per-call abort signal: fired by interrupt() so long-running tools (e.g.
+    // waitForAgentCompleted) can stop their work cleanly instead of leaking a
+    // background loop after makeInterruptible has already returned.
+    const toolAbort = new AbortController();
+    this._toolAborts.add(toolAbort);
+
+    let interrupted: Awaited<ReturnType<typeof this.tools.callTool>>;
+    try {
+      interrupted = await this.makeInterruptible(
+        // Pass this agent in as the per-call context (`_ctx`) so tools can be
+        // self-referential: they can read `_ctx.caller` (this agent) and
+        // `_ctx.taskId` to, e.g., look up the current task, send pending
+        // messages, or subscribe to the caller's events.
+        this.tools.callTool(toolCall, this.getEnabledToolNames(), {
+          caller: this,
+          taskId: this.currentTaskId,
+          parentTaskId: this.parentTaskId ?? undefined,
+          signal: toolAbort.signal,
+        }),
+        interruptResult
+      );
+    } finally {
+      this._toolAborts.delete(toolAbort);
+    }
+    const { functionResp, toolMessages } = interrupted;
 
     this.agentEvents.emit(this.eventTypes.toolUsed, {
       toolCall,
@@ -995,6 +1014,16 @@ export abstract class BaseAgent implements IAgent {
       message !== "User interrupted this action you were waiting on"
     ) {
       this.addPendingUserMessage({ role: "user", content: message });
+    }
+
+    // Let in-flight tools stop their own work (they were already told to
+    // return via makeInterruptible below).
+    for (const ac of this._toolAborts) {
+      try {
+        ac.abort();
+      } catch {
+        /* ignore */
+      }
     }
 
     if (this._interruptResolve) {
@@ -1544,6 +1573,15 @@ export abstract class BaseAgent implements IAgent {
       }
       this.pendingMessages.push(message);
     }
+  }
+
+  /**
+   * True when this agent has an incoming message (user / child / remote /
+   * observation) that has not been moved into the thread yet. Used by
+   * interruptible tools (waitForAgentCompleted) to return early. Never consumes.
+   */
+  hasPendingMessages(): boolean {
+    return this.pendingUserMessages.length > 0 || this.pendingMessages.length > 0;
   }
 
   /** User messages queued but not yet moved into the thread (used by input.txt cursor commit). */
