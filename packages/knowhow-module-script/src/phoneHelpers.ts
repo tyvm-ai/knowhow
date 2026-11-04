@@ -132,7 +132,7 @@ export const PHONE_HELPERS_JS = String.raw`
     if (opts.maxElements) args.maxElements = opts.maxElements;
     if (opts.expectedPackage) args.expectedPackage = opts.expectedPackage;
     if (opts.windowId !== undefined) args.windowId = opts.windowId;
-    var tries = opts.retries === undefined ? 2 : opts.retries;
+    var tries = opts.retries === undefined ? 3 : opts.retries;
     for (var attempt = 0; ; attempt++) {
       try {
         var r = await raw("companion", "computerUseAccessibilityElements", args);
@@ -141,7 +141,8 @@ export const PHONE_HELPERS_JS = String.raw`
         }
         return r.data;
       } catch (e) {
-        if (attempt < tries && e && e.code === "no_window") { await pause(600); continue; }
+        // no_window: window not readable yet; wrong_window: the foreground app has not settled after a launch/tap
+        if (attempt < tries && e && (e.code === "no_window" || e.code === "wrong_window")) { await pause(800); continue; }
         throw e;
       }
     }

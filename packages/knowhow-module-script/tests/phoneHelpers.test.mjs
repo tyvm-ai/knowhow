@@ -82,6 +82,14 @@ test("text() uses computerUseAccessibilityText when the companion offers it, els
   assert.equal(await run(b.ctx, `phone.text()`), "One\nTwo");
 });
 
+test("elements() retries wrong_window while the foreground app settles", async () => {
+  let n = 0;
+  const { ctx, calls } = makeCtx(() => (++n < 3 ? wrap({ error: "wrong_window", message: "Expected x in the foreground" }) : wrap({ snapshotId: "s", package: "x", windowId: 1, title: "", truncated: false, elements: [el("a", "Hi")] })));
+  const snap = await run(ctx, `phone.elements({ expectedPackage: "x" })`);
+  assert.equal(snap.elements[0].text, "Hi");
+  assert.equal(calls.length, 3);
+});
+
 test("approval-pending markers throw code=approval_pending", async () => {
   const { ctx } = makeCtx(() => "[[KNOWHOW_WAIT:abc]]");
   await assert.rejects(run(ctx, `phone.launch("com.x")`), (e) => e.code === "approval_pending");
