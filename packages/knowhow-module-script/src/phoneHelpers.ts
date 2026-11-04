@@ -286,7 +286,20 @@ export const PHONE_HELPERS_JS = String.raw`
     activeWindow: activeWindow,
     elements: elements,
     texts: texts,
-    text: async function (opts) { return (await texts(opts)).join("\n"); },
+    /** Compact text outline of the screen; uses the companion's computerUseAccessibilityText when it has one (4-6x smaller), else joins texts(). */
+    text: async function (opts) {
+      opts = opts || {};
+      if (findPrefix("computerUseAccessibilityText")) {
+        var args = {};
+        if (opts.interactiveOnly) args.interactiveOnly = true;
+        if (opts.maxElements) args.maxLines = opts.maxElements;
+        if (opts.expectedPackage) args.expectedPackage = opts.expectedPackage;
+        var r = await raw("companion", "computerUseAccessibilityText", args);
+        if (r.data && typeof r.data.text === "string") return r.data.text;
+        return r.text;
+      }
+      return (await texts(opts)).join("\n");
+    },
     find: find,
     findAll: findAll,
     tap: tap,

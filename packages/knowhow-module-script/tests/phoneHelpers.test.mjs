@@ -72,6 +72,16 @@ test("a locked phone SCREEN throws code=device_locked with an unlock hint", asyn
   await assert.rejects(run(ctx, `phone.activeWindow()`), (e) => e.code === "device_locked" && /unlock the phone/i.test(e.message));
 });
 
+test("text() uses computerUseAccessibilityText when the companion offers it, else falls back to elements", async () => {
+  const names = ["worker_0_computerUseAccessibilityElements", "worker_0_computerUseAccessibilityText"];
+  const a = makeCtx((tool) => (tool === "computerUseAccessibilityText" ? wrap({ snapshotId: "s", package: "p", title: "t", truncated: false, total: 2, text: "Today\n9:00 Standup" }) : "{}"), names);
+  assert.equal(await run(a.ctx, `phone.text({ expectedPackage: "p" })`), "Today\n9:00 Standup");
+  assert.equal(a.calls[0].name, "worker_0_computerUseAccessibilityText");
+  assert.equal(a.calls[0].args.expectedPackage, "p");
+  const b = makeCtx(() => wrap({ snapshotId: "s", package: "p", windowId: 1, title: "", truncated: false, elements: [el("a", "One"), el("b", "Two")] }));
+  assert.equal(await run(b.ctx, `phone.text()`), "One\nTwo");
+});
+
 test("approval-pending markers throw code=approval_pending", async () => {
   const { ctx } = makeCtx(() => "[[KNOWHOW_WAIT:abc]]");
   await assert.rejects(run(ctx, `phone.launch("com.x")`), (e) => e.code === "approval_pending");
