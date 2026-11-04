@@ -1,4 +1,5 @@
 import { WORKER_HELPERS_TYPEDEFS } from "./workerHelpers";
+import { PHONE_HELPERS_TYPEDEFS } from "./phoneHelpers";
 import { Tool } from "@tyvm/knowhow/ts_build/src/clients";
 
 /**
@@ -108,6 +109,7 @@ const RESERVED_GLOBALS = new Set([
   "setState",
   "checkpoint",
   "workers",
+  "phone",
   "remoteAgent",
 ]);
 
@@ -303,6 +305,7 @@ export function generateScriptTypeDefs(tools: Tool[]): string {
 
   // Remote worker helpers
   lines.push(...WORKER_HELPERS_TYPEDEFS);
+  lines.push(...PHONE_HELPERS_TYPEDEFS);
   lines.push("");
 
   return lines.join("\n");

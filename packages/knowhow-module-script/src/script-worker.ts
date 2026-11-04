@@ -38,6 +38,7 @@
 import type ivm from "isolated-vm";
 import type { Artifact, QuotaUsage } from "./types";
 import { WORKER_HELPERS_JS } from "./workerHelpers";
+import { PHONE_HELPERS_JS } from "./phoneHelpers";
 
 let _ivmRuntime: typeof ivm | null = null;
 function getIvm(): typeof ivm {
@@ -340,7 +341,7 @@ async function setupIsolatedContext(
   const reserved = new Set([
     "callTool", "llm", "decide", "noul", "choice", "score", "agent", "sleep", "createArtifact",
     "getQuotaUsage", "console", "globalThis", "executeScript",
-    "scriptArgs", "scriptState", "runInfo", "setState", "checkpoint", "emit", "waitForMessage", "onMessage", "offMessage", "isCancelled", "untilCancelled", "workers", "remoteAgent",
+    "scriptArgs", "scriptState", "runInfo", "setState", "checkpoint", "emit", "waitForMessage", "onMessage", "offMessage", "isCancelled", "untilCancelled", "workers", "remoteAgent", "phone",
   ]);
   const safeToolNames = availableTools.filter(
     (n) =>
@@ -364,6 +365,8 @@ async function setupIsolatedContext(
 
   // workers.* / remoteAgent() convenience helpers (built on callTool)
   await vmContext.eval(WORKER_HELPERS_JS);
+  // phone.* helpers (Knowhow Companion / mobile app worker tools)
+  await vmContext.eval(PHONE_HELPERS_JS);
 
   // console — stream back as trace events
   for (const level of ["log", "info", "warn", "error"] as const) {

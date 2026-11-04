@@ -85,6 +85,7 @@ import { ToolsService } from "@tyvm/knowhow/ts_build/src/services/Tools";
 import { AIClient } from "@tyvm/knowhow/ts_build/src/clients";
 import { SandboxContext } from "./SandboxContext";
 import { WORKER_HELPERS_JS } from "./workerHelpers";
+import { PHONE_HELPERS_JS } from "./phoneHelpers";
 import { ScriptTracer } from "./ScriptTracer";
 import { fork } from "child_process";
 import { createHostBridge } from "./hostBridge";
@@ -436,6 +437,7 @@ export class ScriptExecutor {
       "executeScript",
       "workers",
       "remoteAgent",
+      "phone",
     ]);
     let toolNames: string[] = [];
     try {
@@ -467,6 +469,8 @@ export class ScriptExecutor {
 
     // workers.* / remoteAgent() convenience helpers (built on callTool)
     await vmContext.eval(WORKER_HELPERS_JS);
+    // phone.* helpers (Knowhow Companion / mobile app worker tools)
+    await vmContext.eval(PHONE_HELPERS_JS);
 
     for (const level of ["log", "info", "warn", "error"] as const) {
       await globalRef.set(
