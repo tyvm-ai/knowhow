@@ -12,7 +12,7 @@ export class SetupAgent extends BaseAgent {
     super(context);
 
     this.setModelPreferences([
-      { model: Models.anthropic.Sonnet4, provider: "anthropic" },
+      { model: Models.anthropic.Sonnet5_5, provider: "anthropic" },
       {
         model: Models.openai.GPT_41_Mini,
         provider: "openai",

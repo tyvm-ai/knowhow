@@ -39,6 +39,7 @@ import { OpenAiTextPricing } from "./pricing/openai";
 import { AnthropicTextPricing } from "./pricing/anthropic";
 import { GeminiPricing } from "./pricing/google";
 import { withRetry } from "./withRetry";
+import { warnIfModelDeprecated } from "./deprecation";
 import { FireworksTextPricing } from "./pricing/fireworks";
 import {
   XaiTextPricing,
@@ -770,6 +771,7 @@ export class AIClient {
         } model registered. Try using ${JSON.stringify(this.listAllModels())}`
       );
     }
+    warnIfModelDeprecated(model);
     return withRetry(
       (signal) => client.createChatCompletion({ ...options, model, signal }),
       options
@@ -788,6 +790,7 @@ export class AIClient {
         } model registered. Try using ${JSON.stringify(this.listAllModels())}`
       );
     }
+    warnIfModelDeprecated(model);
     if (client.createChatCompletionStream) {
       yield* client.createChatCompletionStream({ ...options, model });
     } else {

@@ -161,7 +161,7 @@ export const AnthropicTextPricing: Record<string, ModelPricing> = {
   [AnthropicModels.Opus4_5Short]:   { input: 5.0, cache_write: 6.25, cache_hit: 0.5, output: 25.0 },
   // Deprecated — pricing retained for cost tracking
   [AnthropicModels.Opus4]:     { input: 15.0, cache_write: 18.75,  cache_hit: 1.5,  output: 75.0,  deprecated: true, deprecationDate: "2026-06-15" },
-  [AnthropicModels.Sonnet4]:   { input: 3.0,  input_gt_200k: 6.0,  cache_write: 3.75, cache_hit: 0.3, output: 15.0, output_gt_200k: 22.5, deprecated: true, deprecationDate: "2026-06-15" },
+  [AnthropicModels.Sonnet4]:   { input: 3.0,  input_gt_200k: 6.0,  cache_write: 3.75, cache_hit: 0.3, output: 15.0, output_gt_200k: 22.5, deprecated: true, deprecationDate: "2026-06-15", replacedBy: AnthropicModels.Sonnet5_5 },
   // Retired — pricing retained for cost tracking of historical usage
   [AnthropicModels.Sonnet3_7]: { input: 3.0,  cache_write: 3.75,   cache_hit: 0.3,  output: 15.0,  deprecated: true, deprecationDate: "2026-02-19" },
   [AnthropicModels.Sonnet3_5]: { input: 3.0,  cache_write: 3.75,   cache_hit: 0.3,  output: 15.0,  deprecated: true, deprecationDate: "2025-10-28" },
@@ -169,7 +169,7 @@ export const AnthropicTextPricing: Record<string, ModelPricing> = {
   [AnthropicModels.Haiku3_5_Latest]:   { input: 0.8, cache_write: 1.0,   cache_hit: 0.08, output: 4.0,  deprecated: true, deprecationDate: "2026-02-19" },
   [AnthropicModels.Sonnet3]:           { input: 3.0, cache_write: 3.75,  cache_hit: 0.3,  output: 15.0, deprecated: true },
   [AnthropicModels.Opus4_0]:           { input: 15.0, cache_write: 18.75, cache_hit: 1.5, output: 75.0, deprecated: true, deprecationDate: "2026-06-15" },
-  [AnthropicModels.Sonnet4_0]:         { input: 3.0,  cache_write: 3.75,  cache_hit: 0.3,  output: 15.0, deprecated: true, deprecationDate: "2026-06-15" },
+  [AnthropicModels.Sonnet4_0]:         { input: 3.0,  cache_write: 3.75,  cache_hit: 0.3,  output: 15.0, deprecated: true, deprecationDate: "2026-06-15", replacedBy: AnthropicModels.Sonnet5_5 },
   [AnthropicModels.Haiku3_5]:  { input: 0.8,  cache_write: 1.0,    cache_hit: 0.08, output: 4.0,   deprecated: true, deprecationDate: "2026-02-19" },
   [AnthropicModels.Opus3]:     { input: 15.0, cache_write: 18.75,  cache_hit: 1.5,  output: 75.0,  deprecated: true, deprecationDate: "2026-01-05" },
   [AnthropicModels.Haiku3]:    { input: 0.25, cache_write: 0.3125, cache_hit: 0.025, output: 1.25, deprecated: true, deprecationDate: "2026-04-20" },

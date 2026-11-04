@@ -5,6 +5,10 @@ import { ChatCommand, ChatMode, ChatContext } from "../types";
 import { ask } from "../../utils";
 import { services } from "../../services";
 import { Models } from "../../types";
+import {
+  formatModelLabel,
+  warnIfModelDeprecated,
+} from "../../clients/deprecation";
 
 @TraceAll()
 export class SystemModule extends BaseChatModule {
@@ -50,7 +54,7 @@ export class SystemModule extends BaseChatModule {
     const currentModel = context?.currentModel || "gpt-5.4-nano";
 
     const models = Clients.getRegisteredModels(currentProvider);
-    console.log(models);
+    console.log(models.map(formatModelLabel));
 
     const selectedModel = await ask(
       `\n\nCurrent Provider: ${currentProvider}\nCurrent Model: ${currentModel}\n\nWhich model would you like to use: `,
@@ -60,6 +64,8 @@ export class SystemModule extends BaseChatModule {
     if (!selectedModel) {
       return;
     }
+
+    warnIfModelDeprecated(selectedModel);
 
     this.chatService?.setContext({
       currentModel: selectedModel,
@@ -105,10 +111,10 @@ export class SystemModule extends BaseChatModule {
     // Get default model for new provider
     const ChatModelDefaults = {
       openai: Models.openai.GPT_56_Sol,
-      anthropic: Models.anthropic.Sonnet4_6,
+      anthropic: Models.anthropic.Sonnet5_5,
       google: Models.google.Gemini_35_Flash_Lite,
       xai: Models.xai.Grok4_5,
-      knowhow: "anthropic/" + Models.anthropic.Sonnet4_6,
+      knowhow: "anthropic/" + Models.anthropic.Sonnet5_5,
       fireworks: Models.fireworks.KimiK3,
     };
 
