@@ -343,6 +343,17 @@ describe("pushTask / base bundles with a mock backend", () => {
     expect(inc.calls.bundle[0].prerequisiteShas).toEqual([head]);
   });
 
+  it("never creates a base bundle from a shallow clone (it would claim a complete history it does not have)", async () => {
+    write(src, "second.txt", "second\n");
+    run(src, "add", "-A");
+    run(src, "commit", "-q", "-m", "second");
+    const shallow = path.join(tmp, "shallow");
+    run(tmp, "clone", "-q", "--depth", "1", `file://${src}`, shallow);
+    const { client, calls } = mockClient();
+    await expect(pushTask(client, "task-shallow", { cwd: shallow, log: () => {} })).rejects.toThrow(/shallow/);
+    expect(calls.bundle).toBeUndefined();
+  });
+
   it("refuses repositories without a remote", async () => {
     run(src, "remote", "remove", "micah");
     const { client } = mockClient();

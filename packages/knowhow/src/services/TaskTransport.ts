@@ -539,6 +539,13 @@ export async function ensureBaseBundles(
     log(`✅ Repository base already backed up (HEAD ${info.headSha.slice(0, 8)})`);
     return { uploaded: false as const };
   }
+  // A bundle made from a shallow clone looks complete (no prerequisites) but lacks the history behind the
+  // shallow boundary, so every later checkout that needs it fails. Never register such a base bundle.
+  if (gitSafe(["rev-parse", "--is-shallow-repository"], { cwd: info.gitRoot })?.trim() === "true") {
+    throw new Error(
+      "Repository is a shallow clone: cannot create a complete base bundle (run `git fetch --unshallow` first)"
+    );
+  }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "knowhow-base-"));
   const file = path.join(dir, "base.bundle");
   try {
