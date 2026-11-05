@@ -32,7 +32,7 @@ describe("agentChannels remote identity", () => {
       remoteTaskId,
       syncRemote: true,
     });
-    expect(channels.map((c) => c.id)).toEqual(["fs", "web"]);
+    expect(channels.map((c) => c.id)).toEqual(["fs", "web", "workingset"]);
     expect((channels[1] as KnowhowWebChannel).taskId).toBe(remoteTaskId);
   });
 
@@ -41,7 +41,7 @@ describe("agentChannels remote identity", () => {
   });
 
   it("a messageId creates a fresh remote task unless syncFs forces fs-only", () => {
-    expect(ids({ taskId: "t", messageId: "m1" })).toEqual(["fs", "web"]);
+    expect(ids({ taskId: "t", messageId: "m1" })).toEqual(["fs", "web", "workingset"]);
     expect(ids({ taskId: "t", messageId: "m1", syncFs: true })).toEqual(["fs"]);
     const channels = agentChannels({ taskId: "t", messageId: "m1" });
     expect((channels[1] as KnowhowWebChannel).taskId).toBeUndefined(); // created in start()
@@ -54,7 +54,7 @@ describe("agentChannels remote identity", () => {
       remoteTaskId: "123e4567-e89b-42d3-a456-426614174000",
       syncRemote: true,
     });
-    expect(channels.map((c) => c.id)).toEqual(["fs", "web"]);
+    expect(channels.map((c) => c.id)).toEqual(["fs", "web", "workingset"]);
     expect((channels[1] as KnowhowWebChannel).taskId).toBeUndefined();
   });
 });

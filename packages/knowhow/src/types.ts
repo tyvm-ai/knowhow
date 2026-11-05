@@ -97,6 +97,20 @@ export type Config = {
   /** Private Ed25519 identity selected with `knowhow login --identity`. */
   cliIdentityPath?: string;
   syncRemote?: boolean;
+  /**
+   * Working-set auto-sync: while a task is synced to Knowhow (syncRemote) and the
+   * cwd is a git repo, the uncommitted + unpushed state of the checkout (a
+   * "working set") is uploaded in the background whenever it changed.
+   * Env override: KNOWHOW_WORKING_SET_SYNC=0|1. Runtime toggle: /sync:workingset on|off.
+   */
+  workingSetSync?: {
+    /** Default true (it only ever runs for remote-synced tasks inside a git repo). */
+    enabled?: boolean;
+    /** Minimum seconds between checks/uploads (default 60). */
+    intervalSeconds?: number;
+    /** Never upload a bundle larger than this many bytes (default 200 MB). */
+    maxBytes?: number;
+  };
   micCommand?: string;
   defaultMic?: string;
   sources: GenerationSource[];

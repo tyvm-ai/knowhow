@@ -14,6 +14,7 @@ import {
 } from "../types";
 import type { AgentControl, AgentEvent, AgentPrompt, AgentState } from "./types";
 import { KnowhowWebChannel } from "./KnowhowWebChannel";
+import { WorkingSetSyncChannel } from "./WorkingSetSyncChannel";
 import { isUuid } from "./agentChannels";
 import type { KnowhowSimpleClient } from "../../KnowhowClient";
 
@@ -366,6 +367,7 @@ export class AgentSession extends ResumableProcess<AgentState, AgentControl, Age
   async syncRemoteFromInput(arg?: string, off = false): Promise<string | undefined> {
     if (off) {
       await this.detach("web");
+      await this.detach("workingset");
       this.log.info("remote sync detached");
       return undefined;
     }
@@ -394,6 +396,9 @@ export class AgentSession extends ResumableProcess<AgentState, AgentControl, Age
     await this.attach(
       KnowhowWebChannel.existing(remoteTaskId, { client, remoteMessageId })
     );
+    if (!this.channels().some((c) => c.id === "workingset")) {
+      await this.attach(new WorkingSetSyncChannel({ client }));
+    }
     this.log.info(`synced to remote task ${remoteTaskId}`);
     return remoteTaskId;
   }

@@ -3,7 +3,7 @@
  * `.knowhow/.git` tracking repo used by GitPlugin). All git calls use
  * execFile-style argument arrays — never shell strings.
  */
-import { execFileSync } from "child_process";
+import { execFile, execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -39,6 +39,36 @@ export function git(args: string[], opts: GitOptions = {}): string {
     encoding: "utf8",
     stdio: ["pipe", "pipe", "pipe"],
     maxBuffer: opts.maxBuffer ?? 256 * 1024 * 1024,
+  });
+}
+
+/**
+ * Async git (does not block the event loop). Throws on non-zero exit with the
+ * stderr text in the message.
+ */
+export function gitAsync(args: string[], opts: GitOptions = {}): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = execFile(
+      "git",
+      args,
+      {
+        cwd: opts.cwd,
+        env: opts.env ? { ...process.env, ...opts.env } : process.env,
+        encoding: "utf8",
+        maxBuffer: opts.maxBuffer ?? 256 * 1024 * 1024,
+      },
+      (err, stdout, stderr) => {
+        if (err) {
+          (err as any).stderr = stderr;
+          err.message = `${err.message}${stderr ? `\n${stderr}` : ""}`;
+          reject(err);
+        } else {
+          resolve(stdout);
+        }
+      }
+    );
+    if (opts.input !== undefined) child.stdin?.end(opts.input);
+    else child.stdin?.end();
   });
 }
 

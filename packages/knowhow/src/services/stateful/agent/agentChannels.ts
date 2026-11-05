@@ -2,6 +2,7 @@ import type { KnowhowSimpleClient } from "../../KnowhowClient";
 import type { AgentChannel } from "./AgentSession";
 import { AgentFsChannel } from "./AgentFsChannel";
 import { KnowhowWebChannel } from "./KnowhowWebChannel";
+import { WorkingSetSyncChannel } from "./WorkingSetSyncChannel";
 
 /** Remote task ids are UUIDs; local filesystem ids are timestamped slugs. */
 export function isUuid(value: string | undefined): value is string {
@@ -45,6 +46,11 @@ export function agentChannels(o: AgentChannelsOptions): AgentChannel[] {
         client: o.client,
         remoteMessageId: o.remoteMessageId,
       }));
+  }
+  // working-set auto-sync rides along with every remote-synced task
+  // (a no-op outside git repos / when disabled; see WorkingSetSync.ts)
+  if (channels.some((c) => c.id === "web")) {
+    channels.push(new WorkingSetSyncChannel({ client: o.client, baseDir: o.baseDir }));
   }
   return channels;
 }

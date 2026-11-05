@@ -309,6 +309,25 @@ There are many commands you can call from a chat session, try TAB to see a list 
 ```
 You can configure new agents via the config above. This would create a new option when you use `agents` in a chat session.
 
+## Working-set auto-sync (`workingSetSync`)
+
+When a task is synced to Knowhow (`syncRemote: true` / `/sync:remote`) and the cwd is a git repo with a remote, the CLI keeps the task's
+**working set** (uncommitted + unpushed state, a "transport commit") uploaded in the background so it can be applied on another machine
+or cloud worker. It is throttled, only uploads when the tree actually changed, never includes secrets (`.env*`, keys, `node_modules`, `.knowhow`,
+`files[]` paths, files larger than `gitPlugin.maxFileMb`), and always flushes when the task completes.
+
+```json
+  "workingSetSync": {
+    "enabled": true,
+    "intervalSeconds": 60,
+    "maxBytes": 209715200
+  },
+```
+
+- `enabled` (default `true`): turn off with `false`, env `KNOWHOW_WORKING_SET_SYNC=0`, or `/sync:workingset off` (`on` / `status` also work).
+- `intervalSeconds` (default `60`): minimum seconds between checks; after a bundle larger than 20 MB it is at least 300s. Env: `KNOWHOW_WORKING_SET_SYNC_INTERVAL`.
+- `maxBytes` (default 200 MB): a working-set bundle larger than this is never uploaded.
+
 ## Lint Commands
 
 ```json

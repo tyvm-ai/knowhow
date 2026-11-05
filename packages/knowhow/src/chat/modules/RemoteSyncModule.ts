@@ -17,6 +17,11 @@ import { withRetry } from "../../clients/withRetry";
 import { chooseCloudWorker, printTaskHint } from "../../commands/task";
 import { offload, readLocalTaskMetadata } from "../../services/TaskTransport";
 import { ensureCloudWorkerStarted } from "../../services/WorkerPicker";
+import {
+  readWorkingSetState,
+  resolveWorkingSetSyncConfig,
+  setWorkingSetSyncRuntimeOverride,
+} from "../../services/WorkingSetSync";
 
 @TraceAll()
 export class RemoteSyncModule extends BaseChatModule {
@@ -112,6 +117,12 @@ export class RemoteSyncModule extends BaseChatModule {
         name: "offload",
         description: "Alias for /task:offload",
         handler: this.handleTaskOffload.bind(this),
+      },
+      {
+        name: "sync:workingset",
+        description:
+          "Working-set auto-sync (uncommitted git state uploaded for remote-synced tasks): /sync:workingset [on|off|status]. on/off also persist to config (workingSetSync.enabled)",
+        handler: this.handleSyncWorkingSet.bind(this),
       },
       {
         name: "sync:status",
@@ -554,6 +565,52 @@ export class RemoteSyncModule extends BaseChatModule {
         "   Every new agent interaction will be pushed to the remote KnowHow app.\n" +
         "   Use /sync:remote:off to disable."
     );
+  }
+
+  /**
+   * Handle /sync:workingset [on|off|status]
+   */
+  private async handleSyncWorkingSet(args: string[]): Promise<void> {
+    const arg = (args[0] || "status").toLowerCase();
+    const config = await getConfig();
+    if (arg === "on" || arg === "off") {
+      const enabled = arg === "on";
+      setWorkingSetSyncRuntimeOverride(enabled);
+      try {
+        await updateConfig({
+          ...config,
+          workingSetSync: { ...(config.workingSetSync || {}), enabled },
+        });
+        console.log(`💾 Config updated: workingSetSync.enabled = ${enabled}`);
+      } catch (e: any) {
+        console.log(`⚠️  Could not update config: ${e?.message}`);
+      }
+      console.log(
+        enabled
+          ? "🧳 Working-set auto-sync ON: remote-synced tasks in a git repo upload their uncommitted state in the background."
+          : "🧳 Working-set auto-sync OFF."
+      );
+      return;
+    }
+    const resolved = resolveWorkingSetSyncConfig(config.workingSetSync);
+    console.log(
+      `🧳 Working-set auto-sync: ${resolved.enabled ? "ON" : "OFF"} ` +
+        `(interval ${resolved.intervalMs / 1000}s, large-bundle interval ${
+          resolved.largeIntervalMs / 1000
+        }s, max ${Math.round(resolved.maxBytes / 1024 / 1024)} MB; env KNOWHOW_WORKING_SET_SYNC=0 disables)`
+    );
+    const active = this.getActiveTask(undefined);
+    if (active) {
+      const st = readWorkingSetState(active.taskId);
+      if (st.pushedAt) {
+        console.log(
+          `   task ${active.taskId}: last push ${new Date(st.pushedAt).toLocaleTimeString()}, ` +
+            `${st.fileCount ?? "?"} files, ${st.sizeBytes ?? "?"} bytes, tree ${(st.treeHash ?? "").slice(0, 8)}, snapshot ${st.snapshotId ?? "?"}`
+        );
+      } else {
+        console.log(`   task ${active.taskId}: nothing pushed yet`);
+      }
+    }
   }
 
   /**

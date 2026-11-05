@@ -4,6 +4,9 @@ import * as path from "path";
 import { AgentFsChannel, AgentSession, appendInput } from "../../../../src/services/stateful";
 import { FakeAgent, waitFor } from "./fakeAgent";
 
+// these tests run in the real repo cwd: keep working-set auto-sync (a separate channel) out of them
+process.env.KNOWHOW_WORKING_SET_SYNC = "0";
+
 const mockCreateRemote = jest.fn();
 jest.mock("../../../../src/services/RemoteTaskLink", () => ({
   ...jest.requireActual("../../../../src/services/RemoteTaskLink"),

@@ -15,7 +15,7 @@ describe("agentChannels selection", () => {
   });
 
   it("messageId creates a web channel (unless syncFs forces fs-only)", () => {
-    expect(ids({ taskId: "t", messageId: "m" })).toEqual(["fs", "web"]);
+    expect(ids({ taskId: "t", messageId: "m" })).toEqual(["fs", "web", "workingset"]);
     expect(ids({ taskId: "t", messageId: "m", syncFs: true })).toEqual(["fs"]);
   });
 
@@ -28,7 +28,7 @@ describe("agentChannels selection", () => {
       remoteTaskId: UUID,
       remoteMessageId: "m1",
     });
-    expect(chans.map((c) => c.id)).toEqual(["fs", "web"]);
+    expect(chans.map((c) => c.id)).toEqual(["fs", "web", "workingset"]);
     expect((chans[1] as any).taskId).toBe(UUID);
   });
 

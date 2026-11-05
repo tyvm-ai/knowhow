@@ -19,7 +19,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { createHash } from "crypto";
-import { git, gitSafe, RealRepoInfo, getRealRepoInfo, normalizeOriginUrl, repoNameFromUrl } from "./RealRepo";
+import { git, gitAsync, gitSafe, RealRepoInfo, getRealRepoInfo, normalizeOriginUrl, repoNameFromUrl } from "./RealRepo";
 
 export const DEFAULT_MAX_FILE_MB = 25;
 /** PoC backend limit for a single presigned PUT. */
@@ -37,6 +37,12 @@ export interface TransportManifest {
   /** "path (reason)" strings — kept flat so the backend manifest type (string[]) accepts it */
   excluded: string[];
   excludedTruncated: boolean;
+  /** os.hostname() of the machine that built the working set (optional; shown as "source machine") */
+  hostname?: string;
+  /** os.platform() of that machine (optional) */
+  platform?: string;
+  /** number of files in the snapshot (same as filesInSnapshot; the key the backend reads) */
+  fileCount?: number;
 }
 
 export interface TransportSnapshot {
@@ -47,6 +53,8 @@ export interface TransportSnapshot {
   sizeBytes: number;
   sha256: string;
   ref: string;
+  /** git tree hash of the working set (stable while the files are unchanged; the commit sha is not) */
+  tree: string;
   manifest: TransportManifest;
   /** Remove the temporary bundle (no-op if owned by the caller). */
   cleanup: () => void;
@@ -128,7 +136,10 @@ export interface BuildTransportCommitOptions {
   extraExcludes?: string[];
 }
 
-export function buildTransportCommit(opts: BuildTransportCommitOptions) {
+/** Result of {@link buildTransportCommit}. */
+export type BuiltTransportCommit = Awaited<ReturnType<typeof buildTransportCommit>>;
+
+export async function buildTransportCommit(opts: BuildTransportCommitOptions) {
   const { taskId, info, knowhowDir } = opts;
   const maxBytes = (opts.maxFileMb ?? DEFAULT_MAX_FILE_MB) * 1024 * 1024;
   const extra = opts.extraExcludes ?? [];
@@ -150,7 +161,7 @@ export function buildTransportCommit(opts: BuildTransportCommitOptions) {
     GIT_COMMITTER_EMAIL: "transport@knowhow.invalid",
   };
   const g = (args: string[], input?: string) =>
-    git(
+    gitAsync(
       ["-c", "core.autocrlf=false", "-c", "core.safecrlf=false", "-c", "core.fileMode=true", ...args],
       { cwd: info.gitRoot, env, input }
     );
@@ -158,10 +169,10 @@ export function buildTransportCommit(opts: BuildTransportCommitOptions) {
   try {
     // Candidate files: whatever the REAL repo considers tracked or
     // non-ignored-untracked (honours the real .gitignore). Read-only.
-    const listed = git(
+    const listed = (await gitAsync(
       ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
       { cwd: info.gitRoot }
-    )
+    ))
       .split("\0")
       .filter(Boolean);
     const candidates = Array.from(new Set(listed));
@@ -196,9 +207,9 @@ export function buildTransportCommit(opts: BuildTransportCommitOptions) {
     }
 
     if (include.length) {
-      g(["update-index", "--add", "-z", "--stdin"], include.join("\0") + "\0");
+      await g(["update-index", "--add", "-z", "--stdin"], include.join("\0") + "\0");
     } else {
-      g(["read-tree", "--empty"]);
+      await g(["read-tree", "--empty"]);
     }
 
     // Skipped paths that exist at HEAD keep their HEAD entry (no secret
@@ -206,7 +217,7 @@ export function buildTransportCommit(opts: BuildTransportCommitOptions) {
     // Also paths excluded by rule but absent from the candidate list (e.g.
     // tracked-then-deleted .env) are covered by scanning HEAD's tree below.
     const headEntries = new Map<string, string>(); // path -> "mode sha"
-    const lsTree = git(["ls-tree", "-r", "-z", info.headSha], {
+    const lsTree = await gitAsync(["ls-tree", "-r", "-z", info.headSha], {
       cwd: info.gitRoot,
     });
     for (const rec of lsTree.split("\0").filter(Boolean)) {
@@ -229,26 +240,26 @@ export function buildTransportCommit(opts: BuildTransportCommitOptions) {
     // Submodule dirs reported by ls-files (gitlinks) are covered above since
     // they appear in `skipped` and in HEAD's tree as mode 160000 entries.
     if (indexInfo.length) {
-      g(["update-index", "--add", "-z", "--index-info"], indexInfo.join(""));
+      await g(["update-index", "--add", "-z", "--index-info"], indexInfo.join(""));
     }
 
-    const tree = g(["write-tree"]).trim();
+    const tree = (await g(["write-tree"])).trim();
     const ref = `refs/transport/${taskId}`;
-    const commitSha = g([
+    const commitSha = (await g([
       "commit-tree",
       tree,
       "-p",
       info.headSha,
       "-m",
       `transport ${taskId}`,
-    ]).trim();
-    g(["update-ref", ref, commitSha]);
+    ])).trim();
+    await g(["update-ref", ref, commitSha]);
 
     // Summary vs the real HEAD
     let changed = 0;
     let added = 0;
     let deleted = 0;
-    const diff = g(["diff-tree", "-r", "--no-renames", "--name-status", "-z", info.headSha, commitSha]);
+    const diff = await g(["diff-tree", "-r", "--no-renames", "--name-status", "-z", info.headSha, commitSha]);
     const parts = diff.split("\0").filter(Boolean);
     for (let i = 0; i + 1 < parts.length; i += 2) {
       const status = parts[i][0];
@@ -269,6 +280,9 @@ export function buildTransportCommit(opts: BuildTransportCommitOptions) {
       excludedCount: excludedAll.length,
       excluded: excludedAll.slice(0, 200).map((e) => `${e.path} (${e.reason})`),
       excludedTruncated: excludedAll.length > 200,
+      hostname: os.hostname(),
+      platform: os.platform(),
+      fileCount: include.length + indexInfo.length,
     };
     return { gitDir, ref, tree, commitSha, manifest, env };
   } finally {
@@ -296,16 +310,20 @@ function sha256File(file: string): Promise<string> {
  * ^<headSha>` into a temp file. Purely local.
  */
 export async function createTransportBundle(
-  opts: BuildTransportCommitOptions & { outFile?: string }
+  opts: BuildTransportCommitOptions & {
+    outFile?: string;
+    /** an already built transport commit (skips rebuilding it) */
+    prebuilt?: BuiltTransportCommit;
+  }
 ): Promise<TransportSnapshot> {
-  const built = buildTransportCommit(opts);
+  const built = opts.prebuilt ?? (await buildTransportCommit(opts));
   const outFile =
     opts.outFile ||
     path.join(
       fs.mkdtempSync(path.join(os.tmpdir(), "knowhow-transport-")),
       "transport.bundle"
     );
-  git(["bundle", "create", outFile, built.ref, `^${opts.info.headSha}`], {
+  await gitAsync(["bundle", "create", outFile, built.ref, `^${opts.info.headSha}`], {
     cwd: opts.info.gitRoot,
     env: {
       GIT_DIR: built.gitDir,
@@ -322,6 +340,7 @@ export async function createTransportBundle(
     sizeBytes,
     sha256,
     ref: built.ref,
+    tree: built.tree,
     manifest: built.manifest,
     cleanup: () => {
       if (!opts.outFile) fs.rmSync(path.dirname(outFile), { recursive: true, force: true });
@@ -708,6 +727,11 @@ export async function createSnapshot(
     maxFileMb?: number;
     extraExcludes?: string[];
     log?: (m: string) => void;
+    /** already built transport commit (auto-sync builds it first to compare tree hashes) */
+    prebuilt?: BuiltTransportCommit;
+    /** called with the finished bundle before anything is uploaded; return false to skip the upload */
+    beforeUpload?: (snap: TransportSnapshot) => boolean | Promise<boolean>;
+    quiet?: boolean;
   } = {}
 ) {
   const log = opts.log ?? console.log;
@@ -717,9 +741,13 @@ export async function createSnapshot(
     knowhowDir: opts.knowhowDir ?? path.join(ctx.cwd, ".knowhow"),
     maxFileMb: opts.maxFileMb,
     extraExcludes: opts.extraExcludes,
+    prebuilt: opts.prebuilt,
   });
   try {
-    printSnapshotSummary(snap, log);
+    if (opts.beforeUpload && (await opts.beforeUpload(snap)) === false) {
+      return { snapshot: snap, bundleId: undefined, created: undefined, skipped: true as const };
+    }
+    if (!opts.quiet) printSnapshotSummary(snap, log);
     const bundleId = await uploadBundle(client, ctx.repo.id, snap.bundlePath, {
       kind: "transport",
       tipSha: snap.commitSha,
@@ -734,7 +762,7 @@ export async function createSnapshot(
       baseSha: snap.baseSha,
       manifest: snap.manifest,
     });
-    return { snapshot: snap, bundleId, created };
+    return { snapshot: snap, bundleId, created, skipped: false as const };
   } finally {
     snap.cleanup();
   }
