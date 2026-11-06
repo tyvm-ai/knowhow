@@ -6,7 +6,12 @@ import { ask } from "./utils";
 import { getConfig, updateConfig } from "./config";
 import { KNOWHOW_API_URL } from "./services/KnowhowClient";
 import { BrowserLoginService } from "./auth/browserLogin";
-import { authenticateWithKey, hasKeyPair, registerPublicKey } from "./auth/keyAuth";
+import {
+  authenticateWithKey,
+  DeviceConfirmationRequiredError,
+  hasKeyPair,
+  registerPublicKey,
+} from "./auth/keyAuth";
 import { getDefaultPrivateKeyPath, getOrCreatePublicKey } from "./auth/keyManager";
 import { storeJwtForApi } from "./auth/jwtStore";
 import { getOrgIdForApi, setOrgIdForApi } from "./auth/environmentAuth";
@@ -50,6 +55,9 @@ export async function login(
   } else {
     const selectedIdentityPath = identityPath ?? getDefaultPrivateKeyPath();
     const orgId = getOrgIdForApi(config, remote.apiUrl);
+    // True when the server already knows this key (it answered the key challenge), so browser login must not
+    // register it again.
+    let keyAlreadyRegistered = false;
 
     if (orgId && hasKeyPair(selectedIdentityPath)) {
       console.log("Found CLI identity — authenticating with public key...");
@@ -62,11 +70,17 @@ export async function login(
         console.warn("Key authentication returned no JWT, falling back to browser login...");
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        console.warn(`Key authentication failed (${message}), falling back to browser login...`);
+        if (error instanceof DeviceConfirmationRequiredError) {
+          keyAlreadyRegistered = true;
+          console.warn(`⚠️  ${message}`);
+          console.warn("Falling back to browser approval...");
+        } else {
+          console.warn(`Key authentication failed (${message}), falling back to browser login...`);
+        }
       }
     }
 
-    await doBrowserLogin(remote, selectedIdentityPath, orgId);
+    await doBrowserLogin(remote, selectedIdentityPath, orgId, keyAlreadyRegistered);
     identityPath = selectedIdentityPath;
   }
 
@@ -77,7 +91,8 @@ export async function login(
 async function doBrowserLogin(
   remote: KnowhowRemote,
   identityPath?: string,
-  orgId?: string
+  orgId?: string,
+  skipKeyRegistration = false
 ): Promise<void> {
   console.log("Starting browser-based authentication...");
   try {
@@ -86,6 +101,7 @@ async function doBrowserLogin(
     console.log("✅ Successfully authenticated via browser!");
 
     try {
+      if (skipKeyRegistration) return;
       const keyPair = getOrCreatePublicKey(identityPath);
       await registerPublicKey(
         await loadJwt(remote),
@@ -162,10 +178,10 @@ async function postLoginConfigUpdate(
     await updateConfig(config);
   } catch (error: unknown) {
     if (http.isHttpError(error) && error.response) {
-      const errData = (error as any).body ?? { message: "Unknown error" };
-      throw new Error(
-        `Error: ${(error as any).status} - ${errData?.message || "Unknown error"}`
-      );
+      const errData = (error as any).body ?? {};
+      // The API wraps errors as { error: { message } }; older shapes used a top-level message.
+      const detail = errData?.error?.message || errData?.message || (error as any).message || "Unknown error";
+      throw new Error(`Error: ${(error as any).status} - ${detail}`);
     }
     console.log(
       "Error: Unable to fetch user information. Please check your JWT and try again.",

@@ -12,6 +12,20 @@ import {
 const DEFAULT_API_URL = process.env.KNOWHOW_API_URL || "https://api.knowhow.tyvm.ai";
 
 /**
+ * The key is registered and its signature was accepted, but the server treats it as a NEW device: the JWT it
+ * returned is unusable until the user confirms the emailed code (or approves the login in the browser).
+ */
+export class DeviceConfirmationRequiredError extends Error {
+  constructor() {
+    super(
+      "This device key needs one-time confirmation: check your email to confirm this device " +
+        "(or approve it in the browser), then run `knowhow login` again."
+    );
+    this.name = "DeviceConfirmationRequiredError";
+  }
+}
+
+/**
  * This is intentionally based only on the selected identity. Registration is
  * server-side and scoped to its environment/user/org; a local `.registered`
  * marker cannot safely represent that state. An unknown or revoked key is
@@ -54,13 +68,17 @@ export async function exchangePublicKeyJwt(
     throw new Error("Public-key challenge response is invalid");
   }
 
-  const response = await http.post<{ jwt: string }>(
+  const response = await http.post<{ jwt: string; requiresDeviceConfirmation?: boolean }>(
     `${apiUrl}/api/public-keys/authenticate`,
     { challengeId, signature: signMessage(message, privateKeyPath) },
     { headers }
   );
   if (!response.data.jwt) {
     throw new Error("Public-key authentication returned no JWT");
+  }
+  // Never hand back (or let callers store) a JWT that the API will reject with 401 until the device is confirmed.
+  if (response.data.requiresDeviceConfirmation === true) {
+    throw new DeviceConfirmationRequiredError();
   }
   return response.data.jwt;
 }
@@ -86,6 +104,8 @@ export async function exchangeAvailablePublicKeyJwt(
     try {
       return await exchangePublicKeyJwt(orgId, apiUrl, candidate);
     } catch (error) {
+      // The key exists and is valid; trying another identity would just hide the actionable message.
+      if (error instanceof DeviceConfirmationRequiredError) throw error;
       lastError = error;
     }
   }

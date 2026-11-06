@@ -28,6 +28,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import {
+  DeviceConfirmationRequiredError,
   authenticateWithKey,
   exchangeAvailablePublicKeyJwt,
   exchangePublicKeyJwt,
@@ -100,6 +101,40 @@ describe("keyAuth", () => {
       "default key challenge",
       "/keys/default"
     );
+  });
+
+  it("throws a clear confirmation error (and never returns the unusable JWT) when the device needs confirmation", async () => {
+    post
+      .mockResolvedValueOnce({
+        data: { challengeId: "challenge_3", message: "m", expiresAt: "2099-01-01T00:00:00.000Z" },
+        status: 201,
+      })
+      .mockResolvedValueOnce({
+        data: { jwt: "pending-jwt", requiresDeviceConfirmation: true },
+        status: 200,
+      });
+
+    const result = exchangePublicKeyJwt("org-1", "https://work.example", "/keys/work");
+    await expect(result).rejects.toBeInstanceOf(DeviceConfirmationRequiredError);
+    await expect(result).rejects.toThrow(/check your email to confirm this device/i);
+  });
+
+  it("authenticateWithKey surfaces the confirmation error instead of reporting 'no JWT' or storing the pending JWT", async () => {
+    post
+      .mockResolvedValueOnce({
+        data: { challengeId: "challenge_4", message: "m", expiresAt: "2099-01-01T00:00:00.000Z" },
+        status: 201,
+      })
+      .mockResolvedValueOnce({
+        data: { jwt: "pending-jwt", requiresDeviceConfirmation: true },
+        status: 200,
+      });
+
+    await expect(
+      authenticateWithKey("org-1", "https://work.example", "/keys/work")
+    ).rejects.toBeInstanceOf(DeviceConfirmationRequiredError);
+    // Only the challenge + authenticate calls: the default identity is not retried to hide the message.
+    expect(post).toHaveBeenCalledTimes(2);
   });
 
   it("falls back when the key is unavailable without signing a challenge", async () => {

@@ -22,6 +22,7 @@ jest.mock("../../src/auth/browserLogin", () => ({
 }));
 
 jest.mock("../../src/auth/keyAuth", () => ({
+  DeviceConfirmationRequiredError: jest.requireActual("../../src/auth/keyAuth").DeviceConfirmationRequiredError,
   hasKeyPair,
   authenticateWithKey,
   registerPublicKey,
@@ -38,6 +39,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { login } from "../../src/login";
+import { DeviceConfirmationRequiredError } from "../../src/auth/keyAuth";
 
 describe("login public-key bootstrap", () => {
   const originalCwd = process.cwd();
@@ -208,6 +210,19 @@ describe("login public-key bootstrap", () => {
     );
     expect(browserLogin).toHaveBeenCalledTimes(1);
     expect(getOrCreatePublicKey).toHaveBeenCalledWith("/keys/dev");
+  });
+
+  it("tells the user to check their email when the key needs device confirmation, and does not register the key again", async () => {
+    hasKeyPair.mockReturnValue(true);
+    getConfig.mockResolvedValue({ orgId: "org-1", modelProviders: [] });
+    authenticateWithKey.mockRejectedValueOnce(new DeviceConfirmationRequiredError());
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    await expect(login(false, "/keys/dev")).resolves.toBeUndefined();
+
+    expect(warn.mock.calls.flat().join("\n")).toMatch(/check your email to confirm this device/i);
+    expect(browserLogin).toHaveBeenCalledTimes(1);
+    expect(registerPublicKey).not.toHaveBeenCalled();
   });
 
   it("uses the selected API's JWT org instead of an org saved by another environment", async () => {
