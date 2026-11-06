@@ -57,12 +57,24 @@ export interface CreateMessagePlaceholderResponse {
 
 // Chat Task interfaces
 export interface CreateMessageTaskRequest {
-  messageId: string;
+  /** Message to attach the task to (optional when `parentTaskId` is set). */
+  messageId?: string;
   prompt: string;
+  /**
+   * Parent remote task (UUID). The new task becomes a child task attached to the
+   * parent's message / chat session (needs a backend that supports it).
+   */
+  parentTaskId?: string;
 }
 
 export interface CreateMessageTaskResponse {
   id: string;
+  /** Message the task is attached to (new backends) */
+  messageId?: string;
+  /** Chat session of that message (new backends) */
+  sessionId?: string;
+  /** Set when the task was created as a child task (new backends) */
+  parentTaskId?: string;
 }
 
 export interface UpdateOrgTaskRequest {

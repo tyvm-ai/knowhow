@@ -1,5 +1,8 @@
 import { KnowhowSimpleClient, OrgWorkerInfo } from "./KnowhowClient";
-import { createRemoteTaskForAgent } from "./RemoteTaskLink";
+import {
+  createRemoteTaskForAgent,
+  resolveParentRemoteTaskId,
+} from "./RemoteTaskLink";
 import { lastAssistantText } from "../agents/tools/waitForAgentCompleted";
 
 export type WorkerOs = "windows" | "posix" | "unknown";
@@ -423,6 +426,7 @@ export async function startRemoteAgentTask(
       model: params.model,
       workerId: w.id,
       source: "cli-remote-worker",
+      parentRemoteTaskId: resolveParentRemoteTaskId(params.parentTaskId),
       client,
     });
     sessionId = link.sessionId;

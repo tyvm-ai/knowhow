@@ -382,12 +382,16 @@ export class AgentSession extends ResumableProcess<AgentState, AgentControl, Age
     let remoteTaskId = isUuid(uuid) ? uuid : linked;
     let remoteMessageId: string | undefined;
     if (!remoteTaskId) {
-      const { createRemoteTaskForAgent } = await import("../../RemoteTaskLink");
+      const { createRemoteTaskForAgent, resolveParentRemoteTaskId } = await import(
+        "../../RemoteTaskLink"
+      );
       const state = this.getState() as AgentState;
       const link = await createRemoteTaskForAgent({
         prompt: state.prompt,
         agentName: state.agentName,
         model: state.model,
+        // a sub-agent becomes a child task of its parent's message/session
+        parentRemoteTaskId: resolveParentRemoteTaskId(this.opts.parentTaskId),
         client,
       });
       remoteTaskId = link.taskId;

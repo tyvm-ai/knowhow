@@ -996,10 +996,15 @@ export class AgentModule extends BaseChatModule {
         const { createRemoteTaskForAgent } = await import(
           "../../services/RemoteTaskLink"
         );
+        const { resolveParentRemoteTaskId } = await import(
+          "../../services/RemoteTaskLink"
+        );
         const link = await createRemoteTaskForAgent({
           prompt: input,
           agentName,
           model: options.model,
+          // a sub-agent becomes a child task of its parent's message/session
+          parentRemoteTaskId: resolveParentRemoteTaskId(options.parentTaskId),
         });
         remoteTaskId = link.taskId;
         createdRemoteMessageId = link.messageId;

@@ -15,6 +15,13 @@ export interface CreateRemoteTaskParams {
   /** Session title (default: first 80 chars of the prompt). */
   title?: string;
   source?: string;
+  /**
+   * Remote task UUID of the parent agent that spawned this task. When set (and no
+   * explicit `sessionId`), the task is created as a CHILD TASK of the parent's
+   * message/chat session instead of a new session. Falls back to a new session
+   * when the backend can't link it (older backend, parent not a chat task).
+   */
+  parentRemoteTaskId?: string;
   client?: KnowhowSimpleClient;
 }
 
@@ -88,6 +95,11 @@ export async function createRemoteTaskForAgent(
   const source = params.source ?? "cli";
   const prompt = params.prompt || "";
 
+  if (params.parentRemoteTaskId && !params.sessionId) {
+    const child = await createChildRemoteTask(client, params.parentRemoteTaskId, prompt);
+    if (child) return child;
+  }
+
   let sessionId = params.sessionId;
   if (!sessionId) {
     const session = await withRetry(
@@ -122,6 +134,40 @@ export async function createRemoteTaskForAgent(
     );
   }
   return { sessionId: sessionId!, messageId: msg.messageId, taskId: msg.taskId };
+}
+
+/**
+ * Create a child task under the parent's remote task: the backend attaches it to
+ * the parent's message (same chat session) and links it via parentTaskId.
+ * Returns undefined (caller falls back to its own session) when the backend
+ * doesn't support it or the parent isn't a linkable chat task.
+ */
+async function createChildRemoteTask(
+  client: KnowhowSimpleClient,
+  parentRemoteTaskId: string,
+  prompt: string
+): Promise<RemoteTaskLink | undefined> {
+  try {
+    const res = await withRetry(
+      () =>
+        client.createChatTask({
+          parentTaskId: parentRemoteTaskId.replace(/^remote:/i, ""),
+          prompt,
+        }),
+      { maxRetries: 2, backoffMs: 500 }
+    );
+    const d = res.data;
+    // an older backend ignores parentTaskId (and rejects a missing messageId),
+    // so a usable response always carries the parent-linked message/session
+    if (d?.id && d.messageId && d.sessionId && d.parentTaskId) {
+      return { sessionId: d.sessionId, messageId: d.messageId, taskId: d.id };
+    }
+  } catch (e: any) {
+    console.error(
+      `⚠️  Could not attach child task to parent ${parentRemoteTaskId} (${e?.message ?? e}); creating its own session`
+    );
+  }
+  return undefined;
 }
 
 /** Local agents directory (resolved lazily so tests/cwd changes are respected). */
