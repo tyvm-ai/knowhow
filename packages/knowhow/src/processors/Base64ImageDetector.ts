@@ -269,6 +269,50 @@ export class Base64ImageProcessor {
     }
   }
 
+  /**
+   * Turns a parsed tool response into a flat list of candidate content parts,
+   * converting MCP-style parts into the provider-ready OpenAI shape:
+   *   - `{content:[...]}` (MCP CallToolResult) -> its content array
+   *   - `{type:"image", data, mimeType}` -> `{type:"image_url", image_url:{url:"data:..."}}`
+   */
+  private normalizeToolParts(parsed: unknown): any[] {
+    let parts: any[];
+    if (Array.isArray(parsed)) {
+      parts = parsed;
+    } else if (
+      parsed &&
+      typeof parsed === "object" &&
+      Array.isArray((parsed as { content?: unknown }).content) &&
+      !(parsed as { type?: unknown }).type
+    ) {
+      parts = (parsed as { content: any[] }).content;
+    } else {
+      parts = [parsed];
+    }
+
+    return parts.map((p) => {
+      if (
+        p &&
+        p.type === "image" &&
+        typeof p.data === "string" &&
+        p.data.length > 0
+      ) {
+        const mimeType =
+          typeof p.mimeType === "string" && p.mimeType.startsWith("image/")
+            ? p.mimeType
+            : `image/${this.isBase64Image(p.data).mimeType || "png"}`;
+        const url = p.data.startsWith("data:")
+          ? p.data
+          : `data:${mimeType};base64,${p.data}`;
+        return {
+          type: "image_url",
+          image_url: { url, detail: this.imageDetail },
+        };
+      }
+      return p;
+    });
+  }
+
   private processToolMessageContent(message: Message): void {
     // Tool messages have string content that might be a JSON string containing image data
     if (typeof message.content === "string" && message.content.trim()) {
@@ -283,7 +327,10 @@ export class Base64ImageProcessor {
         // (Computer-use screenshot tools and loadWebpage return the array form,
         //  which the single-object check above previously missed — leaving the
         //  model to see a raw base64 JSON string instead of an actual image.)
-        const candidates = Array.isArray(parsed) ? parsed : [parsed];
+        //   3. a raw MCP CallToolResult: {content:[{type:"text",text},{type:"image",data,mimeType}]}
+        //      (remote MCP servers / workers such as the Android companion's
+        //       computerUseScreenshot return this; ToolsService stringifies it).
+        const candidates = this.normalizeToolParts(parsed);
         const isImagePart = (p: any) =>
           p &&
           p.type === "image_url" &&

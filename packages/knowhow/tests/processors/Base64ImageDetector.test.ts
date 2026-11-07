@@ -220,6 +220,69 @@ describe("Base64ImageDetector", () => {
       expect(content[0].image_url.url).toBe(imageDataUrl);
     });
 
+    it("should convert a raw MCP CallToolResult with an image part (e.g. companion screenshot)", () => {
+      // MCP servers/workers (Android companion computerUseScreenshot) return
+      // {content:[{type:"text"},{type:"image",data,mimeType}]}; ToolsService
+      // stringifies it with indentation.
+      const meta = JSON.stringify({ untrusted: true, width: 540, height: 1200 });
+      const toolResponseJson = JSON.stringify(
+        {
+          content: [
+            { type: "text", text: meta },
+            { type: "image", data: plainBase64, mimeType: "image/png" },
+          ],
+        },
+        null,
+        2
+      );
+      const modifiedMessages: Message[] = [
+        { role: "tool", content: toolResponseJson, tool_call_id: "call_mcp" },
+      ];
+
+      detector.createProcessor()([], modifiedMessages);
+
+      expect(Array.isArray(modifiedMessages[0].content)).toBe(true);
+      const content = modifiedMessages[0].content as any[];
+      expect(content).toHaveLength(2);
+      expect(content[0]).toEqual({ type: "text", text: meta });
+      expect(content[1].type).toBe("image_url");
+      expect(content[1].image_url.url).toBe(
+        `data:image/png;base64,${plainBase64}`
+      );
+    });
+
+    it("should infer the mime type of an MCP image part without mimeType", () => {
+      const modifiedMessages: Message[] = [
+        {
+          role: "tool",
+          content: JSON.stringify({
+            content: [{ type: "image", data: plainBase64 }],
+          }),
+          tool_call_id: "call_mcp_nomime",
+        },
+      ];
+
+      detector.createProcessor()([], modifiedMessages);
+
+      const content = modifiedMessages[0].content as any[];
+      expect(content[0].image_url.url).toBe(
+        `data:image/png;base64,${plainBase64}`
+      );
+    });
+
+    it("should leave text-only MCP CallToolResults untouched", () => {
+      const toolResponseJson = JSON.stringify({
+        content: [{ type: "text", text: "hello" }],
+      });
+      const modifiedMessages: Message[] = [
+        { role: "tool", content: toolResponseJson, tool_call_id: "call_mcp_text" },
+      ];
+
+      detector.createProcessor()([], modifiedMessages);
+
+      expect(modifiedMessages[0].content).toBe(toolResponseJson);
+    });
+
     it("should process an image result that is not the newest parallel tool result", () => {
       const imageDataUrl =
         "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
