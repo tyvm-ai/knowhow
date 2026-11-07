@@ -24,6 +24,7 @@ import { readdirSync, existsSync } from "fs";
 import { readFileSync } from "fs";
 import { join, resolve } from "path";
 import { fileURLToPath } from "url";
+import { ensureFreshBuild } from "./lib/monorepo.mjs";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -65,6 +66,7 @@ function getPublishedVersion(packageName) {
 }
 
 function hasDiff(pkgDir) {
+  ensureFreshBuild(pkgDir);
   const result = spawnSync(
     "npm",
     ["diff"],

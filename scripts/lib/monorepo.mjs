@@ -4,7 +4,7 @@
  */
 
 import { execSync, spawnSync } from "child_process";
-import { readdirSync, existsSync, readFileSync, writeFileSync } from "fs";
+import { readdirSync, existsSync, readFileSync, writeFileSync, statSync } from "fs";
 import { join, resolve } from "path";
 import { fileURLToPath } from "url";
 import readline from "readline";
@@ -75,7 +75,59 @@ export function getPublishedVersion(packageName) {
   }
 }
 
+/** Newest mtime (ms) of any file under dir, skipping node_modules. 0 if none. */
+function newestMtime(dir) {
+  let newest = 0;
+  const walk = (d) => {
+    let entries;
+    try {
+      entries = readdirSync(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name === "node_modules") continue;
+      const full = join(d, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (e.isFile()) newest = Math.max(newest, statSync(full).mtimeMs);
+    }
+  };
+  walk(dir);
+  return newest;
+}
+
+/**
+ * `npm diff` only sees what would be packed. Packages publish their compiled
+ * output (ts_build) and exclude src, so un-rebuilt source changes are
+ * invisible to it. If src is newer than the build output, rebuild first so
+ * the diff reflects the source.
+ */
+export function ensureFreshBuild(pkgDir) {
+  const pkg = JSON.parse(readFileSync(join(pkgDir, "package.json"), "utf8"));
+  const script = pkg.scripts?.compile
+    ? "compile"
+    : pkg.scripts?.build
+    ? "build"
+    : null;
+  const srcDir = join(pkgDir, "src");
+  const outRel = (pkg.main || "").replace(/^\.\//, "").split("/")[0];
+  if (!script || !existsSync(srcDir) || !outRel || outRel === "src") return;
+  const outDir = join(pkgDir, outRel);
+  if (existsSync(outDir) && newestMtime(srcDir) <= newestMtime(outDir)) return;
+  process.stderr.write(` (build stale, running npm run ${script})...`);
+  const r = spawnSync("npm", ["run", script], {
+    cwd: pkgDir,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    shell: process.platform === "win32",
+  });
+  if (r.status !== 0) {
+    process.stderr.write(` build FAILED, diff may be inaccurate...`);
+  }
+}
+
 export function hasDiff(pkgDir) {
+  ensureFreshBuild(pkgDir);
   const result = spawnSync("npm", ["diff"], {
     cwd: pkgDir,
     encoding: "utf8",
