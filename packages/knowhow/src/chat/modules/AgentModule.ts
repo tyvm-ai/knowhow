@@ -1074,6 +1074,11 @@ export class AgentModule extends BaseChatModule {
           remoteMessageId: createdRemoteMessageId ?? options.remoteMessageId,
           syncFs: options.syncFs,
           syncRemote: options.syncRemote,
+          parentRemoteTaskId: options.messageId
+            ? (await import("../../services/RemoteTaskLink")).resolveParentRemoteTaskId(
+                options.parentTaskId
+              )
+            : undefined,
         }),
       });
       this.sessions.set(taskId, session);

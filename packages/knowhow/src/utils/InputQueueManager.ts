@@ -40,6 +40,9 @@ export class InputQueueManager {
   // History navigation state - uses only the history passed to ask()
   private historyIndex = -1;
   private savedLineBeforeHistory = "";
+  // Per-entry edits made while browsing history (keyed by historyIndex),
+  // so modifying a recalled entry never destroys the draft or other entries.
+  private historyEdits = new Map<number, string>();
 
   // Callback to notify caller when a new entry should be added to history
   // This allows CliChatService to update inputHistory immediately
@@ -117,6 +120,7 @@ export class InputQueueManager {
         clearTimeout(this.pasteTimeout);
         this.flushPasteBuffer();
         this.historyIndex = -1;
+        this.historyEdits.clear();
       }
     });
 
@@ -130,6 +134,7 @@ export class InputQueueManager {
         cancelled?.resolve("");
         this.currentLine = "";
         this.historyIndex = -1;
+        this.historyEdits.clear();
         this.savedLineBeforeHistory = "";
         this.renderTopOrClose();
         return;
@@ -169,21 +174,10 @@ export class InputQueueManager {
         // Keep our buffer in sync with readline's live line
         instance.syncFromReadline();
 
-        // Any "real typing" should exit history mode
-        // (we'll treat left/right as not exiting; you can tweak)
-        const exitsHistoryMode =
-          key &&
-          (key.name === "return" ||
-            key.name === "enter" ||
-            key.name === "backspace" ||
-            (key.sequence &&
-              key.sequence.length === 1 &&
-              !key.ctrl &&
-              !key.meta));
-        if (exitsHistoryMode && instance.historyIndex !== -1) {
-          instance.historyIndex = -1;
-          instance.savedLineBeforeHistory = "";
-        }
+        // NOTE: typing while viewing a history entry does NOT exit history mode.
+        // Like bash/zsh, edits are kept per-entry (historyEdits) and the original
+        // draft (savedLineBeforeHistory) can always be restored by pressing Down
+        // back past the newest entry. State is reset on submit / cancel / new ask().
 
         // Handle Tab completion ourselves to avoid readline's kRefreshLine
         // overwriting small completion lists (1-2 line lists get erased by readline).
@@ -203,12 +197,14 @@ export class InputQueueManager {
           if (instance.historyIndex === -1) {
             // entering history mode: remember current typed text
             instance.savedLineBeforeHistory = instance.currentLine;
+          } else {
+            // remember any edits made to the entry we're leaving
+            instance.historyEdits.set(instance.historyIndex, instance.currentLine);
           }
 
           if (instance.historyIndex < history.length - 1) {
             instance.historyIndex++;
-            const index = history.length - 1 - instance.historyIndex;
-            const next = history[index] ?? "";
+            const next = instance.historyEntryAt(history, instance.historyIndex);
             instance.replaceLine(next);
             instance.currentLine = next;
           }
@@ -219,10 +215,14 @@ export class InputQueueManager {
           const history = instance.getHistory();
           if (history.length === 0) return;
 
+          if (instance.historyIndex !== -1) {
+            // remember any edits made to the entry we're leaving
+            instance.historyEdits.set(instance.historyIndex, instance.currentLine);
+          }
+
           if (instance.historyIndex > 0) {
             instance.historyIndex--;
-            const index = history.length - 1 - instance.historyIndex;
-            const next = history[index] ?? "";
+            const next = instance.historyEntryAt(history, instance.historyIndex);
             instance.replaceLine(next);
             instance.currentLine = next;
             return;
@@ -268,6 +268,7 @@ export class InputQueueManager {
     // Reset preserved buffer + history nav state for the next question
     this.currentLine = "";
     this.historyIndex = -1;
+    this.historyEdits.clear();
     this.savedLineBeforeHistory = "";
 
     // Update prompt for next stacked question (if any)
@@ -285,7 +286,9 @@ export class InputQueueManager {
       // previous multi-line prompt behind in terminal scrollback.
       if (this.stack.length > 0) this.clearPanel();
       this.stack.push({ question, options, history, footer, resolve });
-      this.historyIndex = -1; // reset history nav when a new question is asked
+      // reset history nav when a new question is asked
+      this.historyIndex = -1;
+      this.historyEdits.clear();
 
       const rl = this.ensureRl();
 
@@ -316,6 +319,13 @@ export class InputQueueManager {
   private sanitizeHistoryEntry(value: string): string {
     // Prevent embedded newlines from triggering readline's "line" event
     return value.replace(/[\r\n]+/g, " ").trim();
+  }
+
+  /** History entry at historyIndex, preferring any unsubmitted edits to it. */
+  private historyEntryAt(history: string[], historyIndex: number): string {
+    const edited = this.historyEdits.get(historyIndex);
+    if (edited !== undefined) return edited;
+    return history[history.length - 1 - historyIndex] ?? "";
   }
 
   /**

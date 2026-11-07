@@ -40,9 +40,9 @@ describe("agentChannels remote identity", () => {
     expect(ids({ taskId: "t", remoteTaskId: "123e4567-e89b-42d3-a456-426614174000" })).toEqual(["fs"]);
   });
 
-  it("a messageId creates a fresh remote task unless syncFs forces fs-only", () => {
+  it("a messageId creates a fresh remote task (syncFs does not suppress it)", () => {
     expect(ids({ taskId: "t", messageId: "m1" })).toEqual(["fs", "web", "workingset"]);
-    expect(ids({ taskId: "t", messageId: "m1", syncFs: true })).toEqual(["fs"]);
+    expect(ids({ taskId: "t", messageId: "m1", syncFs: true })).toEqual(["fs", "web", "workingset"]);
     const channels = agentChannels({ taskId: "t", messageId: "m1" });
     expect((channels[1] as KnowhowWebChannel).taskId).toBeUndefined(); // created in start()
   });

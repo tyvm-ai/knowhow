@@ -18,6 +18,8 @@ export interface KnowhowWebChannelOptions {
   messageId?: string;
   /** ...or attach to an existing remote task. */
   remoteTaskId?: string;
+  /** Parent remote task (UUID) recorded on the task created from `messageId`. */
+  parentTaskId?: string;
   /** Recorded as the `remoteMessageId` link when attaching to an existing task. */
   remoteMessageId?: string;
   client?: KnowhowSimpleClient;
@@ -96,6 +98,7 @@ export class KnowhowWebChannel extends DuplexChannel<AgentState, AgentControl, A
         const res = await this.client.createChatTask({
           messageId: this.opts.messageId!,
           prompt: doc.state.prompt,
+          ...(this.opts.parentTaskId ? { parentTaskId: this.opts.parentTaskId } : {}),
         });
         this.remoteTaskId = res.data.id;
         if (this.opts.messageId) this.ctx.setLink("remoteMessageId", this.opts.messageId);

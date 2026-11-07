@@ -246,11 +246,10 @@ export async function startAgentTask(params: StartAgentTaskParams): Promise<Star
   }
 
   // Default filesystem synchronization ON unless the caller explicitly opts out
-  // (syncFs: false) or is using a messageId-based web sync. This ensures spawned
-  // subagents always appear in `knowhow agents list` and can be attached/tailed.
-  // If the caller explicitly passes syncFs: true, honor it even when a messageId
-  // is also provided (messageId handles remote sync; syncFs handles local fs sync).
-  const useSyncFs = syncFs === true ? true : (syncFs !== false && !messageId);
+  // (syncFs: false). This ensures spawned subagents always appear in
+  // `knowhow agents list` and can be attached/tailed. A messageId always syncs remotely too (the task is created on that message);
+  // fs sync stays on so the agent is listed/attachable locally.
+  const useSyncFs = syncFs !== false;
 
   // Use provided taskId if given, otherwise generate one from the prompt
   const taskId = providedTaskId ?? generateTaskId(prompt);
@@ -441,12 +440,13 @@ export const startAgentTaskDefinition: Tool = {
         messageId: {
           type: "string",
           description:
-            "The ID of the message in Knowhow to associate with this task (optional)",
+            "The ID of the message in Knowhow to associate with this task (optional). The agent's task is created on that message " +
+            "(remote sync + working set) and fs sync stays on. Pass parentTaskId (your own remote task UUID) with it so the task is linked as your child.",
         },
         syncFs: {
           type: "boolean",
           description:
-            "Filesystem-based synchronization for the task. Defaults to true (enabled) when no messageId is given, " +
+            "Filesystem-based synchronization for the task. Defaults to true (also with messageId), " +
             "so the spawned agent always appears in `knowhow agents list` and can be attached/tailed. Pass false to opt out.",
         },
         syncRemote: {
@@ -512,7 +512,8 @@ export const startAgentTaskDefinition: Tool = {
           type: "string",
           description:
             "The taskId of the parent that should be notified by this child (e.g. via replyToParent). " +
-            "If omitted, it is auto-populated from the spawning agent's own taskId.",
+            "If omitted, it is auto-populated from the spawning agent's own taskId. A remote task UUID works too: with messageId " +
+            "the new remote task is recorded as its child, and replyToParent / sendAgentMessage reach it through the backend.",
         },
       },
       required: ["prompt"],
