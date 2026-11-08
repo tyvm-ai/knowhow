@@ -29,6 +29,12 @@ export interface KnowhowWebChannelOptions {
 }
 
 const httpStatus = (e: any): number | undefined => e?.status ?? e?.response?.status;
+/** Gateway-ish failures (ALB/CloudFront 502/503/504) that resolve on their own. */
+const isTransientHttp = (e: any): boolean => {
+  const code = httpStatus(e);
+  if (code === 502 || code === 503 || code === 504) return true;
+  return code === undefined && /\bHTTP (502|503|504)\b/.test(String(e?.message ?? ""));
+};
 
 function statusToControl(status?: string): Partial<AgentControl> | undefined {
   if (status === "killed" || status === "cancelled") return { desired: "cancelled" };
@@ -83,6 +89,9 @@ export class KnowhowWebChannel extends DuplexChannel<AgentState, AgentControl, A
   get taskId(): string | undefined {
     return this.remoteTaskId;
   }
+
+  private pollFailures = 0;
+  private pollBackoffUntil = 0;
 
   private reportOnce(message: string, error: unknown) {
     if (this.errorLogged) return;
@@ -321,6 +330,7 @@ export class KnowhowWebChannel extends DuplexChannel<AgentState, AgentControl, A
   private async idlePoll(): Promise<void> {
     if (this.stopped || this.disabled || !this.remoteTaskId || !this.lastDoc) return;
     if (Date.now() - this.lastWriteAt < (this.opts.pollMs ?? 3000)) return;
+    if (Date.now() < this.pollBackoffUntil) return;
     if (isTerminalStatus(this.ctx.snapshot().lifecycle.status)) return;
     await this.serial(async () => {
       try {
@@ -344,7 +354,17 @@ export class KnowhowWebChannel extends DuplexChannel<AgentState, AgentControl, A
             })
           );
         }
+        this.pollFailures = 0;
+        this.pollBackoffUntil = 0;
       } catch (e) {
+        if (isTransientHttp(e)) {
+          // back off (3s -> 6s -> ... capped at 30s); the next poll retries on its own
+          this.pollFailures++;
+          const base = this.opts.pollMs ?? 3000;
+          this.pollBackoffUntil =
+            Date.now() + Math.min(30000, base * 2 ** Math.min(this.pollFailures, 4));
+          return;
+        }
         this.reportOnce("Error polling Knowhow task:", e);
       }
     });
