@@ -38,6 +38,44 @@ export interface CreateSessionPlaceholderRequest {
   metadata?: Record<string, any>;
 }
 
+/** A client worker as returned by GET /api/worker-tools/ (WorkerToolService.listClientWorkers). */
+export interface ClientWorkerInfo {
+  id: string;
+  clientKind: string | null;
+  connected: boolean;
+  lastConnected: string;
+  userAgent?: string;
+  /** phone-companion only */
+  companion?: Record<string, unknown> | null;
+  tools?: { name: string; description?: string; tier?: string; parameters?: unknown }[];
+  toolsError?: string;
+  activeGrantIds?: string[];
+}
+
+export interface CallClientWorkerToolBody {
+  workerId: string;
+  tool: string;
+  arguments?: Record<string, unknown>;
+  approvalId?: string;
+  timeoutMs?: number;
+}
+
+/** POST /api/worker-tools/call result. status: ok | error | approval_pending | quarantined */
+export interface ClientWorkerToolResult {
+  tool: string;
+  workerId: string;
+  tier?: string;
+  grantId?: string;
+  status: "ok" | "error" | "approval_pending" | "quarantined";
+  approval?: { approvalId: string; toolName?: string; args?: Record<string, unknown> };
+  workerError?: string;
+  untrusted?: boolean;
+  injectionSuspected?: boolean;
+  heuristicHits?: unknown;
+  content?: unknown;
+  rawText?: string;
+}
+
 export interface CreateSessionPlaceholderResponse {
   sessionId: string;
   orgId: string;
@@ -444,6 +482,35 @@ export class KnowhowSimpleClient {
     return http.get(`${this.baseUrl}/api/users/me`, {
       headers: this.headers,
     });
+  }
+
+  /**
+   * GET /api/worker-tools/ — the user's own connected CLIENT workers (mobile app, phone companion, browser,
+   * extension, desktop) with clientKind, tools (+ consent tier) and active grants.
+   */
+  async listClientWorkersRaw(includeTools = true) {
+    await this.checkJwt();
+    return http.get<ClientWorkerInfo[]>(
+      `${this.baseUrl}/api/worker-tools/?includeTools=${includeTools ? "true" : "false"}`,
+      { headers: this.headers, timeout: 60000 }
+    );
+  }
+
+  /**
+   * POST /api/worker-tools/call — call one tool on one client worker without an agent run. The backend applies
+   * session grants / approval tiers: mutating tools answer `status: "approval_pending"` until the user approves on
+   * the worker UI, then retry with `approvalId`.
+   */
+  async callClientWorkerTool(body: CallClientWorkerToolBody) {
+    await this.checkJwt();
+    return http.post<ClientWorkerToolResult>(
+      `${this.baseUrl}/api/worker-tools/call`,
+      body,
+      {
+        headers: this.headers,
+        timeout: (body.timeoutMs ?? 60000) + 15000,
+      }
+    );
   }
 
   async getPresignedUploadUrl(source: Config["embedSources"][0]) {

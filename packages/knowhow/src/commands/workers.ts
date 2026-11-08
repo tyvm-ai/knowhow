@@ -105,9 +105,47 @@ export function addRemoteWorkerSubcommands(workersCmd: Command): void {
       "--probe",
       "Probe each online worker for its real OS/arch (runs a tiny command; slower)"
     )
+    .option(
+      "--clients",
+      "List your connected CLIENT workers (mobile app, phone-companion, browser, extension, desktop) via /api/worker-tools"
+    )
+    .option(
+      "--kind <kind>",
+      "Only client workers of this clientKind, e.g. mobile, phone-companion (implies --clients)"
+    )
+    .option(
+      "--tools",
+      "Include each client worker's tools with their consent tier (implies --clients)"
+    )
     .option("--json", "Output JSON")
     .action(async (options) => {
       try {
+        if (options.clients || options.kind || options.tools) {
+          const { listClientWorkers, formatClientWorkerTable } = await import(
+            "../services/ClientWorkerTools"
+          );
+          const { KnowhowSimpleClient } = await import(
+            "../services/KnowhowClient"
+          );
+          const clientWorkers = await listClientWorkers(
+            new KnowhowSimpleClient(),
+            {
+              includeTools: !!options.tools || !!options.json,
+              kind: options.kind,
+              all: options.all,
+            }
+          );
+          if (options.json) {
+            console.log(JSON.stringify(clientWorkers, null, 2));
+          } else if (clientWorkers.length === 0) {
+            console.log(
+              "No connected client workers. Open the Knowhow app / extension and try again (add --all to include offline ones)."
+            );
+          } else {
+            console.log(formatClientWorkerTable(clientWorkers, !!options.tools));
+          }
+          return;
+        }
         const {
           listRemoteWorkers,
           summarizeWorker,

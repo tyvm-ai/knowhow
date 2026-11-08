@@ -1,6 +1,11 @@
 const mockList = jest.fn();
 const mockResolve = jest.fn();
 const mockExec = jest.fn();
+const mockListClients = jest.fn();
+jest.mock("../../src/services/ClientWorkerTools", () => ({
+  listClientWorkers: (...a: any[]) => mockListClients(...a),
+  formatClientWorkerTable: (ws: any[]) => ws.map((w) => `CLIENT ${w.id}`).join("\n"),
+}));
 jest.mock("../../src/services/RemoteWorkers", () => ({
   listRemoteWorkers: (...a: any[]) => mockList(...a),
   summarizeWorker: (w: any) => ({ id: w.id, name: w.name }),
@@ -71,5 +76,15 @@ describe("knowhow workers", () => {
     expect(mockExec.mock.calls[0][2]).toBe("git status --short");
     expect(write).toHaveBeenCalledWith("Windows 10\n");
     write.mockRestore();
+  });
+});
+
+describe("knowhow workers list --clients/--kind/--tools", () => {
+  it("lists client workers via ClientWorkerTools instead of org-workers", async () => {
+    mockListClients.mockResolvedValue([{ id: "c1", clientKind: "mobile" }]);
+    await prog().parseAsync(["node", "knowhow", "workers", "list", "--kind", "mobile", "--tools", "--json"]);
+    expect(mockList).not.toHaveBeenCalled();
+    expect(mockListClients.mock.calls[0][1]).toMatchObject({ kind: "mobile", includeTools: true });
+    expect(JSON.parse(out.join("\n"))).toEqual([{ id: "c1", clientKind: "mobile" }]);
   });
 });
