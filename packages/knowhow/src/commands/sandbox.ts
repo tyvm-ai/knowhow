@@ -419,6 +419,10 @@ export function addSandboxCommand(program: Command): void {
     .option("--sandbox-name <name>", "Source sandbox name (alternative to --sandbox-id)")
     .option("--snapshot-id <id>", "Snapshot ID to regenerate")
     .option("--snapshot-name <name>", "Snapshot label to regenerate")
+    .option(
+      "--clean",
+      "Force a clean regeneration (fresh boot of the base image) instead of the default incremental one (fork from the snapshot being regenerated)"
+    )
     .option("--no-wait", "Trigger regeneration and return immediately (do not poll for completion)")
     .option("--timeout-minutes <min>", "Max time for the full regen cycle", "60")
     .action(
@@ -427,6 +431,7 @@ export function addSandboxCommand(program: Command): void {
         sandboxName?: string;
         snapshotId?: string;
         snapshotName?: string;
+        clean?: boolean;
         wait: boolean;
         timeoutMinutes: string;
       }) => {
@@ -466,8 +471,11 @@ export function addSandboxCommand(program: Command): void {
         // updated snapshot (regenerationSandboxId set). It runs the full
         // cycle (fork ephemeral → setupScript → snapshot) in the background.
         console.log("\n📡 Triggering backend regeneration...");
+        // Default is incremental (the backend may still choose clean when the
+        // snapshot is stale / never regenerated); --clean forces a clean boot.
         const triggered = await apiPost<SandboxSnapshot>(
-          `/sandboxes/${sandboxId}/snapshots/${snapshotId}/regenerate`
+          `/sandboxes/${sandboxId}/snapshots/${snapshotId}/regenerate`,
+          opts.clean ? { mode: "clean" } : undefined
         );
         console.log(`   regenerationSandboxId: ${triggered.regenerationSandboxId || "(none)"}`);
 
