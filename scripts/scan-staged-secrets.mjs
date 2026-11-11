@@ -10,12 +10,20 @@ const SENSITIVE_ENV_NAME =
   /(?:^|_)(?:API_?KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE_?KEY|ACCESS_?KEY|CLIENT_?SECRET)(?:$|_)/i;
 const PLACEHOLDER_VALUE = /^(?:true|false|null|undefined|none|changeme|example|placeholder|redacted|test|dummy|your[_-].*|\*+)$/i;
 
+// `\b` treats `-`, `_`, `+` and `/` as word boundaries, so token prefixes such
+// as `hf_` or `sk-` matched inside base64/base64url blobs (e.g. Path of
+// Building build codes, compressed payloads). Require that a token is not
+// embedded in a longer run of base64/base64url characters on either side.
+const NOT_AFTER_BLOB = String.raw`(?<![A-Za-z0-9_+/-])`;
+const NOT_BEFORE_BLOB = String.raw`(?![A-Za-z0-9_+/-])`;
+const token = (body) => new RegExp(`${NOT_AFTER_BLOB}(?:${body})${NOT_BEFORE_BLOB}`, "g");
+
 const TOKEN_PATTERNS = [
-  ["Anthropic API key", /\bsk-ant-(?:api\d{2}-)?[A-Za-z0-9_-]{40,}\b/g],
-  ["OpenAI API key", /\bsk-(?!ant-)(?:proj-|svcacct-)?[A-Za-z0-9_-]{40,}\b/g],
-  ["Hugging Face token", /\bhf_[A-Za-z0-9]{30,}\b/g],
-  ["GitHub token", /\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,})\b/g],
-  ["AWS access key", /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g],
+  ["Anthropic API key", token(String.raw`sk-ant-(?:api\d{2}-)?[A-Za-z0-9_-]{40,}`)],
+  ["OpenAI API key", token(String.raw`sk-(?!ant-)(?:proj-|svcacct-)?[A-Za-z0-9_-]{40,}`)],
+  ["Hugging Face token", token(String.raw`hf_[A-Za-z0-9]{30,}`)],
+  ["GitHub token", token(String.raw`gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}`)],
+  ["AWS access key", token(String.raw`(?:AKIA|ASIA)[A-Z0-9]{16}`)],
   ["private key", /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/g],
 ];
 
