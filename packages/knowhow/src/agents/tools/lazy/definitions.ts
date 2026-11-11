@@ -5,7 +5,7 @@ export const listAvailableToolsDefinition: Tool = {
   function: {
     name: "listAvailableTools",
     description:
-      "List all available tools in the system, showing which are currently enabled and disabled. Use this to discover what tools exist before enabling them. Optionally filter by glob patterns to search for specific tools.",
+      "List all available tools in the system, showing which are currently enabled and disabled. Use this to discover what tools exist before enabling them. Optionally filter by glob patterns to search for specific tools. Useful ones that are often disabled: executeScript/startScript (multi-step workflows, polling, waiting on CI), sendAgentMessage / waitForAgentCompleted / waitForAgentMessage / listAgents / replyToParent (coordinate with other agents).",
     parameters: {
       type: "object",
       positional: true,

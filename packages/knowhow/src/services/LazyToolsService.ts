@@ -10,6 +10,15 @@ import {
 } from "../agents/tools/lazy";
 import { definitions } from "../agents/tools/lazy/definitions";
 
+/** Enabled automatically together with startAgentTask (agent collaboration primitives). */
+export const AGENT_COORDINATION_TOOLS = [
+  "sendAgentMessage",
+  "waitForAgentCompleted",
+  "waitForAgentMessage",
+  "listAgents",
+  "replyToParent",
+];
+
 /*
  *
  * This ToolService design allows an agent to start with a few enabled tools,
@@ -58,6 +67,12 @@ export class LazyToolsService extends ToolsService {
     });
   }
 
+  // Pinned tools (e.g. expandTokens) must be visible immediately.
+  pinTools(names: string[]) {
+    super.pinTools(names);
+    this.updateVisibleTools();
+  }
+
   // Override addTools to store all tools but not expose them yet
   addTools(tools: Tool[]) {
     // Store tools in allTools instead of this.tools
@@ -104,6 +119,14 @@ export class LazyToolsService extends ToolsService {
       if (!this.enabledPatterns.includes(pattern)) {
         this.enabledPatterns.push(pattern);
       }
+    }
+
+    // Agents that can spawn sub-agents must also be able to coordinate with them.
+    if (
+      this.enabledPatterns.some((p) => minimatch("startAgentTask", p, { nocase: true })) &&
+      !this.enabledPatterns.includes(AGENT_COORDINATION_TOOLS[0])
+    ) {
+      this.enabledPatterns.push(...AGENT_COORDINATION_TOOLS);
     }
 
     this.updateVisibleTools();
@@ -184,6 +207,12 @@ export class LazyToolsService extends ToolsService {
 
     for (const tool of this.allTools) {
       const name = tool.function.name;
+
+      // Pinned tools are always visible and cannot be disabled
+      if (this.isToolPinned(name)) {
+        enabledTools.push(tool);
+        continue;
+      }
 
       // Check if disabled by any pattern
       const isDisabled = this.disabledPatterns.some((pattern) =>

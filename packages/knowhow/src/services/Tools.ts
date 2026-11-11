@@ -199,6 +199,27 @@ export class ToolsService {
     this.tools.push(tool);
   }
 
+  /**
+   * Names of tools that must always be visible/callable by the agent (e.g.
+   * expandTokens once a compressor can emit placeholders pointing at it).
+   * Pinned tools survive enable/disable filtering in lazy tool services.
+   */
+  private pinnedToolNames = new Set<string>();
+
+  pinTools(names: string[]) {
+    for (const name of names) {
+      this.pinnedToolNames.add(name);
+    }
+  }
+
+  getPinnedToolNames() {
+    return [...this.pinnedToolNames];
+  }
+
+  isToolPinned(name: string) {
+    return this.pinnedToolNames.has(name);
+  }
+
   addTools(tools: Tool[]) {
     // Prevent duplicate tool names
     const existingTools = this.getToolNames();

@@ -183,6 +183,11 @@ export interface WaitForAgentCompletedParams {
   pollIntervalMs?: number;
   /** Force polling a remote (backend-synced) task by UUID. */
   remote?: boolean;
+  /**
+   * How long to wait for a just-spawned task's directory to appear before reporting it
+   * missing. Default 20000ms; pass 0 to fail immediately.
+   */
+  dirGraceMs?: number;
   _ctx?: ToolCallContext;
 }
 
@@ -379,14 +384,23 @@ export async function waitForAgentCompleted(
     }
   }
 
+  // startAgentTask returns as soon as the child process is spawned; the child creates its
+  // task directory a moment later. Give a freshly-spawned task a grace period before
+  // declaring it missing (this used to make `startAgentTask` + `waitForAgentCompleted` in a
+  // script fail with "No agent task directory found").
+  const dirGraceMs = Math.max(0, params.dirGraceMs ?? 20000);
+  const graceStart = Date.now();
   for (const id of ids) {
-    if (!fs.existsSync(path.join(agentsDir(), id))) {
-      return JSON.stringify({
-        taskId: id,
-        status: "error",
-        costUsd: 0,
-        error: `No agent task directory found for taskId: ${id}`,
-      } as AgentTaskResult);
+    while (!fs.existsSync(path.join(agentsDir(), id))) {
+      if (Date.now() - graceStart >= dirGraceMs || signal?.aborted) {
+        return JSON.stringify({
+          taskId: id,
+          status: "error",
+          costUsd: 0,
+          error: `No agent task directory found for taskId: ${id}`,
+        } as AgentTaskResult);
+      }
+      await sleepOrAbort(250, signal);
     }
   }
 
@@ -591,6 +605,11 @@ export const waitForAgentCompletedDefinition: Tool = {
           type: "number",
           description:
             "How often to poll the task status in milliseconds. Default: 2000.",
+        },
+        dirGraceMs: {
+          type: "number",
+          description:
+            "How long to wait for a just-spawned task's directory to appear before reporting it missing. Default: 20000; 0 fails immediately.",
         },
         remote: {
           type: "boolean",

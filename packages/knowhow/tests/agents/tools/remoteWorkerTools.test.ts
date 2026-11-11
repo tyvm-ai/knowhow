@@ -197,7 +197,7 @@ describe("waitForAgentCompleted remote fallback", () => {
   });
 
   it("non-UUID missing ids keep the local error", async () => {
-    const r = JSON.parse(await waitForAgentCompleted({ taskId: "nope" }));
+    const r = JSON.parse(await waitForAgentCompleted({ taskId: "nope", dirGraceMs: 0 }));
     expect(r.status).toBe("error");
     expect(r.error).toMatch(/No agent task directory/);
   });

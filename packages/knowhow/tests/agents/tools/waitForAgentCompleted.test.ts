@@ -42,9 +42,23 @@ describe("waitForAgentCompleted", () => {
   });
 
   it("returns error when task directory does not exist", async () => {
-    const res = JSON.parse(await waitForAgentCompleted({ taskId: "nope" }));
+    const res = JSON.parse(
+      await waitForAgentCompleted({ taskId: "nope", dirGraceMs: 0 })
+    );
     expect(res.status).toBe("error");
     expect(res.error).toMatch(/No agent task directory/);
+  });
+
+  it("waits for a just-spawned task's directory to appear (startAgentTask race)", async () => {
+    setTimeout(
+      () => makeTask("late-1", { status: "completed", result: "ok" }),
+      700
+    );
+    const res = JSON.parse(
+      await waitForAgentCompleted({ taskId: "late-1", dirGraceMs: 5000 })
+    );
+    expect(res.status).toBe("completed");
+    expect(res.finalAnswer).toBe("ok");
   });
 
   it("returns immediately with structured result for a completed task", async () => {
@@ -330,7 +344,7 @@ describe("waitForAgentCompleted", () => {
     it("taskIds errors when one directory is missing", async () => {
       makeTask("m-x", { status: "running" });
       const res = JSON.parse(
-        await waitForAgentCompleted({ taskIds: ["m-x", "ghost"] })
+        await waitForAgentCompleted({ taskIds: ["m-x", "ghost"], dirGraceMs: 0 })
       );
       expect(res.status).toBe("error");
       expect(res.error).toMatch(/ghost/);

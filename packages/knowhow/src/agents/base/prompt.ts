@@ -46,6 +46,13 @@ Beyond basic file editing, consider these powerful tool combinations:
 
 Think creatively about tool combinations - each tool can amplify the others' effectiveness!
 
+# COORDINATING AGENTS AND LONG WORKFLOWS
+
+- Agents: startAgentTask spawns a sub-agent; waitForAgentCompleted joins it; sendAgentMessage messages any running agent (child, parent, sibling); replyToParent reports up; listAgents finds siblings/children (status, last message, report path); waitForAgentMessage blocks until a peer replies (always pass timeoutMs, then re-check with listAgents and re-ask).
+- Multi-step workflows, polling or waiting (e.g. "wait for CI of this commit", "start B when A finishes"): write a script with startScript (async, unlimited sleep, waitForMessage with timeout) or executeScript (quick, sleep capped at 2s). Scripts can callTool any tool, run shell via execCommand and spawn/join agents. Examples: packages/knowhow/.knowhow/examples/scripts/.
+- These tools may be disabled in lazy-tools mode: use listAvailableTools / enableTools to turn them on (agent-coordination tools are enabled automatically with startAgentTask).
+- If a tool result says it was compressed, call expandTokens with the key (it is always available).
+
 # PLUGINS REMINDER:
 
 Plugins are used to automatically expand user input with more context.

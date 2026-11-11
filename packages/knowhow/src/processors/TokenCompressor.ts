@@ -61,6 +61,10 @@ export class TokenCompressor implements JsonCompressorStorage {
   ]);
 
 
+  /** Tools whose results are left uncompressed up to LARGE_THRESHOLD_TOKENS. */
+  static LARGE_THRESHOLD_TOOLS: ReadonlySet<string> = new Set(["readFile"]);
+  static LARGE_THRESHOLD_TOKENS = 15000;
+
   constructor(toolsService?: ToolsService) {
     this.jsonCompressor = new JsonCompressor(
       this,
@@ -352,6 +356,19 @@ export class TokenCompressor implements JsonCompressorStorage {
           continue;
         }
 
+        // File reads are the content agents most need verbatim: only compress
+        // them when they are really large.
+        if (
+          message.role === "tool" &&
+          message.name &&
+          TokenCompressor.LARGE_THRESHOLD_TOOLS.has(message.name) &&
+          typeof message.content === "string" &&
+          message.content.length <=
+            TokenCompressor.LARGE_THRESHOLD_TOKENS * 4
+        ) {
+          continue;
+        }
+
         await this.compressMessage(message);
       }
     };
@@ -422,6 +439,10 @@ export class TokenCompressor implements JsonCompressorStorage {
   registerTool(toolsService?: ToolsService): void {
     if (toolsService) {
       toolsService.addTools([expandTokensDefinition]);
+      // Agents that can receive compressed placeholders MUST be able to call
+      // expandTokens, even in lazy/minimal tool modes where it would otherwise
+      // be a disabled tool.
+      toolsService.pinTools?.([this.toolName]);
       toolsService.addFunctions({
         [this.toolName]: (
           key: string,

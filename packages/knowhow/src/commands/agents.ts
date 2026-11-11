@@ -31,6 +31,12 @@ import {
   REASONING_EFFORTS,
 } from "../clients/types";
 import { getConfig } from "../config";
+import {
+  findReportPath,
+  getAgentStatus,
+  lastAssistantOfMeta,
+  oneLine,
+} from "../services/agentTaskIndex";
 
 const AGENTS_DIR = path.join(".knowhow", "processes", "agents");
 const SESSIONS_DIR = path.join(".knowhow", "chats", "sessions");
@@ -92,30 +98,10 @@ function pidAlive(pid: number): boolean {
 
 /**
  * Get the effective status, reconciling persisted state with process liveness.
- * An agent can be terminated before its AgentSession gets a chance to finalize its
- * files; those records must not remain "running" forever.
+ * (Implementation shared with the `listAgents` tool: services/agentTaskIndex.)
  */
 export function getStatus(taskId: string, meta: any | null): string {
-  const persisted = meta?.status || loadStatus(taskId) || "unknown";
-  if (TERMINAL_STATUSES.has(persisted)) return persisted;
-  if (meta?.inProgress === false) return "completed";
-  if (!ACTIVE_STATUSES.has(persisted)) return persisted;
-
-  const pid = meta?.pid ?? meta?.processId;
-  if (typeof pid === "number") {
-    return pidAlive(pid) ? persisted : "failed";
-  }
-
-  const lastKnownTime = meta?.lastUpdate ?? meta?.startTime;
-  const lastKnownMs = lastKnownTime ? new Date(lastKnownTime).getTime() : NaN;
-  if (
-    !Number.isFinite(lastKnownMs) ||
-    Date.now() - lastKnownMs > UNVERIFIED_TASK_GRACE_MS
-  ) {
-    return "stale";
-  }
-
-  return persisted;
+  return getAgentStatus(taskId, meta, AGENTS_DIR);
 }
 
 function elapsedStr(startIso: string | undefined, endIso?: string): string {
@@ -238,6 +224,11 @@ type Row = {
   cost: string;
   elapsed: string;
   lastUpdate: string;
+  parentTaskId?: string;
+  /** One-line, truncated last assistant message. */
+  lastMessage: string;
+  /** Best-effort report/output path (metadata, artifacts, or a path in the result). */
+  reportPath?: string;
 };
 
 function buildRows(includeAll: boolean): Row[] {
@@ -272,6 +263,7 @@ function buildRows(includeAll: boolean): Row[] {
       ? new Date(meta.lastUpdate).toLocaleString()
       : "?";
 
+    const lastText = lastAssistantOfMeta(meta);
     rows.push({
       taskId,
       displayId: shortId(taskId),
@@ -280,6 +272,9 @@ function buildRows(includeAll: boolean): Row[] {
       cost,
       elapsed,
       lastUpdate,
+      parentTaskId: meta?.parentTaskId,
+      lastMessage: oneLine(lastText, 140),
+      reportPath: findReportPath(meta, lastText),
     });
   }
 
@@ -321,7 +316,11 @@ function resolveTaskId(value: string, includeAll = false): string | null {
 // Command handlers
 // ---------------------------------------------------------------------------
 
-async function cmdList(opts: { all: boolean; json: boolean }): Promise<void> {
+async function cmdList(opts: {
+  all: boolean;
+  json: boolean;
+  wide?: boolean;
+}): Promise<void> {
   const rows = buildRows(opts.all);
 
   if (rows.length === 0) {
@@ -339,13 +338,26 @@ async function cmdList(opts: { all: boolean; json: boolean }): Promise<void> {
     console.log(
       JSON.stringify(
         rows.map(
-          ({ taskId, agentName, status, cost, elapsed, lastUpdate }) => ({
+          ({
             taskId,
             agentName,
             status,
             cost,
             elapsed,
             lastUpdate,
+            parentTaskId,
+            lastMessage,
+            reportPath,
+          }) => ({
+            taskId,
+            agentName,
+            status,
+            cost,
+            elapsed,
+            lastUpdate,
+            parentTaskId,
+            lastMessage,
+            reportPath,
           })
         ),
         null,
@@ -386,6 +398,18 @@ async function cmdList(opts: { all: boolean; json: boolean }): Promise<void> {
         row.lastUpdate +
         "\n"
     );
+    if (opts.wide) {
+      // Orchestrator view: who spawned it, what it last said, where its report is.
+      if (row.parentTaskId) {
+        process.stdout.write(`    parent: ${shortId(row.parentTaskId, 80)}\n`);
+      }
+      if (row.lastMessage) {
+        process.stdout.write(`    last:   ${row.lastMessage}\n`);
+      }
+      if (row.reportPath) {
+        process.stdout.write(`    report: ${row.reportPath}\n`);
+      }
+    }
   });
   console.log(
     "\nTip: use -i <#> with tail/status/attach to select by row number, e.g. knowhow agents attach -i 1\n"
@@ -949,6 +973,11 @@ export function addAgentsCommand(
     )
     .option("--all", "Include completed and killed tasks", false)
     .option("--json", "Output as JSON", false)
+    .option(
+      "--wide",
+      "Also show parent task, last assistant message (one line) and report path",
+      false
+    )
     .action(async (opts) => {
       await cmdList(opts);
     });
