@@ -23,10 +23,12 @@ import {
   GoogleTTSModels,
   GoogleEmbeddingModelsList,
   GoogleReasoningModels,
+  GoogleDecisionModels,
 } from "../types";
 import { GeminiTextPricing } from "./pricing";
 import { ContextLimits } from "./contextLimits";
 import { ModelModality, TokenUsage } from "./types";
+import { emitResponseMetadata } from "./responseMetadata";
 
 import {
   GenericClient,
@@ -53,6 +55,10 @@ import {
   FileUploadResponse,
   FileDownloadOptions,
   FileDownloadResponse,
+  DecisionOptions,
+  DecisionResponse,
+  DecisionContent,
+  DecisionQuestion,
 } from "./types";
 
 function getMimeTypeFromUrl(url: string): string {
@@ -433,9 +439,10 @@ export class GenericGeminiClient implements GenericClient {
 
     // Gemini 3.x — use thinkingLevel
     if (GoogleThinkingLevelModels.includes(model)) {
-      // Gemini 4 Argon, 3.8 Flash and 3.7 Flash reject "minimal"; low is
-      // their least intensive level.
+      // Gemini 4 Carbon, 4 Argon, 3.8 Flash and 3.7 Flash reject "minimal";
+      // low is their least intensive level.
       const noMinimalModels: string[] = [
+        Models.google.Gemini_4_Carbon,
         Models.google.Gemini_4_Argon,
         Models.google.Gemini_38_Flash,
         Models.google.Gemini_37_Flash,
@@ -794,6 +801,7 @@ export class GenericGeminiClient implements GenericClient {
         image: GoogleImageModels,
         audio: GoogleTTSModels,
         video: GoogleVideoModels,
+        decision: GoogleDecisionModels,
       };
       return (map[modality] ?? []).map((id) => ({ id }));
     }
@@ -805,6 +813,113 @@ export class GenericGeminiClient implements GenericClient {
       console.error("Error fetching Google GenAI models:", error);
       throw error;
     }
+  }
+
+  /**
+   * Gemini Decisions API (POST /v1beta/decisions). Returns calibrated
+   * probabilities for noul / choice / score questions with zero output tokens.
+   * Uses REST directly — the SDK only exposes `decisions` from v3.2 onward.
+   */
+  async decide(options: DecisionOptions): Promise<DecisionResponse> {
+    const apiKey = this.apiKey || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY is required to use Gemini decisions.");
+    }
+    const model = options.model || Models.google.Gemini_Decision_1;
+
+    const response = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/decisions",
+      {
+        method: "POST",
+        headers: {
+          "x-goog-api-key": apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model,
+          input: GenericGeminiClient.toDecisionInput(options.state),
+          questions: GenericGeminiClient.toDecisionQuestions(options.questions),
+        }),
+        signal: options.signal,
+      }
+    );
+
+    emitResponseMetadata(options, {
+      statusCode: response.status,
+      headers: response.headers,
+      requestId: response.headers.get("x-request-id") ?? undefined,
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(
+        `Gemini decision request failed (${response.status} ${response.statusText}): ${body}`
+      );
+    }
+
+    const result = (await response.json()) as {
+      answers: DecisionResponse["answers"];
+      usage?: {
+        total_input_tokens?: number;
+        total_output_tokens?: number;
+        total_tokens?: number;
+      };
+    };
+
+    const usage = {
+      input_tokens: result.usage?.total_input_tokens ?? 0,
+      output_tokens: result.usage?.total_output_tokens ?? 0,
+    };
+    const pricing = GeminiTextPricing[model];
+    const usd_cost = pricing
+      ? (usage.input_tokens * (pricing.input ?? 0) +
+          usage.output_tokens * (pricing.output ?? 0)) /
+        1_000_000
+      : undefined;
+
+    return { model, answers: result.answers, usage, usd_cost };
+  }
+
+  /**
+   * Google's `input` accepts a string, a content block, or an array of content
+   * blocks. Anything else (plain objects/arrays/numbers) is serialized to a
+   * JSON string, as recommended for structured data by the Decisions API docs.
+   */
+  static toDecisionInput(state: DecisionContent): unknown {
+    if (typeof state === "string") return state;
+    const blockTypes = ["text", "image", "audio", "video", "document"];
+    const isBlock = (v: unknown) =>
+      !!v &&
+      typeof v === "object" &&
+      !Array.isArray(v) &&
+      blockTypes.includes((v as { type?: unknown }).type as string);
+    if (isBlock(state)) return state;
+    if (Array.isArray(state) && state.length > 0 && state.every(isBlock)) {
+      return state;
+    }
+    return JSON.stringify(state);
+  }
+
+  /** Translate Jev-style noul criteria (`true`/`false`) to Google's field names. */
+  static toDecisionQuestions(
+    questions: Record<string, DecisionQuestion>
+  ): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [key, question] of Object.entries(questions)) {
+      if (question.type === "noul" && question.criteria) {
+        const { true: t, false: f, true_description, false_description } =
+          question.criteria;
+        const criteria: Record<string, DecisionContent> = {};
+        const yes = true_description ?? t;
+        const no = false_description ?? f;
+        if (yes !== undefined) criteria.true_description = yes;
+        if (no !== undefined) criteria.false_description = no;
+        out[key] = { ...question, criteria };
+      } else {
+        out[key] = question;
+      }
+    }
+    return out;
   }
 
   async createEmbedding(options: EmbeddingOptions): Promise<EmbeddingResponse> {

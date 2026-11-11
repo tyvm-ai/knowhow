@@ -8,7 +8,7 @@ export interface PricingChangelogEntry {
   /** Optional human-readable note about the change (e.g. "Promotional pricing announcement") */
   note?: string;
   /** The pricing values that were in effect from this date */
-  pricing: Omit<ModelPricing, "deprecated" | "deprecationDate" | "limitedAvailability" | "replacedBy" | "reasoningLevels" | "useResponsesApi" | "changelog">;
+  pricing: Omit<ModelPricing, "deprecated" | "deprecationDate" | "limitedAvailability" | "replacedBy" | "routesTo" | "routesToDate" | "reasoningLevels" | "useResponsesApi" | "changelog">;
 }
 
 export type ModelType =
@@ -45,6 +45,15 @@ export interface ModelPricing {
   deprecationDate?: string;
   limitedAvailability?: boolean;
   replacedBy?: string;
+  /**
+   * The provider transparently reroutes requests for this model to another
+   * model (and bills at that model's rates). When set, AIClient sends requests
+   * straight to the target so request shaping (e.g. thinking config) and cost
+   * tracking match what the provider actually serves.
+   */
+  routesTo?: string;
+  /** ISO date (YYYY-MM-DD) the reroute takes effect. Omit if already in effect. */
+  routesToDate?: string;
   /** Supported reasoning effort levels for this model (ordered low→high). If set, effort will be clamped to these values. */
   reasoningLevels?: string[];
   /** If true, this model must be called via the Responses API (/v1/responses) instead of /v1/chat/completions */
@@ -64,6 +73,10 @@ export interface ModelCatalogEntry {
   limitedAvailability?: boolean;
   /** Recommended replacement model ID when this model is deprecated */
   replacedBy?: string;
+  /** Model the provider reroutes requests to (see ModelPricing.routesTo) */
+  routesTo?: string;
+  /** ISO date the reroute takes effect (see ModelPricing.routesToDate) */
+  routesToDate?: string;
 }
 
 // ─── Bulk catalog helpers ─────────────────────────────────────────────────────
@@ -73,6 +86,8 @@ export interface DeprecationOptions {
   deprecationDate?: string;
   limitedAvailability?: boolean;
   replacedBy?: string;
+  routesTo?: string;
+  routesToDate?: string;
 }
 
 function makeEntries(
@@ -89,8 +104,10 @@ function makeEntries(
     const deprecationDate  = deprecation?.deprecationDate  ?? p.deprecationDate;
     const limitedAvailability = deprecation?.limitedAvailability ?? p.limitedAvailability;
     const replacedBy       = deprecation?.replacedBy       ?? p.replacedBy;
+    const routesTo         = deprecation?.routesTo         ?? p.routesTo;
+    const routesToDate     = deprecation?.routesToDate     ?? p.routesToDate;
     // Strip metadata fields before storing as pricing
-    const { deprecated: _d, deprecationDate: _dd, limitedAvailability: _la, replacedBy: _rb, reasoningLevels: _rl, useResponsesApi: _ura, ...pricingOnly } = p;
+    const { deprecated: _d, deprecationDate: _dd, limitedAvailability: _la, replacedBy: _rb, routesTo: _rt, routesToDate: _rtd, reasoningLevels: _rl, useResponsesApi: _ura, ...pricingOnly } = p;
     return {
       id,
       provider,
@@ -100,6 +117,8 @@ function makeEntries(
       deprecationDate,
       limitedAvailability,
       replacedBy,
+      ...(routesTo ? { routesTo } : {}),
+      ...(routesToDate ? { routesToDate } : {}),
     };
   });
 }
@@ -128,5 +147,7 @@ export function completion(
     deprecationDate: deprecation?.deprecationDate,
     limitedAvailability: deprecation?.limitedAvailability,
     replacedBy: deprecation?.replacedBy,
+    ...(deprecation?.routesTo ? { routesTo: deprecation.routesTo } : {}),
+    ...(deprecation?.routesToDate ? { routesToDate: deprecation.routesToDate } : {}),
   };
 }

@@ -491,7 +491,16 @@ export type DecisionContent =
 export type NoulQuestion = {
   type: "noul";
   instructions: DecisionContent;
-  criteria?: { true?: DecisionContent; false?: DecisionContent };
+  /**
+   * Jev uses `true`/`false`; Google uses `true_description`/`false_description`.
+   * Either form is accepted — provider clients translate as needed.
+   */
+  criteria?: {
+    true?: DecisionContent;
+    false?: DecisionContent;
+    true_description?: DecisionContent;
+    false_description?: DecisionContent;
+  };
 };
 
 export type ChoiceQuestion = {
@@ -514,7 +523,12 @@ export interface DecisionOptions extends RetryOptions {
   questions: Record<string, DecisionQuestion>;
 }
 
-export type NoulAnswer = { type: "noul"; noul: number };
+export type NoulAnswer = {
+  type: "noul";
+  noul: number;
+  /** max(noul, 1 - noul). Returned by Google; optional for other providers. */
+  confidence?: number;
+};
 export type ChoiceAnswer = {
   type: "choice";
   choice: string;

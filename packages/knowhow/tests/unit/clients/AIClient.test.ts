@@ -452,3 +452,62 @@ describe("AIClient — retry / timeout / AbortSignal", () => {
     });
   });
 });
+
+// ─── Provider reroutes (deprecated models) ──────────────────────────────────
+
+describe("AIClient provider reroutes", () => {
+  const makeClient = () => {
+    const aiClient = new AIClient();
+    const mock = {
+      setKey: jest.fn(),
+      getModels: jest.fn().mockResolvedValue([]),
+      createChatCompletion: jest.fn().mockResolvedValue(mockCompletion()),
+    } as unknown as GenericClient;
+    return { aiClient, mock };
+  };
+
+  beforeEach(() => {
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    (console.warn as jest.Mock).mockRestore();
+  });
+
+  it("sends gemini-3.7-flash requests to gemini-3.8-flash for google", async () => {
+    const { aiClient, mock } = makeClient();
+    aiClient.registerClient("google", mock);
+    aiClient.registerModels("google", ["gemini-3.7-flash", "gemini-3.8-flash"]);
+
+    expect(aiClient.getClient("google", "gemini-3.7-flash").model).toBe("gemini-3.8-flash");
+    await aiClient.createCompletion("google", {
+      model: "gemini-3.7-flash",
+      messages: [{ role: "user", content: "hi" }],
+    });
+    expect((mock.createChatCompletion as jest.Mock).mock.calls[0][0].model).toBe(
+      "gemini-3.8-flash"
+    );
+  });
+
+  it("keeps the requested model when the target isn't registered", () => {
+    const { aiClient, mock } = makeClient();
+    aiClient.registerClient("google", mock);
+    aiClient.registerModels("google", ["gemini-3.5-flash"]);
+    expect(aiClient.getClient("google", "gemini-3.5-flash").model).toBe("gemini-3.5-flash");
+  });
+
+  it("does not reroute on unrelated hosts using the bare id", () => {
+    const { aiClient, mock } = makeClient();
+    aiClient.registerClient("copilot", mock);
+    aiClient.registerModels("copilot", ["gemini-3.7-flash", "gemini-3.8-flash"]);
+    expect(aiClient.getClient("copilot", "gemini-3.7-flash").model).toBe("gemini-3.7-flash");
+  });
+
+  it("reroutes provider-prefixed ids on proxies", () => {
+    const { aiClient, mock } = makeClient();
+    aiClient.registerClient("openrouter", mock);
+    aiClient.registerModels("openrouter", ["google/gemini-3.5-flash", "google/gemini-3.6-flash"]);
+    expect(aiClient.getClient("openrouter", "google/gemini-3.5-flash").model).toBe(
+      "google/gemini-3.6-flash"
+    );
+  });
+});

@@ -1,6 +1,7 @@
 import {
   CompletionOptions,
   CompletionResponse,
+  DecisionContent,
   DecisionOptions,
   DecisionResponse,
   EmbeddingOptions,
@@ -13,6 +14,26 @@ import { emitResponseMetadata } from "./responseMetadata";
 
 const JEV_API_URL = "https://api.typesafe.ai/v1/systemone";
 const JEV_MODELS = ["jev-latest"];
+
+/** Translate Google-style noul criteria (`true_description`) to Jev's `true`/`false`. */
+function toJevQuestions(
+  questions: DecisionOptions["questions"]
+): DecisionOptions["questions"] {
+  const out: DecisionOptions["questions"] = {};
+  for (const [key, question] of Object.entries(questions)) {
+    if (question.type === "noul" && question.criteria) {
+      const { true: t, false: f, true_description, false_description } =
+        question.criteria;
+      const criteria: { true?: DecisionContent; false?: DecisionContent } = {};
+      if ((t ?? true_description) !== undefined) criteria.true = t ?? true_description;
+      if ((f ?? false_description) !== undefined) criteria.false = f ?? false_description;
+      out[key] = { ...question, criteria };
+    } else {
+      out[key] = question;
+    }
+  }
+  return out;
+}
 
 /** Client for TypeSafe's System One decision endpoint. */
 export class GenericJevClient implements GenericClient {
@@ -40,7 +61,7 @@ export class GenericJevClient implements GenericClient {
       body: JSON.stringify({
         state: options.state,
         model: options.model ?? "jev-latest",
-        questions: options.questions,
+        questions: toJevQuestions(options.questions),
       }),
       signal: options.signal,
     });

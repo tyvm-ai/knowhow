@@ -265,6 +265,7 @@ import {
   GoogleModels, GoogleEmbeddingModels,
   GoogleTextModels, GoogleImageModels, GoogleVideoModels,
   GoogleTTSModels, GoogleEmbeddingModelsList, GoogleThinkingLevelModels, GoogleThinkingBudgetModels,
+  GoogleDecisionModels,
 } from "./clients/pricing/google";
 import {
   XaiModels, XaiTextModels, XaiImageModels, XaiVideoModels, XaiResponsesOnlyModels, XaiReasoningModels,
@@ -291,7 +292,7 @@ export {
   OpenAiTTSModels, OpenAiTranscriptionModels, OpenAiRealtimeModels,
   GoogleTextModels as GoogleReasoningModels,
   GoogleImageModels, GoogleVideoModels, GoogleTTSModels, GoogleEmbeddingModelsList,
-  GoogleThinkingLevelModels, GoogleThinkingBudgetModels,
+  GoogleThinkingLevelModels, GoogleThinkingBudgetModels, GoogleDecisionModels,
   AnthropicTextModels,
   XaiTextModels, XaiImageModels, XaiVideoModels, XaiResponsesOnlyModels, XaiReasoningModels,
 };

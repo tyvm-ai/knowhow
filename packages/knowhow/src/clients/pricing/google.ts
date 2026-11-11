@@ -2,13 +2,16 @@
  * Google model IDs, pricing, and catalog.
  * Single source of truth for all Google/Gemini models.
  */
-import { completions, embeddings, images, videos, audios, liveApi, ModelCatalogEntry, ModelPricing } from "./types";
+import { completions, embeddings, images, videos, audios, decisions, liveApi, ModelCatalogEntry, ModelPricing } from "./types";
 
 // ─── Model IDs ────────────────────────────────────────────────────────────────
 
 export const GoogleModels = {
   // Gemini 4
+  Gemini_4_Carbon: "gemini-4-carbon",
   Gemini_4_Argon: "gemini-4-argon",
+  // Decisions API (calibrated noul/choice/score answers, zero output tokens)
+  Gemini_Decision_1: "gemini-decision-1",
   // Gemini 3.8 / 3.7 / 3.6 / 3.5
   Gemini_38_Flash: "gemini-3.8-flash",
   Gemini_37_Flash: "gemini-3.7-flash",
@@ -29,6 +32,7 @@ export const GoogleModels = {
   Gemini_3_Flash_Preview: "gemini-3-flash-preview",
   Gemini_3_Pro_Image: "gemini-3-pro-image",
   Gemini_3_Pro_Image_Preview: "gemini-3-pro-image-preview",
+  Gemini_Nano_Banana_21: "gemini-nano-banana-2.1",
   Gemini_Omni_Flash_Preview: "gemini-omni-flash-preview",
   // Gemini 2.5
   Gemini_25_Pro: "gemini-2.5-pro",
@@ -66,6 +70,8 @@ export const GoogleModels = {
   Veo_3_1_Fast: "veo-3.1-fast-generate-preview",
   Veo_3_1_Lite: "veo-3.1-lite-generate-preview",
   // Audio / TTS
+  Gemini_38_Flash_TTS: "gemini-3.8-flash-tts",
+  Gemini_38_Flash_Lite_TTS: "gemini-3.8-flash-lite-tts",
   Gemini_25_Flash_TTS: "gemini-2.5-flash-preview-tts",
   Gemini_20_Flash_TTS: "gemini-2.0-flash-preview-tts",
 } as const;
@@ -90,24 +96,29 @@ export const GoogleEmbeddingModels: Record<string, string> = {
 // ─── Modality arrays ──────────────────────────────────────────────────────────
 
 export const GoogleTextModels: string[] = [
+  GoogleModels.Gemini_4_Carbon,
   GoogleModels.Gemini_4_Argon,
   GoogleModels.Gemini_38_Flash,
-  GoogleModels.Gemini_37_Flash,
   GoogleModels.Gemini_36_Flash,
-  GoogleModels.Gemini_35_Flash,
   GoogleModels.Gemini_35_Flash_Lite,
   GoogleModels.Gemini_31_Pro_Preview,
   GoogleModels.Gemini_31_Flash_Lite,
   GoogleModels.Gemini_31_Flash_Lite_Preview,
   GoogleModels.Gemini_Robotics_ER_16_Preview,
-  GoogleModels.Gemini_25_Pro,
-  GoogleModels.Gemini_25_Flash,
   GoogleModels.Gemini_25_Flash_Lite,
   GoogleModels.Gemini_20_Flash,
+  // Deprecated but still served — Google reroutes these endpoints (see
+  // routesTo in GeminiPricing). Kept registered so existing configs keep
+  // working; AIClient sends requests straight to the replacement.
+  GoogleModels.Gemini_37_Flash,      // → gemini-3.8-flash (now)
+  GoogleModels.Gemini_35_Flash,      // → gemini-3.6-flash (now)
+  GoogleModels.Gemini_25_Pro,        // → gemini-3.8-flash (from 2026-12-01)
+  GoogleModels.Gemini_25_Flash,      // → gemini-3.5-flash-lite (from 2026-12-01)
 ];
 
 // Models that support thinkingLevel (Gemini 3.x series)
 export const GoogleThinkingLevelModels: string[] = [
+  GoogleModels.Gemini_4_Carbon,
   GoogleModels.Gemini_4_Argon,
   GoogleModels.Gemini_38_Flash,
   GoogleModels.Gemini_37_Flash,
@@ -175,6 +186,7 @@ export const GemmaTextModels: string[] = [
 ];
 
 export const GoogleImageModels: string[] = [
+  GoogleModels.Gemini_Nano_Banana_21,
   GoogleModels.Gemini_31_Flash_Image,
   GoogleModels.Gemini_31_Flash_Image_Preview,
   GoogleModels.Gemini_31_Flash_Lite_Image,
@@ -198,10 +210,17 @@ export const GoogleVideoModels: string[] = [
 ];
 
 export const GoogleTTSModels: string[] = [
+  GoogleModels.Gemini_38_Flash_TTS,
+  GoogleModels.Gemini_38_Flash_Lite_TTS,
   GoogleModels.Gemini_31_Flash_TTS_Preview,
   GoogleModels.Gemini_25_Flash_TTS,
   GoogleModels.Gemini_25_Pro_TTS,
   GoogleModels.Gemini_20_Flash_TTS,
+];
+
+// Decisions API only (POST /v1beta/decisions) — not compatible with generateContent
+export const GoogleDecisionModels: string[] = [
+  GoogleModels.Gemini_Decision_1,
 ];
 
 export const GoogleEmbeddingModelsList: string[] = [
@@ -225,12 +244,25 @@ export interface GeminiModelPricing extends ModelPricing {
 
 export const GeminiPricing: Record<string, GeminiModelPricing> = {
   // ── Gemini 4 ──────────────────────────────────────────────────────────────
+  // Same introductory pricing as Argon through November 30, 2026. Standard
+  // pricing beginning December 1, 2026 is $4.00 input, $20.00 output, and
+  // $0.20 cached input. Paid tier only; implicit caching only.
+  [GoogleModels.Gemini_4_Carbon]: {
+    input: 2.0, output: 10.0,
+    context_caching: 0.1,
+  },
   // Introductory pricing through November 30, 2026. Standard pricing beginning
   // December 1, 2026 is $4.00 input, $20.00 output, and $0.20 cached input.
   // Implicit caching only (explicit caching is not supported).
   [GoogleModels.Gemini_4_Argon]: {
     input: 2.0, output: 10.0,
     context_caching: 0.1,
+  },
+  // ── Gemini Decision ───────────────────────────────────────────────────────
+  // Decisions API: shared input billed once per request regardless of question
+  // count; always 0 output tokens. No caching / batch support.
+  [GoogleModels.Gemini_Decision_1]: {
+    input: 0.1, output: 0,
   },
   // ── Gemini 3.8 / 3.7 / 3.6 / 3.5 ──────────────────────────────────────────
   // Introductory pricing through December 31, 2026. Standard pricing beginning
@@ -239,19 +271,27 @@ export const GeminiPricing: Record<string, GeminiModelPricing> = {
     input: 0.75, output: 3.75,
     context_caching: 0.075, context_caching_storage: 0.5,
   },
-  // Introductory pricing through December 31, 2026. Standard pricing beginning
-  // January 1, 2027 is $1.50 input, $7.50 output, and $0.15 cached input.
+  // Deprecated: the endpoint stays up but Google routes every request to
+  // gemini-3.8-flash (billed at 3.8 Flash rates, which match the above).
   [GoogleModels.Gemini_37_Flash]: {
     input: 0.75, output: 3.75,
     context_caching: 0.075, context_caching_storage: 0.5,
+    deprecated: true,
+    replacedBy: GoogleModels.Gemini_38_Flash,
+    routesTo: GoogleModels.Gemini_38_Flash,
   },
   [GoogleModels.Gemini_36_Flash]: {
     input: 1.5, output: 7.5,
     context_caching: 0.15, context_caching_storage: 1.0,
   },
+  // Deprecated: the endpoint stays up but Google routes every request to
+  // gemini-3.6-flash (billed at 3.6 Flash rates).
   [GoogleModels.Gemini_35_Flash]: {
     input: 1.5, output: 9.0,
     context_caching: 0.15, context_caching_storage: 1.0,
+    deprecated: true,
+    replacedBy: GoogleModels.Gemini_36_Flash,
+    routesTo: GoogleModels.Gemini_36_Flash,
   },
   [GoogleModels.Gemini_35_Flash_Lite]: {
     input: 0.3, output: 2.5,
@@ -270,6 +310,19 @@ export const GeminiPricing: Record<string, GeminiModelPricing> = {
   },
   [GoogleModels.Gemini_31_Flash_Lite_Image]: {
     input: 0.25, output: 30.0, image_generation: 0.0336, image_generation_per_1m_tokens: 30.0,
+  },
+  // Introductory pricing through December 31, 2026. Standard pricing beginning
+  // January 1, 2027 doubles: $1.00 text input, $18.00 / $12.00 audio output.
+  [GoogleModels.Gemini_38_Flash_TTS]: {
+    input: 0.5, output_audio: 9.0, output: 9.0,
+  },
+  [GoogleModels.Gemini_38_Flash_Lite_TTS]: {
+    input: 0.5, output_audio: 6.0, output: 6.0,
+  },
+  // Nano Banana 2.1: $7.50 text/thinking output, $30 / 1M image output tokens
+  // ($0.0336 per 1K image, $0.0504 per 2K image, $0.113 per 4K image).
+  [GoogleModels.Gemini_Nano_Banana_21]: {
+    input: 1.5, output: 7.5, image_generation: 0.0336, image_generation_per_1m_tokens: 30.0,
   },
   [GoogleModels.Gemini_31_Flash_TTS_Preview]: {
     input: 1.0, output_audio: 20.0, output: 20.0,
@@ -317,13 +370,23 @@ export const GeminiPricing: Record<string, GeminiModelPricing> = {
   [GoogleModels.Gemini_3_Pro_Image_Preview]: {
     input: 2, output: 12, image_generation: 0.134,
   },
+  // Deprecated: effective December 1, 2026 Google routes all requests to
+  // gemini-3.8-flash and bills at 3.8 Flash rates.
   [GoogleModels.Gemini_25_Pro]: {
     input: 1.25, input_gt_200k: 2.5, output: 10.0, output_gt_200k: 15.0,
     context_caching: 0.125, context_caching_gt_200k: 0.25, context_caching_storage: 4.5,
+    deprecated: true, deprecationDate: "2026-12-01",
+    replacedBy: GoogleModels.Gemini_38_Flash,
+    routesTo: GoogleModels.Gemini_38_Flash, routesToDate: "2026-12-01",
   },
+  // Deprecated: effective December 1, 2026 Google routes all requests to
+  // gemini-3.5-flash-lite and bills at 3.5 Flash-Lite rates.
   [GoogleModels.Gemini_25_Flash]: {
     input: 0.3, input_audio: 1.0, output: 2.5,
     context_caching: 0.03, context_caching_audio: 0.1, context_caching_storage: 1.0,
+    deprecated: true, deprecationDate: "2026-12-01",
+    replacedBy: GoogleModels.Gemini_35_Flash_Lite,
+    routesTo: GoogleModels.Gemini_35_Flash_Lite, routesToDate: "2026-12-01",
   },
   [GoogleModels.Gemini_25_Flash_Lite]: {
     input: 0.1, input_audio: 0.3, output: 0.4,
@@ -402,5 +465,6 @@ export const GOOGLE_MODEL_CATALOG: ModelCatalogEntry[] = [
   ...images(GoogleImageModels,         "google", GeminiPricing),
   ...videos(GoogleVideoModels,         "google", GeminiPricing),
   ...completions(GemmaTextModels,      "google", GemmaPricing),
+  ...decisions(GoogleDecisionModels,   "google", GeminiPricing),
   ...audios(GoogleTTSModels,           "google", GeminiPricing),
 ];

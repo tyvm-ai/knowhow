@@ -113,6 +113,7 @@ describe("reasoning effort values", () => {
   it("maps all values to valid Gemini thinking levels and budgets", () => {
     const client = new GenericGeminiClient("fake-key");
     const noMinimalModels: string[] = [
+      Models.google.Gemini_4_Carbon,
       Models.google.Gemini_4_Argon,
       Models.google.Gemini_38_Flash,
       Models.google.Gemini_37_Flash,

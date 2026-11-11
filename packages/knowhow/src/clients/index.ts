@@ -39,7 +39,11 @@ import { OpenAiTextPricing } from "./pricing/openai";
 import { AnthropicTextPricing } from "./pricing/anthropic";
 import { GeminiPricing } from "./pricing/google";
 import { withRetry } from "./withRetry";
-import { warnIfModelDeprecated } from "./deprecation";
+import {
+  warnIfModelDeprecated,
+  resolveModelRoute,
+  noteModelRerouted,
+} from "./deprecation";
 import { FireworksTextPricing } from "./pricing/fireworks";
 import {
   XaiTextPricing,
@@ -431,6 +435,21 @@ export class AIClient {
       );
     }
 
+    // Provider-side reroutes (e.g. Google sends gemini-3.7-flash requests to
+    // gemini-3.8-flash): call the target directly so request shaping and cost
+    // tracking match the model that actually serves the request. Only applies
+    // to the announcing provider or proxies addressing it by "provider/" id —
+    // other hosts (e.g. Copilot) may still serve the original model.
+    const route = resolveModelRoute(model);
+    if (
+      route &&
+      (route.provider === provider || route.proxied) &&
+      this.providerHasModel(provider, route.to)
+    ) {
+      noteModelRerouted(route);
+      model = route.to;
+    }
+
     const hasModel = this.providerHasModel(provider, model);
 
     if (!hasModel) {
@@ -498,7 +517,10 @@ export class AIClient {
     provider: string,
     options: DecisionOptions
   ): Promise<DecisionResponse> {
-    const requestedModel = options.model ?? "jev-latest";
+    const requestedModel =
+      options.model ??
+      this.decisionModels[provider]?.[0] ??
+      (provider === "google" ? "gemini-decision-1" : "jev-latest");
     const { client, model } = this.getClient(provider, requestedModel);
     if (!client?.decide) {
       throw new Error(`Provider ${provider} does not support decisions.`);

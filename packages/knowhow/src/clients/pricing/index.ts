@@ -16,7 +16,7 @@ export {
   GoogleModels, GoogleEmbeddingModels,
   GeminiPricing, GeminiTextPricing, GOOGLE_MODEL_CATALOG,
   GoogleTextModels, GoogleImageModels, GoogleVideoModels,
-  GoogleTTSModels, GoogleEmbeddingModelsList,
+  GoogleTTSModels, GoogleEmbeddingModelsList, GoogleDecisionModels,
 } from "./google";
 
 export {

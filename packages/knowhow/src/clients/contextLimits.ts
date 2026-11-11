@@ -134,7 +134,13 @@ export const ContextLimits: Record<string, number> = {
 
   // ─── Google ───────────────────────────────────────────────────────────────
   // Gemini 3.7 / 3.6 / 3.5 (text)
+  [Models.google.Gemini_4_Carbon]: 1_048_576,
   [Models.google.Gemini_4_Argon]: 1_048_576,
+  // Gemini Decision 1 — 262,144 tokens across shared input + all questions
+  [Models.google.Gemini_Decision_1]: 262_144,
+  // Gemini 3.8 TTS
+  [Models.google.Gemini_38_Flash_TTS]: 8_192,
+  [Models.google.Gemini_38_Flash_Lite_TTS]: 8_192,
   [Models.google.Gemini_38_Flash]: 1_048_576,
   [Models.google.Gemini_37_Flash]: 1_048_576,
   [Models.google.Gemini_36_Flash]: 1_000_000,
@@ -180,6 +186,7 @@ export const ContextLimits: Record<string, number> = {
   [Models.google.Veo_3_1_Lite]: 0,
   // Google image generation models — no text context window; use 0
   [Models.google.Gemini_31_Flash_Image]: 0,
+  [Models.google.Gemini_Nano_Banana_21]: 0,
   [Models.google.Gemini_31_Flash_Lite_Image]: 0,
   [Models.google.Gemini_3_Pro_Image]: 0,
   [Models.google.Gemini_20_Flash]: 1_000_000,

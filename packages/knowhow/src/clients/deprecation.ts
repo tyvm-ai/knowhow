@@ -84,4 +84,88 @@ export function warnIfModelDeprecated(
 /** Test helper */
 export function resetDeprecationWarnings() {
   warned.clear();
+  routedWarned.clear();
+}
+
+// ─── Provider reroutes ───────────────────────────────────────────────────────
+
+export interface ModelRoute {
+  /** The model id that was requested (including any "provider/" prefix) */
+  from: string;
+  /** The model id requests should actually be sent to (prefix preserved) */
+  to: string;
+  /** ISO date the reroute took effect, if the provider announced one */
+  effectiveDate?: string;
+  /** Catalog provider that announced the reroute (e.g. "google") */
+  provider: string;
+  /** True when the requested id carried a "provider/" proxy prefix */
+  proxied: boolean;
+}
+
+function isRouteInEffect(entry: ModelCatalogEntry, now: Date): boolean {
+  if (!entry.routesTo) return false;
+  if (!entry.routesToDate) return true;
+  const effective = new Date(`${entry.routesToDate}T00:00:00Z`);
+  return !isNaN(effective.getTime()) && now.getTime() >= effective.getTime();
+}
+
+/**
+ * Returns where a model's requests should go when its provider has announced
+ * that the endpoint transparently reroutes to another model (catalog
+ * `routesTo` / `routesToDate`). Follows chains (A → B → C) and preserves
+ * "provider/" prefixes used by proxy providers. Returns undefined when no
+ * reroute is currently in effect.
+ */
+export function resolveModelRoute(
+  model: string | undefined,
+  now: Date = new Date(),
+  catalog: ModelCatalogEntry[] = ALL_MODEL_CATALOG
+): ModelRoute | undefined {
+  if (!model) return undefined;
+
+  // Split off any proxy prefix: try the full id first, then progressively
+  // shorter suffixes ("knowhow/google/x" → "google/x" → "x").
+  const parts = model.split("/");
+  for (let i = 0; i < parts.length; i++) {
+    const prefix = parts.slice(0, i).join("/");
+    let current = parts.slice(i).join("/");
+    let entry = catalog.find((e) => e.id === current);
+    if (!entry) continue;
+    const routeProvider = entry.provider;
+
+    let effectiveDate: string | undefined;
+    const seen = new Set<string>([current]);
+    while (entry && isRouteInEffect(entry, now)) {
+      const next = entry.routesTo!;
+      if (seen.has(next)) break; // guard against cycles
+      effectiveDate = entry.routesToDate ?? effectiveDate;
+      current = next;
+      seen.add(current);
+      entry = catalog.find((e) => e.id === current);
+    }
+
+    if (seen.size === 1) return undefined;
+    return {
+      from: model,
+      to: prefix ? `${prefix}/${current}` : current,
+      effectiveDate,
+      provider: routeProvider,
+      proxied: !!prefix,
+    };
+  }
+  return undefined;
+}
+
+const routedWarned = new Set<string>();
+
+/** Prints a one-time notice that a model is being rerouted. */
+export function noteModelRerouted(
+  route: ModelRoute,
+  log: (msg: string) => void = (m) => console.warn(m)
+): string | undefined {
+  if (routedWarned.has(route.from)) return undefined;
+  routedWarned.add(route.from);
+  const message = `↪️  Model '${route.from}' is deprecated and rerouted by its provider; sending requests to '${route.to}'.`;
+  log(message);
+  return message;
 }
