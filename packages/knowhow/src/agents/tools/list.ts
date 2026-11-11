@@ -26,6 +26,8 @@ import {
   stopConnectionsDefinition,
 } from "./connectAgent";
 import { waitForAgentCompletedDefinition } from "./waitForAgentCompleted";
+import { waitForAgentMessageDefinition } from "./waitForAgentMessage";
+import { listAgentsDefinition } from "./listAgents";
 import {
   observeDefinition,
   stopObservingDefinition,
@@ -107,6 +109,7 @@ export const includedTools = [
       parameters: {
         type: "object",
         positional: true,
+        usesContext: true,
         properties: {
           command: {
             type: "string",
@@ -300,6 +303,7 @@ export const includedTools = [
       parameters: {
         type: "object",
         positional: true,
+        usesContext: true,
         properties: {
           filePath: {
             type: "string",
@@ -344,14 +348,26 @@ export const includedTools = [
     function: {
       name: "textSearch",
       description:
-        "Exact Search. Search for exact matches of text across files. Use embeddingSearch for fuzzy search. Use fileSearch for file paths",
+        "Exact (literal, not regex) search for text across files. Safe for any characters (quotes, $, brackets, |, leading -). Uses rg > git grep > ag > node, skips node_modules/dist/build/.git/.next/coverage/Pods/*.min.js, and caps output (~200 matches; shows per-file counts). Pass path/glob to narrow. Use embeddingSearch for fuzzy search, fileSearch for file paths.",
       parameters: {
         type: "object",
         positional: true,
         properties: {
           searchTerm: {
             type: "string",
-            description: "The text string to search for across files",
+            description: "The literal text string to search for across files (single line)",
+          },
+          path: {
+            type: "string",
+            description: "Optional file or directory to search in (default: current directory)",
+          },
+          glob: {
+            type: "string",
+            description: "Optional file glob filter, e.g. '*.ts' or 'src/**/*.tsx'",
+          },
+          maxResults: {
+            type: "number",
+            description: "Optional cap on matching lines shown (default 200)",
           },
         },
         required: ["searchTerm"],
@@ -366,7 +382,8 @@ export const includedTools = [
     type: "function",
     function: {
       name: "fileSearch",
-      description: "Search for files where the filepath includes a searchTerm",
+      description:
+        "Search for files where the filepath includes a searchTerm (case-insensitive, literal; * and ? are wildcards). Skips node_modules/dist/build/.git/.next/coverage/Pods. Results are capped (default 200).",
       parameters: {
         type: "object",
         positional: true,
@@ -374,6 +391,14 @@ export const includedTools = [
           searchTerm: {
             type: "string",
             description: "a string to search for in file paths",
+          },
+          limit: {
+            type: "number",
+            description: "Optional max number of paths to return (default 200)",
+          },
+          path: {
+            type: "string",
+            description: "Optional directory to search in (default: current directory)",
           },
         },
         required: ["searchTerm"],
@@ -412,10 +437,11 @@ export const includedTools = [
     function: {
       name: "writeFileChunk",
       description:
-        "Update or create files by writing in small chunks of text. Suitable for larger files, this tool allows incremental writing by calling it multiple times. Write chunks of around 4000 tokens",
+        "Update or create files by writing in small chunks of text. Suitable for larger files, this tool allows incremental writing by calling it multiple times. Write chunks of around 4000 tokens. If the parent directory does not exist this FAILS with an ENOENT error naming the missing ancestor (it may mean you have the wrong path). If the new location is intended, retry with createDirectories: true (and the retryKey from the error, so you don't have to resend the content).",
       parameters: {
         type: "object",
         positional: true,
+        usesContext: true,
         properties: {
           filePath: {
             type: "string",
@@ -435,6 +461,16 @@ export const includedTools = [
             type: "boolean",
             description:
               "Flag indicating whether this is the final chunk of content",
+          },
+          createDirectories: {
+            type: "boolean",
+            description:
+              "Set true ONLY when you know the parent directories are new and should be created. Default false: a missing parent directory is an error.",
+          },
+          retryKey: {
+            type: "string",
+            description:
+              "The retryKey from a previous ENOENT error. With createDirectories: true, the content from the failed call is reused (pass empty content).",
           },
         },
         required: ["filePath", "content", "isContinuing", "isDone"],
@@ -706,6 +742,7 @@ export const includedTools = [
       parameters: {
         type: "object",
         positional: true,
+        usesContext: true,
         properties: {
           findString: {
             type: "string",
@@ -750,6 +787,8 @@ export const includedTools = [
   connectAgentDefinition,
   stopConnectionsDefinition,
   waitForAgentCompletedDefinition,
+  waitForAgentMessageDefinition,
+  listAgentsDefinition,
   observeDefinition,
   stopObservingDefinition,
   ...ycmd.definitions,

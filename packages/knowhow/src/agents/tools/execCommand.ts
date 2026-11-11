@@ -20,6 +20,8 @@ type ExecResult = {
   timedOut: boolean;
   killed: boolean;
   pid?: number;
+  /** Exit code of the finished process (null/undefined if backgrounded or timed out). */
+  exitCode?: number | null;
   processId: string;
   processDirectory: string;
   logPath: string;
@@ -97,7 +99,13 @@ const execWithTimeout = async (
   if (!timedOut && failed && !output.stderr) {
     output.stderr = finalStatus?.error || `Command failed: ${command}`;
   }
-  return { ...output, timedOut, killed: timedOut, ...common };
+  return {
+    ...output,
+    timedOut,
+    killed: timedOut,
+    exitCode: finalStatus ? (finalStatus.exitCode ?? null) : null,
+    ...common,
+  };
 };
 
 /** Execute a shell command through the durable managed-process subsystem. */
@@ -127,19 +135,21 @@ export async function execCommand(
   }
 
   const context = toolService.getContext();
+  const execId = `exec-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   if (context.Events) {
-    await context.Events.emitBlocking("exec:pre-run", { command, timeout, continueInBackground, logFileName });
+    await context.Events.emitBlocking("exec:pre-run", { command, timeout, continueInBackground, logFileName, taskId: _ctx?.taskId, execId });
   }
 
 
   const parentProcessId = process.env.KNOWHOW_MANAGED_PROCESS_ID || _ctx?.taskId;
+  const startedAt = Date.now();
   const result = await execWithTimeout(command, {
     timeout: correctedTimeout,
     continueInBackground,
     logFileName,
     parentProcessId,
   });
-  const { stdout, stderr, timedOut, killed, pid, processId, processDirectory, logPath } = result;
+  const { stdout, stderr, timedOut, killed, pid, processId, processDirectory, logPath, exitCode } = result;
 
   let output = "";
   if (stderr) output += stderr + (stderr.endsWith("\n") ? "" : "\n");
@@ -160,6 +170,22 @@ export async function execCommand(
     eventResults = await context.Events.emitBlocking("exec:post-run", {
       command, timeout, continueInBackground, logFileName,
       stdout, stderr, timedOut, killed, pid, logPath, processId, processDirectory, output,
+      exitCode, cwd: process.cwd(), durationMs: Date.now() - startedAt, background,
+      taskId: _ctx?.taskId, execId,
+    });
+    // Lightweight, non-blocking completion event (e.g. for the Git plugin to commit
+    // files an exec changed). Fires for foreground and background launches; for
+    // background launches `background` is true and the command may still be running.
+    await context.Events.emitNonBlocking("tool:execCommand:done", {
+      command,
+      cwd: process.cwd(),
+      exitCode,
+      timedOut,
+      background,
+      durationMs: Date.now() - startedAt,
+      processId,
+      taskId: _ctx?.taskId,
+      execId,
     });
   }
   const eventResultsText = eventResults?.length

@@ -1,35 +1,61 @@
-import { globSync } from "glob";
 import { getConfiguredEmbeddings } from "../../embeddings";
-import { execCommand } from "./execCommand";
-import { getIgnorePattern } from "../../config";
 import { toUniqueArray } from "../../utils";
+import {
+  fileTermToRegExp,
+  isExcludedPath,
+  listFiles,
+  pathTargetsExcludedDir,
+} from "./searchBackends";
 
-export async function fileSearch(searchTerm) {
-  const searchTermLower = searchTerm.toLowerCase();
-  const pattern = `./**/*${searchTermLower}*`;
-  const ignore = await getIgnorePattern();
-  console.log({ pattern, ignore });
-  const globFiles = globSync(pattern, {
-    ignore,
-    nocase: true,
-  });
+export const FILE_SEARCH_DEFAULT_LIMIT = 200;
 
-  const embeddings = await getConfiguredEmbeddings();
-  
-  // Ensure embeddings is always an array
-  const embeddingsArray = Array.isArray(embeddings) ? embeddings : [];
-  
-  const embeddingFiles = embeddingsArray.filter((embedding) =>
-    embedding.id.toLowerCase().includes(searchTermLower)
+/**
+ * Find files whose path contains `searchTerm` (case-insensitive, literal; `*`
+ * and `?` act as wildcards). Uses `rg --files` / `git ls-files` / a node walk
+ * (never a shell) and skips node_modules, dist, build, .git, .next, coverage,
+ * Pods and *.min.js unless `searchPath` points inside one of them.
+ *
+ * Returns an array of paths. When more than `limit` paths match, the array is
+ * cut and a final "[N more ...]" entry tells the agent to narrow the term.
+ */
+export async function fileSearch(
+  searchTerm: string,
+  limit?: number | string,
+  searchPath?: string
+) {
+  const term = String(searchTerm ?? "").trim();
+  if (!term) return [];
+  const max = Number(limit) > 0 ? Number(limit) : FILE_SEARCH_DEFAULT_LIMIT;
+  const regex = fileTermToRegExp(term);
+  const target = searchPath && String(searchPath).trim() ? String(searchPath).trim() : undefined;
+
+  const listed = await listFiles(process.cwd(), target);
+  const pathMatches = listed.files.filter((f) => regex.test(f));
+
+  // Embedding ids are "<filepath>-<chunk>"; include indexed files too.
+  let embeddingIds: string[] = [];
+  try {
+    const embeddings = await getConfiguredEmbeddings();
+    const embeddingsArray = Array.isArray(embeddings) ? embeddings : [];
+    embeddingIds = embeddingsArray
+      .filter((e) => typeof e?.id === "string" && regex.test(e.id))
+      .map((e) => e.id.split("-").slice(0, -1).join("-"))
+      .filter(
+        (f) => f && regex.test(f) && (pathTargetsExcludedDir(target) || !isExcludedPath(f))
+      );
+  } catch {
+    // embeddings are optional
+  }
+
+  const all = toUniqueArray([...pathMatches, ...embeddingIds]);
+  if (all.length <= max) {
+    return listed.truncated
+      ? [...all, "[file listing was cut short (timeout/size limit); pass a narrower path]"]
+      : all;
+  }
+  const shown = all.slice(0, max);
+  shown.push(
+    `[${all.length - max} more matching files not shown (${all.length} total). Use a more specific term or pass a path.]`
   );
-
-  // ids are filepath.txt-part
-  const embeddingIds = embeddingFiles.map((r) => {
-    const parts = r.id.split("-");
-    return parts.slice(0, -1).join("-");
-  });
-
-  const allFiles = toUniqueArray([...globFiles, ...embeddingIds]);
-
-  return allFiles;
+  return shown;
 }

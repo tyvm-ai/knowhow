@@ -5,7 +5,8 @@ import { fileExists } from "../../utils";
 export async function stringReplace(
   findString: string,
   replaceString: string,
-  filePaths: string[]
+  filePaths: string[],
+  _ctx?: { taskId?: string }
 ): Promise<string> {
   // Get context from bound ToolsService
   const toolService = (
@@ -52,6 +53,7 @@ export async function stringReplace(
         eventResults.push(
           ...(await context.Events.emitBlocking("file:pre-edit", {
             filePath,
+            taskId: _ctx?.taskId,
             operation: "stringReplace",
             findString,
             replaceString,
@@ -77,6 +79,7 @@ export async function stringReplace(
         eventResults.push(
           ...(await context.Events.emitBlocking("file:post-edit", {
             filePath,
+            taskId: _ctx?.taskId,
             operation: "stringReplace",
             findString,
             replaceString,

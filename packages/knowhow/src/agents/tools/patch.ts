@@ -947,6 +947,98 @@ export function autoCorrectionPreservesChanges(
   );
 }
 
+const MISMATCH_DIFF_MAX_LINES = 40;
+
+function countLines(lines: string[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const l of lines) counts.set(l, (counts.get(l) || 0) + 1);
+  return counts;
+}
+
+function multisetDifference(a: string[], b: string[]): string[] {
+  const remaining = countLines(b);
+  const out: string[] = [];
+  for (const l of a) {
+    const n = remaining.get(l) || 0;
+    if (n > 0) remaining.set(l, n - 1);
+    else out.push(l);
+  }
+  return out;
+}
+
+/**
+ * Explain how auto-correction diverged from the requested edit.
+ * Reports the added/removed lines that differ between the request and what the
+ * auto-corrected patch would have done, plus the diff auto-correction would
+ * have written (when small) or the affected line ranges (when large).
+ */
+export function describeAutoCorrectionMismatch(
+  originalContent: string,
+  updatedContent: string,
+  requestedPatch: string
+): string {
+  const requested = parseHunks(requestedPatch);
+  const requestedAdd = requested.flatMap((h) =>
+    h.lines.filter((l) => l.startsWith("+")).map((l) => l.slice(1))
+  );
+  const requestedRem = requested.flatMap((h) =>
+    h.lines.filter((l) => l.startsWith("-")).map((l) => l.slice(1))
+  );
+
+  const actual = parsePatchLines(originalContent, updatedContent);
+  const parts: string[] = [];
+  const show = (label: string, lines: string[]) => {
+    if (!lines.length) return;
+    const shown = lines.slice(0, 8).map((l) => `    ${l.slice(0, 120)}`);
+    const more = lines.length > 8 ? `\n    ... ${lines.length - 8} more` : "";
+    parts.push(`${label} (${lines.length}):\n${shown.join("\n")}${more}`);
+  };
+  show("Requested additions that were NOT applied", multisetDifference(requestedAdd, actual.add));
+  show("Requested removals that were NOT applied", multisetDifference(requestedRem, actual.rem));
+  show("Extra additions auto-correction would have made", multisetDifference(actual.add, requestedAdd));
+  show("Extra removals auto-correction would have made", multisetDifference(actual.rem, requestedRem));
+
+  const rawDiff = createTwoFilesPatch(
+    "requested-target",
+    "auto-corrected",
+    originalContent,
+    updatedContent,
+    "",
+    "",
+    { context: 1 }
+  ).split("\n");
+  const firstHunk = rawDiff.findIndex((l) => l.startsWith("@@"));
+  const diff = firstHunk >= 0 ? rawDiff.slice(firstHunk) : [];
+  const diffLines = diff.filter((l, i) => !(i === diff.length - 1 && l === ""));
+  if (diffLines.length < MISMATCH_DIFF_MAX_LINES) {
+    parts.push(`Diff the auto-corrected patch would have applied:\n${diffLines.join("\n")}`);
+  } else {
+    const ranges = diffLines
+      .filter((l) => l.startsWith("@@"))
+      .slice(0, 10)
+      .join(" ");
+    parts.push(
+      `The auto-corrected change is large (${diffLines.length} diff lines), so it is not shown. Re-read the file around these ranges (original file line numbers): ${ranges || "(unknown)"}`
+    );
+  }
+  return parts.join("\n");
+}
+
+function parsePatchLines(original: string, updated: string) {
+  const patch = createTwoFilesPatch("a", "b", original, updated, "", "", {
+    context: 0,
+  });
+  const add: string[] = [];
+  const rem: string[] = [];
+  for (const hunk of parseHunks(patch)) {
+    for (const l of hunk.lines) {
+      if (l.startsWith("+")) add.push(l.slice(1));
+      else if (l.startsWith("-")) rem.push(l.slice(1));
+    }
+  }
+  return { add, rem };
+}
+
 // --- Existing Application/Utility Code (Keep as is, ensure imports/exports are correct) ---
 
 export async function savePatchError(
@@ -992,7 +1084,8 @@ export async function savePatchError(
 // Tool to apply a patch file to a file
 export async function patchFile(
   filePath: string,
-  patch: string
+  patch: string,
+  _ctx?: { taskId?: string }
 ): Promise<string> {
   // Get context from bound ToolsService
   const toolService = (
@@ -1191,7 +1284,12 @@ export async function patchFile(
       return [
         `❌ Patch failed: auto-correction changed the requested edit, so no changes were written.`,
         `File: ${filePath} (${originalContent.split("\n").length} lines)`,
-        `Tip: Re-read the file and submit smaller hunks with unique surrounding context.`,
+        describeAutoCorrectionMismatch(
+          originalContent,
+          updatedContent as string,
+          patch
+        ),
+        `Tip: Re-read the affected range (see line numbers above) and resubmit hunks with unique surrounding context. Do not switch to python/sed edits; a smaller patch with exact context almost always applies.`,
       ].join("\n");
     }
 
@@ -1202,6 +1300,7 @@ export async function patchFile(
         ...(await context.Events.emitBlocking("file:pre-edit", {
           filePath,
           operation: "patch",
+          taskId: _ctx?.taskId,
           patch: appliedPatch,
           originalContent,
           updatedContent: updatedContent as string,
@@ -1218,6 +1317,7 @@ export async function patchFile(
         ...(await context.Events.emitBlocking("file:post-edit", {
           filePath,
           operation: "patch",
+          taskId: _ctx?.taskId,
           patch: appliedPatch,
           originalContent,
           updatedContent: updatedContent as string,
