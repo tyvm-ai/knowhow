@@ -123,7 +123,8 @@ async function setupIsolatedContext(
   resumable: { scriptState: Record<string, unknown>; runInfo: Record<string, unknown> } = {
     scriptState: {},
     runInfo: { resumed: false, resumeCount: 0 },
-  }
+  },
+  maxSleepMs?: number
 ): Promise<void> {
   const globalRef = vmContext.global;
   await globalRef.set("globalThis", globalRef.derefInto());
@@ -224,10 +225,14 @@ async function setupIsolatedContext(
     return await ipcCall("agent_call", { agentName, query });
   });
 
-  // sleep — handled locally
-  await exposeAsync("sleep", (ms: number) =>
-    new Promise<null>((r) => setTimeout(() => r(null), ms))
-  );
+  // sleep — handled locally. Background runs have no per-call cap unless the
+  // caller set quotas.maxSleepMs; maxExecutionTimeMs bounds the whole run.
+  await exposeAsync("sleep", (ms: number) => {
+    if (typeof maxSleepMs === "number" && (typeof ms !== "number" || ms > maxSleepMs)) {
+      throw new Error(`Invalid sleep duration, sleep must be <=${maxSleepMs}ms (maxSleepMs quota)`);
+    }
+    return new Promise<null>((r) => setTimeout(() => r(null), ms));
+  });
 
   // Worker-local built-ins. These are part of the script runtime rather than
   // registered ToolsService tools, so they must be installed explicitly.
@@ -457,7 +462,7 @@ async function runScript(msg: {
       await setupIsolatedContext(vmContext, ivm, msg.availableTools || [], scriptArgs, {
         scriptState: JSON.parse(JSON.stringify(msg.scriptState ?? {})),
         runInfo: JSON.parse(JSON.stringify(msg.runInfo ?? { resumed: false, resumeCount: 0 })),
-      });
+      }, typeof msg.quotas?.maxSleepMs === "number" ? msg.quotas.maxSleepMs : undefined);
 
       const scriptWithReturn = injectReturnForLastExpression(msg.script);
       const wrappedScript = `(async function() { "use strict"; ${scriptWithReturn} })()`;

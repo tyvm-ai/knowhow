@@ -46,6 +46,12 @@ export interface ResourceQuotas {
   maxExecutionTimeMs?: number;
   maxCostUsd?: number;
   maxMemoryMb?: number;
+  /**
+   * Longest single sleep(ms) call allowed. Defaults to the KNOWHOW_SCRIPT_MAX_SLEEP_MS
+   * env var, else 2000. The total wall-clock cap (maxExecutionTimeMs) is the real
+   * protection on shared hosts; this only keeps quick scripts from idling.
+   */
+  maxSleepMs?: number;
 }
 
 // Security policy configuration

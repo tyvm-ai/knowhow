@@ -11,6 +11,7 @@ export async function executeScript(
     maxTokens,
     maxExecutionTimeMs,
     maxCostUsd,
+    maxSleepMs,
     allowNetworkAccess,
   }: {
     script: string;
@@ -19,6 +20,7 @@ export async function executeScript(
     maxTokens?: number;
     maxExecutionTimeMs?: number;
     maxCostUsd?: number;
+    maxSleepMs?: number;
     allowNetworkAccess?: boolean;
   }
 ) {
@@ -46,6 +48,7 @@ export async function executeScript(
         maxTokens,
         maxExecutionTimeMs,
         maxCostUsd,
+        maxSleepMs,
         maxMemoryMb: 100,
       },
       policy: {

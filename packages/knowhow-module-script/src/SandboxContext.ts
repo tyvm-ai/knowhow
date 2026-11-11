@@ -411,8 +411,12 @@ export class SandboxContext {
   }
 
   async sleep(ms: number): Promise<void> {
-    if (typeof ms !== "number" || ms < 0 || ms > 2000) {
-      throw new Error("Invalid sleep duration, sleep must be >0 and <2000");
+    const maxSleepMs = resolveMaxSleepMs(this.policyEnforcer.getQuotas());
+    if (typeof ms !== "number" || !Number.isFinite(ms) || ms < 0 || ms > maxSleepMs) {
+      throw new Error(
+        `Invalid sleep duration, sleep must be >=0 and <=${maxSleepMs}ms ` +
+          `(raise it with the maxSleepMs quota or KNOWHOW_SCRIPT_MAX_SLEEP_MS, or use startScript for long waits)`
+      );
     }
     await new Promise((res) => setTimeout(res, ms));
     this.tracer.emitEvent("sleep", { durationMs: ms });
@@ -481,4 +485,18 @@ export class SandboxContext {
 
     return data;
   }
+}
+
+export const DEFAULT_MAX_SLEEP_MS = 2000;
+
+/** Per-call sleep cap: quota > KNOWHOW_SCRIPT_MAX_SLEEP_MS env > 2000ms. */
+export function resolveMaxSleepMs(quotas?: { maxSleepMs?: number }): number {
+  if (typeof quotas?.maxSleepMs === "number" && quotas.maxSleepMs >= 0) {
+    return quotas.maxSleepMs;
+  }
+  const env = Number(process.env.KNOWHOW_SCRIPT_MAX_SLEEP_MS);
+  if (Number.isFinite(env) && env >= 0 && process.env.KNOWHOW_SCRIPT_MAX_SLEEP_MS !== "") {
+    return env;
+  }
+  return DEFAULT_MAX_SLEEP_MS;
 }
