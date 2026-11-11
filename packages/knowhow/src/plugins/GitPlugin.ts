@@ -152,6 +152,39 @@ Your modifications are automatically tracked separately and won't affect the use
   }
 
   /**
+   * Environment for internal-repo git commands. If the user has no git
+   * identity configured (common on fresh Linux boxes / CI, where git can't
+   * infer one), commits would fail with "Author identity unknown" — so fall
+   * back to a knowhow identity for this tracking repo only.
+   */
+  private gitEnv?: NodeJS.ProcessEnv;
+  private getGitEnv(): NodeJS.ProcessEnv {
+    if (this.gitEnv) return this.gitEnv;
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    const configured = (key: string) => {
+      try {
+        return execFileSync("git", ["config", "--get", key], {
+          cwd: this.projectRoot,
+          stdio: "pipe",
+          env,
+        })
+          .toString()
+          .trim();
+      } catch {
+        return "";
+      }
+    };
+    if (!env.GIT_AUTHOR_NAME && !env.GIT_COMMITTER_NAME && !configured("user.name")) {
+      env.GIT_AUTHOR_NAME = env.GIT_COMMITTER_NAME = "knowhow";
+    }
+    if (!env.GIT_AUTHOR_EMAIL && !env.GIT_COMMITTER_EMAIL && !configured("user.email")) {
+      env.GIT_AUTHOR_EMAIL = env.GIT_COMMITTER_EMAIL = "knowhow@localhost";
+    }
+    this.gitEnv = env;
+    return env;
+  }
+
+  /**
    * Run git against the internal repo (.knowhow/.git with the project root as
    * work tree). Arguments are passed as an array — never through a shell.
    */
@@ -171,6 +204,7 @@ Your modifications are automatically tracked separately and won't affect the use
         ],
         {
           cwd: this.projectRoot,
+          env: this.getGitEnv(),
           stdio: options.stdio ?? "pipe",
           input: options.input,
           maxBuffer: 256 * 1024 * 1024,

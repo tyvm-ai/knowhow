@@ -32,6 +32,9 @@ jobs:
         run: npx tsc --noEmit
         working-directory: packages/knowhow
 
+      - name: Install ripgrep (primary textSearch backend; not on ubuntu runners)
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends ripgrep
+
       - name: Run tests
         run: npm test -- --testPathIgnorePatterns="tests/manual" --forceExit
         working-directory: packages/knowhow

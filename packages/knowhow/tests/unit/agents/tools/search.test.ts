@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { execFileSync } from "child_process";
+import { execFileSync, spawnSync } from "child_process";
 
 jest.mock("../../../../src/embeddings", () => ({
   getConfiguredEmbeddings: jest.fn().mockResolvedValue([]),
@@ -22,6 +22,18 @@ const AWKWARD = [
   "back\\slash",
   "a.*b",
 ];
+
+/** rg / ag aren't installed on every machine (e.g. GitHub's ubuntu runners). */
+function backendAvailable(backend: string): boolean {
+  if (backend === "node") return true;
+  const bin = backend.split(" ")[0];
+  const r = spawnSync(bin, ["--version"], { stdio: "ignore" });
+  return !r.error && r.status === 0;
+}
+
+const BACKENDS = ["rg", "git grep", "ag", "node"];
+const AVAILABLE_BACKENDS = BACKENDS.filter(backendAvailable);
+const MISSING_BACKENDS = BACKENDS.filter((b) => !AVAILABLE_BACKENDS.includes(b));
 
 function write(root: string, rel: string, content: string) {
   const full = path.join(root, rel);
@@ -89,7 +101,14 @@ describe("textSearch / fileSearch", () => {
     expect(res.stdout).toContain("No matches found.");
   });
 
-  describe.each(["rg", "git grep", "ag", "node"])("backend %s", (backend) => {
+  if (MISSING_BACKENDS.length) {
+    // Keep the gap visible in the test report instead of failing on missing binaries.
+    describe.skip.each(MISSING_BACKENDS)("backend %s (not installed)", () => {
+      it("skipped", () => {});
+    });
+  }
+
+  describe.each(AVAILABLE_BACKENDS)("backend %s", (backend) => {
     beforeEach(() => {
       process.env.KNOWHOW_SEARCH_BACKENDS = backend;
       execFileSync("git", ["init", "-q"], { cwd: root });
