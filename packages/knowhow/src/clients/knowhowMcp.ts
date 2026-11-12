@@ -4,8 +4,20 @@ import {
   CompletionResponse,
   EmbeddingOptions,
   EmbeddingResponse,
+  AudioGenerationOptions,
+  AudioGenerationResponse,
+  ImageGenerationOptions,
+  ImageGenerationResponse,
+  VideoGenerationOptions,
+  VideoGenerationResponse,
+  VideoStatusOptions,
+  VideoStatusResponse,
+  FileDownloadOptions,
+  FileDownloadResponse,
 } from "./types";
+import type { VoiceOption } from "./voices";
 import { McpService } from "../services/Mcp";
+import { unpackArtifact, PackedArtifact } from "../agents/tools/mediaArtifacts";
 
 /*
  *
@@ -13,6 +25,9 @@ import { McpService } from "../services/Mcp";
  * Once it's a generic client, it can be used by agents, or any other part of the system that leverages Clients
  */
 export class KnowhowMcpClient implements GenericClient {
+  /** AIClient adds `provider` to media call options for this client (the worker needs it to pick its provider). */
+  readonly receivesProvider = true;
+
   private mcpService: McpService;
 
   constructor(mcpService: McpService, private handlesConnection = false) {
@@ -49,6 +64,107 @@ export class KnowhowMcpClient implements GenericClient {
     } finally {
       await this.disconnect();
     }
+  }
+
+  /**
+   * Like callFunction, but errors propagate (callFunction swallows them and returns undefined, which is
+   * fine for best-effort chat but turns a failed generation into a confusing "cannot read property of undefined").
+   */
+  private async callFunctionStrict<T>(
+    toolName: string,
+    args: Record<string, any>
+  ): Promise<T> {
+    try {
+      await this.connect();
+      return await this.mcpService.callFunction<T>(toolName, args);
+    } finally {
+      await this.disconnect();
+    }
+  }
+
+  // --- Media: the worker's tools return JSON (inline base64, or a presigned ref when large) ---
+
+  async createAudioGeneration(
+    options: AudioGenerationOptions & { provider?: string }
+  ): Promise<AudioGenerationResponse> {
+    const { provider, signal, ...rest } = options as any;
+    const res = await this.callFunctionStrict<{
+      audio: PackedArtifact;
+      format: string;
+      text?: string;
+      usd_cost?: number;
+    }>("createAudioGeneration", { provider: provider || "", options: rest });
+    return {
+      audio: await unpackArtifact(res.audio),
+      format: res.format,
+      ...(res.text ? { text: res.text } : {}),
+      usd_cost: res.usd_cost,
+    };
+  }
+
+  async createImageGeneration(
+    options: ImageGenerationOptions & { provider?: string }
+  ): Promise<ImageGenerationResponse> {
+    const { provider, signal, ...rest } = options as any;
+    const res = await this.callFunctionStrict<{
+      created: number;
+      data: {
+        b64_json?: string;
+        url?: string;
+        revised_prompt?: string;
+        ref?: { url: string };
+      }[];
+      usd_cost?: number;
+    }>("createImageGeneration", { provider: provider || "", options: rest });
+    const data = await Promise.all(
+      (res.data || []).map(async ({ ref, ...item }) =>
+        ref
+          ? {
+              ...item,
+              b64_json: (await unpackArtifact({ ref: ref as any })).toString("base64"),
+            }
+          : item
+      )
+    );
+    return { created: res.created, data, usd_cost: res.usd_cost };
+  }
+
+  async createVideoGeneration(
+    options: VideoGenerationOptions & { provider?: string }
+  ): Promise<VideoGenerationResponse> {
+    const { provider, signal, ...rest } = options as any;
+    return this.callFunctionStrict<VideoGenerationResponse>(
+      "createVideoGeneration",
+      { provider: provider || "", options: rest }
+    );
+  }
+
+  async getVideoStatus(
+    options: VideoStatusOptions & { provider?: string }
+  ): Promise<VideoStatusResponse> {
+    const { provider, ...rest } = options;
+    return this.callFunctionStrict<VideoStatusResponse>("getVideoStatus", {
+      provider: provider || "",
+      options: rest,
+    });
+  }
+
+  async downloadVideo(
+    options: FileDownloadOptions & { provider?: string }
+  ): Promise<FileDownloadResponse> {
+    const { provider, ...rest } = options;
+    const res = await this.callFunctionStrict<{
+      mimeType?: string;
+      data: PackedArtifact;
+    }>("downloadVideo", { provider: provider || "", options: rest });
+    return { data: await unpackArtifact(res.data), mimeType: res.mimeType };
+  }
+
+  async fetchVoices(provider: string, model?: string): Promise<VoiceOption[]> {
+    return this.callFunctionStrict<VoiceOption[]>("listVoicesForProvider", {
+      provider,
+      ...(model ? { model } : {}),
+    });
   }
 
   async createChatCompletion(

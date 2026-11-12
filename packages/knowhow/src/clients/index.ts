@@ -30,8 +30,9 @@ import { GenericGeminiClient } from "./gemini";
 import { GenericXAIClient } from "./xai";
 import { KnowhowGenericClient } from "./knowhow";
 import { HttpClient } from "./http";
+import { HttpMediaClient, normalizeCustomProviderUrl } from "./httpMedia";
 import { ModelProvider } from "../types";
-import { getConfig, getConfigSync } from "../config";
+import { getConfig, getConfigSync, getGlobalConfig } from "../config";
 import { loadKnowhowJwt, KNOWHOW_API_URL } from "../services/KnowhowClient";
 import { keyPairExists } from "../auth/keyManager";
 import { getOrgIdForApi } from "../auth/environmentAuth";
@@ -249,11 +250,20 @@ export class AIClient {
 
     // 3. HTTP provider — requires url, no clientClass in registry
     if (entry.url) {
-      const client = new HttpClient(entry.url, {
-        headers: entry.headers,
-        timeout: entry.timeout,
-        extra_body: entry.extra_body,
-      });
+      // Custom OpenAI-compatible server: chat + embeddings + (feature-detected) image / audio / video.
+      const client = new HttpMediaClient(
+        normalizeCustomProviderUrl(entry.url),
+        {
+          headers: entry.headers,
+          timeout: entry.timeout,
+          extra_body: entry.extra_body,
+        },
+        {
+          modelsByModality: entry.modelsByModality,
+          voices: entry.voices,
+          providerName: entry.provider,
+        }
+      );
       if (entry.jwtFile) {
         client.loadJwtFile(entry.jwtFile);
       }
@@ -359,15 +369,31 @@ export class AIClient {
         // Registry-known provider: use client.getModels(modality) for registration
         await this._registerClientModalities(entry.provider, client);
       } else {
-        // HTTP provider (no registry entry): register client and fetch /models live
+        // HTTP provider (no registry entry): fresh registration from config
+        this.unregisterProvider(entry.provider);
         this.clients[entry.provider] = client;
-        try {
-          await this.loadProviderModels(entry.provider);
-        } catch (error) {
-          console.error(
-            `Failed to register models for provider ${entry.provider}:`,
-            error.message
+        if (entry.modelsByModality && client instanceof HttpMediaClient) {
+          // Declared models are authoritative: no live /models probe.
+          this.registerModelsByModality(entry.provider, entry.modelsByModality);
+          const voices = await client.loadVoices();
+          console.log(
+            `[providers] ${entry.provider} ok ${Object.entries(
+              entry.modelsByModality
+            )
+              .filter(([, ids]) => Array.isArray(ids) && ids.length)
+              .map(([modality, ids]) => `${modality}=[${(ids as string[]).join(",")}]`)
+              .join(" ")} voices=${voices.length}`
           );
+        } else {
+          // No declaration: fetch /models live (everything is registered as completion, "embed" ids as embeddings)
+          try {
+            await this.loadProviderModels(entry.provider);
+          } catch (error) {
+            console.error(
+              `Failed to register models for provider ${entry.provider}:`,
+              error.message
+            );
+          }
         }
       }
     }
@@ -375,13 +401,29 @@ export class AIClient {
 
   async registerConfiguredModels() {
     const config = await getConfig();
-    const modelProviders = config.modelProviders || [];
+    // Custom providers may also live in the global ~/.knowhow/knowhow.json (a worker's cwd config is
+    // /workspace/.knowhow/knowhow.json). The local entry wins per provider name.
+    let globalProviders: ModelProvider[] | undefined;
+    try {
+      globalProviders = (await getGlobalConfig())?.modelProviders;
+    } catch {
+      globalProviders = undefined;
+    }
+    const localProviders = config.modelProviders;
+    const declared =
+      localProviders !== undefined || globalProviders !== undefined;
+    const modelProviders: ModelProvider[] = [
+      ...(localProviders || []),
+      ...(globalProviders || []).filter(
+        (g) => !(localProviders || []).some((l) => l.provider === g.provider)
+      ),
+    ];
 
     // If the config explicitly defines modelProviders, unregister only the
     // default providers that are NOT present in the config — so omitting a
     // provider from the config effectively disables it, but providers that
     // appear in both defaults and config are not double-processed.
-    if (config.modelProviders !== undefined) {
+    if (declared) {
       const configProviderNames = new Set(
         modelProviders.map((p) => p.provider)
       );
@@ -549,6 +591,29 @@ export class AIClient {
     for (const [provider, models] of Object.entries(providerModels)) {
       this.registerClient(provider, client);
       this.registerModels(provider, models);
+    }
+  }
+
+  /**
+   * Register a custom provider's declared models into exactly the declared modality buckets
+   * (config `modelsByModality`). Unlike registerModels() nothing is guessed from the id.
+   */
+  registerModelsByModality(
+    provider: string,
+    declared: NonNullable<ModelProvider["modelsByModality"]>
+  ) {
+    const buckets: [keyof typeof declared, Record<string, string[]>][] = [
+      ["completion", this.completionModels],
+      ["embedding", this.embeddingModels],
+      ["image", this.imageModels],
+      ["audio", this.audioModels],
+      ["video", this.videoModels],
+    ];
+    for (const [modality, bucket] of buckets) {
+      const ids = declared[modality];
+      if (!Array.isArray(ids) || !ids.length) continue;
+      this._mergeModels(bucket, provider, ids);
+      this._mergeModels(this.clientModels, provider, ids);
     }
   }
 
@@ -866,7 +931,10 @@ export class AIClient {
     provider: string,
     options: AudioGenerationOptions
   ): Promise<AudioGenerationResponse> {
-    const { client, model } = this.getClient(provider, options.model);
+    const { client, model, provider: resolvedProvider } = this.getClient(
+      provider,
+      options.model
+    );
     if (!client || !client.createAudioGeneration) {
       throw new Error(
         `Provider ${provider} does not support audio generation.`
@@ -878,7 +946,13 @@ export class AIClient {
       );
     }
     return withRetry(
-      (signal) => client.createAudioGeneration({ ...options, model, signal }),
+      (signal) =>
+        client.createAudioGeneration({
+          ...options,
+          model,
+          signal,
+          ...(client.receivesProvider && { provider: resolvedProvider }),
+        }),
       options
     );
   }
@@ -888,6 +962,9 @@ export class AIClient {
    * (music models, non-TTS) and providers that cannot generate speech.
    */
   listVoices(provider: string, model?: string): VoiceOption[] {
+    // Custom providers (config `voices` / GET {url}/v1/audio/voices) carry their own list.
+    const custom = this.clients[provider]?.listVoices;
+    if (custom) return this.clients[provider].listVoices!(model);
     return getVoices(provider, model);
   }
 
@@ -895,7 +972,10 @@ export class AIClient {
     provider: string,
     options: ImageGenerationOptions
   ): Promise<ImageGenerationResponse> {
-    const { client, model } = this.getClient(provider, options.model);
+    const { client, model, provider: resolvedProvider } = this.getClient(
+      provider,
+      options.model
+    );
     if (!client || !client.createImageGeneration) {
       throw new Error(
         `Provider ${provider} does not support image generation.`
@@ -907,7 +987,13 @@ export class AIClient {
       );
     }
     return withRetry(
-      (signal) => client.createImageGeneration({ ...options, model, signal }),
+      (signal) =>
+        client.createImageGeneration({
+          ...options,
+          model,
+          signal,
+          ...(client.receivesProvider && { provider: resolvedProvider }),
+        }),
       options
     );
   }
@@ -935,7 +1021,10 @@ export class AIClient {
     provider: string,
     options: VideoGenerationOptions
   ): Promise<VideoGenerationResponse> {
-    const { client, model } = this.getClient(provider, options.model);
+    const { client, model, provider: resolvedProvider } = this.getClient(
+      provider,
+      options.model
+    );
     if (!client || !client.createVideoGeneration) {
       throw new Error(
         `Provider ${provider} does not support video generation.`
@@ -947,7 +1036,13 @@ export class AIClient {
       );
     }
     return withRetry(
-      (signal) => client.createVideoGeneration({ ...options, model, signal }),
+      (signal) =>
+        client.createVideoGeneration({
+          ...options,
+          model,
+          signal,
+          ...(client.receivesProvider && { provider: resolvedProvider }),
+        }),
       options
     );
   }
@@ -956,11 +1051,17 @@ export class AIClient {
     provider: string,
     options: VideoStatusOptions
   ): Promise<VideoStatusResponse> {
-    const { client } = this.getClient(provider, options.model);
+    const { client, provider: resolvedProvider } = this.getClient(
+      provider,
+      options.model
+    );
     if (!client || !client.getVideoStatus) {
       throw new Error(`Provider ${provider} does not support getVideoStatus.`);
     }
-    return client.getVideoStatus(options);
+    return client.getVideoStatus({
+      ...options,
+      ...(client.receivesProvider && { provider: resolvedProvider }),
+    });
   }
 
   async downloadVideo(
@@ -971,7 +1072,10 @@ export class AIClient {
     if (!client || !client.downloadVideo) {
       throw new Error(`Provider ${provider} does not support downloadVideo.`);
     }
-    return client.downloadVideo(options);
+    return client.downloadVideo({
+      ...options,
+      ...(client.receivesProvider && { provider }),
+    });
   }
 
   async uploadFile(

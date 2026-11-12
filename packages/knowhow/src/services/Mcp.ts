@@ -620,6 +620,10 @@ export class McpService {
       // Parse the MCP result
       if (result.content && Array.isArray(result.content)) {
         const textContent = result.content.find((c: any) => c.type === "text");
+        if (result.isError) {
+          // Tool threw: the text is the error message, not JSON.
+          throw new Error(textContent?.text || "tool returned an error");
+        }
         if (textContent && textContent.text) {
           const parsedResult = JSON.parse(textContent.text);
           return parsedResult as T;

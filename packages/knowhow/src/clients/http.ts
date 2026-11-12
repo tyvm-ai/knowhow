@@ -36,9 +36,9 @@ export type RefreshTokenFn = () => Promise<void>;
 
 export class HttpClient implements GenericClient {
   /** Timeout in milliseconds for HTTP requests. Default: 30000 (30s). Use 0 to disable. */
-  private timeout: number;
-  private headers: RefreshableHeaders;
-  private extra_body: Record<string, any>;
+  protected timeout: number;
+  protected headers: RefreshableHeaders;
+  protected extra_body: Record<string, any>;
   /** Optional pricing table: model id → per-million-token prices */
   private pricingMap: Record<string, ModelPricing> = {};
 
@@ -84,13 +84,13 @@ export class HttpClient implements GenericClient {
    * Call before each outgoing request to proactively refresh an expiring
    * token.  No-ops when no `refreshToken` hook is set.
    */
-  private async refreshIfNeeded(): Promise<void> {
+  protected async refreshIfNeeded(): Promise<void> {
     if (this.refreshToken && this.needsRefresh()) {
       await this.refreshToken();
     }
   }
 
-  constructor(private baseUrl: string, options: HttpClientOptions = {}) {
+  constructor(protected baseUrl: string, options: HttpClientOptions = {}) {
     this.headers = options.headers ?? {};
     // Wire the reactive 401 handler so the low-level http util can retry once
     // after a token refresh without callers needing to do anything extra.

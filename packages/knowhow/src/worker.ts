@@ -28,6 +28,25 @@ import {
 
 const API_URL = KNOWHOW_API_URL;
 
+export const WORKER_MEDIA_TOOLS = [
+  "createAudioGeneration",
+  "createImageGeneration",
+  "createVideoGeneration",
+  "getVideoStatus",
+  "downloadVideo",
+  "listVoicesForProvider",
+  "listModelsByModality",
+];
+
+/** Append the media tools to an allowedTools list that already allows createAiCompletion. */
+export function withMediaTools(allowed: string[], available: string[]) {
+  if (!allowed.includes("createAiCompletion")) return allowed;
+  const missing = WORKER_MEDIA_TOOLS.filter(
+    (t) => !allowed.includes(t) && available.includes(t)
+  );
+  return missing.length ? [...allowed, ...missing] : allowed;
+}
+
 /**
  * Run the worker in a Docker sandbox
  */
@@ -248,7 +267,12 @@ export async function worker(options?: {
     return;
   }
 
-  const resolvedToolNames = options?.allowedTools ?? config.worker!.allowedTools;
+  // Workers whose allowedTools predate the media tools (0.0.171) would silently refuse backend calls for
+  // worker-served image / audio / video models: add the new tools whenever completions are allowed.
+  const resolvedToolNames = withMediaTools(
+    options?.allowedTools ?? config.worker!.allowedTools,
+    Tools.getToolNames()
+  );
   let toolsToUse = Tools.getToolsByNames(resolvedToolNames);
 
   // If passkey auth is enabled, wrap all tool functions to check locked state

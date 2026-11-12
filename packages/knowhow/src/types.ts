@@ -161,6 +161,8 @@ export type Config = {
   }[];
   worker?: {
     allowedTools?: string[];
+    /** Generated media (audio/image/video) up to this many bytes goes back to the backend inline; larger results are uploaded to org Files. Default 2 MiB. */
+    mediaInlineMaxBytes?: number;
     workerId?: string;
     sandbox?: boolean;
     volumes?: string[];
@@ -217,6 +219,34 @@ export type ModelProvider = {
   extra_body?: Record<string, any>;
   /** Optional pricing map (model id → per-million-token prices) passed to HttpClient.setPrices() */
   pricing?: Record<string, { input?: number; output?: number; cached_input?: number; cache_hit?: number }>;
+  /**
+   * Custom HTTP providers only: the model ids this server serves, per modality. When present it is
+   * authoritative — the live `GET /v1/models` probe is skipped and exactly these ids are registered
+   * into exactly these modalities (servers like vLLM ignore `?type=` and would otherwise put a TTS
+   * model into the text list).
+   */
+  modelsByModality?: {
+    completion?: string[];
+    embedding?: string[];
+    image?: string[];
+    audio?: string[];
+    video?: string[];
+  };
+  /**
+   * Custom HTTP providers only: voice ids accepted by this provider's audio (TTS) models.
+   * Plain strings or objects. If omitted, `GET {url}/v1/audio/voices` is tried best-effort.
+   */
+  voices?: (
+    | string
+    | {
+        id: string;
+        name?: string;
+        description?: string;
+        gender?: "female" | "male" | "neutral";
+        languages?: string[];
+        default?: boolean;
+      }
+  )[];
 };
 
 export type AssistantConfig = {

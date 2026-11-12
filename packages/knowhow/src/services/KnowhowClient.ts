@@ -1111,6 +1111,25 @@ export class KnowhowSimpleClient {
     };
   }
 
+  /** Presigned download URL for an org file by id. */
+  async getOrgFileDownloadUrlById(fileId: string): Promise<string> {
+    await this.checkJwt();
+    const response = await http.post<{ downloadUrl: string }>(
+      `${this.baseUrl}/api/org-files/download/${fileId}`,
+      {},
+      { headers: this.headers }
+    );
+    return response.data.downloadUrl;
+  }
+
+  /** Delete an org file by id. */
+  async deleteOrgFile(fileId: string): Promise<void> {
+    await this.checkJwt();
+    await http.delete(`${this.baseUrl}/api/org-files/${fileId}`, {
+      headers: this.headers,
+    });
+  }
+
   /**
    * Notify the backend that a file upload is complete, updating its updatedAt timestamp.
    */

@@ -601,6 +601,8 @@ export interface DecisionResponse {
 
 export interface GenericClient {
   setKey(key: string): void;
+  /** Set by multi-provider proxy clients (KnowhowMcpClient): AIClient then passes `provider` inside media call options. */
+  readonly receivesProvider?: boolean;
   createChatCompletion(options: CompletionOptions): Promise<CompletionResponse>;
   /** Optional streaming variant — yields incremental tokens then a final done chunk. */
   createChatCompletionStream?(
@@ -631,6 +633,12 @@ export interface GenericClient {
   uploadFile?(options: FileUploadOptions): Promise<FileUploadResponse>;
   /** Download a file from the provider's file storage */
   downloadFile?(options: FileDownloadOptions): Promise<FileDownloadResponse>;
+  /**
+   * Voices selectable for this provider's text-to-speech models. Synchronous: clients that discover
+   * voices (config / a local server) load them once at registration time. Optional — AIClient falls
+   * back to the static catalog in ./voices.ts.
+   */
+  listVoices?(model?: string): import("./voices").VoiceOption[];
   /**
    * Evaluate typed yes/no, choice, or score questions. Providers that do not
    * expose a decision endpoint leave this method undefined; AIClient supplies

@@ -702,6 +702,186 @@ export const includedTools = [
   {
     type: "function",
     function: {
+      name: "createAudioGeneration",
+      description: "Generate speech (text-to-speech) with a provider's audio model. Returns JSON with the audio inline as base64 or as a presigned reference when large.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          provider: {
+            type: "string",
+            description:
+              "The provider that serves the model. Use the matching listAll*Models tool to discover providers.",
+          },
+          options: {
+            type: "object",
+            description: "AudioGenerationOptions: { model, input, voice, response_format?, speed?, language? }",
+          },
+        },
+        required: ["provider", "options"],
+      },
+      returns: {
+        type: "object",
+        description: "{ format, usd_cost, audio: { base64, sizeBytes } | { ref: { url, fileId, mimeType, sizeBytes } } }",
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "createImageGeneration",
+      description: "Generate images with a provider's image model. Each result item carries b64_json inline, or a ref with a presigned URL when large.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          provider: {
+            type: "string",
+            description:
+              "The provider that serves the model. Use the matching listAll*Models tool to discover providers.",
+          },
+          options: {
+            type: "object",
+            description: "ImageGenerationOptions: { model, prompt, n?, size?, quality?, style?, aspect_ratio?, resolution? }",
+          },
+        },
+        required: ["provider", "options"],
+      },
+      returns: {
+        type: "object",
+        description: "{ created, data: [{ b64_json | ref | url }], usd_cost }",
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "createVideoGeneration",
+      description: "Start a video generation job with a provider's video model. Poll with getVideoStatus, fetch the result with downloadVideo.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          provider: {
+            type: "string",
+            description:
+              "The provider that serves the model. Use the matching listAll*Models tool to discover providers.",
+          },
+          options: {
+            type: "object",
+            description: "VideoGenerationOptions: { model, prompt, duration?, resolution?, aspect_ratio?, n?, image_url? }",
+          },
+        },
+        required: ["provider", "options"],
+      },
+      returns: {
+        type: "object",
+        description: "{ created, jobId, data, usd_cost }",
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "getVideoStatus",
+      description: "Get the status of a video generation job started with createVideoGeneration.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          provider: {
+            type: "string",
+            description:
+              "The provider that serves the model. Use the matching listAll*Models tool to discover providers.",
+          },
+          options: {
+            type: "object",
+            description: "{ jobId, model? }",
+          },
+        },
+        required: ["provider", "options"],
+      },
+      returns: {
+        type: "object",
+        description: "{ jobId, status: queued|in_progress|completed|failed|expired, error?, progress? }",
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "downloadVideo",
+      description: "Download a finished video job. The result is inline base64 or a presigned reference when large.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          provider: {
+            type: "string",
+            description:
+              "The provider that serves the model. Use the matching listAll*Models tool to discover providers.",
+          },
+          options: {
+            type: "object",
+            description: "{ fileId } where fileId is the jobId",
+          },
+        },
+        required: ["provider", "options"],
+      },
+      returns: {
+        type: "object",
+        description: "{ mimeType, data: { base64, sizeBytes } | { ref: { url, fileId, mimeType, sizeBytes } } }",
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "listModelsByModality",
+      description:
+        "List all available models grouped by modality (completion, embedding, image, audio, video), each as a provider -> model ids map",
+      parameters: {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+      returns: {
+        type: "object",
+        description:
+          "{ completion: {provider: ids[]}, embedding: {...}, image: {...}, audio: {...}, video: {...} }",
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "listVoicesForProvider",
+      description:
+        "List the selectable text-to-speech voices for a provider (and optionally one of its audio models).",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          provider: {
+            type: "string",
+            description: "The provider that serves the audio model",
+          },
+          model: {
+            type: "string",
+            description: "The audio model (optional)",
+          },
+        },
+        required: ["provider"],
+      },
+      returns: {
+        type: "array",
+        description: "Voices: [{ id, name, description?, gender?, languages?, default }]",
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "createEmbedding",
       description: "Create an embedding using the knowhow ai client",
       parameters: {

@@ -3,6 +3,7 @@ import { getConfig } from "../../config";
 import { McpServerService } from "../../services/McpServer";
 import { McpService } from "../../services/Mcp";
 import { ToolsService } from "../../services/Tools";
+import { services } from "../../services";
 
 export interface ReloadConfigResult {
   success: boolean;
@@ -30,6 +31,9 @@ export function makeReloadConfigTool(
     try {
       // Re-read fresh config from disk
       const freshConfig = await getConfig();
+
+      // Re-register model providers (custom provider entries / modelsByModality may have changed)
+      await services().Clients.registerConfiguredModels();
 
       // Close all existing MCP connections
       await Mcp.closeAll();
