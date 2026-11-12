@@ -19,7 +19,25 @@ describe("GenericAnthropicClient.transformMessages", () => {
     const result = client.transformMessages(messages);
     expect(result).toHaveLength(1);
     expect(result[0].role).toBe("user");
-    expect(result[0].content).toBe("Hello");
+    // String user messages become a text block so the first request can
+    // write them to the prompt cache.
+    expect(result[0].content).toEqual([
+      { type: "text", text: "Hello", cache_control: { type: "ephemeral" } },
+    ]);
+  });
+
+  it("caches the first string user message on the first request (long TTL)", () => {
+    const result = client.transformMessages(
+      [
+        { role: "system" as const, content: "sys" },
+        { role: "user" as const, content: "<ChatHistory>…</ChatHistory> task" },
+      ],
+      true
+    );
+    expect((result[0].content as any[])[0].cache_control).toEqual({
+      type: "ephemeral",
+      ttl: "1h",
+    });
   });
 
   it("should filter out system messages", () => {

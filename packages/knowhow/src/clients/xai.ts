@@ -1,5 +1,10 @@
 import OpenAI from "openai";
-import { XaiTextPricing, XaiImagePricing, XaiVideoPricing } from "./pricing";
+import {
+  XaiTextPricing, XaiImagePricing, XaiVideoPricing,
+  XaiModels, XaiImage2TierPricing, XaiVideo15Models,
+  XaiTTSModels, XaiTTSModelId, XaiTTSPricing,
+} from "./pricing";
+import { XaiDefaultVoice } from "./voices";
 import { ContextLimits } from "./contextLimits";
 import {
   GenericClient,
@@ -13,6 +18,7 @@ import {
   AudioGenerationResponse,
   ImageGenerationOptions,
   ImageGenerationResponse,
+  ImageEditOptions,
   VideoGenerationOptions,
   VideoGenerationResponse,
   VideoStatusOptions,
@@ -29,7 +35,15 @@ import {
 
 import { Models, XaiImageModels, XaiVideoModels } from "../types";
 import { ModelModality } from "./types";
+import { xaiImageEdit } from "./imageEdit";
+import { providerReportedCost } from "./providerCost";
+import { emitResponseMetadata } from "./responseMetadata";
 import { XaiReasoningModels, XaiResponsesOnlyModels } from "./pricing/xai";
+
+/** POST /v1/tts accepts at most 60,000 characters of text. */
+const XAI_TTS_MAX_CHARS = 60_000;
+/** Codecs usable through AudioGenerationOptions.response_format (the API also has mulaw/alaw for telephony). */
+const XAI_TTS_CODECS: string[] = ["mp3", "wav", "pcm"];
 
 export class GenericXAIClient implements GenericClient {
   private client: OpenAI;
@@ -96,7 +110,10 @@ export class GenericXAIClient implements GenericClient {
       }),
     });
 
-    const usdCost = this.calculateCost(options.model, response.usage);
+    // Prefer xAI's billed cost (usage.cost_in_usd_ticks); fall back to the price table.
+    const usdCost =
+      providerReportedCost(response.usage) ??
+      this.calculateCost(options.model, response.usage);
     return {
       choices: response.choices.map((choice) => ({
         message: {
@@ -111,11 +128,20 @@ export class GenericXAIClient implements GenericClient {
       model: options.model,
       usage: response.usage ? {
         prompt_tokens: response.usage.prompt_tokens ?? 0,
-        completion_tokens: response.usage.completion_tokens ?? 0,
+        // xAI's completion_tokens excludes reasoning tokens (billed as output);
+        // fold them in so token totals match what was billed.
+        completion_tokens:
+          (response.usage.completion_tokens ?? 0) +
+          (response.usage.completion_tokens_details?.reasoning_tokens ?? 0),
         total_tokens: response.usage.total_tokens,
         prompt_tokens_details: {
           cached_tokens: response.usage.prompt_tokens_details?.cached_tokens ?? 0,
         },
+        ...(response.usage.completion_tokens_details?.reasoning_tokens != null && {
+          output_tokens_details: {
+            reasoning_tokens: response.usage.completion_tokens_details.reasoning_tokens,
+          },
+        }),
       } : undefined,
       usd_cost: usdCost,
     };
@@ -284,7 +310,9 @@ export class GenericXAIClient implements GenericClient {
         }
       : undefined;
 
-    const usdCost = usage ? this.calculateCost(options.model, usage) : undefined;
+    const usdCost =
+      providerReportedCost(data.usage) ??
+      (usage ? this.calculateCost(options.model, usage) : undefined);
 
     // Collect text content and tool calls from output items
     let textContent: string | null = null;
@@ -372,7 +400,12 @@ export class GenericXAIClient implements GenericClient {
 
     const promptTokens = usage.prompt_tokens || 0;
     const cachedTokens = usage.prompt_tokens_details?.cached_tokens || 0;
-    const outputTokens = usage.completion_tokens || 0;
+    // xAI's Chat Completions `completion_tokens` excludes reasoning tokens,
+    // which are still billed at the output rate. total_tokens includes them.
+    const outputTokens = Math.max(
+      usage.completion_tokens || 0,
+      (usage.total_tokens || 0) - promptTokens
+    );
     const modelPricing = pricing as import("./pricing/types").ModelPricing;
     const useLongContextTier =
       promptTokens > (modelPricing.long_context_threshold ?? 200_000) &&
@@ -398,6 +431,7 @@ export class GenericXAIClient implements GenericClient {
         completion: Object.values(Models.xai),
         image: XaiImageModels,
         video: XaiVideoModels,
+        audio: XaiTTSModels,
       };
       return (map[modality] ?? []).map((id) => ({ id }));
     }
@@ -420,36 +454,127 @@ export class GenericXAIClient implements GenericClient {
   async createAudioGeneration(
     options: AudioGenerationOptions
   ): Promise<AudioGenerationResponse> {
-    throw new Error(
-      "Audio generation is not supported by the XAI provider. Use OpenAI client with TTS model instead."
-    );
+    // https://docs.x.ai/developers/model-capabilities/audio/text-to-speech — POST /v1/tts returns raw audio bytes.
+    // The endpoint has no model parameter ("grok-tts" is only the catalog id), and takes custom voice ids
+    // (`GET /v1/custom-voices`) in `voice_id` exactly like built-in voices.
+    const apiKey = this.apiKey || process.env.XAI_API_KEY;
+    if (!apiKey) {
+      throw new Error("XAI API key not set");
+    }
+    if (!options.input) {
+      throw new Error("xAI text-to-speech requires non-empty input text.");
+    }
+    if (options.input.length > XAI_TTS_MAX_CHARS) {
+      throw new Error(
+        `xAI text-to-speech supports at most ${XAI_TTS_MAX_CHARS} characters per request (got ${options.input.length}).`
+      );
+    }
+
+    const codec = options.response_format || "mp3";
+    if (!XAI_TTS_CODECS.includes(codec)) {
+      throw new Error(
+        `xAI text-to-speech supports response_format ${XAI_TTS_CODECS.join(", ")} (got ${codec}).`
+      );
+    }
+
+    const payload: Record<string, unknown> = {
+      text: options.input,
+      voice_id: options.voice || XaiDefaultVoice,
+      language: options.language || "auto",
+    };
+    if (codec !== "mp3") payload.output_format = { codec };
+    if (options.speed !== undefined) {
+      payload.speed = Math.min(1.5, Math.max(0.7, options.speed));
+    }
+
+    const response = await fetch("https://api.x.ai/v1/tts", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: options.signal,
+    });
+    emitResponseMetadata(options, {
+      statusCode: response.status,
+      headers: response.headers,
+      requestId: response.headers.get("x-request-id") ?? undefined,
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`XAI text-to-speech failed: ${response.status} ${errorText}`);
+    }
+
+    const audio = Buffer.from(await response.arrayBuffer());
+    const pricePerMillionChars = XaiTTSPricing[XaiTTSModelId]?.input ?? 15.0;
+    return {
+      audio,
+      format: codec,
+      usd_cost: (options.input.length * pricePerMillionChars) / 1e6,
+    };
   }
 
   async createImageGeneration(
     options: ImageGenerationOptions
   ): Promise<ImageGenerationResponse> {
-    const response = await this.client.images.generate({
-      model: options.model || "grok-imagine-image",
+    const imageModel = options.model || "grok-imagine-image";
+    const isImage2 = imageModel === XaiModels.GrokImagineImage2;
+
+    // xAI's `quality` (low | medium | auto) is only accepted by grok-imagine-image-2.0.
+    // Map OpenAI-style values so shared callers keep working.
+    let quality: "low" | "medium" | "auto" | undefined;
+    if (isImage2 && options.quality) {
+      quality =
+        options.quality === "hd" ? "medium"
+        : options.quality === "standard" ? "low"
+        : (options.quality as "low" | "medium" | "auto");
+    }
+
+    const params: Record<string, unknown> = {
+      model: imageModel,
       prompt: options.prompt,
       n: options.n,
       size: options.size,
-      quality: options.quality,
       style: options.style,
       response_format: options.response_format,
       user: options.user,
-    });
+    };
+    if (quality) params.quality = quality;
+    if (options.aspect_ratio) params.aspect_ratio = options.aspect_ratio;
+    if (options.resolution) params.resolution = options.resolution;
 
-    // Calculate cost based on model name
-    const imageModel = options.model || "grok-imagine-image";
-    const costPerImage =
-      XaiImagePricing[imageModel as keyof typeof XaiImagePricing]?.image_generation || 0.02;
-    const usdCost = (options.n || 1) * costPerImage;
+    const response = (await this.client.images.generate(params as any)) as any;
+
+    // Prefer xAI's exact billed cost (1 USD = 1e10 ticks); fall back to the price table.
+    let usdCost: number;
+    const billed = providerReportedCost(response?.usage);
+    if (billed !== undefined) {
+      usdCost = billed;
+    } else {
+      let costPerImage =
+        XaiImagePricing[imageModel as keyof typeof XaiImagePricing]?.image_generation || 0.02;
+      if (isImage2) {
+        const tier = XaiImage2TierPricing[quality === "medium" ? "medium" : "low"];
+        costPerImage = tier[(options.resolution as "1k" | "1.5k" | "2k") || "1k"] ?? costPerImage;
+      }
+      usdCost = (options.n || 1) * costPerImage;
+    }
 
     return {
       ...response,
       created: response.created || Math.floor(Date.now() / 1000),
       usd_cost: usdCost,
     };
+  }
+
+  async createImageEdit(
+    options: ImageEditOptions
+  ): Promise<ImageGenerationResponse> {
+    return xaiImageEdit(this.apiKey || process.env.XAI_API_KEY, {
+      ...options,
+      model: options.model || "grok-imagine-image",
+    });
   }
 
   async createVideoGeneration(
@@ -467,29 +592,53 @@ export class GenericXAIClient implements GenericClient {
       duration?: number;
       aspect_ratio?: string;
       resolution?: string;
-      image_url?: string;
-      video_url?: string;
+      image?: { url: string };
+      last_frame?: { url: string };
+      video?: { url: string };
+      generate_audio?: boolean;
     };
 
+    const isVideo15 = XaiVideo15Models.includes(model);
+    // Editing an existing video uses a separate endpoint (grok-imagine-video only).
+    const isEdit = !!options.video_url;
+    if (isEdit && isVideo15) {
+      throw new Error(
+        `${model} does not support video editing; use grok-imagine-video for video_url edits.`
+      );
+    }
+    if (options.last_frame_url && !isVideo15) {
+      throw new Error(
+        `last_frame_url is only supported by grok-imagine-video-1.5 models (got ${model}).`
+      );
+    }
+
     // Add optional parameters if provided
-    if (options.duration !== undefined) {
-      startPayload.duration = options.duration;
+    // (edits keep the source video's duration/resolution, capped at 8.7s / 720p)
+    if (options.duration !== undefined && !isEdit) {
+      startPayload.duration = Math.min(15, Math.max(1, Math.round(options.duration)));
     }
     if (options.aspect_ratio) {
       startPayload.aspect_ratio = options.aspect_ratio;
     }
-    if (options.resolution) {
+    if (options.resolution && !isEdit) {
       startPayload.resolution = options.resolution;
     }
+    // The REST API takes media as objects ({ url }); a top-level image_url is not part of the API.
     if (options.image_url) {
-      startPayload.image_url = options.image_url;
+      startPayload.image = { url: options.image_url };
+    }
+    if (options.last_frame_url) {
+      startPayload.last_frame = { url: options.last_frame_url };
     }
     if (options.video_url) {
-      startPayload.video_url = options.video_url;
+      startPayload.video = { url: options.video_url };
+    }
+    if (options.generate_audio !== undefined) {
+      startPayload.generate_audio = options.generate_audio;
     }
 
     const startResponse = await fetch(
-      "https://api.x.ai/v1/videos/generations",
+      isEdit ? "https://api.x.ai/v1/videos/edits" : "https://api.x.ai/v1/videos/generations",
       {
         method: "POST",
         headers: {
@@ -516,7 +665,9 @@ export class GenericXAIClient implements GenericClient {
 
     // Return immediately with the jobId – do NOT poll here.
     // Use getVideoStatus() to poll and downloadVideo() to fetch the result.
-    const duration = options.duration || 5;
+    // Estimate only (API default duration is 8s; edits ≈ source length, ≤8.7s).
+    // getVideoStatus() returns the exact billed cost once done.
+    const duration = startPayload.duration ?? 8;
     const pricePerSecond = XaiVideoPricing[model]?.video_generation || 0.07;
     const usdCost = duration * pricePerSecond;
 
@@ -558,11 +709,12 @@ export class GenericXAIClient implements GenericClient {
     } else {
       switch (statusData.status) {
         case "pending":
-          mappedStatus = "queued";
+          mappedStatus = statusData.progress > 0 ? "in_progress" : "queued";
           break;
         case "processing":
           mappedStatus = "in_progress";
           break;
+        case "done":
         case "succeeded":
           mappedStatus = "completed";
           break;
@@ -581,6 +733,17 @@ export class GenericXAIClient implements GenericClient {
       jobId: options.jobId,
       status: mappedStatus,
     };
+    if (typeof statusData.progress === "number") {
+      response.progress = statusData.progress;
+    }
+    if (statusData.error) {
+      response.error = statusData.error.message || JSON.stringify(statusData.error);
+    }
+    // Exact billed cost (1 USD = 1e10 ticks)
+    const billedVideoCost = providerReportedCost(statusData.usage);
+    if (billedVideoCost !== undefined) {
+      response.usd_cost = billedVideoCost;
+    }
 
     // If completed, include the video URL
     if (mappedStatus === "completed" && statusData.video?.url) {

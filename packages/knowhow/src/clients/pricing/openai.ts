@@ -80,6 +80,8 @@ export const OpenAiModels = {
   GPT_Image_1_Mini: "gpt-image-1-mini",
   ChatGPT_Image: "chatgpt-image-latest",
   TTS_1: "tts-1",
+  TTS_1_HD: "tts-1-hd",
+  GPT_4o_Mini_TTS: "gpt-4o-mini-tts",
   Whisper_1: "whisper-1",
   DALL_E_3: "dall-e-3",
   DALL_E_2: "dall-e-2",
@@ -209,7 +211,8 @@ export const OpenAiImageModels: string[] = [
 ];
 export const OpenAiDeprecatedImageModels: string[] = [OpenAiModels.GPT_Image_1];
 
-// Video models
+// Video models — all discontinued (Sora / Videos API shut down 2026-09-24).
+// Kept registered so existing configs still load; they show as deprecated.
 export const OpenAiVideoModels: string[] = [
   OpenAiModels.Sora,
   OpenAiModels.Sora_2,
@@ -217,7 +220,14 @@ export const OpenAiVideoModels: string[] = [
 ];
 
 // Audio models
-export const OpenAiTTSModels: string[] = [OpenAiModels.TTS_1];
+// OpenAI announced that tts-1, tts-1-hd and gpt-4o-mini-tts shut down on 2027-01-06. Until then they
+// are still served, so they stay registered (and usable); they are flagged `deprecated` in the
+// pricing table below. OpenAI named no replacement TTS model, so `replacedBy` is intentionally unset.
+export const OpenAiTTSModels: string[] = [
+  OpenAiModels.TTS_1,
+  OpenAiModels.TTS_1_HD,
+  OpenAiModels.GPT_4o_Mini_TTS,
+];
 export const OpenAiTranscriptionModels: string[] = [
   OpenAiModels.Whisper_1,
   OpenAiModels.GPT_4o_Transcribe,
@@ -387,8 +397,8 @@ export const OpenAiTextPricing: Record<string, ModelPricing> = {
     output: 2.4,
   },
   [OpenAiModels.GPT_Image_2]: { input: 8.0, cached_input: 2.0, output: 30.0 },
-  [OpenAiModels.GPT_Image_15]: { input: 5.0, cached_input: 1.25, output: 10.0 },
-  [OpenAiModels.GPT_Image_1]: { input: 5.0, cached_input: 1.25, output: 40.0, deprecated: true, deprecationDate: "2026-10-23" },
+  [OpenAiModels.GPT_Image_15]: { input: 5.0, cached_input: 1.25, output: 10.0, replacedBy: OpenAiModels.GPT_Image_2 },
+  [OpenAiModels.GPT_Image_1]: { input: 5.0, cached_input: 1.25, output: 40.0, deprecated: true, deprecationDate: "2026-10-23", replacedBy: OpenAiModels.GPT_Image_15 },
   [OpenAiModels.GPT_Image_1_Mini]: { input: 2.0, cached_input: 0.2, output: 0 },
   [OpenAiModels.ChatGPT_Image]: {
     input: 5.0,
@@ -409,15 +419,24 @@ export const OpenAiTextPricing: Record<string, ModelPricing> = {
   [OpenAiEmbeddingModels.EmbeddingLarge3]: { input: 0.13, output: 0 },
   [OpenAiEmbeddingModels.EmbeddingSmall3]: { input: 0.02, output: 0 },
   // TTS / Whisper
-  [OpenAiModels.TTS_1]: { input: 15.0, output: 0 },
+  // Shutdown announced for 2027-01-06 (no replacement named; still served until then).
+  [OpenAiModels.TTS_1]: { input: 15.0, output: 0, deprecated: true, deprecationDate: "2027-01-06" },
+  [OpenAiModels.TTS_1_HD]: { input: 30.0, output: 0, deprecated: true, deprecationDate: "2027-01-06" },
+  // gpt-4o-mini-tts is token-priced ($0.60/1M text in, $12/1M audio out, ≈ $0.015/min);
+  // `input` here is the per-1M-character estimate used by createAudioGeneration.
+  [OpenAiModels.GPT_4o_Mini_TTS]: { input: 15.0, output: 0, deprecated: true, deprecationDate: "2027-01-06" },
   [OpenAiModels.Whisper_1]: { input: 0.006, output: 0 },
   // Image generation (per-image)
-  [OpenAiModels.DALL_E_3]: { image_generation: 0.04 },
-  [OpenAiModels.DALL_E_2]: { image_generation: 0.02 },
+  [OpenAiModels.DALL_E_3]: { image_generation: 0.04, replacedBy: OpenAiModels.GPT_Image_2 },
+  [OpenAiModels.DALL_E_2]: { image_generation: 0.02, replacedBy: OpenAiModels.DALL_E_3 },
   // Video generation (per second)
-  [OpenAiModels.Sora]: { video_generation: 0.012 },
-  [OpenAiModels.Sora_2]: { video_generation: 0.015 },
-  [OpenAiModels.Sora_2_Pro]: { video_generation: 0.025 },
+  // OpenAI discontinued Sora: the app shut down 2026-04-26, and the Videos API
+  // plus every sora-2 / sora-2-pro alias and snapshot shut down 2026-09-24
+  // (announced 2026-03-24, no recommended replacement). /v1/videos now 404s.
+  // "sora" (v1) was never served by the API (models.get → model_not_found).
+  [OpenAiModels.Sora]: { video_generation: 0.012, deprecated: true, deprecationDate: "2026-04-26" },
+  [OpenAiModels.Sora_2]: { video_generation: 0.015, deprecated: true, deprecationDate: "2026-09-24" },
+  [OpenAiModels.Sora_2_Pro]: { video_generation: 0.025, deprecated: true, deprecationDate: "2026-09-24" },
 };
 
 // ─── All completion model IDs (active + deprecated) ──────────────────────────

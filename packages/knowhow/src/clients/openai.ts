@@ -15,6 +15,7 @@ import {
   AudioGenerationResponse,
   ImageGenerationOptions,
   ImageGenerationResponse,
+  ImageEditOptions,
   VideoGenerationOptions,
   VideoGenerationResponse,
   VideoStatusOptions,
@@ -49,6 +50,7 @@ import {
   OpenAiRealtimeModels,
 } from "../types";
 import { ModelModality } from "./types";
+import { openAiImageEdit } from "./imageEdit";
 
 const config = getConfigSync();
 
@@ -1001,7 +1003,8 @@ export class GenericOpenAiClient implements GenericClient {
         prompt: options.prompt,
         n: options.n,
         size: options.size,
-        quality: options.quality,
+        // gpt-image models also accept low | medium | auto; the SDK type only lists dall-e values.
+        quality: options.quality as any,
         style: options.style,
         response_format: options.response_format,
         user: options.user,
@@ -1018,6 +1021,12 @@ export class GenericOpenAiClient implements GenericClient {
     return { ...response, usd_cost: usdCost };
   }
 
+  async createImageEdit(
+    options: ImageEditOptions
+  ): Promise<ImageGenerationResponse> {
+    return openAiImageEdit(this.apiKey || process.env.OPENAI_KEY, options);
+  }
+
   async createVideoGeneration(
     options: VideoGenerationOptions
   ): Promise<VideoGenerationResponse> {
@@ -1027,6 +1036,16 @@ export class GenericOpenAiClient implements GenericClient {
     }
 
     const model = options.model || "sora-2";
+
+    // OpenAI shut down the Videos API and all Sora models on 2026-09-24
+    // (/v1/videos returns an empty 404). Fail fast with a clear message
+    // instead of surfacing "OpenAI video generation failed: 404".
+    if (model.startsWith("sora") && Date.now() >= Date.parse("2026-09-24")) {
+      throw new Error(
+        `OpenAI discontinued Sora and the Videos API on 2026-09-24; "${model}" can no longer generate video. ` +
+          `Use another provider's video model instead (e.g. google "gemini-omni-1.2-flash" or xai video models).`
+      );
+    }
 
     // Step 1: Create the video job
     const createPayload: any = {

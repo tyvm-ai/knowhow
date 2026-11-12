@@ -12,7 +12,7 @@ These tests exercise every output/input modality supported by each provider:
 | Audio Transcription  | Whisper-1    | ❌ Not supported   | ❌ Not supported |
 | Image Generation     | DALL-E 3     | Imagen 3 / Gemini 2.0 Flash | Aurora |
 | Vision (image input) | GPT-4o       | Gemini 2.0 Flash   | Grok-2-Vision |
-| Video Generation     | Sora (stub)  | Veo 2              | ❌ Not supported |
+| Video Generation     | ❌ Sora discontinued (2026-09-24) | Omni 1.2 (Veo deprecated)              | ❌ Not supported |
 
 ---
 
@@ -49,6 +49,10 @@ npx jest tests/manual/modalities/google.modalities.test.ts --testTimeout=300000 
 
 # XAI only
 npx jest tests/manual/modalities/xai.modalities.test.ts --testTimeout=120000 --runInBand
+
+# XAI latest models (grok-4.7, grok-imagine-image-2.0, grok-imagine-video-1.5 / 1.5-lite,
+# retired-model handling) — plain script, ~$0.20 per run
+npx tsx tests/manual/modalities/xai.newModels.ts
 ```
 
 ### Run a single test by name
@@ -118,7 +122,7 @@ If a dependency file is missing, the dependent test will be skipped with a clear
 - **TTS models**: `tts-1` (faster, lower quality) and `tts-1-hd` (higher quality). Voices: `alloy`, `echo`, `fable`, `onyx`, `nova`, `shimmer`.
 - **Whisper**: Supports `mp3`, `mp4`, `mpeg`, `mpga`, `m4a`, `wav`, `webm`. Response formats: `json`, `text`, `srt`, `verbose_json`, `vtt`.
 - **DALL-E 3**: Sizes `1024x1024`, `1792x1024`, `1024x1792`. Quality: `standard` or `hd`.
-- **Sora**: Not yet implemented in the client. See Test 5 for the intended API.
+- **Sora**: Discontinued. OpenAI shut down the Sora app on 2026-04-26 and the Videos API (`sora-2`, `sora-2-pro` and snapshots) on 2026-09-24. The models are marked deprecated and Test 5 is skipped.
 
 ### Google
 

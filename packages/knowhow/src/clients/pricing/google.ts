@@ -34,6 +34,9 @@ export const GoogleModels = {
   Gemini_3_Pro_Image_Preview: "gemini-3-pro-image-preview",
   Gemini_Nano_Banana_21: "gemini-nano-banana-2.1",
   Gemini_Omni_Flash_Preview: "gemini-omni-flash-preview",
+  // Gemini Omni (video generation + editing, Interactions API only)
+  Gemini_Omni_12_Flash: "gemini-omni-1.2-flash",
+  Gemini_Omni_11_Flash: "gemini-omni-1.1-flash",
   // Gemini 2.5
   Gemini_25_Pro: "gemini-2.5-pro",
   Gemini_25_Flash: "gemini-2.5-flash",
@@ -69,6 +72,10 @@ export const GoogleModels = {
   Veo_3_1: "veo-3.1-generate-preview",
   Veo_3_1_Fast: "veo-3.1-fast-generate-preview",
   Veo_3_1_Lite: "veo-3.1-lite-generate-preview",
+  // Music generation (Lyria, Interactions API only)
+  Lyria_35: "lyria-3.5",
+  Lyria_3_Clip_Preview: "lyria-3-clip-preview",
+  Lyria_3_Pro_Preview: "lyria-3-pro-preview",
   // Audio / TTS
   Gemini_38_Flash_TTS: "gemini-3.8-flash-tts",
   Gemini_38_Flash_Lite_TTS: "gemini-3.8-flash-lite-tts",
@@ -201,12 +208,32 @@ export const GoogleImageModels: string[] = [
 ];
 
 export const GoogleVideoModels: string[] = [
+  // Interactions API (POST /v1beta/interactions) — the only video models the
+  // Gemini API still serves.
+  GoogleModels.Gemini_Omni_12_Flash,
+  GoogleModels.Gemini_Omni_11_Flash, // → gemini-omni-1.2-flash (from 2026-12-03)
+  // Shut down in the Gemini API (404) — kept registered for existing configs.
   GoogleModels.Veo_2,
   GoogleModels.Veo_3,
   GoogleModels.Veo_3_Fast,
   GoogleModels.Veo_3_1,
   GoogleModels.Veo_3_1_Fast,
   GoogleModels.Veo_3_1_Lite,
+];
+
+// Music generation via the Interactions API (Lyria). Registered under the
+// "audio" modality alongside TTS; createAudioGeneration routes by model id.
+export const GoogleMusicModels: string[] = [
+  GoogleModels.Lyria_35,
+  GoogleModels.Lyria_3_Clip_Preview,
+  GoogleModels.Lyria_3_Pro_Preview,
+];
+
+/** Models served only by the Interactions API (POST /v1beta/interactions). */
+export const GoogleInteractionsModels: string[] = [
+  GoogleModels.Gemini_Omni_12_Flash,
+  GoogleModels.Gemini_Omni_11_Flash,
+  ...GoogleMusicModels,
 ];
 
 export const GoogleTTSModels: string[] = [
@@ -305,8 +332,10 @@ export const GeminiPricing: Record<string, GeminiModelPricing> = {
     input: 0.25, input_audio: 0.5, output: 1.5,
     context_caching: 0.025, context_caching_audio: 0.05, context_caching_storage: 1.0,
   },
+  // Nano Banana 2 — superseded (still served) by Nano Banana 2.1.
   [GoogleModels.Gemini_31_Flash_Image]: {
     input: 0.5, output: 60.0, image_generation: 0.067, image_generation_per_1m_tokens: 60.0,
+    replacedBy: GoogleModels.Gemini_Nano_Banana_21,
   },
   [GoogleModels.Gemini_31_Flash_Lite_Image]: {
     input: 0.25, output: 30.0, image_generation: 0.0336, image_generation_per_1m_tokens: 30.0,
@@ -324,8 +353,10 @@ export const GeminiPricing: Record<string, GeminiModelPricing> = {
   [GoogleModels.Gemini_Nano_Banana_21]: {
     input: 1.5, output: 7.5, image_generation: 0.0336, image_generation_per_1m_tokens: 30.0,
   },
+  // Preview superseded by gemini-3.8-flash-tts.
   [GoogleModels.Gemini_31_Flash_TTS_Preview]: {
     input: 1.0, output_audio: 20.0, output: 20.0,
+    replacedBy: GoogleModels.Gemini_38_Flash_TTS,
   },
   // ── Gemini 3 (Pro / Pro Image / Omni) ─────────────────────────────────────
   [GoogleModels.Gemini_3_Pro_Preview]: {
@@ -336,9 +367,39 @@ export const GeminiPricing: Record<string, GeminiModelPricing> = {
   [GoogleModels.Gemini_3_Pro_Image]: {
     input: 2, output: 12, image_generation: 0.134, image_generation_per_1m_tokens: 120.0,
   },
+  // Interactions-API-only preview of Omni; superseded by gemini-omni-1.2-flash.
   [GoogleModels.Gemini_Omni_Flash_Preview]: {
     input: 1.5, output: 9.0,
     limitedAvailability: true,
+    replacedBy: GoogleModels.Gemini_Omni_12_Flash,
+  },
+  // ── Gemini Omni (video) ───────────────────────────────────────────────────
+  // Paid tier only. Video output is billed per token: 5,792 tokens per second
+  // of 720p (1,931/s 360p, 8,688/s 1080p upsampled, 17,376/s 4K upsampled).
+  // At $12/1M that's ~$0.07/s at 720p — video_generation is that per-second
+  // estimate, used before the real token usage is known.
+  [GoogleModels.Gemini_Omni_12_Flash]: {
+    input: 1.5, output: 9.0,
+    output_video_per_1m_tokens: 12.0,
+    video_generation: 0.07,
+  },
+  // Previous generation. Effective December 3, 2026 Google routes every
+  // request to gemini-omni-1.2-flash and bills at 1.2 rates.
+  [GoogleModels.Gemini_Omni_11_Flash]: {
+    input: 1.5, output: 9.0,
+    output_video_per_1m_tokens: 17.5,
+    video_generation: 0.10,
+    deprecated: true, deprecationDate: "2026-12-03",
+    replacedBy: GoogleModels.Gemini_Omni_12_Flash,
+    routesTo: GoogleModels.Gemini_Omni_12_Flash, routesToDate: "2026-12-03",
+  },
+  // ── Lyria (music) — flat price per generated song/clip, paid tier only ────
+  [GoogleModels.Lyria_35]: { audio_generation: 0.08 },
+  [GoogleModels.Lyria_3_Clip_Preview]: { audio_generation: 0.04 },
+  // Legacy: superseded by Lyria 3.5 (same price) — still served.
+  [GoogleModels.Lyria_3_Pro_Preview]: {
+    audio_generation: 0.08,
+    deprecated: true, replacedBy: GoogleModels.Lyria_35,
   },
   // ── Robotics-ER ───────────────────────────────────────────────────────────
   [GoogleModels.Gemini_Robotics_ER_16_Preview]: {
@@ -352,8 +413,10 @@ export const GeminiPricing: Record<string, GeminiModelPricing> = {
     input: 2, input_gt_200k: 4, output: 12, output_gt_200k: 18,
     context_caching: 0.2, context_caching_gt_200k: 0.4, context_caching_storage: 4.5,
   },
+  // Preview of Nano Banana 2 → GA gemini-3.1-flash-image → gemini-nano-banana-2.1.
   [GoogleModels.Gemini_31_Flash_Image_Preview]: {
     input: 0.25, output: 60.0, image_generation: 0.045, image_generation_per_1m_tokens: 60.0,
+    replacedBy: GoogleModels.Gemini_31_Flash_Image,
   },
   [GoogleModels.Gemini_31_Flash_Lite_Preview]: {
     input: 0.25, input_audio: 0.5, output: 1.5,
@@ -367,8 +430,10 @@ export const GeminiPricing: Record<string, GeminiModelPricing> = {
     context_caching: 0.05, context_caching_audio: 0.10, context_caching_storage: 1.0,
     limitedAvailability: true,
   },
+  // Preview of Nano Banana Pro → GA gemini-3-pro-image.
   [GoogleModels.Gemini_3_Pro_Image_Preview]: {
     input: 2, output: 12, image_generation: 0.134,
+    replacedBy: GoogleModels.Gemini_3_Pro_Image,
   },
   // Deprecated: effective December 1, 2026 Google routes all requests to
   // gemini-3.8-flash and bills at 3.8 Flash rates.
@@ -401,17 +466,21 @@ export const GeminiPricing: Record<string, GeminiModelPricing> = {
     context_caching: 0.125, context_caching_gt_200k: 0.25, context_caching_storage: 4.5,
     deprecated: true, deprecationDate: "2025-12-02", replacedBy: GoogleModels.Gemini_31_Pro_Preview,
   },
+  // Original Nano Banana → Nano Banana 2 (gemini-3.1-flash-image) → 2.1.
   [GoogleModels.Gemini_25_Flash_Image]: {
     input: 0.3, output: 30.0, image_generation: 0.039, image_generation_per_1m_tokens: 30.0,
+    replacedBy: GoogleModels.Gemini_31_Flash_Image,
   },
   [GoogleModels.Gemini_25_Flash_Image_Preview]: {
     input: 0.3, output: 30.0, image_generation: 0.039, image_generation_per_1m_tokens: 30.0,
+    replacedBy: GoogleModels.Gemini_25_Flash_Image,
   },
   [GoogleModels.Gemini_25_Flash_Live]: { input: 0.5, input_audio: 3.0, output: 2.0, output_audio: 12.0 },
   [GoogleModels.Gemini_25_Flash_Native_Audio]: { input: 0.5, input_audio: 3.0, output: 2.0, output_audio: 12.0 },
-  [GoogleModels.Gemini_25_Flash_TTS]: { input: 0.5, output_audio: 10.0, output: 10.0 },
-  [GoogleModels.Gemini_25_Pro_TTS]: { input: 1.0, output_audio: 20.0, output: 20.0 },
-  [GoogleModels.Gemini_20_Flash_TTS]: { input: 0.1, output_audio: 4.0, output: 4.0 },
+  // 2.x TTS models are superseded by the 3.8 TTS family.
+  [GoogleModels.Gemini_25_Flash_TTS]: { input: 0.5, output_audio: 10.0, output: 10.0, replacedBy: GoogleModels.Gemini_38_Flash_TTS },
+  [GoogleModels.Gemini_25_Pro_TTS]: { input: 1.0, output_audio: 20.0, output: 20.0, replacedBy: GoogleModels.Gemini_38_Flash_TTS },
+  [GoogleModels.Gemini_20_Flash_TTS]: { input: 0.1, output_audio: 4.0, output: 4.0, replacedBy: GoogleModels.Gemini_38_Flash_Lite_TTS },
   [GoogleModels.Gemini_20_Flash]: {
     input: 0.1, input_audio: 0.7, output: 0.4,
     context_caching: 0.025, context_caching_audio: 0.175, context_caching_storage: 1.0,
@@ -420,21 +489,23 @@ export const GeminiPricing: Record<string, GeminiModelPricing> = {
     input: 1.25, input_gt_200k: 2.5, output: 10.0, output_gt_200k: 15.0,
     limitedAvailability: true,
   },
-  [GoogleModels.Gemini_20_Flash_Preview_Image_Generation]: { input: 0.1, output: 0.4, image_generation: 0.039 },
+  [GoogleModels.Gemini_20_Flash_Preview_Image_Generation]: { input: 0.1, output: 0.4, image_generation: 0.039, replacedBy: GoogleModels.Gemini_25_Flash_Image },
   [GoogleModels.Gemini_20_Flash_Live]: { input: 0.1, output: 0.4 },
   [GoogleModels.Gemini_20_Flash_Lite]: { input: 0.075, output: 0.3, deprecated: true, deprecationDate: "2026-06-01" },
   [GoogleModels.Gemini_15_Flash]:   { input: 0.075, output: 0.3,  context_caching: 0.01875, deprecated: true },
   [GoogleModels.Gemini_15_Flash_8B]:{ input: 0.0375, output: 0.15, context_caching: 0.01,   deprecated: true },
   [GoogleModels.Gemini_15_Pro]:     { input: 1.25, output: 5.0,   context_caching: 0.3125,  deprecated: true },
-  [GoogleModels.Imagen_3]: { image_generation: 0.04 },
-  [GoogleModels.Imagen_4_Fast]: { image_generation: 0.02 },
-  [GoogleModels.Imagen_4_Ultra]: { image_generation: 0.06 },
-  [GoogleModels.Veo_2]: { video_generation: 0.35 },
-  [GoogleModels.Veo_3]: { video_generation: 0.4 },
-  [GoogleModels.Veo_3_Fast]: { video_generation: 0.1 },
-  [GoogleModels.Veo_3_1]: { video_generation: 0.4 },
-  [GoogleModels.Veo_3_1_Fast]: { video_generation: 0.1 },
-  [GoogleModels.Veo_3_1_Lite]: { video_generation: 0.05 },
+  // Imagen and Veo are no longer served by the Gemini API (models.get → 404,
+  // absent from the pricing page). Veo 3.1 Preview shut down 2026-10-22.
+  [GoogleModels.Imagen_3]: { image_generation: 0.04, deprecated: true, replacedBy: GoogleModels.Gemini_Nano_Banana_21 },
+  [GoogleModels.Imagen_4_Fast]: { image_generation: 0.02, deprecated: true, replacedBy: GoogleModels.Gemini_Nano_Banana_21 },
+  [GoogleModels.Imagen_4_Ultra]: { image_generation: 0.06, deprecated: true, replacedBy: GoogleModels.Gemini_Nano_Banana_21 },
+  [GoogleModels.Veo_2]: { video_generation: 0.35, deprecated: true, replacedBy: GoogleModels.Gemini_Omni_12_Flash },
+  [GoogleModels.Veo_3]: { video_generation: 0.4, deprecated: true, replacedBy: GoogleModels.Gemini_Omni_12_Flash },
+  [GoogleModels.Veo_3_Fast]: { video_generation: 0.1, deprecated: true, replacedBy: GoogleModels.Gemini_Omni_12_Flash },
+  [GoogleModels.Veo_3_1]: { video_generation: 0.4, deprecated: true, deprecationDate: "2026-10-22", replacedBy: GoogleModels.Gemini_Omni_12_Flash },
+  [GoogleModels.Veo_3_1_Fast]: { video_generation: 0.1, deprecated: true, deprecationDate: "2026-10-22", replacedBy: GoogleModels.Gemini_Omni_12_Flash },
+  [GoogleModels.Veo_3_1_Lite]: { video_generation: 0.05, deprecated: true, deprecationDate: "2026-10-22", replacedBy: GoogleModels.Gemini_Omni_12_Flash },
   [GoogleEmbeddingModels.Gemini_Embedding]: { input: 0 },
   [GoogleEmbeddingModels.Gemini_Embedding_001]: { input: 0.15 },
   [GoogleEmbeddingModels.Gemini_Embedding_2]: { input: 0.2 },
@@ -467,4 +538,5 @@ export const GOOGLE_MODEL_CATALOG: ModelCatalogEntry[] = [
   ...completions(GemmaTextModels,      "google", GemmaPricing),
   ...decisions(GoogleDecisionModels,   "google", GeminiPricing),
   ...audios(GoogleTTSModels,           "google", GeminiPricing),
+  ...audios(GoogleMusicModels,         "google", GeminiPricing),
 ];

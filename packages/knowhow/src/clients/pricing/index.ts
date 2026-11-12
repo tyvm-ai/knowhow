@@ -17,12 +17,15 @@ export {
   GeminiPricing, GeminiTextPricing, GOOGLE_MODEL_CATALOG,
   GoogleTextModels, GoogleImageModels, GoogleVideoModels,
   GoogleTTSModels, GoogleEmbeddingModelsList, GoogleDecisionModels,
+  GoogleMusicModels, GoogleInteractionsModels,
 } from "./google";
 
 export {
   XaiModels,
   XaiTextPricing, XaiImagePricing, XaiVideoPricing, XAI_MODEL_CATALOG,
   XaiTextModels, XaiImageModels, XaiVideoModels,
+  XaiVideo15Models, XaiImage2TierPricing,
+  XaiTTSModelId, XaiTTSModels, XaiTTSPricing,
 } from "./xai";
 
 export {

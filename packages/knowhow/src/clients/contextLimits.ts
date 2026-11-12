@@ -82,6 +82,8 @@ export const ContextLimits: Record<string, number> = {
   [Models.openai.GPT_Image_1_Mini]: 0,
   [Models.openai.ChatGPT_Image]: 0,
   [Models.openai.TTS_1]: 0,
+  [Models.openai.TTS_1_HD]: 0,
+  [Models.openai.GPT_4o_Mini_TTS]: 0,
   [Models.openai.Whisper_1]: 0,
   [Models.openai.DALL_E_3]: 0,
   [Models.openai.DALL_E_2]: 0,
@@ -90,6 +92,8 @@ export const ContextLimits: Record<string, number> = {
   [Models.openai.Sora_2_Pro]: 0,
 
   // ─── Anthropic ────────────────────────────────────────────────────────────
+  [Models.anthropic.Fable5_2]: 1_000_000,
+  [Models.anthropic.Mythos5_2]: 1_000_000,
   [Models.anthropic.Fable5_1]: 1_000_000,
   [Models.anthropic.Opus5_5]: 1_000_000,
   [Models.anthropic.Sonnet5_5]: 1_000_000,
@@ -184,6 +188,11 @@ export const ContextLimits: Record<string, number> = {
   [Models.google.Veo_3_1]: 0,
   [Models.google.Veo_3_1_Fast]: 0,
   [Models.google.Veo_3_1_Lite]: 0,
+  [Models.google.Gemini_Omni_12_Flash]: 0,
+  [Models.google.Gemini_Omni_11_Flash]: 0,
+  [Models.google.Lyria_35]: 0,
+  [Models.google.Lyria_3_Clip_Preview]: 0,
+  [Models.google.Lyria_3_Pro_Preview]: 0,
   // Google image generation models — no text context window; use 0
   [Models.google.Gemini_31_Flash_Image]: 0,
   [Models.google.Gemini_Nano_Banana_21]: 0,
@@ -230,7 +239,12 @@ export const ContextLimits: Record<string, number> = {
   [Models.xai.Grok4FastNonReasoning]: 2_000_000,
   // xAI image/video models — no text context window
   [Models.xai.GrokImagineImage]: 0,
+  [Models.xai.GrokImagineImage2]: 0,
+  [Models.xai.GrokImagineImageQuality]: 0,
+  [Models.xai.GrokImagineImagePro]: 0,
   [Models.xai.GrokImagineVideo]: 0,
+  [Models.xai.GrokImagineVideo1_5]: 0,
+  [Models.xai.GrokImagineVideo1_5Lite]: 0,
   [Models.xai.Grok2Image1212]: 0,
 
   // ─── Fireworks AI ──────────────────────────────────────────────────────────

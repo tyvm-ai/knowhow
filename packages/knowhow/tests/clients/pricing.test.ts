@@ -23,6 +23,7 @@ import {
   OpenAiRealtimeModels,
   XaiImageModels,
   XaiVideoModels,
+  GoogleMusicModels,
 } from "../../src/types";
 
 import {
@@ -47,6 +48,7 @@ describe("Model Pricing Coverage", () => {
     ...GoogleImageModels,
     ...GoogleVideoModels,
     ...GoogleTTSModels,
+    ...GoogleMusicModels,
     ...OpenAiImageModels,
     ...OpenAiVideoModels,
     ...OpenAiTTSModels,
@@ -135,6 +137,16 @@ describe("Model Pricing Coverage", () => {
       it(`Google image model (${modelId}) has pricing in GeminiTextPricing`, () => {
         const entry = geminiPricing[modelId];
         expect(entry).toBeDefined();
+      });
+    }
+  });
+
+  describe("Google music models have per-song pricing", () => {
+    for (const modelId of GoogleMusicModels) {
+      it(`${modelId} has audio_generation pricing`, () => {
+        expect(GeminiTextPricing[modelId]?.audio_generation).toEqual(
+          expect.any(Number)
+        );
       });
     }
   });

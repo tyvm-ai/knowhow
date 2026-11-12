@@ -9,6 +9,8 @@ import { completions, ModelCatalogEntry, ModelPricing } from "./types";
 
 export const AnthropicModels = {
   // Active models
+  Fable5_2:  "claude-fable-5-2",
+  Mythos5_2: "claude-mythos-5-2",
   Fable5_1:  "claude-fable-5-1",
   Fable5:    "claude-fable-5",
   Mythos5_1: "claude-mythos-5-1",
@@ -56,6 +58,7 @@ export const AnthropicModels = {
 // ─── Active (non-deprecated) text models ──────────────────────────────────────
 
 export const AnthropicTextModels: string[] = [
+  AnthropicModels.Fable5_2,
   AnthropicModels.Fable5_1,
   AnthropicModels.Opus5_5,
   AnthropicModels.Sonnet5_5,
@@ -77,6 +80,7 @@ export const AnthropicTextModels: string[] = [
 export const AnthropicLimitedAvailabilityModels: string[] = [
   AnthropicModels.Opus4_8Fast, // fast mode pricing
   AnthropicModels.Opus5Fast,   // fast mode pricing (research preview)
+  AnthropicModels.Mythos5_2,   // invitation-only (Life Sciences / Cyber Verification Programs)
   AnthropicModels.Mythos5_1,   // invitation-only (Project Glasswing)
   AnthropicModels.Mythos5,     // invitation-only (Project Glasswing)
   AnthropicModels.MythosPreview, // invitation-only (defensive cybersecurity)
@@ -112,6 +116,10 @@ const AnthropicAllModels: string[] = [
 // ─── Pricing (USD per 1M tokens) ──────────────────────────────────────────────
 
 export const AnthropicTextPricing: Record<string, ModelPricing> = {
+  // Claude Fable 5.2 / Mythos 5.2 (launched 2026-11-09) — 20% cheaper than 5.1.
+  // Optional fast mode is $16 / $80 (not modelled as a separate id).
+  [AnthropicModels.Fable5_2]:  { input: 8.0, cache_write: 10.0, cache_hit: 0.2, output: 40.0 },
+  [AnthropicModels.Mythos5_2]: { input: 8.0, cache_write: 10.0, cache_hit: 0.2, output: 40.0, limitedAvailability: true },
   [AnthropicModels.Fable5_1]:  { input: 10.0, cache_write: 12.5, cache_hit: 0.25, output: 50.0 },
   [AnthropicModels.Mythos5_1]: { input: 10.0, cache_write: 12.5, cache_hit: 0.25, output: 50.0, limitedAvailability: true },
   [AnthropicModels.Opus5_5]:   { input: 4.0, cache_write: 5.0, cache_hit: 0.2, output: 20.0 },

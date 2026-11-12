@@ -78,6 +78,8 @@ describe("frontier model tiered pricing", () => {
 
     expect(client.getThinkingParam(AnthropicModels.Opus5_5, "high")).toEqual({ type: "adaptive" });
     expect(client.getThinkingParam(AnthropicModels.Sonnet5_5, "high")).toEqual({ type: "adaptive" });
+    expect(client.getThinkingParam(AnthropicModels.Fable5_2)).toEqual({ type: "adaptive" });
+    expect(client.getThinkingParam(AnthropicModels.Mythos5_2)).toEqual({ type: "adaptive" });
     expect(client.getThinkingParam(AnthropicModels.Fable5_1)).toEqual({ type: "adaptive" });
     expect(client.getThinkingParam(AnthropicModels.Mythos5_1)).toEqual({ type: "adaptive" });
     expect(client.getThinkingParam(AnthropicModels.Sonnet5)).toBeUndefined();

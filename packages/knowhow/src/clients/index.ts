@@ -11,6 +11,7 @@ import {
   AudioGenerationResponse,
   ImageGenerationOptions,
   ImageGenerationResponse,
+  ImageEditOptions,
   VideoGenerationOptions,
   VideoGenerationResponse,
   VideoStatusOptions,
@@ -78,6 +79,7 @@ export {
   XaiImagePricing,
   XaiVideoPricing,
 };
+import { getVoices, VoiceOption } from "./voices";
 export * from "./responseMetadata";
 export type {
   ModelPricing,
@@ -881,6 +883,14 @@ export class AIClient {
     );
   }
 
+  /**
+   * Voices selectable for a text-to-speech model (see ./voices.ts). Empty for models without voices
+   * (music models, non-TTS) and providers that cannot generate speech.
+   */
+  listVoices(provider: string, model?: string): VoiceOption[] {
+    return getVoices(provider, model);
+  }
+
   async createImageGeneration(
     provider: string,
     options: ImageGenerationOptions
@@ -898,6 +908,25 @@ export class AIClient {
     }
     return withRetry(
       (signal) => client.createImageGeneration({ ...options, model, signal }),
+      options
+    );
+  }
+
+  async createImageEdit(
+    provider: string,
+    options: ImageEditOptions
+  ): Promise<ImageGenerationResponse> {
+    const { client, model } = this.getClient(provider, options.model);
+    if (!client || !client.createImageEdit) {
+      throw new Error(`Provider ${provider} does not support image editing.`);
+    }
+    if (!model) {
+      throw new Error(
+        `Model ${options.model} not registered for provider ${provider}.`
+      );
+    }
+    return withRetry(
+      (signal) => client.createImageEdit({ ...options, model, signal }),
       options
     );
   }
@@ -1238,6 +1267,7 @@ export * from "./knowhow";
 export * from "./gemini";
 export * from "./contextLimits";
 export * from "./xai";
+export { resolveMediaInput } from "./imageEdit";
 export * from "./knowhowMcp";
 export * from "./groq";
 export * from "./github";
@@ -1251,3 +1281,6 @@ export * from "./fireworks";
 export * from "./meta";
 export * from "./qwen";
 export * from "./jev";
+export * from "./voices";
+export * from "./customVoices";
+export * from "./deprecation";

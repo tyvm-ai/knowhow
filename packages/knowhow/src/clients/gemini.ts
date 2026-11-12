@@ -1,3 +1,4 @@
+import { isGoogleCustomVoiceId } from "./customVoices";
 import {
   GoogleGenAI,
   Part,
@@ -24,10 +25,12 @@ import {
   GoogleEmbeddingModelsList,
   GoogleReasoningModels,
   GoogleDecisionModels,
+  GoogleMusicModels,
 } from "../types";
 import { GeminiTextPricing } from "./pricing";
 import { ContextLimits } from "./contextLimits";
-import { ModelModality, TokenUsage } from "./types";
+import { ModelModality, TokenUsage, ImageEditOptions } from "./types";
+import { geminiImageEdit } from "./imageEdit";
 import { emitResponseMetadata } from "./responseMetadata";
 
 import {
@@ -60,6 +63,30 @@ import {
   DecisionContent,
   DecisionQuestion,
 } from "./types";
+
+/** Subset of the Interactions API resource (POST/GET /v1beta/interactions). */
+interface GeminiInteraction {
+  id?: string;
+  model?: string;
+  status?: "in_progress" | "completed" | "failed" | "cancelled" | "incomplete" | "requires_action" | string;
+  error?: unknown;
+  steps?: {
+    type: string;
+    content?: {
+      type: string;
+      text?: string;
+      data?: string;
+      uri?: string;
+      mime_type?: string;
+    }[];
+  }[];
+  usage?: {
+    total_input_tokens?: number;
+    total_output_tokens?: number;
+    total_thought_tokens?: number;
+    output_tokens_by_modality?: { modality: string; tokens: number }[];
+  };
+}
 
 function getMimeTypeFromUrl(url: string): string {
   if (url.endsWith(".png")) return "image/png";
@@ -616,12 +643,19 @@ export class GenericGeminiClient implements GenericClient {
       // Map cachedContentTokenCount → prompt_tokens_details.cached_tokens so that
       // base.ts can read cache hit tokens via usage.prompt_tokens_details?.cached_tokens
       const cachedTokens = usage?.cachedContentTokenCount ?? 0;
+      // candidatesTokenCount excludes thinking tokens, which Google bills as
+      // output. Report them inside completion_tokens (like OpenAI/Anthropic do)
+      // and expose the split via output_tokens_details.reasoning_tokens.
+      const thoughtTokens = usage?.thoughtsTokenCount ?? 0;
       const usageWithCache: TokenUsage | undefined = usage
         ? ({
             prompt_tokens: usage.promptTokenCount ?? 0,
-            completion_tokens: usage.candidatesTokenCount ?? 0,
+            completion_tokens: (usage.candidatesTokenCount ?? 0) + thoughtTokens,
             total_tokens: usage.totalTokenCount,
             prompt_tokens_details: { cached_tokens: cachedTokens },
+            ...(thoughtTokens > 0 && {
+              output_tokens_details: { reasoning_tokens: thoughtTokens },
+            }),
           } as TokenUsage)
         : undefined;
 
@@ -738,16 +772,22 @@ export class GenericGeminiClient implements GenericClient {
     }
 
     // ── Output tokens ─────────────────────────────────────────────────────────
-    const outputDetails = (usage as any).outputTokensDetails as
+    // Live API reports outputTokensDetails; generateContent reports
+    // candidatesTokensDetails (which excludes thinking tokens).
+    const liveOutputDetails = u.outputTokensDetails as
+      | { modality?: string; tokenCount?: number }[]
+      | undefined;
+    const outputDetails = (liveOutputDetails ?? u.candidatesTokensDetails) as
       | { modality?: string; tokenCount?: number }[]
       | undefined;
 
     if (
       outputDetails &&
       outputDetails.length > 0 &&
-      pricing.output_audio !== undefined
+      (pricing.output_audio !== undefined ||
+        pricing.image_generation_per_1m_tokens !== undefined)
     ) {
-      // Modality-aware billing
+      // Modality-aware billing (audio / image output carry their own rates)
       for (const detail of outputDetails) {
         const tokens = detail.tokenCount || 0;
         if (!tokens) continue;
@@ -755,11 +795,22 @@ export class GenericGeminiClient implements GenericClient {
         if (modality === "AUDIO") {
           const rate = pricing.output_audio ?? pricing.output ?? 0;
           cost += (tokens * rate) / 1e6;
+        } else if (
+          modality === "IMAGE" &&
+          pricing.image_generation_per_1m_tokens !== undefined
+        ) {
+          cost += (tokens * pricing.image_generation_per_1m_tokens) / 1e6;
         } else {
           const isGt200k = isLongPrompt && pricing.output_gt_200k;
           const rate = isGt200k ? pricing.output_gt_200k! : pricing.output ?? 0;
           cost += (tokens * rate) / 1e6;
         }
+      }
+      // candidatesTokensDetails omits thinking tokens — bill them at the output rate
+      if (!liveOutputDetails && u.thoughtsTokenCount) {
+        const isGt200k = isLongPrompt && pricing.output_gt_200k;
+        const rate = isGt200k ? pricing.output_gt_200k! : pricing.output ?? 0;
+        cost += (u.thoughtsTokenCount * rate) / 1e6;
       }
     } else {
       // Fallback: no modality breakdown — use total output token count.
@@ -799,7 +850,7 @@ export class GenericGeminiClient implements GenericClient {
         completion: GoogleReasoningModels,
         embedding: GoogleEmbeddingModelsList,
         image: GoogleImageModels,
-        audio: GoogleTTSModels,
+        audio: [...GoogleTTSModels, ...GoogleMusicModels],
         video: GoogleVideoModels,
         decision: GoogleDecisionModels,
       };
@@ -964,6 +1015,253 @@ export class GenericGeminiClient implements GenericClient {
     }
   }
 
+  // ─── Interactions API (Gemini Omni video, Lyria music) ──────────────────────
+  // These models are only served by POST /v1beta/interactions — not by
+  // generateContent / generateVideos — so they're called over REST directly.
+
+  /** Video output tokens billed per second of generated video, by resolution. */
+  static readonly OMNI_VIDEO_TOKENS_PER_SECOND: Record<string, number> = {
+    "360p": 1931,
+    "720p": 5792,
+    "1080p": 8688,
+    "4k": 17376,
+  };
+
+  static readonly INTERACTION_JOB_PREFIX = "interactions/";
+
+  static isMusicModel(model?: string): boolean {
+    return !!model && /(^|\/)lyria-/.test(model);
+  }
+
+  static isOmniVideoModel(model?: string): boolean {
+    // gemini-omni-flash-preview is a text model — only versioned Omni ids make video
+    return !!model && /(^|\/)gemini-omni-\d/.test(model);
+  }
+
+  private async interactionsRequest(
+    method: "GET" | "POST",
+    path: string,
+    body?: unknown,
+    signal?: AbortSignal
+  ): Promise<GeminiInteraction> {
+    const apiKey = this.apiKey || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY is required for the Gemini Interactions API.");
+    }
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/${path}`,
+      {
+        method,
+        headers: {
+          "x-goog-api-key": apiKey,
+          "Content-Type": "application/json",
+        },
+        ...(body !== undefined && { body: JSON.stringify(body) }),
+        signal,
+      }
+    );
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(
+        `Gemini interactions request failed (${response.status} ${response.statusText}): ${text}`
+      );
+    }
+    return (await response.json()) as GeminiInteraction;
+  }
+
+  /** Collects model_output content blocks (text / audio / video) from an interaction. */
+  static extractInteractionOutputs(interaction: GeminiInteraction) {
+    const texts: string[] = [];
+    const audio: { data: string; mimeType: string }[] = [];
+    const video: { data?: string; uri?: string; mimeType: string }[] = [];
+    for (const step of interaction.steps ?? []) {
+      if (step.type !== "model_output") continue;
+      for (const block of step.content ?? []) {
+        if (block.type === "text" && block.text) texts.push(block.text);
+        if (block.type === "audio" && block.data) {
+          audio.push({ data: block.data, mimeType: block.mime_type || "audio/mpeg" });
+        }
+        if (block.type === "video" && (block.data || block.uri)) {
+          video.push({ data: block.data, uri: block.uri, mimeType: block.mime_type || "video/mp4" });
+        }
+      }
+    }
+    return { text: texts.join("\n"), audio, video };
+  }
+
+  /**
+   * Cost of an Omni interaction from its reported usage: input tokens at the
+   * input rate, video output tokens at the video rate, and any other output
+   * (text + thinking) at the text output rate.
+   */
+  static omniCost(model: string, usage?: GeminiInteraction["usage"]): number | undefined {
+    const pricing = GeminiTextPricing[model];
+    if (!pricing || !usage) return undefined;
+    const videoTokens = (usage.output_tokens_by_modality ?? [])
+      .filter((m) => m.modality === "video")
+      .reduce((sum, m) => sum + (m.tokens ?? 0), 0);
+    const otherOutput =
+      Math.max(0, (usage.total_output_tokens ?? 0) - videoTokens) +
+      (usage.total_thought_tokens ?? 0);
+    return (
+      ((usage.total_input_tokens ?? 0) * (pricing.input ?? 0) +
+        videoTokens * (pricing.output_video_per_1m_tokens ?? pricing.output ?? 0) +
+        otherOutput * (pricing.output ?? 0)) /
+      1_000_000
+    );
+  }
+
+  /** Pre-generation estimate for Omni (video tokens only — thinking is small). */
+  static estimateOmniCost(model: string, durationSec: number, resolution: string): number {
+    const pricing = GeminiTextPricing[model];
+    const tokensPerSec =
+      GenericGeminiClient.OMNI_VIDEO_TOKENS_PER_SECOND[resolution] ??
+      GenericGeminiClient.OMNI_VIDEO_TOKENS_PER_SECOND["720p"];
+    if (pricing?.output_video_per_1m_tokens) {
+      return (durationSec * tokensPerSec * pricing.output_video_per_1m_tokens) / 1_000_000;
+    }
+    return durationSec * (pricing?.video_generation ?? 0.07);
+  }
+
+  /** Turn an image URL (data: or http[s]:) into an Interactions image block. */
+  private static async toInteractionImage(url: string) {
+    const dataUrl = url.match(/^data:([^;]+);base64,(.*)$/s);
+    if (dataUrl) {
+      return { type: "image", mime_type: dataUrl[1], data: dataUrl[2] };
+    }
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to fetch image ${url}: ${res.status}`);
+    const mimeType = res.headers.get("content-type")?.split(";")[0] || getMimeTypeFromUrl(url);
+    const data = Buffer.from(await res.arrayBuffer()).toString("base64");
+    return { type: "image", mime_type: mimeType, data };
+  }
+
+  /**
+   * Lyria music generation. lyria-3-clip-preview always returns a 30s clip;
+   * lyria-3.5 makes full songs (length steerable via the prompt). Output is
+   * MP3 unless `response_format: "wav"` is requested (lyria-3.5 only).
+   */
+  async createMusicGeneration(
+    options: AudioGenerationOptions
+  ): Promise<AudioGenerationResponse> {
+    const wantsWav = options.response_format === "wav";
+    const interaction = await this.interactionsRequest(
+      "POST",
+      "interactions",
+      {
+        model: options.model,
+        input: options.input,
+        ...(wantsWav && {
+          response_format: { type: "audio", mime_type: "audio/wav" },
+        }),
+      },
+      options.signal
+    );
+
+    if (interaction.status && interaction.status !== "completed") {
+      throw new Error(
+        `Lyria interaction ${interaction.id ?? ""} ended with status ${interaction.status}`
+      );
+    }
+    const outputs = GenericGeminiClient.extractInteractionOutputs(interaction);
+    // Docs: the last audio block is the generated track
+    const track = outputs.audio[outputs.audio.length - 1];
+    if (!track) {
+      throw new Error("No audio data returned from Lyria");
+    }
+    return {
+      audio: Buffer.from(track.data, "base64"),
+      format: track.mimeType,
+      text: outputs.text || undefined,
+      usd_cost: GeminiTextPricing[options.model]?.audio_generation,
+    };
+  }
+
+  /**
+   * Gemini Omni video generation. Submitted in background mode; the returned
+   * jobId ("interactions/<id>") is polled with getVideoStatus, which returns
+   * the MP4 inline as base64.
+   */
+  async createOmniVideoGeneration(
+    options: VideoGenerationOptions
+  ): Promise<VideoGenerationResponse> {
+    if (options.n && options.n > 1) {
+      console.warn("Gemini Omni generates one video per request; ignoring n > 1.");
+    }
+    const duration = Math.min(15, Math.max(3, Math.round(options.duration ?? 10)));
+    const resolution = (options.resolution || "720p").toLowerCase();
+    const responseFormat: Record<string, string> = {
+      type: "video",
+      duration: `${duration}s`,
+      resolution,
+    };
+    if (options.aspect_ratio) responseFormat.aspect_ratio = options.aspect_ratio;
+
+    const input = options.image_url
+      ? [
+          { type: "text", text: options.prompt },
+          await GenericGeminiClient.toInteractionImage(options.image_url),
+        ]
+      : options.prompt;
+
+    const interaction = await this.interactionsRequest(
+      "POST",
+      "interactions",
+      {
+        model: options.model,
+        input,
+        response_format: responseFormat,
+        background: true,
+      },
+      options.signal
+    );
+    if (!interaction.id) {
+      throw new Error("Gemini Omni did not return an interaction id");
+    }
+
+    return {
+      created: Math.floor(Date.now() / 1000),
+      data: [],
+      jobId: `${GenericGeminiClient.INTERACTION_JOB_PREFIX}${interaction.id}`,
+      usd_cost: GenericGeminiClient.estimateOmniCost(options.model, duration, resolution),
+    };
+  }
+
+  private async getInteractionVideoStatus(jobId: string): Promise<VideoStatusResponse> {
+    const interaction = await this.interactionsRequest("GET", jobId);
+    switch (interaction.status) {
+      case "completed": {
+        const { video } = GenericGeminiClient.extractInteractionOutputs(interaction);
+        if (video.length === 0) {
+          return { jobId, status: "failed", error: "Interaction completed without a video" };
+        }
+        return {
+          jobId,
+          status: "completed",
+          data: video.map((v) => ({
+            b64_json: v.data,
+            url: v.uri,
+            fileUri: v.uri,
+          })),
+          usd_cost: interaction.model
+            ? GenericGeminiClient.omniCost(interaction.model, interaction.usage)
+            : undefined,
+        };
+      }
+      case "failed":
+      case "cancelled":
+        return {
+          jobId,
+          status: "failed",
+          error: JSON.stringify(interaction.error ?? interaction.status),
+        };
+      case "incomplete":
+        return { jobId, status: "failed", error: "Interaction incomplete" };
+      default:
+        return { jobId, status: "in_progress" };
+    }
+  }
+
   async createAudioTranscription(
     options: AudioTranscriptionOptions
   ): Promise<AudioTranscriptionResponse> {
@@ -975,6 +1273,12 @@ export class GenericGeminiClient implements GenericClient {
   async createAudioGeneration(
     options: AudioGenerationOptions
   ): Promise<AudioGenerationResponse> {
+    if (GenericGeminiClient.isMusicModel(options.model)) {
+      return this.createMusicGeneration(options);
+    }
+    if (isGoogleCustomVoiceId(options.voice)) {
+      return this.createCustomVoiceSpeech(options);
+    }
     try {
       const response = await this.client.models.generateContent({
         model: options.model,
@@ -1027,6 +1331,49 @@ export class GenericGeminiClient implements GenericClient {
       console.error("Error calling Gemini TTS:", error);
       throw error;
     }
+  }
+
+  /**
+   * Speech with a replicated (cloned) voice — `voice_…` (stateful) or `voicekey_…` (stateless, 7 days) from
+   * createCustomVoice("google", …). Uses the Interactions API exactly as documented for Voice replication
+   * (https://ai.google.dev/gemini-api/docs/voice-replication); only gemini-3.8-*-tts models support it.
+   */
+  private async createCustomVoiceSpeech(
+    options: AudioGenerationOptions
+  ): Promise<AudioGenerationResponse> {
+    const interaction = await this.interactionsRequest(
+      "POST",
+      "interactions",
+      {
+        model: options.model,
+        input: [
+          {
+            type: "user_input",
+            content: [{ type: "text", text: options.input }],
+          },
+        ],
+        response_format: { type: "audio" },
+        generation_config: { speech_config: [{ voice: options.voice }] },
+      },
+      options.signal
+    );
+    if (interaction.status && interaction.status !== "completed") {
+      throw new Error(
+        `Gemini custom-voice interaction ${interaction.id ?? ""} ended with status ${interaction.status}`
+      );
+    }
+    const outputs = GenericGeminiClient.extractInteractionOutputs(interaction);
+    const track = outputs.audio[outputs.audio.length - 1];
+    if (!track) {
+      throw new Error("No audio data returned from Gemini custom voice TTS");
+    }
+    let audio: Buffer = Buffer.from(track.data, "base64");
+    const mimeType = track.mimeType || "audio/wav";
+    if (mimeType.includes("L16") || mimeType.includes("pcm")) {
+      const rateMatch = mimeType.match(/rate=(\d+)/);
+      audio = pcmToWav(audio, rateMatch ? parseInt(rateMatch[1], 10) : 24000);
+    }
+    return { audio, format: "audio/wav" };
   }
 
   async createImageGeneration(
@@ -1107,9 +1454,23 @@ export class GenericGeminiClient implements GenericClient {
     }
   }
 
+  /** Nano-banana style edit / multi-image composition via generateContent with image parts. */
+  async createImageEdit(
+    options: ImageEditOptions
+  ): Promise<ImageGenerationResponse> {
+    return geminiImageEdit(
+      this.client.models as unknown as Parameters<typeof geminiImageEdit>[0],
+      options,
+      (usage) => this.calculateCost(options.model, usage as UsageMetadata)
+    );
+  }
+
   async createVideoGeneration(
     options: VideoGenerationOptions
   ): Promise<VideoGenerationResponse> {
+    if (GenericGeminiClient.isOmniVideoModel(options.model)) {
+      return this.createOmniVideoGeneration(options);
+    }
     try {
       // Submit the video generation job – do NOT poll here.
       // Use getVideoStatus() to poll and downloadFile() to fetch the result.
@@ -1148,6 +1509,9 @@ export class GenericGeminiClient implements GenericClient {
   async getVideoStatus(
     options: VideoStatusOptions
   ): Promise<VideoStatusResponse> {
+    if (options.jobId.startsWith(GenericGeminiClient.INTERACTION_JOB_PREFIX)) {
+      return this.getInteractionVideoStatus(options.jobId);
+    }
     try {
       const operation = await this.client.operations.getVideosOperation({
         operation: { name: options.jobId } as any,

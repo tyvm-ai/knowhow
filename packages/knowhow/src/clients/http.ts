@@ -14,6 +14,7 @@ import {
   EmbeddingResponse,
 } from "./types";
 import { ModelPricing } from "./pricing/types";
+import { providerReportedCost } from "./providerCost";
 import fs from "fs";
 import path from "path";
 
@@ -211,6 +212,7 @@ export class HttpClient implements GenericClient {
       | {
           prompt_tokens?: number;
           completion_tokens?: number;
+          total_tokens?: number;
           prompt_tokens_details?: { cached_tokens?: number };
         }
       | undefined
@@ -221,7 +223,14 @@ export class HttpClient implements GenericClient {
 
     const cachedInputTokens = usage.prompt_tokens_details?.cached_tokens ?? 0;
     const inputTokens = usage.prompt_tokens ?? 0;
-    const outputTokens = usage.completion_tokens ?? 0;
+    // Some OpenAI-compatible endpoints (e.g. xAI chat completions, Gemini's
+    // /v1beta/openai compat layer) leave reasoning/thinking tokens out of
+    // completion_tokens but still bill them at the output rate. total_tokens
+    // does include them, so bill whichever output count is larger.
+    const outputTokens = Math.max(
+      usage.completion_tokens ?? 0,
+      (usage.total_tokens ?? 0) - inputTokens
+    );
 
     const cachedInputCost =
       (cachedInputTokens * (pricing.cache_hit ?? pricing.cached_input ?? 0)) /
@@ -337,7 +346,9 @@ export class HttpClient implements GenericClient {
         model: data.model,
         usage: data.usage,
         usd_cost:
-          data.usd_cost ?? this.calculateCost(options.model, data.usage),
+          data.usd_cost ??
+          providerReportedCost(data.usage) ??
+          this.calculateCost(options.model, data.usage),
       };
     });
   }
@@ -400,6 +411,7 @@ export class HttpClient implements GenericClient {
     const decoder = new TextDecoder();
     let buffer = "";
     let usage: StreamChunk["usage"] | undefined;
+    let billedCost: number | undefined;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -421,10 +433,14 @@ export class HttpClient implements GenericClient {
             yield { delta, done: false };
           }
           if (chunk.usage) {
+            billedCost = providerReportedCost(chunk.usage) ?? billedCost;
             usage = {
               prompt_tokens: chunk.usage.prompt_tokens ?? 0,
               completion_tokens: chunk.usage.completion_tokens ?? 0,
               total_tokens: chunk.usage.total_tokens,
+              ...(chunk.usage.prompt_tokens_details && {
+                prompt_tokens_details: chunk.usage.prompt_tokens_details,
+              }),
             };
           }
         } catch {
@@ -433,7 +449,7 @@ export class HttpClient implements GenericClient {
       }
     }
 
-    const usdCost = this.calculateCost(options.model, usage);
+    const usdCost = billedCost ?? this.calculateCost(options.model, usage);
     yield { done: true, usage, usd_cost: usdCost };
   }
 
@@ -643,7 +659,10 @@ export class HttpClient implements GenericClient {
         ],
         model: data.model ?? options.model,
         usage,
-        usd_cost: data.usd_cost ?? this.calculateCost(options.model, usage),
+        usd_cost:
+          data.usd_cost ??
+          providerReportedCost(data.usage) ??
+          this.calculateCost(options.model, usage),
         response_id: data.id,
       };
     });
@@ -691,7 +710,9 @@ export class HttpClient implements GenericClient {
         model: options.model,
         usage: data.usage,
         usd_cost:
-          data.usd_cost ?? this.calculateCost(options.model, data.usage),
+          data.usd_cost ??
+          providerReportedCost(data.usage) ??
+          this.calculateCost(options.model, data.usage),
       };
     });
   }

@@ -125,6 +125,14 @@ export type Config = {
     defaultModel?: string;
     defaultProvider?: string;
     modules?: string[];
+    /**
+     * How past interactions are included when the chat starts an agent:
+     * the last `recent` interactions plus the `relevant` most similar older
+     * ones from an embedding index of .knowhow/chats (see ChatHistoryIndex).
+     * `enabled: false` restores the old behaviour (every interaction of the
+     * current process, as JSON).
+     */
+    history?: Partial<import("./services/ChatHistoryIndex").ChatHistoryOptions>;
   };
   modules: string[];
   agents: Assistant[];
@@ -265,10 +273,10 @@ import {
   GoogleModels, GoogleEmbeddingModels,
   GoogleTextModels, GoogleImageModels, GoogleVideoModels,
   GoogleTTSModels, GoogleEmbeddingModelsList, GoogleThinkingLevelModels, GoogleThinkingBudgetModels,
-  GoogleDecisionModels,
+  GoogleDecisionModels, GoogleMusicModels, GoogleInteractionsModels,
 } from "./clients/pricing/google";
 import {
-  XaiModels, XaiTextModels, XaiImageModels, XaiVideoModels, XaiResponsesOnlyModels, XaiReasoningModels,
+  XaiModels, XaiTextModels, XaiImageModels, XaiVideoModels, XaiTTSModels, XaiResponsesOnlyModels, XaiReasoningModels,
 } from "./clients/pricing/xai";
 import { FireworksModels } from "./clients/pricing/fireworks";
 
@@ -293,8 +301,9 @@ export {
   GoogleTextModels as GoogleReasoningModels,
   GoogleImageModels, GoogleVideoModels, GoogleTTSModels, GoogleEmbeddingModelsList,
   GoogleThinkingLevelModels, GoogleThinkingBudgetModels, GoogleDecisionModels,
+  GoogleMusicModels, GoogleInteractionsModels,
   AnthropicTextModels,
-  XaiTextModels, XaiImageModels, XaiVideoModels, XaiResponsesOnlyModels, XaiReasoningModels,
+  XaiTextModels, XaiImageModels, XaiVideoModels, XaiTTSModels, XaiResponsesOnlyModels, XaiReasoningModels,
 };
 
 export function getEnabledPlugins(plugins: Config["plugins"] | undefined): string[] {

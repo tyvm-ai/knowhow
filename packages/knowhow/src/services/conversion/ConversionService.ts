@@ -393,7 +393,7 @@ export class ConversionService {
       outputType: "video",
       async convert(input, ctx): Promise<ConvertResult> {
         const provider = (ctx.options?.provider as string) || "google";
-        const model = (ctx.options?.model as string) || "veo-2.0-generate-001";
+        const model = (ctx.options?.model as string) || "gemini-omni-1.2-flash";
         const duration = (ctx.options?.duration as number) || undefined;
         const resolution = (ctx.options?.resolution as string) || undefined;
         const aspect_ratio = (ctx.options?.aspect_ratio as string) || "16:9";

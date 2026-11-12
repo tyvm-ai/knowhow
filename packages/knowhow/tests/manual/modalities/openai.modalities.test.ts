@@ -6,7 +6,7 @@
  *  2. Audio transcription (Whisper) of generated audio
  *  3. Image generation (DALL-E 3) → saved to disk
  *  4. Send generated image to a vision model and describe it
- *  5. Video generation (Sora) → not yet available in the OpenAI SDK (documents error)
+ *  5. Video generation (Sora) → SKIPPED: OpenAI shut down Sora + the Videos API on 2026-09-24
  *
  * Run with:
  *   npx ts-node --project tsconfig.json tests/manual/modalities/openai.modalities.test.ts
@@ -205,7 +205,8 @@ describe("OpenAI Modalities", () => {
 
   // ─── 5. Video Generation (Sora 2) ────────────────────────────────────────────
 
-  test("5. OpenAI Sora 2 – generate video and save to disk", async () => {
+  // Sora / the Videos API was discontinued 2026-09-24 (/v1/videos → 404).
+  test.skip("5. OpenAI Sora 2 – generate video and save to disk (discontinued)", async () => {
     if (!process.env.OPENAI_KEY) {
       console.log("Skipping: OPENAI_KEY not set");
       return;

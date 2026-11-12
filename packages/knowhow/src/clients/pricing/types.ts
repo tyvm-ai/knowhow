@@ -39,6 +39,10 @@ export interface ModelPricing {
   image_generation?: number;
   image_generation_per_1m_tokens?: number;
   video_generation?: number;
+  /** Video output billed per 1M tokens (e.g. Gemini Omni: tokens scale with seconds × resolution). */
+  output_video_per_1m_tokens?: number;
+  /** Flat per-request price for generated audio (e.g. Lyria: USD per song / clip). */
+  audio_generation?: number;
   output_image_per_1m_tokens?: number;
   // Optional metadata — when set on a pricing entry, the catalog picks them up automatically
   deprecated?: boolean;
@@ -71,7 +75,11 @@ export interface ModelCatalogEntry {
   deprecationDate?: string;
   /** Model exists but is not generally available (e.g. Live API only, limited access, or returns empty responses) */
   limitedAvailability?: boolean;
-  /** Recommended replacement model ID when this model is deprecated */
+  /**
+   * Recommended replacement model ID. Set when the model is deprecated, and also when it is merely
+   * superseded by a newer model that is still served (not deprecated). Follow chains with
+   * `resolveSuccessor` / `resolveNewestSuccessor` in ../deprecation.
+   */
   replacedBy?: string;
   /** Model the provider reroutes requests to (see ModelPricing.routesTo) */
   routesTo?: string;

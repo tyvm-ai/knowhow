@@ -28,6 +28,8 @@ type Usage = Anthropic.Usage;
 type ThinkingParam = Anthropic.Messages.ThinkingConfigParam;
 
 const alwaysOnModels: readonly string[] = [
+  AnthropicModels.Fable5_2,
+  AnthropicModels.Mythos5_2,
   AnthropicModels.Fable5_1,
   AnthropicModels.Fable5,
   AnthropicModels.Mythos5_1,
@@ -285,6 +287,13 @@ export class GenericAnthropicClient implements GenericClient {
       .slice(-2);
 
     for (const m of lastTwoUserMessages) {
+      // A plain-string user message (e.g. the first task prompt with its
+      // history/plugin context) can't carry cache_control, so it was billed
+      // at the full input rate on the first request and then written to the
+      // cache on the second. Convert it so the first request writes it.
+      if (typeof m.content === "string" && m.content) {
+        m.content = this.toBlockArray(m.content);
+      }
       if (Array.isArray(m.content)) {
         this.cacheLastContent(m, longTtl);
       }
