@@ -74,13 +74,37 @@ export interface ChatService {
   formatChatInput(
     input: string,
     plugins: string[],
-    chatHistory: ChatInteraction[]
+    chatHistory: ChatInteraction[],
+    options?: FormatChatInputOptions
   );
+  /** Record a finished chat interaction in the persistent history index. */
+  recordChatInteraction?(interaction: RecordedChatInteraction): Promise<void>;
   getInput(
     prompt?: string,
     options?: string[],
     chatHistory?: any[]
   ): Promise<string>;
+}
+
+export interface FormatChatInputOptions {
+  /**
+   * Use the persistent history window (recent + relevant interactions from
+   * the embedding index) instead of every interaction of this process.
+   * Only the interactive chat sets this; spawned agents keep the old shape.
+   */
+  persistentHistory?: boolean;
+}
+
+export interface RecordedChatInteraction {
+  taskId: string;
+  input: string;
+  output: string;
+  agentName?: string;
+  model?: string;
+  startTime?: number;
+  endTime?: number;
+  totalCost?: number;
+  knowhowTaskId?: string;
 }
 
 // Enhanced task management types

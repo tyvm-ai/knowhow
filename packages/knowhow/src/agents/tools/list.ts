@@ -28,6 +28,7 @@ import {
 import { waitForAgentCompletedDefinition } from "./waitForAgentCompleted";
 import { waitForAgentMessageDefinition } from "./waitForAgentMessage";
 import { listAgentsDefinition } from "./listAgents";
+import { searchChatHistoryDefinition } from "./searchChatHistory";
 import {
   observeDefinition,
   stopObservingDefinition,
@@ -789,6 +790,7 @@ export const includedTools = [
   waitForAgentCompletedDefinition,
   waitForAgentMessageDefinition,
   listAgentsDefinition,
+  searchChatHistoryDefinition,
   observeDefinition,
   stopObservingDefinition,
   ...ycmd.definitions,

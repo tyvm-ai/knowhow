@@ -10,7 +10,17 @@ import {
   ChatMode,
   InputMethod,
 } from "./types";
-import { ChatHistory } from "./types";
+import { ChatHistory, FormatChatInputOptions, RecordedChatInteraction } from "./types";
+import {
+  ChatHistoryIndex,
+  ChatHistoryOptions,
+  DEFAULT_CHAT_HISTORY_OPTIONS,
+  buildChatHistoryContext,
+  remoteApiUrlForMetadata,
+  remoteTaskIdForMetadata,
+} from "../services/ChatHistoryIndex";
+import { getConfig } from "../config";
+import { getActiveRemoteSync } from "../remotes";
 import { ask, setOnNewHistoryEntry } from "../utils/index";
 import { ChatModule } from "./types";
 import { ChatInteraction } from "../types";
@@ -36,6 +46,7 @@ export class CliChatService implements ChatService {
   private modules: ChatModule[] = [];
   private inputHistory: string[] = [];
   private readonly historyFile = ".knowhow/chats/history.json";
+  private historyIndex?: Promise<ChatHistoryIndex>;
 
   constructor(plugins: string[] = []) {
     this.context = {
@@ -391,14 +402,16 @@ export class CliChatService implements ChatService {
   async formatChatInput(
     input: string,
     plugins: string[] = [],
-    chatHistory: ChatInteraction[] = []
+    chatHistory: ChatInteraction[] = [],
+    options: FormatChatInputOptions = {}
   ) {
     const { Plugins } = services();
-    const pluginText = await Plugins.callMany(plugins, input);
-    const historyMessage = `<PreviousChats>
-  This information is provided as historical context and is likely not related to the current task:
-  ${JSON.stringify(chatHistory)}
-    </PreviousChats>`;
+    const [pluginText, historyMessage] = await Promise.all([
+      Plugins.callMany(plugins, input),
+      options.persistentHistory
+        ? this.formatPersistentHistory(input, chatHistory)
+        : Promise.resolve(this.formatLegacyHistory(chatHistory)),
+    ]);
     const fullPrompt = `
     ${historyMessage} \n
     <PluginContext> ${pluginText} </PluginContext>
@@ -407,11 +420,127 @@ export class CliChatService implements ChatService {
     return fullPrompt;
   }
 
+  private formatLegacyHistory(chatHistory: ChatInteraction[]): string {
+    return `<PreviousChats>
+  This information is provided as historical context and is likely not related to the current task:
+  ${JSON.stringify(chatHistory)}
+    </PreviousChats>`;
+  }
+
+  async getHistoryOptions(): Promise<ChatHistoryOptions> {
+    try {
+      const config = await getConfig();
+      return { ...DEFAULT_CHAT_HISTORY_OPTIONS, ...(config.chat?.history || {}) };
+    } catch {
+      return { ...DEFAULT_CHAT_HISTORY_OPTIONS };
+    }
+  }
+
+  /** The project's chat history index (created once per process). */
+  getHistoryIndex(): Promise<ChatHistoryIndex> {
+    if (!this.historyIndex) {
+      this.historyIndex = (async () => {
+        const [config, options] = await Promise.all([
+          getConfig().catch(() => undefined),
+          this.getHistoryOptions(),
+        ]);
+        let apiUrl: string | undefined;
+        try {
+          apiUrl = getActiveRemoteSync().apiUrl;
+        } catch {
+          apiUrl = undefined;
+        }
+        return new ChatHistoryIndex({
+          embeddingModel: config?.embeddingModel,
+          includeAgentTasks: options.includeAgentTasks,
+          apiUrl,
+        });
+      })();
+    }
+    return this.historyIndex;
+  }
+
+  /**
+   * Recent interactions + relevant older ones from the embedding index.
+   * Falls back to the legacy block if anything goes wrong.
+   */
+  private async formatPersistentHistory(
+    input: string,
+    chatHistory: ChatInteraction[]
+  ): Promise<string> {
+    const options = await this.getHistoryOptions();
+    if (!options.enabled) return this.formatLegacyHistory(chatHistory);
+    try {
+      const index = await this.getHistoryIndex();
+      // Pick up tasks finished elsewhere (other chat processes) without
+      // holding up the prompt for a first-time full build.
+      await Promise.race([
+        index.syncOnce(),
+        new Promise((resolve) => setTimeout(resolve, 3000)),
+      ]);
+      const context = await buildChatHistoryContext({
+        index,
+        input,
+        inProcess: chatHistory,
+        options,
+      });
+      return context.text;
+    } catch (error) {
+      logger.log("chat-history", `Chat history index unavailable: ${(error as Error)?.message}`);
+      return this.formatLegacyHistory(chatHistory);
+    }
+  }
+
+  /** Add a finished chat task to the history index (embedded in the background). */
+  async recordChatInteraction(interaction: RecordedChatInteraction): Promise<void> {
+    const options = await this.getHistoryOptions();
+    if (!options.enabled || !interaction.output) return;
+    try {
+      const index = await this.getHistoryIndex();
+      let apiUrl: string | undefined;
+      const knowhowTaskId = remoteTaskIdForMetadata(interaction.knowhowTaskId);
+      if (knowhowTaskId) {
+        try {
+          apiUrl = getActiveRemoteSync().apiUrl;
+        } catch {
+          apiUrl = undefined;
+        }
+      }
+      await index.upsert({
+        id: interaction.taskId,
+        input: interaction.input,
+        output: interaction.output,
+        metadata: {
+          taskId: interaction.taskId,
+          sessionFile: path.join(".knowhow/chats/sessions", `${interaction.taskId}.json`),
+          agentName: interaction.agentName,
+          model: interaction.model,
+          startTime: interaction.startTime,
+          endTime: interaction.endTime ?? Date.now(),
+          totalCost: interaction.totalCost,
+          source: "chat",
+          ...(knowhowTaskId && { knowhowTaskId }),
+          ...(remoteApiUrlForMetadata(apiUrl) && { apiUrl: remoteApiUrlForMetadata(apiUrl) }),
+        },
+      });
+    } catch (error) {
+      logger.log("chat-history", `Could not record chat history: ${(error as Error)?.message}`);
+    }
+  }
+
   async startChatLoop(initialCommand?: string): Promise<void> {
     // Display available commands like the original
     const availableCommands = this.getCommandsForActiveModes();
     const commandNames = availableCommands.map((cmd) => `/${cmd.name}`);
     console.log("Commands:", commandNames.join(", "));
+
+    // Build/refresh the chat history index in the background so the first
+    // task can use it (a first-time build embeds every past chat task).
+    this.getHistoryOptions()
+      .then((options) =>
+        options.enabled ? this.getHistoryIndex().then((index) => index.syncOnce()) : undefined
+      )
+      .catch(() => undefined);
 
     // If an initial command was provided (e.g. from CLI), process it before
     // entering the interactive loop so the user lands in the right state.

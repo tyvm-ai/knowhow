@@ -33,6 +33,7 @@ export * from "./connectAgent";
 export * from "./waitForAgentCompleted";
 export * from "./waitForAgentMessage";
 export * from "./listAgents";
+export * from "./searchChatHistory";
 export * from "./observe";
 export * from "./ycmd";
 export * from "./mcp";

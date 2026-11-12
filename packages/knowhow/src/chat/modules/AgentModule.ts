@@ -922,6 +922,8 @@ export class AgentModule extends BaseChatModule {
     maxTimeLimit?: number; // in minutes
     maxSpendLimit?: number; // in dollars
     chatHistory?: ChatInteraction[];
+    /** Interactive chat: seed with the persistent history window (recent + relevant). */
+    persistentHistory?: boolean;
     run?: boolean; // whether to run immediately
     taskId?: string; // optional pre-generated taskId
     parentTaskId?: string; // taskId of the parent agent that spawned this task
@@ -1026,7 +1028,8 @@ export class AgentModule extends BaseChatModule {
       const formattedPrompt = await this.chatService.formatChatInput(
         input,
         plugins,
-        chatHistory
+        chatHistory,
+        { persistentHistory: !!options.persistentHistory }
       );
 
       startAgentTaskCleanup();
@@ -1579,6 +1582,7 @@ export class AgentModule extends BaseChatModule {
         agentName: selectedAgent.name,
         input: initialInput,
         chatHistory,
+        persistentHistory: true,
         model: selectedAgent.getModel(),
         provider: selectedAgent.getProvider() as any,
         run: false, // Don't run yet, we need to set up event listeners first
@@ -1647,7 +1651,24 @@ export class AgentModule extends BaseChatModule {
 
           if (context.chatHistory) {
             const found = context.chatHistory.find((h) => h.taskId === taskId);
-            if (found) found.output = agentFinalOutput;
+            if (found) {
+              found.output = agentFinalOutput;
+              // Persist it to the chat history index so later chats (and
+              // later chat processes) can recall it.
+              this.chatService
+                ?.recordChatInteraction?.({
+                  taskId,
+                  input: found.input,
+                  output: agentFinalOutput,
+                  agentName: agent.name,
+                  model: finalTaskInfo?.model,
+                  startTime: finalTaskInfo?.startTime,
+                  endTime: finalTaskInfo?.endTime,
+                  totalCost: finalTaskInfo?.totalCost,
+                  knowhowTaskId: finalTaskInfo?.knowhowTaskId,
+                })
+                .catch(() => undefined);
+            }
           }
 
           resolve("done");
