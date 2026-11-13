@@ -1063,7 +1063,7 @@ export class GenericGeminiClient implements GenericClient {
     if (!response.ok) {
       const text = await response.text();
       throw new Error(
-        `Gemini interactions request failed (${response.status} ${response.statusText}): ${text}`
+        `Gemini interactions request failed (${response.status} ${response.statusText}): ${GenericGeminiClient.redactApiKeys(text)}`
       );
     }
     return (await response.json()) as GeminiInteraction;
@@ -1629,28 +1629,28 @@ export class GenericGeminiClient implements GenericClient {
       // Build the download URL from the uri/fileId.
       const rawUri = options.uri || options.fileId || "";
 
-      // If it's already a full https URL, use it directly (append API key).
-      // Otherwise construct the Files API download URL from the resource name.
-      let downloadUrl: string;
-      if (rawUri.startsWith("https://")) {
-        // Append API key if not already present
-        const sep = rawUri.includes("?") ? "&" : "?";
-        downloadUrl = `${rawUri}${sep}key=${this.apiKey}`;
+      let data: Buffer;
+      let interactionMimeType: string | undefined;
+      if (rawUri.startsWith(GenericGeminiClient.INTERACTION_JOB_PREFIX)) {
+        // Omni results are NOT Files API files: the completed interaction carries
+        // the video inline (base64 `data`) and/or as a `uri`.
+        const video = await this.fetchInteractionVideo(rawUri);
+        data = video.data;
+        interactionMimeType = video.mimeType;
       } else {
-        // Strip leading "files/" if present to get just the file ID
-        const fileId = rawUri.replace(/^files\//, "");
-        downloadUrl = `https://generativelanguage.googleapis.com/v1beta/files/${fileId}:download?alt=media&key=${this.apiKey}`;
+        // If it's already a full https URL, use it directly (append API key only
+        // for Google API hosts). Otherwise construct the Files API download URL
+        // from the resource name.
+        let downloadUrl: string;
+        if (rawUri.startsWith("https://")) {
+          downloadUrl = this.withApiKey(rawUri);
+        } else {
+          // Strip leading "files/" if present to get just the file ID
+          const fileId = rawUri.replace(/^files\//, "");
+          downloadUrl = `https://generativelanguage.googleapis.com/v1beta/files/${fileId}:download?alt=media&key=${this.apiKey}`;
+        }
+        data = await this.fetchBuffer(downloadUrl);
       }
-
-      const response = await fetch(downloadUrl);
-      if (!response.ok) {
-        throw new Error(
-          `HTTP ${response.status} ${response.statusText} downloading ${downloadUrl}`
-        );
-      }
-
-      const arrayBuffer = await response.arrayBuffer();
-      const data = Buffer.from(arrayBuffer);
 
       // If caller supplied a filePath, write to it (creating dirs as needed)
       if (options.filePath) {
@@ -1664,16 +1664,88 @@ export class GenericGeminiClient implements GenericClient {
       const sourceForExt =
         options.uri || options.fileId || options.filePath || "";
       const ext = pathSync.extname(sourceForExt.split("?")[0]).toLowerCase();
-      const mimeType = mimeMap[ext] || "video/mp4";
+      const mimeType = interactionMimeType || mimeMap[ext] || "video/mp4";
 
       return { data, mimeType };
     } catch (error) {
-      console.error(
-        "Error downloading file from Google GenAI Files API:",
-        error
-      );
-      throw error;
+      const safe = GenericGeminiClient.redactError(error);
+      console.error("Error downloading file from Google GenAI Files API:", safe);
+      throw safe;
     }
+  }
+
+  /**
+   * Strips API keys from text that may be logged or thrown (URLs carry
+   * `key=<API KEY>`; raw keys look like `AIza...`).
+   */
+  static redactApiKeys(text: string): string {
+    return String(text)
+      .replace(/([?&](?:key|api_key|apikey)=)[^&\s"'<>]*/gi, "$1[REDACTED]")
+      .replace(/AIza[0-9A-Za-z_-]{20,}/g, "[REDACTED]");
+  }
+
+  /** A copy of `error` whose message/stack no longer contain API keys. */
+  static redactError(error: unknown): Error {
+    if (!(error instanceof Error)) {
+      return new Error(GenericGeminiClient.redactApiKeys(String(error)));
+    }
+    const safe = new Error(GenericGeminiClient.redactApiKeys(error.message));
+    safe.name = error.name;
+    if (error.stack) {
+      safe.stack = GenericGeminiClient.redactApiKeys(error.stack);
+    }
+    return safe;
+  }
+
+  /** Appends `key=` to Google API urls only (never leaks the key to other hosts). */
+  private withApiKey(url: string): string {
+    let host = "";
+    try {
+      host = new URL(url).hostname;
+    } catch {
+      return url;
+    }
+    if (host !== "generativelanguage.googleapis.com") return url;
+    const apiKey = this.apiKey || process.env.GEMINI_API_KEY;
+    if (!apiKey || /[?&]key=/.test(url)) return url;
+    return `${url}${url.includes("?") ? "&" : "?"}key=${apiKey}`;
+  }
+
+  private async fetchBuffer(url: string): Promise<Buffer> {
+    const response = await fetch(url, { redirect: "follow" });
+    if (!response.ok) {
+      throw new Error(
+        `HTTP ${response.status} ${response.statusText} downloading ${GenericGeminiClient.redactApiKeys(url)}`
+      );
+    }
+    return Buffer.from(await response.arrayBuffer());
+  }
+
+  /** Bytes of the (last) video block of a completed Omni interaction ("interactions/<id>"). */
+  private async fetchInteractionVideo(
+    jobId: string
+  ): Promise<{ data: Buffer; mimeType: string }> {
+    const interaction = await this.interactionsRequest("GET", jobId);
+    if (interaction.status && interaction.status !== "completed") {
+      throw new Error(
+        `Interaction ${jobId} is not completed (status: ${interaction.status})`
+      );
+    }
+    const { video } = GenericGeminiClient.extractInteractionOutputs(interaction);
+    const block = video[video.length - 1];
+    if (!block) {
+      throw new Error(`Interaction ${jobId} completed without a video output`);
+    }
+    if (block.data) {
+      return { data: Buffer.from(block.data, "base64"), mimeType: block.mimeType };
+    }
+    if (block.uri) {
+      return {
+        data: await this.fetchBuffer(this.withApiKey(block.uri)),
+        mimeType: block.mimeType,
+      };
+    }
+    throw new Error(`Interaction ${jobId} video has neither inline data nor a uri`);
   }
 
   getContextLimit(
