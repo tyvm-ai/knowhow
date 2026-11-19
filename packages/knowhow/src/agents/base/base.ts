@@ -9,6 +9,15 @@ import {
   Tool,
   ToolCall,
 } from "../../clients/types";
+import {
+  applyToolChanges,
+  buildDeferredTools,
+  canAppendToolChange,
+  createToolChangeMessage,
+  deriveToolBaseline,
+  diffToolChanges,
+  stripToolChangeMessages,
+} from "../../clients/toolChanges";
 import { IAgent } from "../interface";
 import { shouldNagForRequiredTool, buildRequiredToolNag } from "./continuation";
 import { ToolsService } from "../../services/Tools";
@@ -22,6 +31,20 @@ import { AIClient, Clients } from "../../clients";
 import { Models } from "../../ai";
 import { MessageProcessor } from "../../services/MessageProcessor";
 import { DEFAULT_CONTEXT_LIMIT } from "../../clients/contextLimits";
+import {
+  DEFAULT_GROWTH_PER_REQUEST,
+  SUMMARY_TOKENS,
+  LONG_TTL_AFTER_MS,
+  cacheExpiryCheckDelayMs,
+  chooseLongTtlSwitch,
+  getContextPrices,
+  hasLongTtl,
+  optimalCompactionThreshold,
+  promptCacheTtlMs,
+  shouldCompactBeforeCacheExpiry,
+  usesLongTtlCache,
+} from "./compactionPolicy";
+import type { ResolvedModelInfo } from "../../clients/pricing/modelInfo";
 import { Marked } from "../../utils";
 import { TraceAll } from "../../util/Trace";
 
@@ -128,6 +151,23 @@ export abstract class BaseAgent implements IAgent {
   // compact. 0 means "no real usage seen yet" (fall back to the estimate).
   protected lastPromptTokens = 0;
 
+  // Prompt tokens of the first request in the current thread (the context a
+  // compaction falls back to) and how many requests the thread has made. Used
+  // to estimate C0 and per-request growth for the price-aware threshold.
+  protected threadStartPromptTokens = 0;
+  protected threadRequestCount = 0;
+
+  // Prompt-cache TTL of the current thread, fixed by its first request: a
+  // cached prefix re-sent with another TTL is re-written in full, so a thread
+  // never changes TTL except via switchThreadToLongTtl() when compacting
+  // doesn't pay. Undefined until the thread's first request.
+  protected threadLongTtl: boolean | undefined = undefined;
+  // Set once this thread tried moving to the long TTL by compacting, so a
+  // failed/discarded compaction falls back to an in-place switch.
+  private _ttlSwitchCompactionTried = false;
+  /** Threads started after this much task run time use the long cache TTL. */
+  protected longTtlAfterMs = LONG_TTL_AFTER_MS;
+
   protected compressThreshold = 30000;
   protected compressMinMessages = 30;
 
@@ -141,6 +181,11 @@ export abstract class BaseAgent implements IAgent {
   private _compactionPromise: Promise<void> | null = null;
   private _completedCompaction: CompletedCompaction | null = null;
   private _compactionGeneration = 0;
+
+  // Fires shortly before the prompt cache written by the last request expires
+  // while the agent is blocked (e.g. a long tool call), so compaction can run
+  // on the still-warm cache. Cleared on every request and when the agent stops.
+  private _cacheExpiryTimer: NodeJS.Timeout | null = null;
 
   // Interrupt support: resolves the currently awaited tool call or completion
   private _interruptResolve: (() => void) | null = null;
@@ -239,6 +284,16 @@ export abstract class BaseAgent implements IAgent {
         }
       }
     );
+
+    // A stopped agent must never spend money keeping its cache warm: drop the
+    // pending pre-expiry check whenever the agent finishes, is killed or paused.
+    for (const event of [
+      this.eventTypes.done,
+      this.eventTypes.kill,
+      this.eventTypes.pause,
+    ]) {
+      this.agentEvents.on(event, () => this.clearCacheExpiryCheck());
+    }
   }
 
   protected log(
@@ -272,10 +327,12 @@ export abstract class BaseAgent implements IAgent {
   /**
    * Returns the effective compress threshold for the current model.
    * If the user has manually set a custom threshold (different from the default 30k),
-   * that value is used as-is. Otherwise, the threshold is dynamically computed as
-   * 70% of the model's context window limit (or tiered-pricing threshold), falling
-   * back to DEFAULT_CONTEXT_LIMIT. The 70% factor leaves headroom so token-count
-   * lag doesn't push a request past the model/tier limit before compression fires.
+   * that value is used as-is. Otherwise it is the lower of:
+   *  - 70% of the model's context window limit (or tiered-pricing threshold),
+   *    falling back to DEFAULT_CONTEXT_LIMIT. The 70% factor leaves headroom so
+   *    token-count lag doesn't push a request past the model/tier limit.
+   *  - the price-aware optimum (see compactionPolicy.ts), once the model's
+   *    prices and the thread's base size are known.
    */
   getCompressThreshold(): number {
     if (this.compressThreshold !== DEFAULT_CONTEXT_LIMIT) {
@@ -287,7 +344,126 @@ export abstract class BaseAgent implements IAgent {
     );
     const contextLimit = result?.contextLimit ?? DEFAULT_CONTEXT_LIMIT;
     const threshold = result?.threshold ?? contextLimit;
-    return Math.floor(threshold * 0.7);
+    const limitThreshold = Math.floor(threshold * 0.7);
+    const priceThreshold = this.getPriceAwareCompressThreshold();
+    return priceThreshold
+      ? Math.min(limitThreshold, priceThreshold)
+      : limitThreshold;
+  }
+
+  /** Context left after a compaction (C0), once the thread has made a request. */
+  protected getCompactionBaseTokens(): number | undefined {
+    if (this.threadRequestCount === 0) return undefined;
+    // Thread 0 starts without a summary; later threads already include it.
+    return (
+      this.threadStartPromptTokens +
+      (this.currentThread === 0 ? SUMMARY_TOKENS : 0)
+    );
+  }
+
+  /** Cmax* ≈ C0 + √(2·g·(F/r + C0)) for the current model, if priced. */
+  getPriceAwareCompressThreshold(): number | undefined {
+    const prices = getContextPrices(this.getModel(), this.getProvider());
+    const baseTokens = this.getCompactionBaseTokens();
+    if (!prices || baseTokens === undefined) return undefined;
+    const growthPerRequest =
+      this.threadRequestCount >= 3
+        ? (this.lastPromptTokens - this.threadStartPromptTokens) /
+          (this.threadRequestCount - 1)
+        : DEFAULT_GROWTH_PER_REQUEST;
+    return optimalCompactionThreshold({
+      prices,
+      baseTokens,
+      growthPerRequest,
+      longTtl: this.useLongTtlCache(),
+    });
+  }
+
+  /** Catalog info (capabilities, cache policy, pricing) for the current model. */
+  getModelInfo(): ResolvedModelInfo {
+    return this.clientService.getModelInfo(
+      (this.getProvider() as string) || "",
+      this.getModel()
+    );
+  }
+
+  /**
+   * Whether requests on the current thread use the model's long cache TTL.
+   * Fixed per thread: threads that start once the task has run longer than
+   * `longTtlAfterMs` use the long TTL (Anthropic 1h), earlier ones the
+   * default (Anthropic 5m). Models without a long TTL never use it.
+   */
+  protected useLongTtlCache(): boolean {
+    if (this.threadLongTtl !== undefined) return this.threadLongTtl;
+    return usesLongTtlCache(
+      this.runTime(),
+      this.getModelInfo().info.promptCache,
+      this.longTtlAfterMs
+    );
+  }
+
+  /** Stable per-task id that routes requests to the same cache server. */
+  protected getCacheKey(): string | undefined {
+    return this.currentTaskId ? `knowhow-${this.currentTaskId}` : undefined;
+  }
+
+  /**
+   * True once a short-TTL thread has outlived `longTtlAfterMs` on a model
+   * with a long TTL: the next step moves it to the long TTL.
+   */
+  protected longTtlSwitchDue(): boolean {
+    return (
+      this.threadLongTtl === false &&
+      this.threadRequestCount > 0 &&
+      this.runTime() > this.longTtlAfterMs &&
+      hasLongTtl(this.getModelInfo().info.promptCache)
+    );
+  }
+
+  /** Re-send the current thread with the long TTL (re-writes it once). */
+  protected switchThreadToLongTtl(): void {
+    this.threadLongTtl = true;
+    this.clearCacheExpiryCheck();
+  }
+
+  /**
+   * Move a short-TTL thread to the long TTL once the task outlives the switch
+   * time. When the context is big enough, compact on the still-warm short
+   * cache and start the new thread on the long TTL; otherwise re-write the
+   * small thread with the long TTL in place. Returns true if it compacted.
+   */
+  protected maybeSwitchToLongTtl(messages: Message[]): boolean {
+    if (!this.longTtlSwitchDue() || this._compactionPromise) return false;
+    const prices = getContextPrices(this.getModel(), this.getProvider());
+    const baseTokens = this.getCompactionBaseTokens();
+    const contextTokens = this.lastPromptTokens;
+    const decision =
+      prices && baseTokens !== undefined && contextTokens > 0
+        ? chooseLongTtlSwitch({
+            prices,
+            contextTokens,
+            baseTokens,
+            compactionCalls: this.taskBreakdown ? 1 : 2,
+          })
+        : "switch";
+    const canCompact =
+      decision === "compact" &&
+      !this._ttlSwitchCompactionTried &&
+      messages.length > 2 &&
+      messages.slice(1).some((m) => m.role === "assistant");
+    if (canCompact) {
+      this._ttlSwitchCompactionTried = true;
+      this.log(
+        `Task passed ${Math.round(this.longTtlAfterMs / 1000)}s: compacting ${contextTokens} tokens on the warm short cache; the new thread uses the long cache TTL`
+      );
+      this.startBackgroundCompaction(messages);
+      return true;
+    }
+    this.log(
+      `Task passed ${Math.round(this.longTtlAfterMs / 1000)}s: switching this ${contextTokens}-token thread to the long cache TTL in place`
+    );
+    this.switchThreadToLongTtl();
+    return false;
   }
 
   setMaxTurns(maxTurns: number | null) {
@@ -307,6 +483,9 @@ export abstract class BaseAgent implements IAgent {
     this._compactionGeneration++;
     this._compactionPromise = null;
     this._completedCompaction = null;
+    this.clearCacheExpiryCheck();
+    this.threadLongTtl = undefined;
+    this._ttlSwitchCompactionTried = false;
     this.currentThread = 0;
     this.threads = [];
     this.taskBreakdown = "";
@@ -317,6 +496,8 @@ export abstract class BaseAgent implements IAgent {
     this.totalCacheReadTokens = 0;
     this.totalCacheWriteTokens = 0;
     this.lastPromptTokens = 0;
+    this.threadStartPromptTokens = 0;
+    this.threadRequestCount = 0;
     this.status = this.eventTypes.inProgress;
     this.turnCount = 0;
     this.startTimeMs = Date.now();
@@ -497,6 +678,78 @@ export abstract class BaseAgent implements IAgent {
     return this.getEnabledTools().map((t) => t.function.name);
   }
 
+  /**
+   * Whether the current client/model accepts deferred tools plus
+   * mid-conversation tool_addition/tool_removal (see clients/toolChanges).
+   */
+  supportsToolAdditions(): boolean {
+    try {
+      return !!this.getModelInfo().info.toolAdditions;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Every tool this agent may ever offer (lazy catalog minus agent-disabled). */
+  getCatalogTools(): Tool[] {
+    return this.tools
+      .getCatalogTools()
+      .filter(
+        (t) =>
+          !this.disabledTools.includes(t.function.name) ||
+          this.tools.isToolPinned(t.function.name)
+      );
+  }
+
+  /**
+   * Tool names declared up front (non-deferred). Fixed for the agent's
+   * lifetime so the `tools` array stays byte-identical across requests and
+   * tasks; later enables/disables are expressed as `_tool_changes` markers.
+   */
+  private toolBaseline?: Set<string>;
+
+  private getToolBaseline(messages: Message[]): Set<string> {
+    if (!this.toolBaseline) {
+      this.toolBaseline = deriveToolBaseline(
+        this.getEnabledToolNames(),
+        messages
+      );
+    }
+    return this.toolBaseline;
+  }
+
+  /**
+   * Append a `_tool_changes` marker when the enabled set differs from what the
+   * thread has already offered. Returns the (possibly extended) thread.
+   */
+  syncToolChanges(messages: Message[]): Message[] {
+    if (!this.supportsToolAdditions()) return messages;
+    if (!canAppendToolChange(messages)) return messages;
+    const offered = applyToolChanges(this.getToolBaseline(messages), messages);
+    const changes = diffToolChanges(offered, this.getEnabledToolNames());
+    return changes ? [...messages, createToolChangeMessage(changes)] : messages;
+  }
+
+  /**
+   * Shape tools + messages for one request: the deferred catalog when the
+   * model supports tool additions, else the enabled tools with markers removed.
+   */
+  protected prepareToolRequest(
+    params: CachedChatCompletion
+  ): Pick<ChatCompletion, "tools" | "messages"> {
+    if (params.tools === undefined && this.supportsToolAdditions()) {
+      const baseline = this.getToolBaseline(params.messages);
+      return {
+        messages: params.messages,
+        tools: buildDeferredTools(this.getCatalogTools(), baseline),
+      };
+    }
+    return {
+      messages: stripToolChangeMessages(params.messages),
+      tools: params.tools ?? this.getEnabledTools(),
+    };
+  }
+
   /** Restore the exact request-visible tool list persisted for a prior run. */
   restoreEnabledTools(names: string[]) {
     const uniqueNames = [...new Set(names)];
@@ -614,7 +867,10 @@ export abstract class BaseAgent implements IAgent {
       usage.prompt_tokens_details?.cached_tokens ??
       0;
     const cacheWriteTokens =
-      usage.cache_creation_input_tokens ?? usage.cache_write_tokens ?? 0;
+      usage.cache_creation_input_tokens ??
+      usage.cache_write_tokens ??
+      usage.prompt_tokens_details?.cache_write_tokens ??
+      0;
 
     // Record the real prompt token count for this single completion (not the
     // running total). This represents the full context the model processed for
@@ -623,9 +879,20 @@ export abstract class BaseAgent implements IAgent {
     // getMessagesLength() estimate. Only track it for "prompt-shaped" usage
     // (i.e. when there are input tokens) so a usage-less interrupt stub doesn't
     // reset it to 0.
-    const promptTokens = inputTokens + cacheReadTokens + cacheWriteTokens;
+    // Anthropic-style input_tokens exclude cache reads/writes; OpenAI-style
+    // prompt_tokens already include cached (and GPT-5.6+ written) tokens.
+    const anthropicStyle =
+      usage.cache_read_input_tokens != null ||
+      usage.cache_creation_input_tokens != null;
+    const promptTokens = anthropicStyle
+      ? inputTokens + cacheReadTokens + cacheWriteTokens
+      : Math.max(inputTokens, cacheReadTokens + cacheWriteTokens);
     if (updateLastPromptTokens && promptTokens > 0) {
       this.lastPromptTokens = promptTokens;
+      this.threadRequestCount++;
+      if (this.threadRequestCount === 1) {
+        this.threadStartPromptTokens = promptTokens;
+      }
     }
 
     this.totalInputTokens += inputTokens;
@@ -681,9 +948,9 @@ export abstract class BaseAgent implements IAgent {
     // only safe to change messages
     const defaultedParams: ChatCompletion = {
       model: this.getModel(),
-      tools: this.getEnabledTools(),
       tool_choice: "auto",
-      long_ttl_cache: this.runTime() > 300_000,
+      long_ttl_cache: this.useLongTtlCache(),
+      ...(this.getCacheKey() && { cache_key: this.getCacheKey() }),
       ...(this.reasoningEffort !== undefined && {
         reasoning_effort: this.reasoningEffort,
       }),
@@ -692,8 +959,14 @@ export abstract class BaseAgent implements IAgent {
       }),
 
       ...params,
+      // Deferred catalog + markers where supported; enabled tools elsewhere.
+      ...this.prepareToolRequest(params),
     };
 
+    // The thread's first real request fixes its cache TTL.
+    if (updateLastPromptTokens && this.threadLongTtl === undefined) {
+      this.threadLongTtl = !!defaultedParams.long_ttl_cache;
+    }
     const callPromise = this.getClient().createChatCompletion(defaultedParams);
     const response = interruptValue
       ? await this.makeInterruptible(callPromise, interruptValue)
@@ -711,6 +984,10 @@ export abstract class BaseAgent implements IAgent {
 
   startNewThread(messages: Message[]) {
     this.currentThread++;
+    this.threadRequestCount = 0;
+    this.threadStartPromptTokens = 0;
+    this.threadLongTtl = undefined;
+    this._ttlSwitchCompactionTried = false;
     this.agentEvents.emit(this.eventTypes.newThread, messages);
     this.updateCurrentThread(messages);
   }
@@ -1105,6 +1382,9 @@ export abstract class BaseAgent implements IAgent {
       }
 
       messages = this.formatInputMessages(messages);
+      // Persist a tool_addition marker in the thread (not the tools array) so
+      // the request prefix stays stable when lazy tools get enabled.
+      messages = this.syncToolChanges(messages);
       this.updateCurrentThread(messages);
       const isMissingTool = this.isRequiredToolMissing();
 
@@ -1128,13 +1408,15 @@ export abstract class BaseAgent implements IAgent {
         usd_cost: 0,
       };
 
+      // The request below refreshes the cache; re-arm the expiry check after it.
+      this.clearCacheExpiryCheck();
+      const longTtlCache = this.useLongTtlCache();
       const response = await this.createAgentCompletion(
         {
           model,
           messages,
-          tools: this.getEnabledTools(),
           tool_choice: "auto",
-          long_ttl_cache: this.runTime() > 300_000,
+          long_ttl_cache: longTtlCache,
           ...(this.reasoningEffort !== undefined && {
             reasoning_effort: this.reasoningEffort,
           }),
@@ -1144,6 +1426,11 @@ export abstract class BaseAgent implements IAgent {
         },
         { interruptValue: interruptResponse }
       );
+      // Snapshot exactly what was sent (the cached prefix) before this turn's
+      // assistant/tool messages are appended to `messages`.
+      if (response?.usage) {
+        this.armCacheExpiryCheck(messages.slice(), longTtlCache);
+      }
 
       // If the agent was paused while the completion was in-flight, wait here
       // before processing tool calls. This allows the user to send messages
@@ -1425,6 +1712,8 @@ export abstract class BaseAgent implements IAgent {
         );
         this._forceCompact = false;
         this.startBackgroundCompaction(messages);
+      } else if (!appliedCompaction) {
+        this.maybeSwitchToLongTtl(messages);
       }
 
       // Only nag when the model ended its turn with a plain assistant message
@@ -1817,6 +2106,7 @@ export abstract class BaseAgent implements IAgent {
   }
 
   private startBackgroundCompaction(messages: Message[]): void {
+    this.clearCacheExpiryCheck();
     const snapshot = messages.slice();
     let resumeIndex = snapshot.length - 1;
     while (resumeIndex >= 0 && snapshot[resumeIndex].role !== "assistant") {
@@ -1868,6 +2158,75 @@ export abstract class BaseAgent implements IAgent {
           this._compactionPromise = null;
         }
       });
+  }
+
+  /** Cancel the pending pre-expiry compaction check, if any. */
+  protected clearCacheExpiryCheck(): void {
+    if (this._cacheExpiryTimer) {
+      clearTimeout(this._cacheExpiryTimer);
+      this._cacheExpiryTimer = null;
+    }
+  }
+
+  /**
+   * After each agent request, schedule a check shortly before the prompt cache
+   * it wrote expires. If the agent is still blocked when it fires (e.g. on a
+   * long tool call or a child agent), compaction runs on the still-warm cache
+   * so the next request starts from a small compacted prefix instead of
+   * re-writing the whole conversation after a cache miss.
+   */
+  protected armCacheExpiryCheck(sentMessages: Message[], longTtl: boolean): void {
+    this.clearCacheExpiryCheck();
+    // Only guaranteed lifetimes (explicit TTLs) can be planned around.
+    const ttlMs = promptCacheTtlMs(this.getModelInfo().info.promptCache, longTtl);
+    if (!ttlMs) return;
+    const generation = this._compactionGeneration;
+    const timer = setTimeout(() => {
+      this._cacheExpiryTimer = null;
+      if (generation !== this._compactionGeneration) return;
+      this.compactBeforeCacheExpiry(sentMessages, longTtl);
+    }, cacheExpiryCheckDelayMs(ttlMs));
+    timer.unref?.();
+    this._cacheExpiryTimer = timer;
+  }
+
+  /**
+   * Start a background compaction of the last request's messages if the cache
+   * is about to expire and compacting now is cheaper than the cache miss.
+   * Returns true when a compaction was started.
+   */
+  protected compactBeforeCacheExpiry(
+    sentMessages: Message[],
+    longTtl: boolean
+  ): boolean {
+    // Only a running agent compacts: never spend on a stopped/paused agent.
+    if (this.status !== this.eventTypes.inProgress) return false;
+    if (this._compactionPromise || this._completedCompaction) return false;
+    // Needs an earlier assistant turn to summarise up to.
+    const hasHistory = sentMessages
+      .slice(1)
+      .some((message) => message.role === "assistant");
+    if (!hasHistory) return false;
+
+    const prices = getContextPrices(this.getModel(), this.getProvider());
+    const baseTokens = this.getCompactionBaseTokens();
+    const contextTokens = this.lastPromptTokens;
+    if (!prices || baseTokens === undefined || contextTokens <= 0) return false;
+
+    const worthIt = shouldCompactBeforeCacheExpiry({
+      prices,
+      contextTokens,
+      baseTokens,
+      compactionCalls: this.taskBreakdown ? 1 : 2,
+      longTtl,
+    });
+    if (!worthIt) return false;
+
+    this.log(
+      `Prompt cache expires soon (${Math.round((promptCacheTtlMs(this.getModelInfo().info.promptCache, longTtl) ?? 0) / 60_000)}m TTL) while the agent is blocked; compacting ${contextTokens} tokens on the warm cache`
+    );
+    this.startBackgroundCompaction(sentMessages);
+    return true;
   }
 
   async getTaskBreakdown(messages: Message[], cacheResult = true) {
@@ -2014,7 +2373,11 @@ export abstract class BaseAgent implements IAgent {
         `,
       },
     ] as Message[];
-    const systemMessages = toCompress.filter((m) => m.role === "system");
+    // Tool-change markers are positional; syncToolChanges re-adds whatever
+    // the compacted thread no longer offers after the new user message.
+    const systemMessages = toCompress.filter(
+      (m) => m.role === "system" && !m._tool_changes
+    );
 
     const newMessages = [
       ...systemMessages,

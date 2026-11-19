@@ -2,7 +2,7 @@
  * Google model IDs, pricing, and catalog.
  * Single source of truth for all Google/Gemini models.
  */
-import { completions, embeddings, images, videos, audios, decisions, liveApi, ModelCatalogEntry, ModelPricing } from "./types";
+import { completions, embeddings, images, videos, audios, decisions, liveApi, ModelCatalogEntry, ModelInfo, ModelPricing, withModelInfo } from "./types";
 
 // ─── Model IDs ────────────────────────────────────────────────────────────────
 
@@ -529,8 +529,20 @@ export const GeminiTextPricing = GeminiPricing;
 // Metadata (deprecated, deprecationDate, limitedAvailability, replacedBy) is
 // read directly from the GeminiPricing entries — no need for separate groups.
 
+/**
+ * Implicit (automatic) caching: best-effort, no lifetime guarantee or TTL
+ * control, discounted reads, no write charge. (Explicit cachedContents caches
+ * are billed per hour stored and aren't used here.)
+ */
+export const GoogleDefaultModelInfo: ModelInfo = {
+  promptCache: { mode: "automatic" },
+};
+
 export const GOOGLE_MODEL_CATALOG: ModelCatalogEntry[] = [
-  ...completions([...GoogleTextModels, ...GoogleLimitedModels, ...GoogleAllDeprecatedModels], "google", GeminiPricing),
+  ...withModelInfo(
+    completions([...GoogleTextModels, ...GoogleLimitedModels, ...GoogleAllDeprecatedModels], "google", GeminiPricing),
+    GoogleDefaultModelInfo
+  ),
   ...liveApi(GoogleLiveApiModels,      "google", GeminiPricing),
   ...embeddings(GoogleEmbeddingModelsList, "google", GeminiPricing),
   ...images(GoogleImageModels,         "google", GeminiPricing),

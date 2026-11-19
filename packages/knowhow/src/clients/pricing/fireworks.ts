@@ -1,4 +1,4 @@
-import { ModelPricing, ModelCatalogEntry, completions, embeddings } from "./types";
+import { ModelPricing, ModelCatalogEntry, ModelInfo, completions, embeddings, withModelInfo } from "./types";
 
 /**
  * Fireworks AI model IDs, pricing, and catalog.
@@ -163,9 +163,19 @@ export const FireworksDeprecatedTextModels: string[] = [
 
 // ─── Catalog ──────────────────────────────────────────────────────────────────
 
+/** Automatic prefix caching, best-effort. */
+export const FireworksDefaultModelInfo: ModelInfo = {
+  promptCache: { mode: "automatic" },
+};
+
 export const FIREWORKS_MODEL_CATALOG: ModelCatalogEntry[] = [
-  ...completions(FireworksActiveTextModels, "fireworks", FireworksTextPricing),
-  ...completions(FireworksDeprecatedTextModels, "fireworks", FireworksTextPricing),
+  ...withModelInfo(
+    [
+      ...completions(FireworksActiveTextModels, "fireworks", FireworksTextPricing),
+      ...completions(FireworksDeprecatedTextModels, "fireworks", FireworksTextPricing),
+    ],
+    FireworksDefaultModelInfo
+  ),
   ...embeddings(
     [FireworksModels.Qwen3Embedding8b, FireworksModels.Qwen3Reranker8b],
     "fireworks",

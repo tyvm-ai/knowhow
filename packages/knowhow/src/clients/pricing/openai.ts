@@ -10,7 +10,9 @@ import {
   audios,
   transactions,
   ModelCatalogEntry,
+  ModelInfo,
   ModelPricing,
+  withModelInfo,
 } from "./types";
 
 // ─── Model IDs ────────────────────────────────────────────────────────────────
@@ -473,12 +475,65 @@ const OpenAiAllAudioModels: string[] = [
   ...OpenAiDeprecatedAudioModels,
 ];
 
+// ─── Model info ───────────────────────────────────────────────────────────────
+// https://developers.openai.com/api/docs/guides/prompt-caching
+
+/**
+ * Up to GPT-5.5: best-effort caching via prompt_cache_retention (in_memory ≈
+ * 5–10 min idle, or 24h), free writes. A stable prompt_cache_key improves
+ * routing to the same cache.
+ */
+export const OpenAiDefaultModelInfo: ModelInfo = {
+  promptCache: { mode: "automatic", routingKey: "prompt_cache_key" },
+};
+
+/**
+ * GPT-5.6 and later: guaranteed minimum lifetimes via prompt_cache_options.ttl
+ * — "30m" (default, writes 1.25× input) or "12h" (Responses API, 2.5×). A read
+ * renews a 30m entry. Agents stay on 30m.
+ */
+const OpenAiExplicitCache: ModelInfo["promptCache"] = {
+  mode: "explicit",
+  ttls: [
+    { id: "30m", ms: 30 * 60_000, writeMultiplier: 1.25 },
+    { id: "12h", ms: 12 * 60 * 60_000, writeMultiplier: 2.5 },
+  ],
+  readsRefreshTtl: true,
+  ttlChangeRewrites: true,
+  routingKey: "prompt_cache_key",
+};
+
+export const OpenAiExplicitCacheModels: string[] = [
+  OpenAiModels.GPT_6_Astra,
+  OpenAiModels.GPT_61_Sol,
+  OpenAiModels.GPT_6_Sol,
+  OpenAiModels.GPT_6_Luna,
+  OpenAiModels.GPT_56_Sol,
+  OpenAiModels.GPT_56_Terra,
+  OpenAiModels.GPT_56_Luna,
+  OpenAiModels.GPT_56_Cyber,
+];
+
+export const OpenAiModelInfo: Record<string, ModelInfo> = {};
+// Responses-API models accept `additional_tools` input items (verified live on
+// gpt-5 through gpt-6).
+for (const id of OpenAiResponsesOnlyModels) {
+  OpenAiModelInfo[id] = { useResponsesApi: true, toolAdditions: true };
+}
+for (const id of OpenAiExplicitCacheModels) {
+  OpenAiModelInfo[id] = { ...OpenAiModelInfo[id], promptCache: OpenAiExplicitCache };
+}
+
 // ─── Catalog ──────────────────────────────────────────────────────────────────
 // Metadata (deprecated, deprecationDate, limitedAvailability, replacedBy) is
 // read directly from the OpenAiTextPricing entries — no need for separate groups.
 
 export const OPENAI_MODEL_CATALOG: ModelCatalogEntry[] = [
-  ...completions(OpenAiAllCompletionModels, "openai", OpenAiTextPricing),
+  ...withModelInfo(
+    completions(OpenAiAllCompletionModels, "openai", OpenAiTextPricing),
+    OpenAiDefaultModelInfo,
+    OpenAiModelInfo
+  ),
   ...embeddings(OpenAiEmbeddingModelsList,  "openai", OpenAiTextPricing),
   ...images(OpenAiAllImageModels,           "openai", OpenAiTextPricing),
   ...videos(OpenAiVideoModels,              "openai", OpenAiTextPricing),

@@ -108,6 +108,9 @@ export class GenericXAIClient implements GenericClient {
         tools: options.tools,
         tool_choice: options.tool_choice ?? "auto",
       }),
+    }, {
+      // Routes the conversation to the same server so its prompt cache hits.
+      ...(options.cache_key && { headers: { "x-grok-conv-id": options.cache_key } }),
     });
 
     // Prefer xAI's billed cost (usage.cost_in_usd_ticks); fall back to the price table.
@@ -274,6 +277,7 @@ export class GenericXAIClient implements GenericClient {
       //  - store !== true  → stateless; request encrypted reasoning content so
       //    we can thread the reasoning items back into the next request ourselves.
       store: options.store === true,
+      ...(options.cache_key && { prompt_cache_key: options.cache_key }),
       ...(options.previous_response_id && {
         previous_response_id: options.previous_response_id,
       }),

@@ -8,7 +8,62 @@ export interface PricingChangelogEntry {
   /** Optional human-readable note about the change (e.g. "Promotional pricing announcement") */
   note?: string;
   /** The pricing values that were in effect from this date */
-  pricing: Omit<ModelPricing, "deprecated" | "deprecationDate" | "limitedAvailability" | "replacedBy" | "routesTo" | "routesToDate" | "reasoningLevels" | "useResponsesApi" | "changelog">;
+  pricing: Omit<ModelPricing, "deprecated" | "deprecationDate" | "limitedAvailability" | "replacedBy" | "routesTo" | "routesToDate" | "reasoningLevels" | "useResponsesApi" | "changelog" | "info">;
+}
+
+// ─── Model info (capabilities) ────────────────────────────────────────────────
+
+/** One prompt-cache lifetime a provider lets callers pick. */
+export interface PromptCacheTtl {
+  /** Provider's name for it, e.g. "5m", "1h", "30m", "12h". */
+  id: string;
+  /** Minimum lifetime in ms (renewed on read where `readsRefreshTtl`). */
+  ms: number;
+  /** Cache-write price as a multiple of the base input price. */
+  writeMultiplier: number;
+}
+
+export interface PromptCacheInfo {
+  /**
+   * - "explicit":  the provider guarantees a minimum lifetime per TTL
+   *   (Anthropic cache_control.ttl, OpenAI GPT-5.6+ prompt_cache_options.ttl).
+   * - "automatic": best-effort caching, no lifetime guarantee, entries may be
+   *   evicted at any time (Gemini implicit caching, xAI, OpenAI ≤ GPT-5.5).
+   * - "none":      no prompt caching.
+   */
+  mode: "explicit" | "automatic" | "none";
+  /** Selectable lifetimes; the first is the provider default. Explicit mode only. */
+  ttls?: PromptCacheTtl[];
+  /**
+   * TTL id agents move long-running tasks to (at a compaction, since changing
+   * the TTL of an existing prefix re-writes it). Unset = stay on the default.
+   */
+  longTtl?: string;
+  /** A cache read renews the lifetime. */
+  readsRefreshTtl?: boolean;
+  /** Re-sending a cached prefix with a different TTL re-writes all of it. */
+  ttlChangeRewrites?: boolean;
+  /** How to pin requests to one cache server, if the provider supports it. */
+  routingKey?: "prompt_cache_key" | "x-grok-conv-id";
+}
+
+/**
+ * Extra, non-price facts about a model. Lives in the catalog next to
+ * deprecation / reroute metadata so callers ask one place
+ * (AIClient.getModelInfo) instead of a growing list of client methods.
+ */
+export interface ModelInfo {
+  /** "none": no reasoning; "optional": can be turned off; "always": always-on (lowest level still thinks). */
+  reasoning?: "none" | "optional" | "always";
+  /** Supported reasoning effort levels (ordered low→high). */
+  reasoningLevels?: string[];
+  /** Signed reasoning blocks are bound to the exact prefix they were produced with. */
+  preservedThinking?: boolean;
+  /** Accepts deferred tools enabled mid-conversation (see clients/toolChanges). */
+  toolAdditions?: boolean;
+  /** Must be called via the OpenAI-style Responses API. */
+  useResponsesApi?: boolean;
+  promptCache?: PromptCacheInfo;
 }
 
 export type ModelType =
@@ -64,6 +119,8 @@ export interface ModelPricing {
   useResponsesApi?: boolean;
   /** Optional changelog of historical pricing entries, ordered from oldest to newest */
   changelog?: PricingChangelogEntry[];
+  /** Capabilities for this model (merged over the provider defaults in the catalog). */
+  info?: ModelInfo;
 }
 
 export interface ModelCatalogEntry {
@@ -85,6 +142,40 @@ export interface ModelCatalogEntry {
   routesTo?: string;
   /** ISO date the reroute takes effect (see ModelPricing.routesToDate) */
   routesToDate?: string;
+  /** Capabilities: reasoning, prompt caching, tool additions, ... */
+  info?: ModelInfo;
+}
+
+/** Shallow merge where nested promptCache objects merge too; undefined values never override. */
+export function mergeModelInfo(...parts: (ModelInfo | undefined)[]): ModelInfo {
+  const out: ModelInfo = {};
+  for (const part of parts) {
+    if (!part) continue;
+    for (const [key, value] of Object.entries(part)) {
+      if (value === undefined) continue;
+      if (key === "promptCache" && out.promptCache && value) {
+        out.promptCache = { ...out.promptCache, ...(value as PromptCacheInfo) };
+      } else {
+        (out as any)[key] = value;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Attach capabilities to a provider's catalog entries: provider defaults,
+ * then per-model overrides, then whatever the pricing entry already carried.
+ */
+export function withModelInfo(
+  entries: ModelCatalogEntry[],
+  defaults: ModelInfo,
+  perModel: Record<string, ModelInfo> = {}
+): ModelCatalogEntry[] {
+  return entries.map((entry) => ({
+    ...entry,
+    info: mergeModelInfo(defaults, perModel[entry.id], entry.info),
+  }));
 }
 
 // ─── Bulk catalog helpers ─────────────────────────────────────────────────────
@@ -115,7 +206,11 @@ function makeEntries(
     const routesTo         = deprecation?.routesTo         ?? p.routesTo;
     const routesToDate     = deprecation?.routesToDate     ?? p.routesToDate;
     // Strip metadata fields before storing as pricing
-    const { deprecated: _d, deprecationDate: _dd, limitedAvailability: _la, replacedBy: _rb, routesTo: _rt, routesToDate: _rtd, reasoningLevels: _rl, useResponsesApi: _ura, ...pricingOnly } = p;
+    const { deprecated: _d, deprecationDate: _dd, limitedAvailability: _la, replacedBy: _rb, routesTo: _rt, routesToDate: _rtd, reasoningLevels: _rl, useResponsesApi: _ura, info: _info, ...pricingOnly } = p;
+    const info = mergeModelInfo(
+      { reasoningLevels: p.reasoningLevels, useResponsesApi: p.useResponsesApi },
+      p.info
+    );
     return {
       id,
       provider,
@@ -127,6 +222,7 @@ function makeEntries(
       replacedBy,
       ...(routesTo ? { routesTo } : {}),
       ...(routesToDate ? { routesToDate } : {}),
+      ...(Object.keys(info).length ? { info } : {}),
     };
   });
 }

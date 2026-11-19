@@ -48,5 +48,8 @@ export { MetaTextPricing, MetaWebSearchPricingPer1000Queries } from "./meta";
 
 // ─── Combined catalog ─────────────────────────────────────────────────────────
 export { ALL_MODEL_CATALOG, USAGE_MARKUP_PERCENT } from "./models";
-export type { ModelCatalogEntry, ModelType, ModelPricing as CatalogModelPricing } from "./types";
+export type { ModelCatalogEntry, ModelType, ModelPricing as CatalogModelPricing, ModelInfo, PromptCacheInfo, PromptCacheTtl } from "./types";
+export { mergeModelInfo, withModelInfo } from "./types";
+export { getModelInfo, findCatalogEntry, promptCacheTtl } from "./modelInfo";
+export type { ResolvedModelInfo } from "./modelInfo";
 export { completions, embeddings, images, videos, audios, decisions, transactions, liveApi } from "./types";

@@ -353,6 +353,58 @@ describe("TokenCompressor", () => {
       expect(messages[1].content).toContain("[COMPRESSED_STRING");
       expect(messages[2].content).toContain("[COMPRESSED_STRING");
     });
+
+    it("compresses every result of a split parallel tool-call response", async () => {
+      const processor = tokenCompressor.createProcessor((msg) =>
+        Boolean(msg.role === "tool" && msg.tool_call_id)
+      );
+      const large = "x".repeat(20000);
+      const request: Message[] = [
+        { role: "system", content: "sys" },
+        { role: "user", content: "task" },
+      ];
+      // pre_call on the request, then the response lands as
+      // [assistant, tool, assistant, tool] (one assistant per tool_use).
+      await processor([], JSON.parse(JSON.stringify(request)));
+      const turn: Message[] = [
+        ...request,
+        { role: "assistant", content: "", tool_calls: [{ id: "a", type: "function", function: { name: "x", arguments: "{}" } }] },
+        { role: "tool", name: "execCommand", content: large, tool_call_id: "a" } as any,
+        { role: "assistant", content: "", tool_calls: [{ id: "b", type: "function", function: { name: "x", arguments: "{}" } }] },
+        { role: "tool", name: "execCommand", content: large, tool_call_id: "b" } as any,
+      ];
+      await processor([], turn);
+      expect(turn[3].content).toContain("[COMPRESSED_STRING");
+      expect(turn[5].content).toContain("[COMPRESSED_STRING");
+
+      // Next turn: the earlier results are history now and stay untouched.
+      const historical = large + " (left uncompressed on purpose)";
+      turn[3].content = historical;
+      const next: Message[] = [
+        ...turn,
+        { role: "assistant", content: "", tool_calls: [{ id: "c", type: "function", function: { name: "x", arguments: "{}" } }] },
+        { role: "tool", name: "execCommand", content: large, tool_call_id: "c" } as any,
+      ];
+      await processor([], next);
+      expect(next[3].content).toBe(historical);
+      expect(next[7].content).toContain("[COMPRESSED_STRING");
+    });
+
+    it("leaves history alone on a thread it has not seen before", async () => {
+      const processor = tokenCompressor.createProcessor();
+      await processor([], [{ role: "user", content: "another task" }]);
+      const large = "x".repeat(20000);
+      const messages: Message[] = [
+        { role: "user", content: "resumed task" },
+        { role: "assistant", content: "", tool_calls: [] },
+        { role: "tool", name: "someTool", content: large, tool_call_id: "old" } as any,
+        { role: "assistant", content: "", tool_calls: [] },
+        { role: "tool", name: "someTool", content: large, tool_call_id: "new" } as any,
+      ];
+      await processor([], messages);
+      expect(messages[2].content).toBe(large);
+      expect(messages[4].content).toContain("[COMPRESSED_STRING");
+    });
   });
 
   describe("storage operations", () => {

@@ -2,7 +2,7 @@
  * xAI model IDs, pricing, and catalog.
  * Single source of truth for all xAI/Grok models.
  */
-import { completions, images, videos, audios, ModelCatalogEntry, ModelPricing } from "./types";
+import { completions, images, videos, audios, ModelCatalogEntry, ModelInfo, ModelPricing, withModelInfo } from "./types";
 
 // ─── Model IDs ────────────────────────────────────────────────────────────────
 
@@ -200,8 +200,20 @@ export const XaiTTSPricing: Record<string, ModelPricing> = {
 // ─── Catalog ──────────────────────────────────────────────────────────────────
 // Metadata (deprecated, useResponsesApi) is read directly from XaiTextPricing entries.
 
+/**
+ * Best-effort caching: entries "can be evicted at any time"; a stable
+ * x-grok-conv-id header (prompt_cache_key on the Responses API) routes
+ * requests to the same server.
+ */
+export const XaiDefaultModelInfo: ModelInfo = {
+  promptCache: { mode: "automatic", routingKey: "x-grok-conv-id" },
+};
+
 export const XAI_MODEL_CATALOG: ModelCatalogEntry[] = [
-  ...completions([...XaiTextModels, ...XaiDeprecatedTextModels], "xai", XaiTextPricing),
+  ...withModelInfo(
+    completions([...XaiTextModels, ...XaiDeprecatedTextModels], "xai", XaiTextPricing),
+    XaiDefaultModelInfo
+  ),
   ...images(XaiImageModels, "xai", XaiImagePricing),
   ...videos(XaiVideoModels, "xai", XaiVideoPricing),
   ...audios(XaiTTSModels, "xai", XaiTTSPricing),

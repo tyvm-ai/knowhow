@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { getConfigSync } from "../config";
 import { emitResponseMetadata } from "./responseMetadata";
-import { OpenAiTextPricing } from "./pricing";
+import { OpenAiTextPricing, getModelInfo } from "./pricing";
 import { ContextLimits } from "./contextLimits";
 import {
   GenericClient,
@@ -25,7 +25,26 @@ import {
   FileDownloadOptions,
   FileDownloadResponse,
   Message,
+  Tool,
 } from "./types";
+import { flattenToolChanges } from "./toolChanges";
+
+/** Normalise OpenAI cache usage (reads + GPT-5.6+ writes by TTL). */
+function cacheTokenDetails(details: any): {
+  cached_tokens: number;
+  cache_write_tokens?: number;
+  cache_write_tokens_details?: { ttl_30m_tokens?: number; ttl_12h_tokens?: number };
+} {
+  return {
+    cached_tokens: details?.cached_tokens ?? 0,
+    ...(details?.cache_write_tokens != null && {
+      cache_write_tokens: details.cache_write_tokens,
+    }),
+    ...(details?.cache_write_tokens_details && {
+      cache_write_tokens_details: details.cache_write_tokens_details,
+    }),
+  };
+}
 import {
   ChatCompletionMessageParam,
   ChatCompletionToolMessageParam,
@@ -97,6 +116,18 @@ export class GenericOpenAiClient implements GenericClient {
       maxRetries: 0,
       ...(config?.openaiBaseUrl && { baseURL: config.openaiBaseUrl }),
     });
+  }
+
+  /**
+   * Catalog `toolAdditions` (Responses-API models accept `additional_tools`
+   * input items). Custom base URLs (compatible servers may not implement it)
+   * get the classic tools array.
+   */
+  private rendersToolChanges(model: string): boolean {
+    return (
+      !!getModelInfo(model, "openai").info.toolAdditions &&
+      !config?.openaiBaseUrl
+    );
   }
 
   /**
@@ -261,6 +292,8 @@ export class GenericOpenAiClient implements GenericClient {
     if (OpenAiResponsesOnlyModels.includes(options.model)) {
       return this.createChatResponse(options);
     }
+    // Chat Completions has no mid-conversation tool changes.
+    options = flattenToolChanges(options);
 
     const openaiMessages = this.toChatCompletionMessages(options.messages);
 
@@ -272,6 +305,7 @@ export class GenericOpenAiClient implements GenericClient {
             model: options.model,
             messages: openaiMessages,
             max_tokens: options.max_tokens,
+            ...(options.cache_key && { prompt_cache_key: options.cache_key }),
             ...(OpenAiReasoningModels.includes(options.model) &&
               !this.isReasoningDisabled(options) && {
                 max_tokens: undefined,
@@ -319,10 +353,9 @@ export class GenericOpenAiClient implements GenericClient {
             prompt_tokens: response.usage.prompt_tokens ?? 0,
             completion_tokens: response.usage.completion_tokens ?? 0,
             total_tokens: response.usage.total_tokens,
-            prompt_tokens_details: {
-              cached_tokens:
-                response.usage.prompt_tokens_details?.cached_tokens ?? 0,
-            },
+            prompt_tokens_details: cacheTokenDetails(
+              response.usage.prompt_tokens_details
+            ),
             ...(response.usage.completion_tokens_details?.reasoning_tokens !=
               null && {
               output_tokens_details: {
@@ -356,6 +389,7 @@ export class GenericOpenAiClient implements GenericClient {
       yield { done: true, usage: result.usage, usd_cost: result.usd_cost };
       return;
     }
+    options = flattenToolChanges(options);
 
     const openaiMessages = this.toChatCompletionMessages(options.messages);
 
@@ -367,6 +401,7 @@ export class GenericOpenAiClient implements GenericClient {
             model: options.model,
             messages: openaiMessages,
             max_tokens: options.max_tokens,
+            ...(options.cache_key && { prompt_cache_key: options.cache_key }),
             stream: true,
             stream_options: { include_usage: true },
             ...(options.tools?.length && {
@@ -399,6 +434,9 @@ export class GenericOpenAiClient implements GenericClient {
           prompt_tokens: chunk.usage.prompt_tokens ?? 0,
           completion_tokens: chunk.usage.completion_tokens ?? 0,
           total_tokens: chunk.usage.total_tokens ?? 0,
+          prompt_tokens_details: cacheTokenDetails(
+            chunk.usage.prompt_tokens_details
+          ),
         };
       }
     }
@@ -485,10 +523,15 @@ export class GenericOpenAiClient implements GenericClient {
   async createChatResponse(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
+    if (!this.rendersToolChanges(options.model)) {
+      options = flattenToolChanges(options);
+    }
     // Extract system message to use as instructions
-    const systemMessages = options.messages.filter((m) => m.role === "system");
+    const systemMessages = options.messages.filter(
+      (m) => m.role === "system" && !m._tool_changes
+    );
     const nonSystemMessages = options.messages.filter(
-      (m) => m.role !== "system"
+      (m) => m.role !== "system" || m._tool_changes
     );
     const instructions =
       systemMessages
@@ -505,8 +548,43 @@ export class GenericOpenAiClient implements GenericClient {
         ? s.slice(0, MAX_TOOL_OUTPUT) +
           "\n\n[TRUNCATED: output exceeded 10MB API limit]"
         : s;
+    // Mid-conversation tool changes: deferred tools stay out of `tools` and
+    // are surfaced with an `additional_tools` input item carrying their full
+    // definitions at the point they were enabled, so the cached prefix holds.
+    // The Responses API has no removal item; a disabled tool stays offered.
+    const toFunctionTool = (tool: Tool) => ({
+      type: "function" as const,
+      name: tool.function.name,
+      description: tool.function.description,
+      parameters: tool.function.parameters as Record<string, unknown>,
+      strict: false,
+    });
+    const byName = new Map(options.tools?.map((t) => [t.function.name, t]));
+    const offered = new Set(
+      options.tools?.filter((t) => !t.defer_loading).map((t) => t.function.name)
+    );
+    // Calls to an additional_tools function come back with `namespace` (the
+    // function's name) and must be round-tripped with it, or the API 400s
+    // with "Missing namespace for function_call".
+    const inlineAdded = new Set<string>();
     const input: any[] = nonSystemMessages
       .map((msg) => {
+        if (msg._tool_changes) {
+          const added = (msg._tool_changes.add ?? []).filter(
+            (name) => byName.has(name) && !offered.has(name)
+          );
+          added.forEach((name) => {
+            offered.add(name);
+            inlineAdded.add(name);
+          });
+          return added.length
+            ? {
+                type: "additional_tools",
+                role: "developer",
+                tools: added.map((name) => toFunctionTool(byName.get(name)!)),
+              }
+            : [];
+        }
         if (msg.role === "tool") {
           // OpenAI function outputs cannot directly contain image content. Send
           // the required function output, then attach images as a user message.
@@ -546,6 +624,9 @@ export class GenericOpenAiClient implements GenericClient {
               call_id: tc.id,
               name: tc.function.name,
               arguments: tc.function.arguments,
+              ...(inlineAdded.has(tc.function.name) && {
+                namespace: tc.function.name,
+              }),
             })),
           ];
         }
@@ -569,13 +650,9 @@ export class GenericOpenAiClient implements GenericClient {
       .flat();
 
     // Convert Chat Completions tool definitions to Responses API FunctionTool format
-    const tools = options.tools?.map((tool) => ({
-      type: "function" as const,
-      name: tool.function.name,
-      description: tool.function.description,
-      parameters: tool.function.parameters as Record<string, unknown>,
-      strict: false,
-    }));
+    const tools = options.tools
+      ?.filter((tool) => !tool.defer_loading)
+      .map(toFunctionTool);
 
     // Reasoning persistence:
     //  - store === true  → OpenAI persists the response server-side; the next
@@ -593,6 +670,7 @@ export class GenericOpenAiClient implements GenericClient {
         .create({
           model: options.model as any,
           input,
+          ...(options.cache_key && { prompt_cache_key: options.cache_key }),
           ...(instructions && { instructions }),
           ...(store && { store: true }),
           ...(!store && { store: false }),
@@ -626,6 +704,16 @@ export class GenericOpenAiClient implements GenericClient {
         .withResponse();
     } catch (error) {
       this.emitErrorMetadata(options, error);
+      const flat = flattenToolChanges(options);
+      if (
+        flat !== options &&
+        /additional_tools|namespace/i.test(String((error as any)?.message ?? ""))
+      ) {
+        console.warn(
+          "OpenAI rejected additional_tools; retrying with the enabled tools only"
+        );
+        return this.createChatResponse(flat);
+      }
       throw error;
     }
     const { data: response, response: nativeResponse, request_id } = result;
@@ -642,10 +730,9 @@ export class GenericOpenAiClient implements GenericClient {
           completion_tokens: response.usage.output_tokens,
           total_tokens:
             response.usage.input_tokens + response.usage.output_tokens,
-          prompt_tokens_details: {
-            cached_tokens:
-              response.usage.input_tokens_details?.cached_tokens ?? 0,
-          },
+          prompt_tokens_details: cacheTokenDetails(
+            response.usage.input_tokens_details
+          ),
           ...((response.usage as any).output_tokens_details?.reasoning_tokens !=
             null && {
             output_tokens_details: {
@@ -815,8 +902,34 @@ export class GenericOpenAiClient implements GenericClient {
     const inputRate = useLongContextTier
       ? pricing.input_gt_200k!
       : (pricing.input ?? 0);
+
+    // GPT-5.6+: cache writes are part of prompt_tokens (not cached_tokens) and
+    // bill 1.25× input for 30m, 2.5× for 12h. Older models report none.
+    const details =
+      "prompt_tokens_details" in usage ? usage.prompt_tokens_details : undefined;
+    const writeTokens = Math.min(
+      Math.max(0, inputTokens - cachedInputTokens),
+      (details as any)?.cache_write_tokens ?? 0
+    );
+    const write12h = Math.min(
+      writeTokens,
+      (details as any)?.cache_write_tokens_details?.ttl_12h_tokens ?? 0
+    );
+    const write30m = writeTokens - write12h;
+    const ttls = getModelInfo(model, "openai").info.promptCache?.ttls ?? [];
+    const multiplier = (id: string, fallback: number) =>
+      ttls.find((ttl) => ttl.id === id)?.writeMultiplier ?? fallback;
+    const write30mRate =
+      (useLongContextTier ? pricing.cache_write_gt_200k : pricing.cache_write) ??
+      inputRate * multiplier("30m", 1.25);
+    const writeCost =
+      (write30m * write30mRate +
+        write12h * inputRate * multiplier("12h", 2.5)) /
+      1e6;
+
     const inputCost =
-      ((inputTokens - cachedInputTokens) * inputRate) / 1e6;
+      ((inputTokens - cachedInputTokens - writeTokens) * inputRate) / 1e6 +
+      writeCost;
 
     const outputTokens =
       ("completion_tokens" in usage && usage?.completion_tokens) || 0;

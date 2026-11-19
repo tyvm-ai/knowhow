@@ -53,6 +53,7 @@ import {
   XaiVideoPricing,
 } from "./pricing/xai";
 import { MetaTextPricing } from "./pricing/meta";
+import { getModelInfo, ResolvedModelInfo } from "./pricing/modelInfo";
 import type {
   ModelPricing,
   ModelType,
@@ -510,6 +511,16 @@ export class AIClient {
 
   registerClient(provider: string, client: GenericClient) {
     this.clients[provider] = client;
+  }
+
+  /**
+   * Everything known about a model beyond its price — reasoning, prompt
+   * caching (TTLs, write multipliers), tool additions — plus the catalog's
+   * deprecation / reroute fields, as served by `provider`. Capabilities live
+   * on the catalog (ModelInfo); add fields there rather than new methods.
+   */
+  getModelInfo(provider: string, model: string): ResolvedModelInfo {
+    return getModelInfo(model, provider);
   }
 
   setKey(provider: string, apiKey: string) {

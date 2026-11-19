@@ -25,6 +25,9 @@ export const AGENT_COORDINATION_TOOLS = [
  * search and enable additional tools
  *
  * One drawback: enabling a tool will bust the cache, causing you to have to pay extra after enabling new tools
+ * (mitigated where the model info has `toolAdditions`: BaseAgent declares
+ * getCatalogTools() up front with defer_loading and appends a `_tool_changes`
+ * marker instead, so the tools array never changes — see clients/toolChanges)
  * Benefit: for providers with limits on how many tools you can support, this tool service allows you to have the minimal set of tools you need to use in the tools array. Smaller context usage
  *
  * In a longer running session, where the agent's tools accumulate over multiple interactions, the cache busting is minimized
@@ -95,6 +98,11 @@ export class LazyToolsService extends ToolsService {
   // Override getTools to return only enabled tools
   getTools() {
     return this.tools; // Returns filtered subset
+  }
+
+  // The full catalog, enabled or not (declared deferred where supported).
+  getCatalogTools(): Tool[] {
+    return this.allTools;
   }
 
   // Definitions remain resolvable even when omitted from the model prompt.

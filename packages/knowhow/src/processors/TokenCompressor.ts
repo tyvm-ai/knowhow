@@ -313,6 +313,15 @@ export class TokenCompressor implements JsonCompressorStorage {
   createProcessor(
     filterFn?: (msg: Message) => boolean
   ): MessageProcessorFunction {
+    // tool_call_ids present the last time this processor ran. A tool result
+    // that wasn't there before is new, i.e. not yet sent to the model.
+    let previousToolIds = new Set<string>();
+    // Identifies the thread seen last run (covers the first turn, before any
+    // tool ids exist to compare).
+    let previousThreadKey = "";
+    const threadKey = (messages: Message[]) =>
+      JSON.stringify(messages.slice(0, 2)).slice(0, 4000);
+
     return async (originalMessages: Message[], modifiedMessages: Message[]) => {
       // Find the index of the last assistant message so we only compress
       // the most recent batch of tool responses (after the last agent output).
@@ -330,6 +339,37 @@ export class TokenCompressor implements JsonCompressorStorage {
         }
       }
 
+      // Parallel tool calls: the Anthropic client maps each tool_use of one
+      // response to its own assistant message, so the turn lands as
+      // [assistant, tool, assistant, tool]. Results of the earlier calls sit
+      // before the last assistant message but are just as new. Treat a tool
+      // result as part of the current batch when it is new since the previous
+      // run and in the trailing assistant/tool run of the thread. On a fresh
+      // processor or a different thread (no ids in common) we can't tell, so
+      // fall back to "after the last assistant message" to protect the cache.
+      const toolIds = modifiedMessages
+        .filter((m) => m.role === "tool" && m.tool_call_id)
+        .map((m) => m.tool_call_id as string);
+      const key = threadKey(modifiedMessages);
+      const sameThread =
+        key === previousThreadKey ||
+        toolIds.some((id) => previousToolIds.has(id));
+      let trailingRunStart = modifiedMessages.length;
+      while (
+        trailingRunStart > 0 &&
+        ["assistant", "tool"].includes(modifiedMessages[trailingRunStart - 1].role)
+      ) {
+        trailingRunStart--;
+      }
+      const seenToolIds = previousToolIds;
+      const isNewToolResult = (message: Message, index: number) =>
+        sameThread &&
+        index >= trailingRunStart &&
+        !!message.tool_call_id &&
+        !seenToolIds.has(message.tool_call_id);
+      previousToolIds = new Set(toolIds);
+      previousThreadKey = key;
+
       for (let i = 0; i < modifiedMessages.length; i++) {
         const message = modifiedMessages[i];
 
@@ -338,10 +378,14 @@ export class TokenCompressor implements JsonCompressorStorage {
         }
 
         // Only compress tool messages that are part of the last batch
-        // (i.e., they appear after the last assistant message).
+        // (after the last assistant message, or new parallel-call results).
         // Messages before the last assistant message are historical and must
         // not be modified to preserve prompt caching.
-        if (message.role === "tool" && i <= lastAssistantIndex) {
+        if (
+          message.role === "tool" &&
+          i <= lastAssistantIndex &&
+          !isNewToolResult(message, i)
+        ) {
           continue;
         }
 

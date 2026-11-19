@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { wait } from "../utils";
 import { emitResponseMetadata } from "./responseMetadata";
-import { AnthropicTextPricing, AnthropicModels } from "./pricing";
+import { flattenToolChanges } from "./toolChanges";
+import { AnthropicTextPricing, AnthropicModels, getModelInfo, promptCacheTtl } from "./pricing";
 import { ContextLimits } from "./contextLimits";
 import { ModelModality } from "./types";
 import { Models } from "../types";
@@ -27,15 +28,10 @@ type MessageParam = Anthropic.MessageParam;
 type Usage = Anthropic.Usage;
 type ThinkingParam = Anthropic.Messages.ThinkingConfigParam;
 
-const alwaysOnModels: readonly string[] = [
-  AnthropicModels.Fable5_2,
-  AnthropicModels.Mythos5_2,
-  AnthropicModels.Fable5_1,
-  AnthropicModels.Fable5,
-  AnthropicModels.Mythos5_1,
-  AnthropicModels.Mythos5,
-  AnthropicModels.MythosPreview,
-];
+// Always-on thinking, preserved thinking and tool additions come from the
+// catalog (pricing/anthropic.ts → ModelInfo). This list is an API-shape
+// detail: models that take adaptive thinking but only when asked for it
+// (older models use budget thinking, which this client doesn't send).
 const optInModels: readonly string[] = [
   AnthropicModels.Opus5_5,
   AnthropicModels.Sonnet5_5,
@@ -46,6 +42,36 @@ const optInModels: readonly string[] = [
   AnthropicModels.Opus4_6,
   AnthropicModels.Sonnet4_6,
 ];
+const modelInfo = (model: string) => getModelInfo(model, "anthropic").info;
+const isAlwaysOnThinking = (model: string) =>
+  modelInfo(model).reasoning === "always";
+export const THINKING_BINDING_BETA = "thinking-binding-controls-2026-08-01";
+// Covers tool changes by reference; the older
+// mid-conversation-tool-changes-2026-07-01 header is only needed on Bedrock /
+// Google-managed Vertex, which this client doesn't target.
+export const TOOL_CHANGES_BETA = "inline-tools-2026-09-15";
+
+/** True for a 400 caused by deferred tools / tool_addition being rejected. */
+export function isToolChangeError(err: unknown): boolean {
+  const message =
+    (err as any)?.error?.error?.message ?? (err as any)?.message ?? "";
+  return (
+    typeof message === "string" &&
+    /tool_addition|tool_removal|tool_reference|defer_loading|deferred|role.{0,3}system|available_tools_limit/i.test(
+      message
+    )
+  );
+}
+
+/** True for the 400 returned when a replayed thinking block fails the prefix check. */
+export function isThinkingBindingError(err: unknown): boolean {
+  const message =
+    (err as any)?.error?.error?.message ?? (err as any)?.message ?? "";
+  return (
+    typeof message === "string" &&
+    message.includes("bound to a different conversation")
+  );
+}
 
 export class GenericAnthropicClient implements GenericClient {
   private client: Anthropic;
@@ -85,7 +111,11 @@ export class GenericAnthropicClient implements GenericClient {
   }
 
   handleToolCaching(tools: Anthropic.Tool[], longTtl = false) {
-    const lastTool = tools[tools.length - 1];
+    // A deferred definition can't carry cache_control; mark the last tool
+    // that is rendered up front instead.
+    const lastTool = [...tools]
+      .reverse()
+      .find((t) => !(t as any).defer_loading);
 
     if (lastTool) {
       lastTool.cache_control = longTtl
@@ -93,6 +123,36 @@ export class GenericAnthropicClient implements GenericClient {
         : { type: "ephemeral" };
     }
   }
+
+  /**
+   * Keep a deferred-tools request only when this model can render it, every
+   * marker references a declared tool (else the API 400s with
+   * tool_reference_unresolved) and at least one tool is offered up front.
+   */
+  prepareToolChanges(options: CompletionOptions): CompletionOptions {
+    const hasDeferred = options.tools?.some((t) => t.defer_loading);
+    const hasMarkers = options.messages.some((m) => m._tool_changes);
+    if (!hasDeferred && !hasMarkers) return options;
+    const hasUpFrontTool = options.tools?.some((t) => !t.defer_loading);
+    if (!modelInfo(options.model).toolAdditions || !hasUpFrontTool) {
+      return flattenToolChanges(options);
+    }
+
+    const declared = new Set(options.tools?.map((t) => t.function.name));
+    const known = (names?: string[]) =>
+      (names ?? []).filter((name) => declared.has(name));
+    const messages = options.messages
+      .map((m) => {
+        if (!m._tool_changes) return m;
+        const add = known(m._tool_changes.add);
+        const remove = known(m._tool_changes.remove);
+        if (!add.length && !remove.length) return undefined;
+        return { ...m, _tool_changes: { add, remove } };
+      })
+      .filter(Boolean) as Message[];
+    return { ...options, messages };
+  }
+
 
   /**
    * Determine the Anthropic `thinking` param from CompletionOptions.
@@ -108,10 +168,12 @@ export class GenericAnthropicClient implements GenericClient {
       ? ({ display: "summarized" } as const)
       : {};
 
-    if (alwaysOnModels.includes(model)) {
-      return effortIsNone
-        ? { type: "disabled" }
-        : { type: "adaptive", ...withSummary };
+    if (isAlwaysOnThinking(model)) {
+      // These models reject `thinking.type: "disabled"` (the API reports
+      // disabled: {supported: false}). "none" is clamped to the model's
+      // minimum instead: adaptive thinking at effort "low" (see
+      // getEffortOutputConfig), the same way Gemini maps none → low.
+      return { type: "adaptive", ...withSummary };
     }
 
     if (optInModels.includes(model)) {
@@ -126,6 +188,28 @@ export class GenericAnthropicClient implements GenericClient {
     return undefined;
   }
 
+  /**
+   * For preserved-thinking models, ask the API to drop (rather than reject)
+   * replayed thinking blocks whose prefix changed. Knowhow agents aren't
+   * append-only: enableTools changes `tools`, and message processors compress
+   * or rewrite older turns, so a stale block must not kill the task. Requires
+   * adaptive thinking and the thinking-binding beta header.
+   */
+  applyThinkingBinding(
+    model: string,
+    thinking: ThinkingParam | undefined
+  ): { thinking?: ThinkingParam; headers?: Record<string, string> } {
+    if (!thinking || thinking.type !== "adaptive") return { thinking };
+    if (!modelInfo(model).preservedThinking) return { thinking };
+    return {
+      thinking: {
+        ...thinking,
+        block_binding: { prefix_mismatch_behavior: "drop_block" },
+      } as ThinkingParam,
+      headers: { "anthropic-beta": THINKING_BINDING_BETA },
+    };
+  }
+
   /** Map provider-neutral effort names to Anthropic's output_config.effort. */
   getEffortOutputConfig(
     model: string,
@@ -133,10 +217,14 @@ export class GenericAnthropicClient implements GenericClient {
   ): Anthropic.OutputConfig | undefined {
     if (
       reasoningEffort === undefined ||
-      reasoningEffort === "none" ||
-      (!alwaysOnModels.includes(model) && !optInModels.includes(model))
+      (!isAlwaysOnThinking(model) && !optInModels.includes(model))
     ) {
       return undefined;
+    }
+
+    if (reasoningEffort === "none") {
+      // Always-on models can't turn thinking off; use their lowest effort.
+      return isAlwaysOnThinking(model) ? { effort: "low" } : undefined;
     }
 
     return {
@@ -201,6 +289,7 @@ export class GenericAnthropicClient implements GenericClient {
       input_schema: this.cleanSchemaForAnthropic(
         tool.function.parameters
       ) as any,
+      ...(tool.defer_loading && { defer_loading: true }),
     }));
 
     this.handleToolCaching(transformed, longTtl);
@@ -309,12 +398,19 @@ export class GenericAnthropicClient implements GenericClient {
     }
   }
 
-  transformMessages(messages: Message[], longTtl = false): MessageParam[] {
+  transformMessages(
+    messages: Message[],
+    longTtl = false,
+    includeThinking = true
+  ): MessageParam[] {
     const toolCalls = messages.flatMap((msg) => msg.tool_calls || []);
     // Map each tool_call id → the thinking blocks captured on the assistant
     // message that produced it, so we can re-inject them before the tool_use.
+    // When thinking is off for this request, replay none: a stale signed
+    // block can't be dropped by the API without adaptive thinking.
     const thinkingByCallId: { [id: string]: any[] } = {};
     for (const m of messages) {
+      if (!includeThinking) break;
       if (m.role !== "assistant" || !m.tool_calls?.length) continue;
       const details = (m as any)._reasoning_details;
       if (details?.provider === "anthropic" && Array.isArray(details.items)) {
@@ -324,9 +420,27 @@ export class GenericAnthropicClient implements GenericClient {
       }
     }
     const claudeMessages: MessageParam[] = messages
-      .filter((msg) => msg.role !== "system")
+      .filter((msg) => msg.role !== "system" || msg._tool_changes)
       .filter((msg) => msg.content || msg.role === "tool")
       .map((msg) => {
+        if (msg._tool_changes) {
+          // Mid-conversation tool change: a role:"system" message carrying
+          // tool_addition / tool_removal references (beta, TOOL_CHANGES_BETA).
+          const ref = (name: string) => ({ type: "tool_reference", name });
+          return {
+            role: "system",
+            content: [
+              ...(msg._tool_changes.add ?? []).map((name) => ({
+                type: "tool_addition",
+                tool: ref(name),
+              })),
+              ...(msg._tool_changes.remove ?? []).map((name) => ({
+                type: "tool_removal",
+                tool: ref(name),
+              })),
+            ],
+          } as unknown as MessageParam;
+        }
         if (msg.role === "tool") {
           const toolCall = toolCalls.find((tc) => tc.id === msg.tool_call_id);
           const toolMessages = [] as MessageParam[];
@@ -482,26 +596,45 @@ export class GenericAnthropicClient implements GenericClient {
   async createChatCompletion(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
+    options = this.prepareToolChanges(options);
     const longTtl = !!options.long_ttl_cache;
 
-    const thinkingParam = this.getThinkingParam(
+    const binding = this.applyThinkingBinding(
       options.model,
-      options.reasoning_effort,
-      options.reasoning_summary
+      this.getThinkingParam(
+        options.model,
+        options.reasoning_effort,
+        options.reasoning_summary
+      )
     );
+    const thinkingParam = binding.thinking;
     const effortOutputConfig = this.getEffortOutputConfig(
       options.model,
       options.reasoning_effort
     );
 
     const systemMessage = options.messages
-      .filter((msg) => msg.role === "system")
+      .filter((msg) => msg.role === "system" && !msg._tool_changes)
       .map((msg) => msg.content || "")
       .join("\n");
 
-    const claudeMessages = this.transformMessages(options.messages, longTtl);
+    const claudeMessages = this.transformMessages(
+      options.messages,
+      longTtl,
+      !!thinkingParam
+    );
 
     const tools = this.transformTools(options.tools, longTtl);
+    const usesToolChanges =
+      options.tools?.some((t) => t.defer_loading) ||
+      options.messages.some((m) => m._tool_changes);
+    const betas = [
+      binding.headers?.["anthropic-beta"],
+      usesToolChanges ? TOOL_CHANGES_BETA : undefined,
+    ].filter(Boolean);
+    const headers = betas.length
+      ? { "anthropic-beta": betas.join(",") }
+      : undefined;
     try {
       let maxTokens = options.max_tokens || 8000;
       let retryCost = 0;
@@ -537,7 +670,10 @@ export class GenericAnthropicClient implements GenericClient {
                 tools,
               }),
             },
-            { signal: options.signal }
+            {
+              signal: options.signal,
+              ...(headers && { headers }),
+            }
           )
           .withResponse();
         response = result.data;
@@ -658,6 +794,16 @@ export class GenericAnthropicClient implements GenericClient {
               cache_read_input_tokens:
                 (retryUsage?.cache_read_input_tokens ?? 0) +
                 (response.usage.cache_read_input_tokens ?? 0),
+              ...((retryUsage?.cache_creation || response.usage.cache_creation) && {
+                cache_creation: {
+                  ephemeral_5m_input_tokens:
+                    (retryUsage?.cache_creation?.ephemeral_5m_input_tokens ?? 0) +
+                    (response.usage.cache_creation?.ephemeral_5m_input_tokens ?? 0),
+                  ephemeral_1h_input_tokens:
+                    (retryUsage?.cache_creation?.ephemeral_1h_input_tokens ?? 0) +
+                    (response.usage.cache_creation?.ephemeral_1h_input_tokens ?? 0),
+                },
+              }),
               ...((response.usage as any).thinking_input_tokens != null ||
               (response.usage as any).output_tokens_details?.thinking_tokens !=
                 null
@@ -677,6 +823,33 @@ export class GenericAnthropicClient implements GenericClient {
       };
     } catch (err) {
       this.emitErrorMetadata(options, err);
+      if (usesToolChanges && isToolChangeError(err)) {
+        // The provider (or a proxy dropping the beta header) rejected the
+        // deferred-tools shape: resend the classic enabled-tools request.
+        console.warn(
+          "Anthropic rejected mid-conversation tool changes; retrying with the enabled tools only"
+        );
+        return this.createChatCompletion(flattenToolChanges(options));
+      }
+      const hasReplayedThinking = options.messages.some(
+        (m) => (m as any)._reasoning_details?.provider === "anthropic"
+      );
+      if (isThinkingBindingError(err) && hasReplayedThinking) {
+        // drop_block didn't apply (e.g. a proxy stripped the beta header, or
+        // the model isn't in our preserved-thinking list). Retry once without
+        // replaying any earlier thinking; the API accepts leaving it all out.
+        console.warn(
+          "Anthropic rejected replayed thinking (prefix changed); retrying without earlier thinking blocks"
+        );
+        return this.createChatCompletion({
+          ...options,
+          messages: options.messages.map((m) => {
+            if (!(m as any)._reasoning_details) return m;
+            const { _reasoning_details, ...rest } = m as any;
+            return rest as Message;
+          }),
+        });
+      }
       if ("headers" in err && err.headers?.["x-should-retry"] === "true") {
         console.warn("Retrying failed request", err);
         await wait(2500);
@@ -749,9 +922,23 @@ export class GenericAnthropicClient implements GenericClient {
     // If your `cache_write` + `cache_hit` are absolute $/MTok at base tier, scale them:
     const cacheWriteRate = (p.cache_write / p.input) * inputRate; // preserves your multiplier
     const cacheReadRate = (p.cache_hit / p.input) * inputRate; // preserves your multiplier
+    // 1h writes cost 2× base input (5m writes 1.25×). usage.cache_creation
+    // splits cache_creation_input_tokens by TTL; without it, assume 5m.
+    const longTtl = promptCacheTtl(modelInfo(model).promptCache, true);
+    const longWriteRate =
+      longTtl && longTtl.id !== "5m"
+        ? longTtl.writeMultiplier * inputRate
+        : 2 * inputRate;
+    const longWriteTokens = Math.min(
+      cacheWriteTokens,
+      usage.cache_creation?.ephemeral_1h_input_tokens ?? 0
+    );
 
     const nonCachedInputCost = (inputTokens * inputRate) / 1e6;
-    const cacheWriteCost = (cacheWriteTokens * cacheWriteRate) / 1e6;
+    const cacheWriteCost =
+      ((cacheWriteTokens - longWriteTokens) * cacheWriteRate +
+        longWriteTokens * longWriteRate) /
+      1e6;
     const cacheReadCost = (cacheReadTokens * cacheReadRate) / 1e6;
     const outputCost = (outputTokens * outputRate) / 1e6;
 

@@ -3,7 +3,7 @@
  * Single source of truth for all Anthropic/Claude models.
  * Deprecation dates from: https://docs.anthropic.com/en/docs/about-claude/model-deprecations
  */
-import { completions, ModelCatalogEntry, ModelPricing } from "./types";
+import { completions, ModelCatalogEntry, ModelInfo, ModelPricing, withModelInfo } from "./types";
 
 // ─── Model IDs ────────────────────────────────────────────────────────────────
 
@@ -183,10 +183,82 @@ export const AnthropicTextPricing: Record<string, ModelPricing> = {
   [AnthropicModels.Haiku3]:    { input: 0.25, cache_write: 0.3125, cache_hit: 0.025, output: 1.25, deprecated: true, deprecationDate: "2026-04-20" },
 };
 
+// ─── Model info ───────────────────────────────────────────────────────────────
+
+// Thinking can't be turned off: only `adaptive` is accepted, the lowest
+// level is effort "low".
+const AlwaysOnThinkingModels: string[] = [
+  AnthropicModels.Fable5_2,
+  AnthropicModels.Mythos5_2,
+  AnthropicModels.Fable5_1,
+  AnthropicModels.Fable5,
+  AnthropicModels.Mythos5_1,
+  AnthropicModels.Mythos5,
+  AnthropicModels.MythosPreview,
+];
+// Preserved thinking: each signed thinking block is bound to everything sent
+// before it (system, tools, earlier messages). Changing any of that fails the
+// request unless block_binding.prefix_mismatch_behavior is "drop_block".
+const PreservedThinkingModels: string[] = [
+  AnthropicModels.Fable5_2,
+  AnthropicModels.Mythos5_2,
+  AnthropicModels.Fable5_1,
+  AnthropicModels.Mythos5_1,
+  AnthropicModels.Opus5_5,
+  AnthropicModels.Sonnet5_5,
+  AnthropicModels.Haiku5_5,
+];
+// Deferred tools + mid-conversation tool_addition / tool_removal blocks
+// (platform.claude.com mid-conversation-system-messages).
+const ToolAdditionModels: string[] = [
+  AnthropicModels.Fable5_2,
+  AnthropicModels.Mythos5_2,
+  AnthropicModels.Fable5_1,
+  AnthropicModels.Mythos5_1,
+  AnthropicModels.Fable5,
+  AnthropicModels.Mythos5,
+  AnthropicModels.Opus5_5,
+  AnthropicModels.Opus5,
+  AnthropicModels.Sonnet5_5,
+  AnthropicModels.Haiku5_5,
+  AnthropicModels.Opus4_8,
+];
+
+/**
+ * Every Claude model: cache_control.ttl "5m" (1.25× input to write) or "1h"
+ * (2× input). Reads (0.1× on most models) renew the lifetime. A 1h breakpoint
+ * can't read a 5m entry, so switching TTL mid-thread re-writes the whole
+ * prefix — agents only move to 1h at a compaction.
+ * https://platform.claude.com/docs/en/build-with-claude/prompt-caching
+ */
+export const AnthropicDefaultModelInfo: ModelInfo = {
+  reasoning: "optional",
+  promptCache: {
+    mode: "explicit",
+    ttls: [
+      { id: "5m", ms: 5 * 60_000, writeMultiplier: 1.25 },
+      { id: "1h", ms: 60 * 60_000, writeMultiplier: 2 },
+    ],
+    longTtl: "1h",
+    readsRefreshTtl: true,
+    ttlChangeRewrites: true,
+  },
+};
+
+export const AnthropicModelInfo: Record<string, ModelInfo> = {};
+const addInfo = (ids: string[], info: ModelInfo) => {
+  for (const id of ids) AnthropicModelInfo[id] = { ...AnthropicModelInfo[id], ...info };
+};
+addInfo(AlwaysOnThinkingModels, { reasoning: "always" });
+addInfo(PreservedThinkingModels, { preservedThinking: true });
+addInfo(ToolAdditionModels, { toolAdditions: true });
+
 // ─── Catalog ──────────────────────────────────────────────────────────────────
 // Metadata (deprecated, deprecationDate, limitedAvailability) is read directly
 // from the AnthropicTextPricing entries — no need for separate groups.
 
-export const ANTHROPIC_MODEL_CATALOG: ModelCatalogEntry[] = [
-  ...completions(AnthropicAllModels, "anthropic", AnthropicTextPricing),
-];
+export const ANTHROPIC_MODEL_CATALOG: ModelCatalogEntry[] = withModelInfo(
+  completions(AnthropicAllModels, "anthropic", AnthropicTextPricing),
+  AnthropicDefaultModelInfo,
+  AnthropicModelInfo
+);

@@ -23,6 +23,18 @@ export interface Message {
   name?: string;
   tool_call_id?: string;
   tool_calls?: ToolCall[];
+  /**
+   * Marks a mid-conversation tool-availability change (see clients/toolChanges).
+   * Clients that support tool additions render it natively (Anthropic
+   * tool_addition / tool_removal blocks); everywhere else it is stripped and
+   * the tools array carries the effective set instead.
+   */
+  _tool_changes?: ToolChanges;
+}
+
+export interface ToolChanges {
+  add?: string[];
+  remove?: string[];
 }
 
 export interface OutputMessage extends Message {
@@ -83,6 +95,13 @@ export interface ToolProp {
 
 export interface Tool {
   type: "function";
+  /**
+   * Declared up front but withheld from the model until a `_tool_changes`
+   * message adds it. Only sent for models whose catalog info has
+   * `toolAdditions` (AIClient.getModelInfo); keeps the tools array (and the prompt cache / thinking binding)
+   * stable while lazy tools are enabled mid-task.
+   */
+  defer_loading?: boolean;
   function: {
     name: string;
     description?: string;
@@ -239,12 +258,19 @@ export interface CompletionOptions extends RetryOptions {
    */
   previous_response_id?: string;
   /**
-   * When true, hints to the client that this task is long-running and it should
-   * use a long-TTL cache where available.
-   * - Anthropic: enables the `extended-cache-ttl-2025-02-19` beta and sets
-   *   `cache_control.ttl` to 3600 (1 hour) instead of the default 5-minute ephemeral cache.
+   * Use the model's long prompt-cache TTL (ModelInfo.promptCache.longTtl).
+   * - Anthropic: `cache_control.ttl: "1h"` (writes 2× input) instead of 5m.
+   * - Other providers ignore it (OpenAI GPT-5.6+ stays on its 30m default).
+   * Changing it on a cached prefix re-writes the prefix, so agents only flip
+   * it at a compaction (see agents/base/compactionPolicy.ts).
    */
   long_ttl_cache?: boolean;
+  /**
+   * Stable id for this conversation, used to route requests to the same cache
+   * server: OpenAI `prompt_cache_key`, xAI `x-grok-conv-id` header /
+   * `prompt_cache_key` (ModelInfo.promptCache.routingKey).
+   */
+  cache_key?: string;
 }
 
 /**
@@ -274,9 +300,23 @@ export interface TokenUsage {
   prompt_tokens_details?: {
     /** Tokens served from the prompt cache (reduces cost) */
     cached_tokens: number;
+    /**
+     * OpenAI GPT-5.6+: prompt tokens written to the cache (billed 1.25× for
+     * 30m, 2.5× for 12h). Part of prompt_tokens, excluded from cached_tokens.
+     */
+    cache_write_tokens?: number;
+    cache_write_tokens_details?: {
+      ttl_30m_tokens?: number;
+      ttl_12h_tokens?: number;
+    };
   };
   /** Anthropic-style cache write tokens */
   cache_creation_input_tokens?: number;
+  /** Anthropic: cache writes split by TTL (5m at 1.25× input, 1h at 2×). */
+  cache_creation?: {
+    ephemeral_5m_input_tokens?: number;
+    ephemeral_1h_input_tokens?: number;
+  };
   /** Anthropic-style cache read tokens (alternative field name) */
   cache_read_input_tokens?: number;
 }

@@ -88,6 +88,25 @@ describe("frontier model tiered pricing", () => {
     expect(client.getThinkingParam(AnthropicModels.Opus5, "high")).toEqual({ type: "adaptive" });
   });
 
+  it("clamps reasoning_effort none to adaptive/low on always-on thinking models", () => {
+    const client = new GenericAnthropicClient("test-key");
+
+    for (const model of [
+      AnthropicModels.Fable5_2,
+      AnthropicModels.Fable5_1,
+      AnthropicModels.Fable5,
+      AnthropicModels.Mythos5_2,
+    ]) {
+      // The API rejects thinking.type "disabled" for these models.
+      expect(client.getThinkingParam(model, "none")).toEqual({ type: "adaptive" });
+      expect(client.getEffortOutputConfig(model, "none")).toEqual({ effort: "low" });
+    }
+
+    // Opt-in models can still turn thinking fully off.
+    expect(client.getThinkingParam(AnthropicModels.Opus5_5, "none")).toBeUndefined();
+    expect(client.getEffortOutputConfig(AnthropicModels.Opus5_5, "none")).toBeUndefined();
+  });
+
   it("records the GPT-5.6 Sol and Claude Sonnet 5 pricing announcements", () => {
     expect(OpenAiTextPricing[OpenAiModels.GPT_56_Sol].changelog).toEqual(
       expect.arrayContaining([

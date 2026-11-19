@@ -116,6 +116,15 @@ export class ToolsService {
     return this.tools;
   }
 
+  /**
+   * Every tool that could be offered to the model, including ones not enabled
+   * yet. Agents declare this set (deferred) to models that support
+   * mid-conversation tool additions. Lazy services override it.
+   */
+  getCatalogTools(): Tool[] {
+    return this.getTools();
+  }
+
   getToolsByNames(names: string[]) {
     return this.tools.filter((tool) =>
       names.some((name) => name && tool.function.name.endsWith(name))
