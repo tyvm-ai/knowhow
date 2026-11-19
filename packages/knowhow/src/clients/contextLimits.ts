@@ -138,6 +138,8 @@ export const ContextLimits: Record<string, number> = {
 
   // ─── Google ───────────────────────────────────────────────────────────────
   // Gemini 3.7 / 3.6 / 3.5 (text)
+  [Models.google.Gemini_4_Neon]: 1_048_576,
+  [Models.google.Gemini_4_Hydrogen]: 1_048_576,
   [Models.google.Gemini_4_Carbon]: 1_048_576,
   [Models.google.Gemini_4_Argon]: 1_048_576,
   // Gemini Decision 1 — 262,144 tokens across shared input + all questions

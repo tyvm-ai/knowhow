@@ -466,23 +466,29 @@ export class GenericGeminiClient implements GenericClient {
 
     // Gemini 3.x — use thinkingLevel
     if (GoogleThinkingLevelModels.includes(model)) {
-      // Gemini 4 Carbon, 4 Argon, 3.8 Flash and 3.7 Flash reject "minimal";
-      // low is their least intensive level.
+      // Gemini 4 Neon/Hydrogen/Carbon/Argon, 3.8 Flash and 3.7 Flash reject
+      // "minimal"; low is their least intensive level.
       const noMinimalModels: string[] = [
+        Models.google.Gemini_4_Neon,
+        Models.google.Gemini_4_Hydrogen,
         Models.google.Gemini_4_Carbon,
         Models.google.Gemini_4_Argon,
         Models.google.Gemini_38_Flash,
         Models.google.Gemini_37_Flash,
       ];
       const minimumLevel = noMinimalModels.includes(model) ? "low" : "minimal";
+      // Gemini 4 Neon / Hydrogen add an "xhigh" level above high.
+      const topLevel = GeminiTextPricing[model]?.reasoningLevels?.includes("xhigh")
+        ? "xhigh"
+        : "high";
       const levelMap: Record<string, string> = {
         none: minimumLevel,
         minimal: minimumLevel,
         low: "low",
         medium: "medium",
         high: "high",
-        xhigh: "high",
-        max: "high",
+        xhigh: topLevel,
+        max: topLevel,
       };
       return {
         thinkingLevel: levelMap[effort] ?? "low",

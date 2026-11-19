@@ -8,6 +8,8 @@ import { completions, embeddings, images, videos, audios, decisions, liveApi, Mo
 
 export const GoogleModels = {
   // Gemini 4
+  Gemini_4_Neon: "gemini-4-neon",
+  Gemini_4_Hydrogen: "gemini-4-hydrogen",
   Gemini_4_Carbon: "gemini-4-carbon",
   Gemini_4_Argon: "gemini-4-argon",
   // Decisions API (calibrated noul/choice/score answers, zero output tokens)
@@ -103,6 +105,8 @@ export const GoogleEmbeddingModels: Record<string, string> = {
 // ─── Modality arrays ──────────────────────────────────────────────────────────
 
 export const GoogleTextModels: string[] = [
+  GoogleModels.Gemini_4_Neon,
+  GoogleModels.Gemini_4_Hydrogen,
   GoogleModels.Gemini_4_Carbon,
   GoogleModels.Gemini_4_Argon,
   GoogleModels.Gemini_38_Flash,
@@ -125,6 +129,8 @@ export const GoogleTextModels: string[] = [
 
 // Models that support thinkingLevel (Gemini 3.x series)
 export const GoogleThinkingLevelModels: string[] = [
+  GoogleModels.Gemini_4_Neon,
+  GoogleModels.Gemini_4_Hydrogen,
   GoogleModels.Gemini_4_Carbon,
   GoogleModels.Gemini_4_Argon,
   GoogleModels.Gemini_38_Flash,
@@ -271,6 +277,22 @@ export interface GeminiModelPricing extends ModelPricing {
 
 export const GeminiPricing: Record<string, GeminiModelPricing> = {
   // ── Gemini 4 ──────────────────────────────────────────────────────────────
+  // Gemini 4 Neon (Nov 19, 2026): mid tier between Carbon and Hydrogen. Flat
+  // pricing across the 1M window; paid tier only; implicit caching only.
+  // Batch/Flex $1.50 / $7.50 / $0.075; Priority $5.40 / $27 / $0.27.
+  [GoogleModels.Gemini_4_Neon]: {
+    input: 3.0, output: 15.0,
+    context_caching: 0.15,
+    reasoningLevels: ["low", "medium", "high", "xhigh"],
+  },
+  // Gemini 4 Hydrogen (Nov 12, 2026): fast Flash-tier model, recommended
+  // upgrade from 3.8 Flash. Flat pricing across the 1M window; free + paid
+  // tiers; implicit caching only. Batch/Flex $0.75 / $3.75 / $0.0375.
+  [GoogleModels.Gemini_4_Hydrogen]: {
+    input: 1.5, output: 7.5,
+    context_caching: 0.075,
+    reasoningLevels: ["low", "medium", "high", "xhigh"],
+  },
   // Same introductory pricing as Argon through November 30, 2026. Standard
   // pricing beginning December 1, 2026 is $4.00 input, $20.00 output, and
   // $0.20 cached input. Paid tier only; implicit caching only.

@@ -113,6 +113,8 @@ describe("reasoning effort values", () => {
   it("maps all values to valid Gemini thinking levels and budgets", () => {
     const client = new GenericGeminiClient("fake-key");
     const noMinimalModels: string[] = [
+      Models.google.Gemini_4_Neon,
+      Models.google.Gemini_4_Hydrogen,
       Models.google.Gemini_4_Carbon,
       Models.google.Gemini_4_Argon,
       Models.google.Gemini_38_Flash,
@@ -130,6 +132,13 @@ describe("reasoning effort values", () => {
     for (const model of noMinimalModels) {
       expect(client.buildThinkingConfig(options(model, "minimal"))).toEqual({ thinkingLevel: "low" });
     }
+    // Gemini 4 Neon / Hydrogen support "xhigh"; Carbon tops out at high.
+    for (const model of [Models.google.Gemini_4_Neon, Models.google.Gemini_4_Hydrogen]) {
+      expect(client.buildThinkingConfig(options(model, "none"))).toEqual({ thinkingLevel: "low" });
+      expect(client.buildThinkingConfig(options(model, "xhigh"))).toEqual({ thinkingLevel: "xhigh" });
+      expect(client.buildThinkingConfig(options(model, "max"))).toEqual({ thinkingLevel: "xhigh" });
+    }
+    expect(client.buildThinkingConfig(options(Models.google.Gemini_4_Carbon, "xhigh"))).toEqual({ thinkingLevel: "high" });
     expect(client.buildThinkingConfig(options(budgetModel, "none"))).toEqual({ thinkingBudget: 0 });
     expect(client.buildThinkingConfig(options(budgetModel, "minimal"))).toEqual({ thinkingBudget: 512 });
     expect(client.buildThinkingConfig(options(budgetModel, "medium"))).toEqual({ thinkingBudget: 8192 });
