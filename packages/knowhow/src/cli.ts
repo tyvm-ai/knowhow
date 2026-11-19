@@ -67,6 +67,8 @@ import { addProcessesCommand } from "./commands/processes";
 import { addRemoteCommand } from "./commands/remote";
 import { addTaskCommand } from "./commands/task";
 import { addToolCommand } from "./commands/tool";
+import { addRepoCommand } from "./commands/repo";
+import { addAppCommand } from "./commands/app";
 import { addHistoryCommand } from "./commands/history";
 
 // Handle unhandled promise rejections gracefully — particularly from MCP SDK
@@ -141,6 +143,8 @@ async function main() {
   addProcessesCommand(program);
   addTaskCommand(program);
   addToolCommand(program);
+  addRepoCommand(program);
+  addAppCommand(program);
   addHistoryCommand(program);
 
   // Load global modules early (before parse) so they can register CLI subcommands.

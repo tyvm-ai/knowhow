@@ -295,7 +295,7 @@ export async function buildTransportCommit(opts: BuildTransportCommitOptions) {
 // Bundle creation (local only — no network)
 // ---------------------------------------------------------------------------
 
-function sha256File(file: string): Promise<string> {
+export function sha256File(file: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const h = createHash("sha256");
     fs.createReadStream(file)
@@ -394,6 +394,8 @@ export interface TransportClient {
       prerequisiteShas: string[];
       sizeBytes: number;
       sha256: string;
+      /** compare-and-swap: the sha the pusher based `refs[0]` on (null = branch does not exist yet) */
+      expectedTip?: { ref: string; sha: string | null };
     }
   ): Promise<{ bundleId: string; uploadUrl: string }>;
   completeGitRepositoryBundle(repoId: string, bundleId: string): Promise<unknown>;
@@ -461,7 +463,7 @@ export async function putFileToPresignedUrl(url: string, file: string) {
   }
 }
 
-async function uploadBundle(
+export async function uploadBundle(
   client: TransportClient,
   repoId: string,
   file: string,
@@ -472,6 +474,7 @@ async function uploadBundle(
     prerequisiteShas: string[];
     sizeBytes: number;
     sha256: string;
+    expectedTip?: { ref: string; sha: string | null };
   }
 ) {
   if (meta.sizeBytes > MAX_BUNDLE_BYTES) {
@@ -491,10 +494,10 @@ async function uploadBundle(
 // Base bundles ("repository backup")
 // ---------------------------------------------------------------------------
 
-function hasCommit(cwd: string, sha: string) {
+export function hasCommit(cwd: string, sha: string) {
   return gitSafe(["cat-file", "-e", `${sha}^{commit}`], { cwd }) !== null;
 }
-function isAncestor(cwd: string, anc: string, desc: string) {
+export function isAncestor(cwd: string, anc: string, desc: string) {
   return gitSafe(["merge-base", "--is-ancestor", anc, desc], { cwd }) !== null;
 }
 
@@ -685,9 +688,12 @@ export interface RepoContext {
 
 export async function resolveRepoContext(
   client: TransportClient,
-  cwd: string = process.cwd()
+  cwd: string = process.cwd(),
+  /** prefer this remote (e.g. `knowhow` for hosted repositories); default: upstream's, origin, `knowhow`, first */
+  preferRemote?: string,
+  allowUnborn = false
 ): Promise<RepoContext> {
-  const info = getRealRepoInfo(cwd);
+  const info = getRealRepoInfo(cwd, preferRemote, allowUnborn);
   if (!info) throw new Error("Not inside a git repository with at least one commit.");
   if (!info.remoteUrl) {
     throw new Error(

@@ -176,9 +176,12 @@ export interface TaskDetailsResponse {
 
 export interface GitRepositoryResponse {
   id: string;
+  orgId?: string;
   name: string;
+  /** hosted repositories: `knowhow://<orgId>/<name>` (lowercase) */
   originUrl: string;
   defaultBranch?: string | null;
+  hosting?: "knowhow" | "external" | string;
   bundles?: {
     id: string;
     kind?: string;
@@ -187,6 +190,139 @@ export interface GitRepositoryResponse {
     prerequisiteShas?: string[];
     status: string;
   }[];
+}
+
+// ---------------------------------------------------------------------------
+// Apps (knowhow app publish / env / promote / rollback), routes under /api/apps
+// Spec: knowhow-web/.knowhow/tasks/min-app-updates/implementation.md ("API")
+// ---------------------------------------------------------------------------
+
+export interface AppRecord {
+  id: string;
+  slug: string;
+  name?: string;
+  rootPath?: string;
+  /** exact origin of the requested env's frame (prod `{slug}--{appIdHex}`, else `{slug}--{env}--{appIdHex}`) */
+  appOrigin?: string;
+  /** environment `appOrigin` describes (prod unless GET /apps/{id}?env=) */
+  envName?: string;
+  /** only on POST /apps/resolve: true when the app was just registered */
+  created?: boolean;
+  aliases?: string[];
+  /** Knowhow repository ("Develop this app" checks it out); null/undefined = no source linked yet */
+  sourceRepositoryId?: string | null;
+  sourceBranch?: string | null;
+  /** app directory inside the repository (null = repository root) */
+  sourceSubdir?: string | null;
+  [key: string]: unknown;
+}
+
+/** PUT /api/apps/{id}/source: `repositoryId: null` detaches the source. */
+export interface SetAppSourceRequest {
+  repositoryId: string | null;
+  branch?: string;
+  subdir?: string | null;
+}
+
+/** POST /api/apps/{id}/dev-worker */
+export interface StartAppDevWorkerRequest {
+  env?: string;
+}
+
+export interface StartAppDevWorkerResponse {
+  cloudWorkerId: string;
+  created?: boolean;
+  started?: boolean;
+  status?: string;
+  branch?: string;
+}
+
+export interface ResolveAppRequest {
+  slug: string;
+  rootPath?: string;
+  name?: string;
+}
+
+export interface AppBuildFileInfo {
+  /** path relative to the build output dir, POSIX separators */
+  path: string;
+  /** hex sha256 of the file content */
+  sha256: string;
+  size: number;
+  contentType: string;
+}
+
+export interface CreateAppBuildRequest {
+  files: AppBuildFileInfo[];
+  manifest: Record<string, unknown>;
+  sourceCommit?: string;
+}
+
+export interface CreateAppBuildResponse {
+  buildId: string;
+  status?: string;
+  contentHash?: string;
+  /** files copied server-side from earlier builds (content-addressed reuse) */
+  reused?: number;
+  /** only the files whose sha256 is not already stored for this app (presigned PUT urls) */
+  uploads: { path: string; uploadUrl: string }[];
+  /** true when nothing needs uploading: the build is already `ready` and /complete is not needed */
+  ready?: boolean;
+}
+
+export interface AppEnvironmentRecord {
+  name: string;
+  buildId?: string | null;
+  branch?: string | null;
+  vars?: Record<string, string>;
+  dataMode?: "separate" | "shared";
+  dataSourceEnv?: string;
+  /** the env whose data this env actually reads/writes */
+  dataEnv?: string;
+  /** secret variable names only (values never leave the server) */
+  secretNames?: string[];
+  /** exact serving origin of this env (backend-derived: use this, do not rebuild it) */
+  origin?: string;
+  contentHash?: string | null;
+  sourceCommit?: string | null;
+  builtAt?: string | null;
+  updatedAt?: string;
+  url?: string;
+  [key: string]: unknown;
+}
+
+/** Response of publish / promote / rollback (they share `move()` on the backend). */
+export interface AppMoveResponse {
+  env: AppEnvironmentRecord;
+  publishId: string;
+  kind: "publish" | "promote" | "rollback";
+  buildId: string;
+  previousBuildId: string | null;
+  capabilities?: string[];
+  versionHash?: string;
+  [key: string]: unknown;
+}
+
+export interface UpdateAppEnvironmentRequest {
+  /** REPLACES the whole vars object (names `[A-Za-z_][A-Za-z0-9_]{0,63}`, string values, max 16 KB) */
+  vars?: Record<string, string>;
+  /** tracked repo branch; null clears */
+  branch?: string | null;
+  dataMode?: "separate" | "shared";
+  dataSourceEnv?: string;
+}
+
+export interface AppPublishRecord {
+  id: string;
+  appId?: string;
+  envName: string;
+  buildId?: string | null;
+  previousBuildId?: string | null;
+  kind: "publish" | "promote" | "rollback" | string;
+  sourceCommit?: string | null;
+  note?: string | null;
+  createdAt?: string;
+  [key: string]: unknown;
 }
 
 export interface TaskOffloadResponse {
@@ -1360,12 +1496,44 @@ export class KnowhowSimpleClient {
       prerequisiteShas: string[];
       sizeBytes: number;
       sha256: string;
+      /** compare-and-swap: the sha the pusher based `refs[0]` on (null = branch does not exist yet); backend answers 409 on mismatch */
+      expectedTip?: { ref: string; sha: string | null };
     }
   ) {
     await this.checkJwt();
-    const res = await http.post<{ bundleId: string; uploadUrl: string }>(
+    const res = await http.post<{ bundleId: string; uploadUrl: string; alreadyStored?: boolean }>(
       `${this.baseUrl}/api/git-repositories/${repoId}/bundles`,
       req,
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  /** Create a Knowhow-hosted repository (originUrl `knowhow://<orgId>/<name>`; name: letters, digits, `.`, `_`, `-`). */
+  async createHostedGitRepository(name: string) {
+    await this.checkJwt();
+    const res = await http.post<GitRepositoryResponse>(
+      `${this.baseUrl}/api/git-repositories/hosted`,
+      { name },
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async getGitRepository(repoId: string) {
+    await this.checkJwt();
+    const res = await http.get<GitRepositoryResponse>(
+      `${this.baseUrl}/api/git-repositories/${repoId}`,
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  /** Current branch tips `{ "refs/heads/main": sha, ... }` (GET /git-repositories/{id}/refs). */
+  async getGitRepositoryRefs(repoId: string) {
+    await this.checkJwt();
+    const res = await http.get<Record<string, string>>(
+      `${this.baseUrl}/api/git-repositories/${repoId}/refs`,
       { headers: this.headers }
     );
     return res.data;
@@ -1557,5 +1725,146 @@ export class KnowhowSimpleClient {
       `${this.baseUrl}/api/org-behaviors/triggered?userInput=${encodeURIComponent(userInput)}`,
       { headers: this.headers }
     );
+  }
+
+  // ============================================
+  // Apps: builds, environments, publishes
+  // ============================================
+
+  /** Idempotent create-or-get of an app by slug (used by `knowhow app publish`). */
+  async resolveApp(req: ResolveAppRequest) {
+    await this.checkJwt();
+    // Backend answers the app itself plus `created` (true when it was just registered; needs org admin).
+    const res = await http.post<AppRecord>(`${this.baseUrl}/api/apps/resolve`, req, { headers: this.headers });
+    return res.data;
+  }
+
+  async listApps() {
+    await this.checkJwt();
+    const res = await http.get<AppRecord[]>(`${this.baseUrl}/api/apps`, { headers: this.headers });
+    return res.data;
+  }
+
+  /** `env` makes `appOrigin`/`envName` describe that environment (default prod). */
+  async getApp(appId: string, env?: string) {
+    await this.checkJwt();
+    const res = await http.get<AppRecord>(`${this.baseUrl}/api/apps/${encodeURIComponent(appId)}`, {
+      headers: this.headers,
+      ...(env ? { params: { env } } : {}),
+    });
+    return res.data;
+  }
+
+  /** Link (or with `repositoryId: null` unlink) the Knowhow repository the app is developed in. */
+  async setAppSource(appId: string, body: SetAppSourceRequest) {
+    await this.checkJwt();
+    const res = await http.put<AppRecord>(
+      `${this.baseUrl}/api/apps/${encodeURIComponent(appId)}/source`,
+      body,
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  /** "Develop this app": find/create + start the caller's dev cloud worker for the app. */
+  async startAppDevWorker(appId: string, body: StartAppDevWorkerRequest = {}) {
+    await this.checkJwt();
+    const res = await http.post<StartAppDevWorkerResponse>(
+      `${this.baseUrl}/api/apps/${encodeURIComponent(appId)}/dev-worker`,
+      body,
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async createAppBuild(appId: string, req: CreateAppBuildRequest) {
+    await this.checkJwt();
+    const res = await http.post<CreateAppBuildResponse>(
+      `${this.baseUrl}/api/apps/${encodeURIComponent(appId)}/builds`,
+      req,
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async completeAppBuild(appId: string, buildId: string) {
+    await this.checkJwt();
+    const res = await http.post<unknown>(
+      `${this.baseUrl}/api/apps/${encodeURIComponent(appId)}/builds/${encodeURIComponent(buildId)}/complete`,
+      {},
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async publishAppEnvironment(
+    appId: string,
+    env: string,
+    body: { buildId: string; note?: string; sourceCommit?: string }
+  ) {
+    await this.checkJwt();
+    const res = await http.post<AppMoveResponse>(
+      `${this.baseUrl}/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(env)}/publish`,
+      body,
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async promoteAppEnvironment(appId: string, env: string, body: { fromEnv: string; note?: string }) {
+    await this.checkJwt();
+    const res = await http.post<AppMoveResponse>(
+      `${this.baseUrl}/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(env)}/promote`,
+      body,
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async rollbackAppEnvironment(appId: string, env: string, body: { publishId?: string; note?: string } = {}) {
+    await this.checkJwt();
+    const res = await http.post<AppMoveResponse>(
+      `${this.baseUrl}/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(env)}/rollback`,
+      body,
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async listAppEnvironments(appId: string) {
+    await this.checkJwt();
+    const res = await http.get<AppEnvironmentRecord[]>(
+      `${this.baseUrl}/api/apps/${encodeURIComponent(appId)}/environments`,
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async updateAppEnvironment(appId: string, env: string, body: UpdateAppEnvironmentRequest) {
+    await this.checkJwt();
+    const res = await http.put<AppEnvironmentRecord>(
+      `${this.baseUrl}/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(env)}`,
+      body,
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async deleteAppEnvironment(appId: string, env: string) {
+    await this.checkJwt();
+    const res = await http.delete<{ success: boolean }>(
+      `${this.baseUrl}/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(env)}`,
+      { headers: this.headers }
+    );
+    return res.data;
+  }
+
+  async listAppPublishes(appId: string, env?: string) {
+    await this.checkJwt();
+    const res = await http.get<AppPublishRecord[]>(
+      `${this.baseUrl}/api/apps/${encodeURIComponent(appId)}/publishes`,
+      { headers: this.headers, ...(env ? { params: { env } } : {}) }
+    );
+    return res.data;
   }
 }

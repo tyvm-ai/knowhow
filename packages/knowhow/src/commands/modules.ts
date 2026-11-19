@@ -72,9 +72,14 @@ function npmInstallToKnowhow(
   knowhowDir: string,
   options: InstallOptions = {}
 ): void {
-  const scriptFlags = options.allowScripts
+  // --omit=peer: every first-party module declares @tyvm/knowhow as a peerDependency. npm >= 7 would otherwise
+  // auto-install a NESTED copy of the CLI (whatever was latest at install time) into <knowhowDir>/node_modules, which
+  // shadows the running CLI for the modules (e.g. "Cannot find module '@tyvm/knowhow/sdk'" with a stale copy).
+  // Modules resolve the running CLI through Module.globalPaths instead (see ModulesService.loadModulesFrom).
+  const peerFlags = " --omit=peer";
+  const scriptFlags = peerFlags + (options.allowScripts
     ? " --foreground-scripts --ignore-scripts=false"
-    : "";
+    : "");
   execSync(`npm install --prefix "${knowhowDir}" ${mod}${scriptFlags}`, {
     stdio: "inherit",
     encoding: "utf-8",

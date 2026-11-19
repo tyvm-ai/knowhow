@@ -100,6 +100,11 @@ export function sanitizeRemoteUrl(url: string): string {
  */
 export function normalizeOriginUrl(url: string): string {
   let u = url.trim();
+  // Knowhow-hosted repositories (`knowhow repo init --hosted`) keep their own scheme: knowhow://<orgId>/<name>.
+  // The backend lowercases the whole url, so do the same to match the stored originUrl.
+  if (/^knowhow:\/\//i.test(u)) {
+    return u.replace(/\/+$/, "").replace(/\.git$/i, "").toLowerCase();
+  }
   // scp-like: git@github.com:owner/repo.git
   const scp = u.match(/^(?:[^@/\s]+@)?([^:/\s]+):(?!\/\/)(.+)$/);
   if (scp && !/^[a-z][a-z0-9+.-]*:\/\//i.test(u)) {
@@ -123,7 +128,14 @@ export function repoNameFromUrl(url: string | undefined, gitRoot: string) {
   return path.basename(gitRoot);
 }
 
-function pickRemote(gitRoot: string): { name?: string; url?: string } {
+/** Name of the remote `knowhow repo init --hosted` adds. */
+export const KNOWHOW_REMOTE = "knowhow";
+
+export function isKnowhowUrl(url: string | undefined): boolean {
+  return !!url && /^knowhow:\/\//i.test(url.trim());
+}
+
+function pickRemote(gitRoot: string, preferRemote?: string): { name?: string; url?: string } {
   const upstream = gitSafe(
     ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"],
     { cwd: gitRoot }
@@ -137,7 +149,10 @@ function pickRemote(gitRoot: string): { name?: string; url?: string } {
     const candidate = upstream.split("/")[0];
     if (remotes.includes(candidate)) name = candidate;
   }
+  if (preferRemote && remotes.includes(preferRemote)) name = preferRemote;
   if (!name && remotes.includes("origin")) name = "origin";
+  // a hosted repository may have only the `knowhow` remote
+  if (!name && remotes.includes(KNOWHOW_REMOTE)) name = KNOWHOW_REMOTE;
   if (!name) name = remotes[0];
   if (!name) return {};
   const url = gitSafe(["remote", "get-url", name], { cwd: gitRoot })?.trim();
@@ -148,15 +163,21 @@ function pickRemote(gitRoot: string): { name?: string; url?: string } {
  * Describe the real git repo that contains `cwd`. Returns undefined when cwd
  * is not inside a git repo or the repo has no commits.
  */
-export function getRealRepoInfo(cwd: string = process.cwd()): RealRepoInfo | undefined {
+export function getRealRepoInfo(
+  cwd: string = process.cwd(),
+  preferRemote?: string,
+  /** accept a repo without commits (`headSha` is ""), e.g. a fresh `git init` that is about to `knowhow repo pull` */
+  allowUnborn = false
+): RealRepoInfo | undefined {
   const top = gitSafe(["rev-parse", "--show-toplevel"], { cwd })?.trim();
   if (!top) return undefined;
   const gitRoot = fs.realpathSync(top);
-  const headSha = gitSafe(["rev-parse", "HEAD"], { cwd: gitRoot })?.trim();
-  if (!headSha) return undefined;
+  const headSha =
+    gitSafe(["rev-parse", "HEAD"], { cwd: gitRoot })?.trim() || (allowUnborn ? "" : undefined);
+  if (headSha === undefined) return undefined;
   const branch =
     gitSafe(["branch", "--show-current"], { cwd: gitRoot })?.trim() || "";
-  const remote = pickRemote(gitRoot);
+  const remote = pickRemote(gitRoot, preferRemote);
   const rel = path.relative(gitRoot, fs.realpathSync(cwd));
   return {
     gitRoot,

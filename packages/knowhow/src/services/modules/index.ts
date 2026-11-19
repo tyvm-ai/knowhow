@@ -69,10 +69,23 @@ export class ModulesService {
     // search paths so that locally-installed modules (loaded from .knowhow/node_modules)
     // that depend on @tyvm/knowhow resolve to the current global version rather than
     // a stale bundled copy.
-    const globalKnowhowNodeModules = path.join(__dirname, "../../../../node_modules");
-    const globalPaths = (Module as any).globalPaths as string[];
-    if (globalPaths && !globalPaths.includes(globalKnowhowNodeModules)) {
-      globalPaths.unshift(globalKnowhowNodeModules);
+    //
+    // <pkgRoot> is <...>/node_modules/@tyvm/knowhow (compiled: ts_build/src/services/modules).
+    // Modules need BOTH the CLI's own dependencies (<pkgRoot>/node_modules, e.g. @tyvm/knowhow-tunnel)
+    // AND the CLI itself (@tyvm/knowhow/sdk), which lives in the node_modules directory that CONTAINS
+    // the package (two levels above a scoped package root).
+    const pkgRoot = path.join(__dirname, "../../../..");
+    const extraGlobalPaths = [path.join(pkgRoot, "node_modules")];
+    if (path.basename(path.dirname(pkgRoot)) === "@tyvm") {
+      extraGlobalPaths.unshift(path.dirname(path.dirname(pkgRoot)));
+    }
+    // NOTE: Module.globalPaths is only a COPY of Node's internal lookup list, so mutating it does nothing. NODE_PATH +
+    // Module._initPaths() is what actually changes resolution (and child processes inherit it).
+    const existingNodePath = (process.env.NODE_PATH ?? "").split(path.delimiter).filter(Boolean);
+    const missingNodePath = extraGlobalPaths.filter((p) => !existingNodePath.includes(p));
+    if (missingNodePath.length > 0) {
+      process.env.NODE_PATH = [...existingNodePath, ...missingNodePath].join(path.delimiter);
+      (Module as any)._initPaths?.();
     }
 
     const allModulePaths = config.modules;
