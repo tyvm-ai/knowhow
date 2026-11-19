@@ -7,8 +7,7 @@ import {
 } from "../embeddings";
 
 import { PluginBase, PluginMeta } from "./PluginBase";
-import { spawn } from "child_process";
-import { getKnowhowSpawn } from "../utils/knowhowCommand";
+import { getEmbedScheduler } from "./embedScheduler";
 
 export class EmbeddingPlugin extends PluginBase {
   static readonly meta: PluginMeta = {
@@ -34,31 +33,19 @@ export class EmbeddingPlugin extends PluginBase {
   }
 
   /**
-   * Handle file:post-edit events by triggering embedding in a separate process
-   * @param payload The event payload containing filePath
-   * @returns Status message about embedding operation
+   * Handle file:post-edit events. Embedding is debounced and single-flight:
+   * a background `knowhow embed` starts only after 30s without edits (from any
+   * agent in this directory), and never while another embed run is going.
+   * See EmbedScheduler.
    */
   async handleFilePostEdit(payload: { filePath: string }): Promise<string> {
     try {
-      const { command, args, options } = getKnowhowSpawn(["embed"]);
-      const child = spawn(command, args, {
-        ...options,
-        detached: true,
-        stdio: "ignore",
-        cwd: process.cwd(),
-        windowsHide: true,
-      });
-      // Without an error listener a failed spawn (e.g. ENOENT) is an
-      // unhandled 'error' event and crashes the whole knowhow process.
-      child.on("error", (err) => {
-        this.log(`Failed to start background 'knowhow embed': ${err.message}`);
-      });
-      child.unref();
-      this.log(`Started 'knowhow embed' in background (pid: ${child.pid})`);
-      return "Embedding started in background process";
+      const scheduler = getEmbedScheduler(process.cwd());
+      scheduler.notifyEdit();
+      return "Embedding scheduled (runs after 30s without edits)";
     } catch (err) {
-      this.log(`Failed to start background 'knowhow embed': ${err}`);
-      return "Failed to start embedding process";
+      this.log(`Failed to schedule 'knowhow embed': ${err}`);
+      return "Failed to schedule embedding";
     }
   }
 

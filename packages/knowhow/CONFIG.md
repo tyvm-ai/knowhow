@@ -309,6 +309,41 @@ There are many commands you can call from a chat session, try TAB to see a list 
 ```
 You can configure new agents via the config above. This would create a new option when you use `agents` in a chat session.
 
+## Git plugin: agent change history (`gitPlugin`)
+
+The `git` plugin records every agent edit (and, with attribution, the files a shell command changed) as a commit on one `timeline`
+in `.knowhow/.git`. It never writes your work tree and never touches your project's own `.git`. Plain `git log`/`git status` on
+`.knowhow/.git` are not meaningful any more; use the `knowhow history` commands:
+
+```
+knowhow history log [--agent <taskId>] [--path <p>]       # who changed what
+knowhow history diff --agent <taskId>
+knowhow history restore <path> [--at <sha> | --before-agent <taskId>] [--apply]   # one file back (dry run unless --apply)
+knowhow history revert --agent <taskId> [--apply]          # undo one agent's changes, keep other agents' later changes
+knowhow history reset [--drop-legacy] [--apply]            # shrink: re-root the timeline to one commit
+knowhow history doctor [--full]
+```
+
+Reading the raw repo still works, e.g. `git --git-dir .knowhow/.git log timeline -- <path>`.
+
+```json
+  "gitPlugin": {
+    "maxFileMb": 25,
+    "include": ["scripts/tmp/**", "data/generator/"],
+    "autoMaintain": true,
+    "maxRepoMb": 300
+  },
+```
+- `maxFileMb`: files larger than this are never tracked or transported (default 25).
+- `include`: paths (directory, file or glob, relative to the project) that stay tracked although the project's `.gitignore` ignores
+  them. The size cap and the secret filter (`.env*`, `*.pem`, `*.key`, `node_modules`, `.knowhow`) still apply.
+- `autoMaintain` (default `true`): at most once a day per project the plugin runs `gc --auto` in the background and, when `.knowhow/.git`
+  is larger than `maxRepoMb` (default 300), re-roots the timeline to one commit of the current tree. Old V1 branches (`main`, `task/*`) are
+  deleted in that step only when none of them changed in the last 24 hours and no lock/merge state exists. It never prunes recent objects.
+  `false` turns all of it off. One log line says what ran.
+- `timeline` is no longer read (the timeline plugin is the only git plugin); an old `"timeline": true` is harmless.
+- Kill switches: `KNOWHOW_DISABLE_GIT_PLUGIN=1` in the environment, or `"plugins": { "disabled": ["git"] }`.
+
 ## Working-set auto-sync (`workingSetSync`)
 
 When a task is synced to Knowhow (`syncRemote: true` / `/sync:remote`) and the cwd is a git repo with a remote, the CLI keeps the task's

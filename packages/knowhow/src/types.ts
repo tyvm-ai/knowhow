@@ -148,6 +148,14 @@ export type Config = {
   gitPlugin?: {
     /** Files larger than this many MB are never tracked/transported (default 25). */
     maxFileMb?: number;
+    /** Ignored. The timeline plugin is the only git plugin; kept so old configs with `timeline: true` still load. */
+    timeline?: boolean;
+    /** Paths (dir, file or glob, relative to the project) that stay tracked in .knowhow/.git although the project ignores them, e.g. ["scripts/tmp/**", "data/generator/"]. Size cap and secret filter still apply. */
+    include?: string[];
+    /** Automatic maintenance of .knowhow/.git, at most once a day: `gc --auto`, and a timeline reset when the repo is over `maxRepoMb`. Default true; false turns it off. */
+    autoMaintain?: boolean;
+    /** Size (MB) of .knowhow/.git above which automatic maintenance re-roots the timeline (default 300). */
+    maxRepoMb?: number;
   };
   retention?: {
     /** How long finished agent task dirs are kept, e.g. "3d", "12h" (default "3d"). */

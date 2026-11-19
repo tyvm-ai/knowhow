@@ -84,7 +84,7 @@ Below are the built-in plugins and how to configure them.
 | `vim` | Load currently open Vim swap files (`*.swp`) as context |
 | `embeddings` | Semantic search over an embeddings knowledgebase |
 | `github` | Resolve GitHub PRs/issues/code (token-based) |
-| `git` | Provide `.knowhow/.git` tracking context (diff/log + auto-commit behavior) |
+| `git` | Record agent edits on a timeline in `.knowhow/.git`; `knowhow history` lists/restores/reverts them |
 | `asana` | Resolve Asana tasks (token-based) |
 | `jira` | Resolve Jira issues (token-based) |
 | `linear` | Resolve Linear issues (token-based) |
@@ -238,10 +238,10 @@ If you don’t have embeddings set up, the plugin returns:
 
 **Key:** `git`  
 **What it does:**
-- Provides project git status (via `git status --porcelain`)
-- Tracks agent edits in a separate git repo at:
-  - `.knowhow/.git`
-- Auto-commits on `file:post-edit` and creates task branches on `agent:newTask`, and squashes on `agent:taskComplete`.
+- Tracks agent edits in a separate git repo at `.knowhow/.git`, as commits on one `timeline` (plumbing only: it never writes your work tree or your project's `.git`).
+- Records a commit on `file:post-edit` and, for shell commands, on `tool:execCommand:done`; marks task start/end on `agent:newTask` / `agent:taskComplete`.
+- Inspect and undo with `knowhow history log|diff|restore|revert|reset|doctor` (see CONFIG.md, "Git plugin"). Raw `git log` on `.knowhow/.git` is not meaningful; `git --git-dir .knowhow/.git log timeline -- <path>` still works.
+- Kill switches: `KNOWHOW_DISABLE_GIT_PLUGIN=1` or `plugins.disabled: ["git"]`.
 
 #### Example config
 

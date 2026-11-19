@@ -1,125 +1,178 @@
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import { execFileSync } from "child_process";
-import { GitPlugin, escapeExcludePattern } from "../../../src/plugins/GitPlugin";
-import { EventService } from "../../../src/services/EventService";
-import { parseDuration } from "../../../src/services/AgentTaskCleanup";
+import { agentEdit, hist, makeProject, newPlugin, sh, write } from "./gitHelpers";
+import { GitPlugin } from "../../../src/plugins/GitPlugin";
 
-process.env.GIT_AUTHOR_NAME = "t";
-process.env.GIT_AUTHOR_EMAIL = "t@example.com";
-process.env.GIT_COMMITTER_NAME = "t";
-process.env.GIT_COMMITTER_EMAIL = "t@example.com";
-
-const write = (root: string, rel: string, content: string) => {
-  const f = path.join(root, rel);
-  fs.mkdirSync(path.dirname(f), { recursive: true });
-  fs.writeFileSync(f, content);
-};
-
-describe("GitPlugin hygiene", () => {
-  let tmp: string;
-  let prevCwd: string;
-  let plugin: GitPlugin;
-
-  const internal = (...args: string[]) =>
-    execFileSync(
-      "git",
-      ["--git-dir", path.join(tmp, ".knowhow", ".git"), "--work-tree", tmp, ...args],
-      { cwd: tmp, encoding: "utf8" }
-    );
-  const tracked = () => internal("ls-files").split("\n").filter(Boolean);
-
+describe("GitPlugin phase 1+2: attribution, CAS, timeline", () => {
+  let p: ReturnType<typeof makeProject>;
   beforeEach(() => {
-    prevCwd = process.cwd();
-    tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "gp-")));
-    process.chdir(tmp);
-    (GitPlugin as any).excludesReady.clear();
-    plugin = new GitPlugin({ Events: new EventService() } as any);
+    p = makeProject();
+  });
+  afterEach(() => p.cleanup());
+
+  it("interleaved agents: B's commit contains only B's path, even with A's dirty file on disk", async () => {
+    const { plugin, events } = newPlugin();
+    events.emit("agent:newTask", { taskId: "A" });
+    events.emit("agent:newTask", { taskId: "B" });
+    write(p.root, "a.ts", "A edit 1\n"); // A wrote, event not yet seen
+    await agentEdit(events, p.root, "B", "b.ts", "B edit\n");
+    const files = hist(p.root, "show", "--name-only", "--format=", "timeline").split("\n").filter(Boolean);
+    expect(files).toEqual(["b.ts"]);
+    expect(hist(p.root, "log", "-1", "--format=%B", "timeline")).toContain("Agent: B");
+    await agentEdit(events, p.root, "A", "a.ts", "A edit 2\n");
+    const aFiles = hist(p.root, "show", "--name-only", "--format=", "timeline").split("\n").filter(Boolean);
+    expect(aFiles).toEqual(["a.ts"]);
+    expect(plugin.core.history.filesFor("A")).toEqual(["a.ts"]);
+    expect(plugin.core.history.filesFor("B")).toEqual(["b.ts"]);
+  });
+
+  it("20 parallel recordChange calls + 4 child processes: no lost commit, linear history", async () => {
+    const { plugin } = newPlugin();
+    plugin.ensureStarted();
+    const n0 = Number(hist(p.root, "rev-list", "--count", "timeline"));
+    for (let i = 0; i < 20; i++) write(p.root, `par/p${i}.txt`, `v${i}\n`);
+    await Promise.all(
+      Array.from({ length: 20 }, async (_, i) =>
+        plugin.core.recorder.recordChange({ agent: `P${i}`, kind: "edit", summary: `p${i}`, paths: [`par/p${i}.txt`] })
+      )
+    );
+    // child processes
+    const script = path.join(p.root, "child.cjs");
+    const children: Promise<void>[] = [];
+    for (let c = 0; c < 4; c++) {
+      for (let i = 0; i < 5; i++) write(p.root, `kid/c${c}_${i}.txt`, `c${c}${i}\n`);
+    }
+    const code = `
+      require(${JSON.stringify(require.resolve("ts-node"))}).register({ transpileOnly: true, skipProject: true, compilerOptions: { module: "commonjs", moduleResolution: "node", target: "es2020", esModuleInterop: true } });
+      const { TimelineCore } = require(${JSON.stringify(path.resolve(__dirname, "../../../src/plugins/gitplugin/Core.ts"))});
+      const c = new TimelineCore({ root: process.cwd() });
+      const k = process.argv[2];
+      for (let i = 0; i < 5; i++) c.recorder.recordChange({ agent: "K" + k, kind: "edit", summary: "k", paths: ["kid/c" + k + "_" + i + ".txt"] });
+    `;
+    fs.writeFileSync(script, code);
+    for (let c = 0; c < 4; c++) {
+      children.push(
+        new Promise<void>((resolve, reject) => {
+          const cp = require("child_process").spawn(process.execPath, [script, String(c)], {
+            cwd: p.root,
+            stdio: "pipe",
+          });
+          let err = "";
+          cp.stderr.on("data", (d: Buffer) => (err += d));
+          cp.on("exit", (code: number) => (code === 0 ? resolve() : reject(new Error(err))));
+        })
+      );
+    }
+    await Promise.all(children);
+    const n1 = Number(hist(p.root, "rev-list", "--count", "timeline"));
+    expect(n1 - n0).toBe(40);
+    expect(hist(p.root, "rev-list", "--merges", "--count", "timeline")).toBe("0");
+    const tree = hist(p.root, "ls-tree", "-r", "--name-only", "timeline").split("\n");
+    expect(tree.filter((f) => f.startsWith("par/")).length).toBe(20);
+    expect(tree.filter((f) => f.startsWith("kid/")).length).toBe(20);
+  }, 120000);
+
+  it("secrets and oversize files are never recorded", async () => {
+    const { plugin, events } = newPlugin();
+    events.emit("agent:newTask", { taskId: "A" });
+    await agentEdit(events, p.root, "A", ".env", "TOKEN=1\n");
+    await agentEdit(events, p.root, "A", "deep/cert.pem", "x\n");
+    await agentEdit(events, p.root, "A", "node_modules/x/i.js", "1\n");
+    const big = path.join(p.root, "big.bin");
+    fs.writeFileSync(big, Buffer.alloc(26 * 1024 * 1024));
+    await events.emitBlocking("file:post-edit", { filePath: big, taskId: "A", operation: "write" });
+    await agentEdit(events, p.root, "A", "ok.txt", "ok\n");
+    const files = hist(p.root, "ls-tree", "-r", "--name-only", "timeline").split("\n");
+    expect(files).toContain("ok.txt");
+    for (const f of [".env", "deep/cert.pem", "node_modules/x/i.js", "big.bin"]) expect(files).not.toContain(f);
+    expect(plugin.core.history.log({ agent: "A" }).length).toBe(1);
+  });
+
+  it("an edit that changes nothing creates no commit", async () => {
+    const { events, plugin } = newPlugin();
+    events.emit("agent:newTask", { taskId: "A" });
+    await agentEdit(events, p.root, "A", "x.txt", "1\n");
+    const n = hist(p.root, "rev-list", "--count", "timeline");
+    await agentEdit(events, p.root, "A", "x.txt", "1\n");
+    expect(hist(p.root, "rev-list", "--count", "timeline")).toBe(n);
+    expect(plugin.core.history.log({ agent: "A" }).length).toBe(1);
+  });
+
+  it("A starts, B starts, A completes while B writes: HEAD never moves, no task/* branches, B's commits stay", async () => {
+    const { events, plugin } = newPlugin();
+    events.emit("agent:newTask", { taskId: "A" });
+    const headBefore = fs.readFileSync(path.join(p.gitDir, "HEAD"), "utf8");
+    await agentEdit(events, p.root, "A", "a.ts", "a1\n");
+    events.emit("agent:newTask", { taskId: "B" });
+    await agentEdit(events, p.root, "B", "b.ts", "b1\n");
+    events.emit("agent:taskComplete", { taskId: "A" });
+    await agentEdit(events, p.root, "B", "b.ts", "b2\n");
+    await agentEdit(events, p.root, "B", "b2.ts", "b2\n");
+    events.emit("agent:taskComplete", { taskId: "B" });
+    expect(fs.readFileSync(path.join(p.gitDir, "HEAD"), "utf8")).toBe(headBefore);
+    expect(hist(p.root, "for-each-ref", "refs/heads/task/")).toBe("");
+    expect(plugin.core.history.log({ agent: "B" }).length).toBe(3);
+    expect(plugin.core.history.log({ agent: "A" }).length).toBe(1);
+    const refs = hist(p.root, "for-each-ref", "--format=%(refname)", "refs/knowhow/tasks/").split("\n");
+    expect(refs).toEqual(expect.arrayContaining(["refs/knowhow/tasks/A/start", "refs/knowhow/tasks/A/end", "refs/knowhow/tasks/B/end"]));
+    // end ref of A is before B's later edits
+    const aEnd = hist(p.root, "rev-parse", "refs/knowhow/tasks/A/end");
+    const tip = hist(p.root, "rev-parse", "timeline");
+    expect(aEnd).not.toBe(tip);
+    expect(hist(p.root, "merge-base", "--is-ancestor", aEnd, tip) === "" ).toBe(true);
+    expect(fs.readFileSync(path.join(p.root, "b.ts"), "utf8")).toBe("b2\n");
+  });
+
+  it("call() lists last timeline commits, not a current branch", async () => {
+    const { events, plugin } = newPlugin();
+    events.emit("agent:newTask", { taskId: "A" });
+    await agentEdit(events, p.root, "A", "a.ts", "a\n");
+    const text = await plugin.call("");
+    expect(text).toContain("timeline");
+    expect(text).toContain("[A] edit: write a.ts");
+    expect(text).not.toContain("Current branch");
+  });
+
+  it("kill switches: KNOWHOW_DISABLE_GIT_PLUGIN=1 and plugins.disabled [git] record nothing; an old `timeline: true` config is harmless", async () => {
+    const { plugin, events } = newPlugin();
+    process.env.KNOWHOW_DISABLE_GIT_PLUGIN = "1";
+    try {
+      expect(plugin.isEnabled()).toBe(false);
+      events.emit("agent:newTask", { taskId: "K" });
+      await agentEdit(events, p.root, "K", "k.ts", "k\n");
+      expect(fs.existsSync(p.gitDir)).toBe(false); // nothing created, nothing recorded
+    } finally {
+      delete process.env.KNOWHOW_DISABLE_GIT_PLUGIN;
+    }
+    // plugins.disabled: ["git"] goes through PluginService.refreshConfiguredState -> plugin.disable()
+    plugin.disable();
+    expect(plugin.isEnabled()).toBe(false);
+    await agentEdit(events, p.root, "K", "k2.ts", "k2\n");
+    expect(fs.existsSync(p.gitDir)).toBe(false);
     plugin.enable();
-  });
-  afterEach(() => {
-    process.chdir(prevCwd);
-    fs.rmSync(tmp, { recursive: true, force: true });
-  });
-
-  it("never tracks secrets, node_modules or .knowhow in a fresh internal repo", async () => {
-    write(tmp, "a.txt", "a\n");
-    write(tmp, ".env", "TOKEN=1\n");
-    write(tmp, ".env.local", "TOKEN=2\n");
-    write(tmp, "cert.pem", "x\n");
-    write(tmp, "deep/priv.key", "x\n");
-    write(tmp, "node_modules/x/index.js", "1\n");
-    write(tmp, ".knowhow/prompts/p.md", "p\n");
-    await (plugin as any).initializeKnowhowRepo();
-    const files = tracked();
-    expect(files).toContain("a.txt");
-    for (const f of [".env", ".env.local", "cert.pem", "deep/priv.key", "node_modules/x/index.js", ".knowhow/prompts/p.md"]) {
-      expect(files).not.toContain(f);
+    // a project config that still says timeline: true (and the env of the opt-in era) is ignored, not an error
+    write(p.root, ".knowhow/knowhow.json", JSON.stringify({ gitPlugin: { timeline: true, maxFileMb: 5 } }));
+    process.env.KNOWHOW_GIT_PLUGIN_V2 = "1";
+    try {
+      const fresh = newPlugin();
+      expect(fresh.plugin.ensureStarted()).toBe(true);
+      fresh.events.emit("agent:newTask", { taskId: "K2" });
+      await agentEdit(fresh.events, p.root, "K2", "k3.ts", "k3\n");
+      expect(fresh.plugin.core.history.log({ agent: "K2" }).length).toBe(1);
+    } finally {
+      delete process.env.KNOWHOW_GIT_PLUGIN_V2;
     }
   });
 
-  it("untracks files that are now ignored", async () => {
-    await (plugin as any).initializeKnowhowRepo();
-    // simulate an older internal repo that tracked secrets
-    fs.rmSync(path.join(tmp, ".knowhow", ".git", "info", "exclude"), { force: true });
-    write(tmp, ".env", "TOKEN=1\n");
-    write(tmp, "node_modules/x/index.js", "1\n");
-    write(tmp, "keep.txt", "k\n");
-    internal("add", "-f", "-A");
-    internal("commit", "-q", "-m", "tracked secrets");
-    expect(tracked()).toContain(".env");
-
-    (GitPlugin as any).excludesReady.clear();
-    plugin.ensureInternalExcludes();
-
-    const files = tracked();
-    expect(files).not.toContain(".env");
-    expect(files).not.toContain("node_modules/x/index.js");
-    expect(files).toContain("keep.txt");
-    expect(internal("log", "-1", "--format=%s").trim()).toBe("untrack ignored files");
-    // the file itself stays on disk
-    expect(fs.existsSync(path.join(tmp, ".env"))).toBe(true);
-  });
-
-  it("skips files over gitPlugin.maxFileMb", async () => {
-    write(tmp, ".knowhow/knowhow.json", JSON.stringify({ gitPlugin: { maxFileMb: 0.001 } }));
-    await (plugin as any).initializeKnowhowRepo();
-    write(tmp, "small.txt", "tiny\n");
-    write(tmp, "weird [name].bin", "x".repeat(5000));
-    await plugin.commitAll("add files");
-    const files = tracked();
-    expect(files).toContain("small.txt");
-    expect(files).not.toContain("weird [name].bin");
-  });
-
-  it("keeps only the newest N task branches", async () => {
-    write(tmp, ".knowhow/knowhow.json", JSON.stringify({ retention: { taskBranches: { keep: 2 } } }));
-    await (plugin as any).initializeKnowhowRepo();
-    for (let i = 1; i <= 4; i++) {
-      internal("checkout", "-q", "-b", `task/t${i}`, "main");
-      internal("commit", "-q", "--allow-empty", "-m", `c${i}`, "--date", `2020-01-0${i}T00:00:00`);
-    }
-    internal("checkout", "-q", "main");
-    plugin.pruneTaskBranches();
-    const branches = internal("branch", "--format=%(refname:short)")
-      .split("\n")
-      .filter((b) => b.startsWith("task/"));
-    expect(branches.length).toBe(2);
-  });
-
-  it("escapes exclude patterns", () => {
-    expect(escapeExcludePattern("a b.txt")).toBe("/a b.txt");
-    expect(escapeExcludePattern("weird [x]*.bin")).toBe("/weird \\[x\\]\\*.bin");
-    expect(escapeExcludePattern("#hash")).toBe("/\\#hash");
+  it("the default plugin set contains this plugin under the key git", () => {
+    const { CliPluginService } = require("../../../src/plugins/plugins");
+    const svc = new CliPluginService({ Events: newPlugin().events } as any);
+    expect(svc.getPlugin("git")).toBeInstanceOf(GitPlugin);
   });
 });
 
-describe("retention durations", () => {
-  it("parses durations", () => {
-    expect(parseDuration("3d")).toBe(3 * 24 * 3600 * 1000);
-    expect(parseDuration("12h")).toBe(12 * 3600 * 1000);
-    expect(parseDuration("90m")).toBe(90 * 60 * 1000);
-    expect(parseDuration("nonsense")).toBeUndefined();
-  });
-});
+// keep imports used
+void sh;
+void execFileSync;
+void GitPlugin;
