@@ -1,10 +1,11 @@
 {
   "name": "@tyvm/knowhow",
-  "version": "0.0.171",
+  "version": "0.0.172",
   "description": "ai cli with plugins and agents",
   "main": "ts_build/src/index.js",
   "bin": {
-    "knowhow": "bin/knowhow.js"
+    "knowhow": "bin/knowhow.js",
+    "git-remote-knowhow": "bin/git-remote-knowhow.js"
   },
   "engines": {
     "node": ">=20"

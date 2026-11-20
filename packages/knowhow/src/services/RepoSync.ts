@@ -108,7 +108,7 @@ export function readFetchedBundles(gitRoot: string, repoId: string): Set<string>
   }
 }
 
-function writeFetchedBundles(gitRoot: string, repoId: string, ids: Set<string>) {
+export function writeFetchedBundles(gitRoot: string, repoId: string, ids: Set<string>) {
   const file = cacheFile(gitRoot);
   let all: Record<string, string[]> = {};
   try {
@@ -205,7 +205,11 @@ export async function fetchBundleChain(client: RepoClient, ctx: RepoContext, opt
       const file = path.join(dir, `${b.id}.bundle`);
       await download(url, file);
       log(`⬇️  fetching bundle ${b.id.slice(0, 8)} (${formatBytes(fs.statSync(file).size)})`);
-      await gitAsync(["fetch", "--quiet", file, `+refs/*:${BASE_REF_PREFIX}*`], { cwd: ctx.info.gitRoot });
+      // --no-write-fetch-head: inside `git pull` (via git-remote-knowhow) our FETCH_HEAD entry would become a
+      // second merge head next to the one git itself records.
+      await gitAsync(["fetch", "--quiet", "--no-write-fetch-head", file, `+refs/*:${BASE_REF_PREFIX}*`], {
+        cwd: ctx.info.gitRoot,
+      });
       done.add(b.id);
       fetched++;
       writeFetchedBundles(ctx.info.gitRoot, ctx.repo.id, done);

@@ -18,7 +18,9 @@ export function addRepoCommand(program: Command): void {
   const repo = program
     .command("repo")
     .description(
-      "Knowhow repositories: git bundles stored in your org (init --hosted, push, pull, status). No git server involved."
+      "Knowhow repositories: git bundles stored in your org (init --hosted, push, pull, status). No git server involved. " +
+        "Plain git works too: the git-remote-knowhow helper installed with this CLI handles knowhow:// remotes " +
+        "(git clone/fetch/pull/push)."
     );
 
   repo
