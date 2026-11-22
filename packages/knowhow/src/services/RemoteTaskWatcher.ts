@@ -93,8 +93,14 @@ export class RemoteThreadCursor {
       } else if (ev.type === "agentMessage") {
         if (ev.role === "user") {
           const t = String(ev.message || "").trim();
-          // our own message (the worker may wrap it in plugin context) is already visible
-          if ([...skipUserTexts].some((s) => s && t.includes(s))) continue;
+          // our own message (the worker may wrap it in plugin context) is already
+          // visible. Each sent text hides exactly one echo, then is forgotten, so
+          // a short text ("yes") can't swallow later, unrelated user messages.
+          const echo = [...skipUserTexts].find((s) => s && (t === s || t.includes(s)));
+          if (echo !== undefined) {
+            skipUserTexts.delete(echo);
+            continue;
+          }
           const short = t.length > 300 ? `${t.slice(0, 300)}… [${t.length} chars]` : t;
           out.push({ type: "agentSay", payload: { message: `🧑 ${short}` } });
         } else {

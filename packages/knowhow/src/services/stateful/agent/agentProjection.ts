@@ -47,23 +47,41 @@ export class ThreadDiffer {
   next(threads: any[][]): any[] {
     const last = threads[threads.length - 1] ?? [];
     const index = threads.length - 1;
-    let fresh: any[];
+    let fresh: any[] = [];
     if (index === this.index && last.length >= this.length) {
       fresh = last.slice(this.length);
+    } else if (index > this.index && this.index >= 0 && this.isPrevThreadIntact(threads)) {
+      // New thread(s) appeared (compaction / resume). First the unseen tail of
+      // the thread we were following, then any threads in between, then the
+      // new last thread — skipping what the new thread carried over from the
+      // previous one (compaction keeps a suffix of it).
+      const prev = threads[this.index] ?? [];
+      fresh.push(...prev.slice(this.length));
+      for (let i = this.index + 1; i < index; i++) fresh.push(...(threads[i] ?? []));
+      const prevLastJson = index - 1 === this.index ? json(prev[prev.length - 1]) : null;
+      fresh.push(...last.slice(this.retainedIndex(last, prevLastJson) + 1));
     } else {
-      let retained = -1;
-      if (this.lastJson != null) {
-        for (let i = last.length - 1; i >= 0; i--) {
-          if (json(last[i]) === this.lastJson) {
-            retained = i;
-            break;
-          }
-        }
-      }
-      fresh = last.slice(retained + 1);
+      fresh = last.slice(this.retainedIndex(last, this.lastJson) + 1);
     }
     this.seed(threads);
     return fresh;
+  }
+
+  /** The thread we were following still starts with what we saw. */
+  private isPrevThreadIntact(threads: any[][]): boolean {
+    const prev = threads[this.index];
+    if (!prev || prev.length < this.length) return false;
+    if (this.length === 0 || this.lastJson == null) return true;
+    return json(prev[this.length - 1]) === this.lastJson;
+  }
+
+  /** Index of the last message in `thread` equal to `target`, or -1. */
+  private retainedIndex(thread: any[], target: string | null): number {
+    if (target == null) return -1;
+    for (let i = thread.length - 1; i >= 0; i--) {
+      if (json(thread[i]) === target) return i;
+    }
+    return -1;
   }
 
   get state() {

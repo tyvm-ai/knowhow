@@ -15,6 +15,8 @@ export type AgentMirror = ProcessMirror<AgentState, AgentControl, AgentEvent>;
 /** DocSource over a knowhow-web agent task (polls GET details; control/inputs via the task API). */
 export class KnowhowWebSource implements DocSource<AgentState, AgentControl, AgentEvent> {
   private version = 0;
+  /** Signature of the last document handed out (readDocument or a watch callback). */
+  private lastSig: string | undefined;
 
   constructor(
     private taskId: string,
@@ -29,9 +31,11 @@ export class KnowhowWebSource implements DocSource<AgentState, AgentControl, Age
         ? "completed"
         : raw === "killed"
           ? "cancelled"
-          : raw === "paused"
-            ? "paused"
-            : "running";
+          : raw === "failed" || raw === "error"
+            ? "failed"
+            : raw === "paused"
+              ? "paused"
+              : "running";
     const now = d.updatedAt ?? new Date().toISOString();
     return {
       meta: {
@@ -72,11 +76,18 @@ export class KnowhowWebSource implements DocSource<AgentState, AgentControl, Age
   async readDocument(): Promise<Doc | undefined> {
     const res = await this.client.getTaskDetails(this.taskId);
     this.version = Math.max(this.version, 1);
-    return this.toDoc(res?.data ?? {});
+    const doc = this.toDoc(res?.data ?? {});
+    // The watcher's baseline is what the reader already has, so a change that
+    // lands between open() and the first poll is still delivered.
+    this.lastSig = KnowhowWebSource.signature(doc);
+    return doc;
+  }
+
+  private static signature(doc: Doc): string {
+    return JSON.stringify([doc.state, doc.lifecycle.status]);
   }
 
   watchDocument(cb: (doc: Doc, events: AgentEvent[]) => void): Unsubscribe {
-    let last: string | undefined;
     let stopped = false;
     let busy = false;
     const poll = async () => {
@@ -85,10 +96,11 @@ export class KnowhowWebSource implements DocSource<AgentState, AgentControl, Age
       try {
         const res = await this.client.getTaskDetails(this.taskId);
         const doc = this.toDoc(res?.data ?? {});
-        const sig = JSON.stringify([doc.state, doc.lifecycle.status]);
-        const first = last === undefined;
-        if (sig !== last) {
-          last = sig;
+        const sig = KnowhowWebSource.signature(doc);
+        // without a prior readDocument the first poll is only a baseline
+        const first = this.lastSig === undefined;
+        if (sig !== this.lastSig) {
+          this.lastSig = sig;
           if (!first) {
             this.version++;
             cb({ ...doc, version: this.version }, []);
