@@ -519,8 +519,14 @@ export interface VideoStatusResponse {
     fileUri?: string;
   }[];
   error?: string;
+  /** Provider error code for failed jobs, e.g. "imagine:content-moderated" (xAI) or "not_found". */
+  code?: string;
   progress?: number;
-  /** Actual cost once the job has completed, when the provider reports usage. */
+  /**
+   * Actual cost once the job has completed, when the provider reports usage.
+   * Also set for failed/rejected jobs when the provider still bills them
+   * (e.g. xAI charges for videos rejected by content moderation).
+   */
   usd_cost?: number;
 }
 

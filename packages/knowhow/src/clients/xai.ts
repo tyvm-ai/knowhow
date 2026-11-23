@@ -698,8 +698,49 @@ export class GenericXAIClient implements GenericClient {
 
     if (!statusResponse.ok) {
       const errorText = await statusResponse.text();
+      const httpStatus = statusResponse.status;
+      // 4xx = final answer from xAI about this job (content moderation, invalid
+      // request, unknown/expired id). Report it as a failed job instead of
+      // throwing so callers stop polling. 5xx / 408 / 429 stay retryable.
+      const isFinal =
+        httpStatus >= 400 &&
+        httpStatus < 500 &&
+        httpStatus !== 408 &&
+        httpStatus !== 429;
+      if (isFinal) {
+        let body: any;
+        try {
+          body = JSON.parse(errorText);
+        } catch {
+          body = undefined;
+        }
+        const bodyError =
+          typeof body?.error === "string"
+            ? body.error
+            : body?.error?.message || body?.message;
+        const code =
+          (typeof body?.code === "string" && body.code) ||
+          (typeof body?.error?.code === "string" && body.error.code) ||
+          (httpStatus === 404 ? "not_found" : `http_${httpStatus}`);
+        const failed: VideoStatusResponse = {
+          jobId: options.jobId,
+          status: httpStatus === 404 ? "expired" : "failed",
+          code,
+          error:
+            bodyError ||
+            (httpStatus === 404
+              ? "Video job not found at xAI (expired or unknown id)"
+              : `XAI video status check failed: ${httpStatus} ${errorText}`),
+        };
+        // xAI bills some rejected generations (e.g. content-moderated videos).
+        const rejectedCost = providerReportedCost(body?.usage);
+        if (rejectedCost !== undefined) {
+          failed.usd_cost = rejectedCost;
+        }
+        return failed;
+      }
       throw new Error(
-        `XAI video status check failed: ${statusResponse.status} ${errorText}`
+        `XAI video status check failed: ${httpStatus} ${errorText}`
       );
     }
 
@@ -741,7 +782,13 @@ export class GenericXAIClient implements GenericClient {
       response.progress = statusData.progress;
     }
     if (statusData.error) {
-      response.error = statusData.error.message || JSON.stringify(statusData.error);
+      response.error =
+        typeof statusData.error === "string"
+          ? statusData.error
+          : statusData.error.message || JSON.stringify(statusData.error);
+    }
+    if (typeof statusData.code === "string") {
+      response.code = statusData.code;
     }
     // Exact billed cost (1 USD = 1e10 ticks)
     const billedVideoCost = providerReportedCost(statusData.usage);
