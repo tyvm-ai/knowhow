@@ -31,6 +31,7 @@ const API_URL = KNOWHOW_API_URL;
 export const WORKER_MEDIA_TOOLS = [
   "createAudioGeneration",
   "createImageGeneration",
+  "createImageEdit",
   "createVideoGeneration",
   "getVideoStatus",
   "downloadVideo",

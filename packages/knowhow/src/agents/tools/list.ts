@@ -756,6 +756,33 @@ export const includedTools = [
   {
     type: "function",
     function: {
+      name: "createImageEdit",
+      description: "Edit images with a provider's image-editing model (input image(s) + prompt, optional mask). Each result item carries b64_json inline, or a ref with a presigned URL when large.",
+      parameters: {
+        type: "object",
+        positional: true,
+        properties: {
+          provider: {
+            type: "string",
+            description:
+              "The provider that serves the model. Use the matching listAll*Models tool to discover providers.",
+          },
+          options: {
+            type: "object",
+            description: "ImageEditOptions: { model, prompt, images: string[] (https URLs or data URLs), mask?, n?, size?, quality?, aspect_ratio? }",
+          },
+        },
+        required: ["provider", "options"],
+      },
+      returns: {
+        type: "object",
+        description: "{ created, data: [{ b64_json | ref | url }], usd_cost }",
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "createVideoGeneration",
       description: "Start a video generation job with a provider's video model. Poll with getVideoStatus, fetch the result with downloadVideo.",
       parameters: {

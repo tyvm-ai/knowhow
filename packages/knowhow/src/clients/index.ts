@@ -622,7 +622,11 @@ export class AIClient {
       ["video", this.videoModels],
     ];
     for (const [modality, bucket] of buckets) {
-      const ids = declared[modality];
+      let ids = declared[modality];
+      if (modality === "image") {
+        // Edit-only models are announced under `image` too (the backend routes edits by that listing).
+        ids = Array.from(new Set([...(ids || []), ...(declared.imageEdit || [])]));
+      }
       if (!Array.isArray(ids) || !ids.length) continue;
       this._mergeModels(bucket, provider, ids);
       this._mergeModels(this.clientModels, provider, ids);
@@ -1041,7 +1045,10 @@ export class AIClient {
     provider: string,
     options: ImageEditOptions
   ): Promise<ImageGenerationResponse> {
-    const { client, model } = this.getClient(provider, options.model);
+    const { client, model, provider: resolvedProvider } = this.getClient(
+      provider,
+      options.model
+    );
     if (!client || !client.createImageEdit) {
       throw new Error(`Provider ${provider} does not support image editing.`);
     }
@@ -1051,7 +1058,13 @@ export class AIClient {
       );
     }
     return withRetry(
-      (signal) => client.createImageEdit({ ...options, model, signal }),
+      (signal) =>
+        client.createImageEdit({
+          ...options,
+          model,
+          signal,
+          ...(client.receivesProvider && { provider: resolvedProvider }),
+        }),
       options
     );
   }

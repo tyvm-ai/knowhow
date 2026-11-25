@@ -237,6 +237,11 @@ export type ModelProvider = {
     completion?: string[];
     embedding?: string[];
     image?: string[];
+    /**
+     * Models served by `POST /v1/images/edits`. They are listed under the `image` modality (so they are announced to the
+     * backend and routable) and edits are sent to the same provider. A model that can also generate lists its id in `image` too.
+     */
+    imageEdit?: string[];
     audio?: string[];
     video?: string[];
   };

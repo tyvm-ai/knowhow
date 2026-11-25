@@ -5,6 +5,7 @@ import { ToolsService } from "../../src/services/Tools";
 import {
   createAudioGeneration,
   createImageGeneration,
+  createImageEdit,
   createVideoGeneration,
   getVideoStatus,
   downloadVideo,
@@ -103,7 +104,7 @@ describe("worker media MCP tools (against a fake media server)", () => {
       {
         provider: "tpl-media",
         url: server.url,
-        modelsByModality: { audio: ["qwen3-tts"], image: ["flux"], video: ["wan"] },
+        modelsByModality: { audio: ["qwen3-tts"], image: ["flux"], imageEdit: ["flux", "klein-edit"], video: ["wan"] },
         voices: ["Vivian", "Ryan"],
       },
     ]);
@@ -137,6 +138,18 @@ describe("worker media MCP tools (against a fake media server)", () => {
   test("createImageGeneration keeps b64 inline", async () => {
     const res = await createImageGeneration.call(ctx, "tpl-media", { model: "flux", prompt: "cat" });
     expect(res.data[0]).toEqual({ b64_json: PNG_B64 });
+  });
+
+  test("createImageEdit (worker tool) edits through the provider's /v1/images/edits and keeps b64 inline", async () => {
+    const res = await createImageEdit.call(ctx, "tpl-media", {
+      model: "klein-edit",
+      prompt: "make it blue",
+      images: [`data:image/png;base64,${PNG_B64}`],
+    });
+    expect(res.data[0]).toEqual({ b64_json: PNG_B64 });
+    const req = server.requests.filter((r) => r.path === "/v1/images/edits").at(-1)!;
+    expect(req.multipart?.fields).toMatchObject({ model: "klein-edit", prompt: "make it blue" });
+    expect(req.multipart?.fieldNames).toContain("image");
   });
 
   test("video job: create -> status -> download (4 KB under the inline limit by default)", async () => {
@@ -212,6 +225,41 @@ describe("KnowhowMcpClient media decoding (backend side of the MCP channel)", ()
     }
   });
 
+  test("image edit: forwards provider + images, strips signal, unpacks refs", async () => {
+    const { client, calls } = clientWith({
+      createImageEdit: { created: 1, data: [{ b64_json: "AAAA" }], usd_cost: 0 },
+    });
+    const res = await client.createImageEdit({
+      model: "klein-edit",
+      prompt: "x",
+      images: ["https://files.example/a.png"],
+      provider: "tpl-image-diffusers",
+      signal: new AbortController().signal,
+    } as any);
+    expect(res.data[0].b64_json).toBe("AAAA");
+    expect(calls[0].tool).toBe("createImageEdit");
+    expect(calls[0].args.provider).toBe("tpl-image-diffusers");
+    expect(calls[0].args.options.signal).toBeUndefined();
+    expect(calls[0].args.options.provider).toBeUndefined();
+    expect(calls[0].args.options.images).toEqual(["https://files.example/a.png"]);
+
+    const fake = await startFakeFiles();
+    try {
+      const up = await fake.uploader.upload(Buffer.from("PNGDATA"), {
+        fileName: "e.png",
+        folderPath: "/ai-generated/worker-tmp/",
+      });
+      (client as any).mcpService.callFunction = async () => ({
+        created: 1,
+        data: [{ ref: { url: up.downloadUrl } }],
+      });
+      const refd = await client.createImageEdit({ model: "m", prompt: "x", images: ["a"] });
+      expect(Buffer.from(refd.data[0].b64_json!, "base64").toString()).toBe("PNGDATA");
+    } finally {
+      await fake.close();
+    }
+  });
+
   test("errors from the worker propagate (callFunction used to swallow them)", async () => {
     const { client } = clientWith({ createAudioGeneration: new Error("boom") });
     await expect(
@@ -239,6 +287,25 @@ describe("AIClient hands `provider` to proxy clients for media calls", () => {
     expect(seen[0].provider).toBe("tpl-media");
     expect(seen[0].model).toBe("qwen3-tts");
   });
+
+  test("image edits also get the resolved provider", async () => {
+    const ai = new AIClient();
+    const seen: any[] = [];
+    const proxy: any = {
+      receivesProvider: true,
+      setKey() {},
+      getModels: async () => [],
+      createImageEdit: async (o: any) => {
+        seen.push(o);
+        return { created: 1, data: [{ b64_json: "AAAA" }] };
+      },
+    };
+    ai.registerClient("tpl-image-diffusers", proxy);
+    ai.registerImageModels("tpl-image-diffusers", ["flux2-klein-4b"]);
+    await ai.createImageEdit("tpl-image-diffusers", { model: "flux2-klein-4b", prompt: "x", images: ["a"] });
+    expect(seen[0].provider).toBe("tpl-image-diffusers");
+    expect(seen[0].model).toBe("flux2-klein-4b");
+  });
 });
 
 describe("withMediaTools", () => {
@@ -249,6 +316,7 @@ describe("withMediaTools", () => {
       "readFile",
       ...WORKER_MEDIA_TOOLS,
     ]);
+    expect(WORKER_MEDIA_TOOLS).toContain("createImageEdit");
     expect(withMediaTools(["readFile"], available)).toEqual(["readFile"]);
     const already = ["createAiCompletion", ...WORKER_MEDIA_TOOLS];
     expect(withMediaTools(already, available)).toBe(already);

@@ -4,6 +4,7 @@ import {
   AudioGenerationResponse,
   FileDownloadOptions,
   FileDownloadResponse,
+  ImageEditOptions,
   ImageGenerationOptions,
   ImageGenerationResponse,
   ModelModality,
@@ -14,6 +15,7 @@ import {
 } from "./types";
 import type { ModelProvider } from "../types";
 import type { VoiceOption } from "./voices";
+import { resolveMediaInput } from "./imageEdit";
 
 /**
  * Client for a custom OpenAI-compatible server (vLLM, vLLM-Omni, a FastAPI wrapper around diffusers, ...)
@@ -21,6 +23,7 @@ import type { VoiceOption } from "./voices";
  *
  *   audio  POST {url}/v1/audio/speech        -> raw audio bytes
  *   image  POST {url}/v1/images/generations  -> { data: [{ b64_json | url }] }
+ *   edit   POST {url}/v1/images/edits        -> same shape; multipart: model, prompt, image (repeated), n, size, mask?
  *   video  POST {url}/v1/videos              -> { id, status }       (OpenAI Videos shape: job + poll)
  *          GET  {url}/v1/videos/{id}         -> { id, status, error? }
  *          GET  {url}/v1/videos/{id}/content -> raw video bytes
@@ -52,6 +55,13 @@ const AUDIO_FORMAT_BY_MIME: Record<string, string> = {
   "audio/opus": "opus",
   "audio/l16": "pcm",
   "audio/pcm": "pcm",
+};
+
+const IMAGE_EXT_BY_MIME: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
 };
 
 /** Strip a trailing `/v1` (and slashes): HttpClient appends `/v1/...` itself. */
@@ -119,6 +129,10 @@ export class HttpMediaClient extends HttpClient {
               )
             )
           )
+        : type === "image"
+        ? Array.from(
+            new Set([...(declared.image ?? []), ...(declared.imageEdit ?? [])])
+          )
         : (declared as Record<string, string[] | undefined>)[type] ?? [];
     return ids.map((id) => ({
       id,
@@ -180,7 +194,7 @@ export class HttpMediaClient extends HttpClient {
   /** fetch wrapper with timeout (0 disables), caller abort signal, and error bodies in the message. */
   private async request(
     path: string,
-    init: { method: string; body?: unknown },
+    init: { method: string; body?: unknown; form?: FormData },
     timeoutMs: number | undefined = this.timeout,
     signal?: AbortSignal
   ): Promise<Response> {
@@ -198,11 +212,18 @@ export class HttpMediaClient extends HttpClient {
       const headers: Record<string, string> = {
         ...(this.headers as Record<string, string>),
       };
-      if (init.body !== undefined) headers["Content-Type"] = "application/json";
+      // A multipart body gets its Content-Type (with the boundary) from fetch itself.
+      if (init.body !== undefined && !init.form) {
+        headers["Content-Type"] = "application/json";
+      }
       const res = await fetch(`${this.baseUrl}${path}`, {
         method: init.method,
         headers,
-        body: init.body === undefined ? undefined : JSON.stringify(init.body),
+        body: init.form
+          ? init.form
+          : init.body === undefined
+          ? undefined
+          : JSON.stringify(init.body),
         signal: controller.signal,
       });
       if (!res.ok) {
@@ -307,11 +328,18 @@ export class HttpMediaClient extends HttpClient {
       undefined,
       signal
     );
-    const body: any = await res.json();
+    return this.parseImageResponse(await res.json(), "/v1/images/generations");
+  }
+
+  /** `{ data: [{ b64_json | url }] }` -> ImageGenerationResponse (URL-only items are fetched: the URL is local to the box). */
+  private async parseImageResponse(
+    body: any,
+    path: string
+  ): Promise<ImageGenerationResponse> {
     if (body?.error) throw new Error(JSON.stringify(body.error));
     const items: any[] = Array.isArray(body?.data) ? body.data : [];
     if (!items.length) {
-      throw new Error(`${this.providerName} /v1/images/generations returned no images`);
+      throw new Error(`${this.providerName} ${path} returned no images`);
     }
     const data = await Promise.all(
       items.map(async (item) => {
@@ -340,6 +368,57 @@ export class HttpMediaClient extends HttpClient {
       data,
       usd_cost: body.usd_cost,
     };
+  }
+
+  /**
+   * Edit / compose images on the custom server: OpenAI-style multipart POST /v1/images/edits with one `image`
+   * part per input (data: URLs or http(s) URLs are resolved to bytes here) and an optional `mask` part.
+   */
+  async createImageEdit(
+    options: ImageEditOptions
+  ): Promise<ImageGenerationResponse> {
+    const { signal, model, prompt, images, mask, n, size, quality, aspect_ratio } = options;
+    if (!prompt?.trim()) throw new Error("prompt is required");
+    if (!Array.isArray(images) || images.length === 0) {
+      throw new Error("At least one input image is required");
+    }
+    const inputs = await Promise.all(images.map((i) => resolveMediaInput(i, signal)));
+    const form = new FormData();
+    for (const [k, v] of Object.entries(this.extra_body ?? {})) {
+      if (["string", "number", "boolean"].includes(typeof v)) form.append(k, String(v));
+    }
+    form.append("model", model);
+    form.append("prompt", prompt);
+    inputs.forEach((m, idx) => {
+      const ext = IMAGE_EXT_BY_MIME[m.mimeType] ?? "png";
+      form.append(
+        "image",
+        new Blob([new Uint8Array(m.data)], { type: m.mimeType }),
+        `image${idx}.${ext}`
+      );
+    });
+    if (mask) {
+      const resolved = await resolveMediaInput(mask, signal);
+      form.append(
+        "mask",
+        new Blob([new Uint8Array(resolved.data)], { type: resolved.mimeType }),
+        "mask.png"
+      );
+    }
+    if (n !== undefined) form.append("n", String(n));
+    if (size) form.append("size", size);
+    if (quality) form.append("quality", quality);
+    if (aspect_ratio) form.append("aspect_ratio", aspect_ratio);
+    // Always ask for bytes: a loopback `url` is useless to the caller.
+    form.append("response_format", "b64_json");
+
+    const res = await this.request(
+      "/v1/images/edits",
+      { method: "POST", form },
+      undefined,
+      signal
+    );
+    return this.parseImageResponse(await res.json(), "/v1/images/edits");
   }
 
   // ----------------------------------------------------------------- video

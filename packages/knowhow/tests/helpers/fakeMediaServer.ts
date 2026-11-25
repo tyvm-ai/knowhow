@@ -7,7 +7,21 @@ import { AddressInfo } from "net";
  */
 export interface FakeMediaServer {
   url: string;
-  requests: { method: string; path: string; body?: any }[];
+  requests: {
+    method: string;
+    path: string;
+    body?: any;
+    /** Set for multipart/form-data requests (e.g. /v1/images/edits). */
+    multipart?: {
+      contentType: string;
+      /** Every part name in order, repeats included (e.g. ["model","prompt","image","image"]). */
+      fieldNames: string[];
+      /** String fields by name (last value wins). */
+      fields: Record<string, string>;
+      /** File parts: field name, file name, mime type, byte length. */
+      files: { field: string; fileName: string; type: string; size: number }[];
+    };
+  }[];
   close(): Promise<void>;
 }
 
@@ -44,16 +58,38 @@ export async function startFakeMediaServer(
   const server = http.createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on("data", (c) => chunks.push(c));
-    req.on("end", () => {
-      const raw = Buffer.concat(chunks).toString("utf8");
+    req.on("end", async () => {
+      const contentType = String(req.headers["content-type"] || "");
+      const isMultipart = contentType.startsWith("multipart/form-data");
+      const raw = isMultipart ? "" : Buffer.concat(chunks).toString("utf8");
       let body: any;
-      try {
-        body = raw ? JSON.parse(raw) : undefined;
-      } catch {
-        body = raw;
+      let multipart: FakeMediaServer["requests"][number]["multipart"];
+      if (isMultipart) {
+        const form = await new Response(Buffer.concat(chunks), {
+          headers: { "content-type": contentType },
+        }).formData();
+        multipart = { contentType, fieldNames: [], fields: {}, files: [] };
+        for (const [name, value] of (form as any).entries() as Iterable<[string, any]>) {
+          multipart.fieldNames.push(name);
+          if (typeof value === "string") multipart.fields[name] = value;
+          else
+            multipart.files.push({
+              field: name,
+              fileName: value.name,
+              type: value.type,
+              size: value.size,
+            });
+        }
+        body = multipart.fields;
+      } else {
+        try {
+          body = raw ? JSON.parse(raw) : undefined;
+        } catch {
+          body = raw;
+        }
       }
       const path = (req.url || "").split("?")[0];
-      requests.push({ method: req.method || "", path, body });
+      requests.push({ method: req.method || "", path, body, multipart });
       const json = (code: number, obj: unknown) => {
         res.writeHead(code, { "content-type": "application/json" });
         res.end(JSON.stringify(obj));
@@ -66,6 +102,17 @@ export async function startFakeMediaServer(
       }
       if (req.method === "POST" && path === "/v1/images/generations") {
         const n = body?.n ?? 1;
+        return json(200, {
+          created: 1,
+          data: Array.from({ length: n }, () => ({ b64_json: PNG_B64 })),
+        });
+      }
+      if (req.method === "POST" && path === "/v1/images/edits") {
+        if (!multipart) return json(415, { error: "multipart/form-data required" });
+        if (!multipart.files.some((f) => f.field === "image"))
+          return json(422, { error: "image is required" });
+        if (multipart.fields.prompt === "boom") return json(400, { error: "bad prompt" });
+        const n = Number(multipart.fields.n ?? 1);
         return json(200, {
           created: 1,
           data: Array.from({ length: n }, () => ({ b64_json: PNG_B64 })),

@@ -8,6 +8,7 @@ import {
   AudioGenerationResponse,
   ImageGenerationOptions,
   ImageGenerationResponse,
+  ImageEditOptions,
   VideoGenerationOptions,
   VideoGenerationResponse,
   VideoStatusOptions,
@@ -116,6 +117,37 @@ export class KnowhowMcpClient implements GenericClient {
       }[];
       usd_cost?: number;
     }>("createImageGeneration", { provider: provider || "", options: rest });
+    const data = await Promise.all(
+      (res.data || []).map(async ({ ref, ...item }) =>
+        ref
+          ? {
+              ...item,
+              b64_json: (await unpackArtifact({ ref: ref as any })).toString("base64"),
+            }
+          : item
+      )
+    );
+    return { created: res.created, data, usd_cost: res.usd_cost };
+  }
+
+  /**
+   * Image editing on the worker (createImageEdit tool). Input images are URLs / data URLs; the worker
+   * fetches or decodes them itself, so they travel as plain strings.
+   */
+  async createImageEdit(
+    options: ImageEditOptions & { provider?: string }
+  ): Promise<ImageGenerationResponse> {
+    const { provider, signal, ...rest } = options as any;
+    const res = await this.callFunctionStrict<{
+      created: number;
+      data: {
+        b64_json?: string;
+        url?: string;
+        revised_prompt?: string;
+        ref?: { url: string };
+      }[];
+      usd_cost?: number;
+    }>("createImageEdit", { provider: provider || "", options: rest });
     const data = await Promise.all(
       (res.data || []).map(async ({ ref, ...item }) =>
         ref

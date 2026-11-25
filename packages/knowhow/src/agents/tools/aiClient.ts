@@ -7,6 +7,7 @@ import {
   EmbeddingResponse,
   AudioGenerationOptions,
   ImageGenerationOptions,
+  ImageEditOptions,
   VideoGenerationOptions,
   VideoStatusOptions,
   FileDownloadOptions,
@@ -240,6 +241,26 @@ export async function createImageGeneration(
       const bytes = Buffer.from(b64_json, "base64");
       const packed = await packArtifact(bytes, {
         fileName: artifactFileName(`img${index}`, b64_json.startsWith("/9j/") ? "jpg" : "png"),
+        mimeType: b64_json.startsWith("/9j/") ? "image/jpeg" : "image/png",
+      });
+      return "ref" in packed ? { ...rest, ref: packed.ref } : { ...rest, b64_json };
+    })
+  );
+  return { created: result.created, data, usd_cost: result.usd_cost };
+}
+
+export async function createImageEdit(
+  provider: string,
+  options: ImageEditOptions
+) {
+  const result = await getClients(this).createImageEdit(provider, options);
+  const data = await Promise.all(
+    (result.data || []).map(async (item, index) => {
+      const { b64_json, ...rest } = item;
+      if (!b64_json) return rest; // url-only items pass through untouched
+      const bytes = Buffer.from(b64_json, "base64");
+      const packed = await packArtifact(bytes, {
+        fileName: artifactFileName(`edit${index}`, b64_json.startsWith("/9j/") ? "jpg" : "png"),
         mimeType: b64_json.startsWith("/9j/") ? "image/jpeg" : "image/png",
       });
       return "ref" in packed ? { ...rest, ref: packed.ref } : { ...rest, b64_json };

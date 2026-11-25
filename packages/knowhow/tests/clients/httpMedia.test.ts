@@ -103,6 +103,65 @@ describe("HttpMediaClient against a fake OpenAI-compatible media server", () => 
     expect(res.usd_cost).toBeUndefined();
   });
 
+  describe("createImageEdit", () => {
+    const dataUrl = `data:image/png;base64,${PNG_B64}`;
+
+    test("posts multipart with a repeated image part and always asks for b64_json", async () => {
+      const res = await client.createImageEdit({
+        model: "flux",
+        prompt: "make it blue",
+        images: [dataUrl, dataUrl],
+        n: 2,
+        size: "512x512",
+      });
+      const req = server.requests[0];
+      expect(req.path).toBe("/v1/images/edits");
+      expect(req.multipart?.contentType).toMatch(/^multipart\/form-data; boundary=/);
+      expect(req.multipart?.fieldNames.filter((f) => f === "image")).toHaveLength(2);
+      expect(req.multipart?.files.map((f) => f.type)).toEqual(["image/png", "image/png"]);
+      expect(req.multipart?.files.every((f) => f.size > 0)).toBe(true);
+      expect(req.multipart?.fields).toMatchObject({
+        model: "flux",
+        prompt: "make it blue",
+        n: "2",
+        size: "512x512",
+        response_format: "b64_json",
+      });
+      expect(res.data).toHaveLength(2);
+      expect(res.data[0].b64_json).toBe(PNG_B64);
+    });
+
+    test("sends the mask as its own part", async () => {
+      await client.createImageEdit({ model: "flux", prompt: "x", images: [dataUrl], mask: dataUrl });
+      const files = server.requests[0].multipart!.files;
+      expect(files.map((f) => f.field)).toEqual(["image", "mask"]);
+    });
+
+    test("rejects a missing prompt or no images without calling the server", async () => {
+      await expect(client.createImageEdit({ model: "flux", prompt: " ", images: [dataUrl] })).rejects.toThrow(
+        /prompt is required/
+      );
+      await expect(client.createImageEdit({ model: "flux", prompt: "x", images: [] })).rejects.toThrow(
+        /At least one input image/
+      );
+      expect(server.requests).toHaveLength(0);
+    });
+
+    test("surfaces the server error body", async () => {
+      await expect(
+        client.createImageEdit({ model: "flux", prompt: "boom", images: [dataUrl] })
+      ).rejects.toThrow(/HTTP 400.*bad prompt/);
+    });
+  });
+
+  test("getModels('image') includes edit-only models", async () => {
+    const c = new HttpMediaClient(server.url, { timeout: 10000 }, {
+      providerName: "fake",
+      modelsByModality: { image: ["flux"], imageEdit: ["flux", "klein-edit"] },
+    });
+    expect((await c.getModels("image")).map((m) => m.id)).toEqual(["flux", "klein-edit"]);
+  });
+
   test("video: create returns a jobId, status maps to completed after polling, content downloads", async () => {
     const created = await client.createVideoGeneration({
       model: "wan",
@@ -196,6 +255,27 @@ describe("AIClient + custom media provider entry", () => {
     expect(status.status).toBe("completed");
     const dl = await ai.downloadVideo("tpl-media", { fileId: vid.jobId! });
     expect(dl.data.length).toBe(1024);
+  });
+
+  test("imageEdit models are announced under image and edits route to the provider", async () => {
+    jest.spyOn(console, "log").mockImplementation(() => undefined);
+    const ai = new AIClient();
+    await ai.registerModelProviders([
+      {
+        provider: "tpl-edit",
+        url: server.url,
+        modelsByModality: { image: ["flux"], imageEdit: ["flux", "klein-edit"] },
+      },
+    ]);
+    expect(ai.imageModels["tpl-edit"]).toEqual(["flux", "klein-edit"]);
+    expect(ai.clientModels["tpl-edit"]).toEqual(["flux", "klein-edit"]);
+    const out = await ai.createImageEdit("tpl-edit", {
+      model: "klein-edit",
+      prompt: "x",
+      images: [`data:image/png;base64,${PNG_B64}`],
+    });
+    expect(out.data[0].b64_json).toBe(PNG_B64);
+    expect(server.requests.at(-1)?.multipart?.fields.model).toBe("klein-edit");
   });
 
   test("a url provider without modelsByModality still probes /v1/models (legacy text behaviour)", async () => {
