@@ -72,6 +72,7 @@ import { GenericFireworksClient } from "./fireworks";
 import { GenericMetaClient } from "./meta";
 import { GenericQwenClient } from "./qwen";
 import { GenericJevClient } from "./jev";
+import { flattenToolChanges } from "./toolChanges";
 import { TraceAll } from "../util/Trace";
 export {
   OpenAiTextPricing,
@@ -863,7 +864,11 @@ export class AIClient {
     provider: string,
     options: CompletionOptions
   ): Promise<CompletionResponse> {
-    const { client, model } = this.getClient(provider, options.model);
+    const {
+      client,
+      model,
+      provider: resolved,
+    } = this.getClient(provider, options.model);
     if (!model || !client) {
       throw new Error(
         `provider: ${provider} does not have ${
@@ -872,17 +877,39 @@ export class AIClient {
       );
     }
     warnIfModelDeprecated(model);
+    const request = this.prepareToolChanges(resolved, model, options);
     return withRetry(
-      (signal) => client.createChatCompletion({ ...options, model, signal }),
+      (signal) => client.createChatCompletion({ ...request, model, signal }),
       options
     );
+  }
+
+  /**
+   * Deferred tools + `_tool_changes` markers only reach clients serving a
+   * model whose info has `toolAdditions` (native Anthropic/OpenAI, or the
+   * knowhow proxy forwarding to one). Everyone else gets the classic lazy-tools
+   * shape: just the tools enabled so far, no markers. This also protects
+   * callers that don't check model info themselves (e.g. the knowhow-web
+   * proxy, which forwards whatever the CLI sent).
+   */
+  private prepareToolChanges(
+    provider: string,
+    model: string,
+    options: CompletionOptions
+  ): CompletionOptions {
+    if (this.getModelInfo(provider, model).info.toolAdditions) return options;
+    return flattenToolChanges(options);
   }
 
   async *createCompletionStream(
     provider: string,
     options: CompletionOptions
   ): AsyncGenerator<StreamChunk> {
-    const { client, model } = this.getClient(provider, options.model);
+    const {
+      client,
+      model,
+      provider: resolved,
+    } = this.getClient(provider, options.model);
     if (!model || !client) {
       throw new Error(
         `provider: ${provider} does not have ${
@@ -891,12 +918,13 @@ export class AIClient {
       );
     }
     warnIfModelDeprecated(model);
+    const request = this.prepareToolChanges(resolved, model, options);
     if (client.createChatCompletionStream) {
-      yield* client.createChatCompletionStream({ ...options, model });
+      yield* client.createChatCompletionStream({ ...request, model });
     } else {
       // Fallback: non-streaming clients — call normal completion and yield as single chunk
       const result = await withRetry(
-        (signal) => client.createChatCompletion({ ...options, model, signal }),
+        (signal) => client.createChatCompletion({ ...request, model, signal }),
         options
       );
       yield { delta: result.choices[0]?.message?.content ?? "", done: false };

@@ -382,9 +382,31 @@ export abstract class BaseAgent implements IAgent {
   /** Catalog info (capabilities, cache policy, pricing) for the current model. */
   getModelInfo(): ResolvedModelInfo {
     return this.clientService.getModelInfo(
-      (this.getProvider() as string) || "",
+      this.getServingProvider(),
       this.getModel()
     );
+  }
+
+  /**
+   * The provider whose client actually handles this agent's requests. The
+   * agent's provider can name one that isn't registered (e.g. "anthropic"
+   * when knowhow.json only declares the "knowhow" provider), in which case
+   * getClient() falls back to whichever client serves the model, usually the
+   * Knowhow proxy. Capabilities such as deferred tools must be judged by
+   * that client, not by the requested provider name.
+   */
+  protected getServingProvider(): string {
+    const requested = (this.getProvider() as string) || "";
+    let client: GenericClient | undefined;
+    try {
+      client = this.getClient();
+    } catch {
+      return requested;
+    }
+    const clients = this.clientService.clients || {};
+    if (!client || clients[requested] === client) return requested;
+    const served = Object.keys(clients).find((p) => clients[p] === client);
+    return served ?? requested;
   }
 
   /**

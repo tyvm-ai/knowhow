@@ -23,9 +23,11 @@ export interface ResolvedModelInfo extends ModelCatalogEntry {
 
 /**
  * Proxies that forward our CompletionOptions to the native client on the
- * server: cache settings (long_ttl_cache) pass through, but newer request
- * shapes (deferred tools / tool_addition markers) depend on the server's
- * version, so they're not assumed.
+ * server, so the model's own capabilities apply: cache settings
+ * (long_ttl_cache) and deferred tools / tool_addition markers pass through to
+ * the server's AIClient, which renders or flattens them for the real
+ * provider. (KnowhowGenericClient still flattens tool changes when the server
+ * doesn't advertise support for them.)
  */
 const FORWARDING_PROXIES = new Set(["knowhow"]);
 
@@ -77,7 +79,7 @@ export function getModelInfo(
   const native = !provider || provider === entry.provider;
   let served: ModelInfo = info;
   if (!native && FORWARDING_PROXIES.has(provider)) {
-    served = { ...info, toolAdditions: false };
+    served = info;
   } else if (!native) {
     const { toolAdditions: _t, promptCache: _p, ...traits } = info;
     served = { ...traits, promptCache: { mode: "automatic" } };

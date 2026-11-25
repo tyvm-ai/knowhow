@@ -24,10 +24,13 @@ import {
   KnowhowSimpleClient,
   KNOWHOW_API_URL,
 } from "../services/KnowhowClient";
+import { flattenToolChanges } from "./toolChanges";
 
 const envUrl = KNOWHOW_API_URL;
 export class KnowhowGenericClient implements GenericClient {
   private client: KnowhowSimpleClient;
+  /** Whether the server accepts deferred tools / `_tool_changes` markers. */
+  private toolChangesSupport?: Promise<boolean>;
 
   constructor(private baseUrl = envUrl, jwt?: string) {
     this.setKey(jwt);
@@ -35,12 +38,49 @@ export class KnowhowGenericClient implements GenericClient {
 
   setKey(jwt: string): void {
     this.client = new KnowhowSimpleClient(this.baseUrl, jwt);
+    this.toolChangesSupport = undefined;
+  }
+
+  /**
+   * Servers advertise `capabilities.toolChanges` on the models endpoint once
+   * their request schema keeps `defer_loading` and `_tool_changes`. Older
+   * servers silently strip them, which would turn a deferred catalog into
+   * hundreds of full tool definitions (~190k tokens with the knowhow-web MCP),
+   * so without the flag we send the classic shape instead.
+   */
+  private serverSupportsToolChanges(): Promise<boolean> {
+    if (!this.toolChangesSupport) {
+      this.toolChangesSupport = this.client
+        .getModels("completion")
+        .then((response) => this.noteCapabilities(response.data))
+        .catch(() => {
+          this.toolChangesSupport = undefined; // retry on the next request
+          return false;
+        });
+    }
+    return this.toolChangesSupport;
+  }
+
+  private noteCapabilities(data: any): boolean {
+    const supported = data?.capabilities?.toolChanges === true;
+    this.toolChangesSupport = Promise.resolve(supported);
+    return supported;
+  }
+
+  private async prepareToolChanges(
+    options: CompletionOptions
+  ): Promise<CompletionOptions> {
+    const flat = flattenToolChanges(options);
+    if (flat === options) return options; // nothing deferred, no markers
+    return (await this.serverSupportsToolChanges()) ? options : flat;
   }
 
   async createChatCompletion(
     options: CompletionOptions
   ): Promise<CompletionResponse> {
-    const response = await this.client.createChatCompletion(options);
+    const response = await this.client.createChatCompletion(
+      await this.prepareToolChanges(options)
+    );
     const data = response.data as any;
     // The proxy uses a JSON keep-alive (whitespace heartbeats, then one JSON
     // body), so failures can arrive as a 200 with an error object or with a
@@ -72,6 +112,7 @@ export class KnowhowGenericClient implements GenericClient {
     type = "all"
   ): Promise<{ id: string; modality: ModelModality[] }[]> {
     const response = await this.client.getModels(type);
+    this.noteCapabilities(response.data);
     return (
       response.data?.data?.map((model) => ({
         id: model.id,

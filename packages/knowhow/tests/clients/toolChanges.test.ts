@@ -132,8 +132,10 @@ describe("Anthropic mid-conversation tool changes", () => {
     expect(supports("claude-opus-4-8")).toBe(true);
     expect(supports("claude-sonnet-5")).toBe(false);
     expect(supports("claude-sonnet-4-6")).toBe(false);
-    // The knowhow proxy forwards cache settings but not tool additions.
-    expect(getModelInfo("claude-fable-5-2", "knowhow").info.toolAdditions).toBe(false);
+    // The knowhow proxy forwards the model's own capabilities; other hosts don't.
+    expect(getModelInfo("claude-fable-5-2", "knowhow").info.toolAdditions).toBe(true);
+    expect(getModelInfo("claude-sonnet-5", "knowhow").info.toolAdditions).toBeFalsy();
+    expect(getModelInfo("claude-fable-5-2", "openrouter").info.toolAdditions).toBeFalsy();
   });
 
   it("sends deferred tools, tool_addition blocks and the beta header", async () => {
